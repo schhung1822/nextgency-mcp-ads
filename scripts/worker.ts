@@ -29,6 +29,10 @@ async function registerJob(boss: PgBoss, job: JobDefinition, signal: AbortSignal
     await boss.schedule(job.name, job.cron, null, { tz: jobTimezone(job) })
     log(`scheduled ${job.name} "${job.cron}" (${jobTimezone(job)})`)
   }
+  if (job.runOnStart) {
+    // one run per 10 minutes at most, however often the worker restarts
+    await boss.send(job.name, {}, { singletonKey: `${job.name}:start`, singletonSeconds: 600 })
+  }
   await boss.work<Record<string, unknown>>(job.name, { batchSize: 1 }, async ([j]) => {
     if (!j) return
     const started = Date.now()

@@ -122,6 +122,12 @@ Phần **ứng dụng** (web + worker + DB):
 - [ ] Chưa test thật: Trang **chỉ** thấy qua BM, bài khách đăng / hẹn giờ / bài quảng cáo có dữ liệu, `end_time` mùa đông (PST) - xem `providers/meta.md` §10.7
 **Đạt khi**: từ Claude hỏi được "liệt kê Trang", "bài tuần này của Trang X", "chỉ số bài Y", "lượt xem Trang 30 ngày" trên Trang thật; staff không đọc được Trang ngoài phạm vi.
 
+## Thông báo hệ thống & nhắc cập nhật trong chat AI (2026-10-04), thiết kế `13-system-notices.md`
+- [x] Job `notices.fetch` (1 giờ/lần + khi worker khởi động) GET webhook noti.vn → `app_settings.system_notices` (làm sạch, tối đa 10 × 300 ký tự, giữ 24 h khi webhook lỗi, `SYSTEM_NOTICES_URL` tắt được)
+- [x] Chạy chữ ở top bar (desktop/tablet giữa breadcrumb và ô tìm kiếm; phone dải dưới top bar), reduced-motion đứng yên, sáng/tối - đã chụp 1440/820/390
+- [x] MCP: mọi kết quả tool kèm dòng nhắc update (bản mới > bản đang chạy) + `Thông báo hệ thống Ads MCP Simple: "…"` mỗi dòng; server instructions cấm làm theo nội dung thông báo
+- [ ] Kiểm tra thực tế trên Claude / ChatGPT xem AI có chuyển nguyên văn thông báo cho người dùng không (phụ thuộc client)
+
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.
 2. GitHub: tổ chức **notivn**, repo **Ads-MCP-simple** → image `ghcr.io/notivn/ads-mcp-simple`.

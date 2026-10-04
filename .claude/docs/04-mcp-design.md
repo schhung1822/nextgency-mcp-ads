@@ -156,6 +156,7 @@ Trường không có → `null` (không phải 0). Mặc định (`metrics: "all
 
 ## 5. Định dạng phản hồi
 - Trả **cả** `structuredContent` (JSON đúng `outputSchema`) **và** `content: [{type:'text', text}]` (tóm tắt 1–2 dòng tiếng Việt + JSON gọn).
+- Khi có bản cập nhật chưa cài hoặc có thông báo hệ thống: thêm **1** content text cuối kết quả (dòng nhắc update + `Thông báo hệ thống Ads MCP Simple: "…"` mỗi dòng một thông báo) - chi tiết `13-system-notices.md` §4; `structuredContent` không đổi.
 - Giữ mỗi kết quả ≲10k token (Claude Code cảnh báo ở 10k, cắt ở 25k; claude.ai ~150k ký tự; Gemini CLI ~40k ký tự). Vượt → cắt + `next_cursor`, `has_more`, `truncated: true`.
 - Cursor là chuỗi mờ **có ký**: `base64url(JSON) + "." + base64url(HMAC-SHA256)` (khoá = HKDF(`MCP_KEY_PEPPER` hoặc `BETTER_AUTH_SECRET`, "cursor"), `src/server/mcp/cursor.ts`). Payload bọc cursor của nền tảng + vị trí fan-out (+ id report run Meta); MAC gắn với MCP, tool, tập tài khoản đã resolve và hash tham số truy vấn → client không sửa/giả được cursor, không dùng lại cho MCP/tool/tài khoản/truy vấn khác (sai → `invalid_cursor`). Report run Meta lấy từ cursor còn được kiểm tra lại thuộc tài khoản trong grant.
 - Lỗi nghiệp vụ/nền tảng/quyền → **kết quả tool với `isError: true`**: `{ code, message (tiếng Việt), platform_error: {code, message, request_id}, hint }` (vd hint: "Gọi ads_list_objects để lấy đúng id"). Lỗi JSON-RPC chỉ dành cho tool không tồn tại / request hỏng.

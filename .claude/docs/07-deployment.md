@@ -41,6 +41,7 @@ docker compose pull && docker compose up -d --no-build                          
 | `APP_VERSION` | - | tag image đang chạy (`1.2.3`, không `v`). **Updater tự ghi**; trống = `latest`. KHÁC `APP_BUILD_VERSION` (ENV bake lúc build, là số hiển thị trong web) |
 | `APP_IMAGE` | - | repo image không kèm tag, mặc định `ghcr.io/notivn/ads-mcp-simple` (chỉ đổi khi dùng bản fork; updater + compose cùng đọc) |
 | `UPDATE_REPO` / `UPDATE_GITHUB_TOKEN` | - | repo GitHub để `worker` kiểm tra bản mới (mặc định `notivn/Ads-MCP-simple`) / PAT chỉ-đọc nếu repo riêng tư |
+| `SYSTEM_NOTICES_URL` | - | webhook thông báo hệ thống (`worker` GET 1 giờ/lần). Không đặt = webhook noti.vn; rỗng/`off` = tắt; chỉ nhận `https://` (13-system-notices.md) |
 | `UPDATER_DOCKER_CONFIG` | - | thư mục `docker login` mount cho updater (mặc định `/root/.docker`) |
 | `CADDY_REPLICAS` / `CADDY_CLIENT_IP` / `CADDY_TLS` / `WEB_HOST_PORT` | - | chọn phương án (§0); gen-env `--ssl` điền |
 | `CADDY_SITE_SCHEME` | - | trống (mặc định) hoặc `http://` (phương án D) |

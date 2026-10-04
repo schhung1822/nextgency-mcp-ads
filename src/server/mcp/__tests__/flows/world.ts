@@ -86,6 +86,8 @@ export interface ToolResult {
   isError: boolean
   sc: Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- test helper: structured content is inspected loosely
   text: string
+  /** every text content item (the notice block, when present, is the last one) */
+  texts?: string[]
 }
 
 export const DEFAULT_SETTINGS: McpSettingsInput = {
@@ -294,6 +296,7 @@ export class World {
       isError: Boolean(msg.result.isError),
       sc: (msg.result.structuredContent ?? {}) as ToolResult["sc"],
       text: String(msg.result.content?.[0]?.text ?? ""),
+      texts: ((msg.result.content ?? []) as { text?: string }[]).map((c) => String(c.text ?? "")),
     }
   }
 

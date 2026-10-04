@@ -32,6 +32,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { common } from "@/lib/i18n/vi/common"
+import type { SystemNotice } from "@/lib/system-notices"
 
 import { BottomNav } from "./bottom-nav"
 import { BrandLogo, BrandMark } from "./brand-logo"
@@ -44,6 +45,7 @@ import {
   type NavItem,
 } from "./nav"
 import { NAV_ICONS } from "./nav-icons"
+import { NoticeTicker } from "./notice-ticker"
 import {
   GuidePanel,
   GuideProvider,
@@ -71,6 +73,8 @@ export interface AppShellProps extends SignOutProps {
   commandGroups?: CommandPaletteGroup[]
   /** initial desktop sidebar state (read the `sidebar_state` cookie in the layout) */
   defaultSidebarOpen?: boolean
+  /** system notices (noti.vn webhook) scrolled in the top bar; a second strip under the bar on phones */
+  notices?: readonly SystemNotice[]
 }
 
 /**
@@ -84,12 +88,14 @@ export function AppShell({
   topBarExtra,
   commandGroups,
   defaultSidebarOpen = true,
+  notices = [],
   signOutAction,
   onSignOut,
 }: AppShellProps) {
   const pathname = usePathname()
   useTransparencySync()
   const nav = navItemsForRole(user.role)
+  const hasNotices = notices.length > 0
 
   const paletteGroups = React.useMemo<CommandPaletteGroup[]>(
     () => [
@@ -180,7 +186,13 @@ export function AppShell({
       */}
       <div
         data-slot="sidebar-inset"
-        className="relative flex min-w-0 flex-1 flex-col [--app-topbar-offset:calc(3.5rem+env(safe-area-inset-top))] md:[--app-topbar-offset:4.5rem]"
+        className={cn(
+          "relative flex min-w-0 flex-1 flex-col md:[--app-topbar-offset:4.5rem]",
+          // phones: the notice strip (h-11) sits under the 3.5rem bar inside the same sticky header
+          hasNotices
+            ? "[--app-topbar-offset:calc(6.25rem+env(safe-area-inset-top))]"
+            : "[--app-topbar-offset:calc(3.5rem+env(safe-area-inset-top))]"
+        )}
       >
         <a
           href="#main-content"
@@ -210,8 +222,22 @@ export function AppShell({
               >
                 <BrandLogo height={26} priority />
               </Link>
-              <div className="min-w-0 flex-1 pl-2 md:pl-0">
-                {breadcrumb ?? <AutoBreadcrumb pathname={pathname} />}
+              <div className="flex min-w-0 flex-1 items-center gap-4 pl-2 md:pl-0">
+                <div
+                  className={cn(
+                    "min-w-0 flex-1",
+                    // the ticker takes the free space between the breadcrumb and the search box
+                    hasNotices && "md:max-w-[45%] md:flex-none"
+                  )}
+                >
+                  {breadcrumb ?? <AutoBreadcrumb pathname={pathname} />}
+                </div>
+                {hasNotices && (
+                  <NoticeTicker
+                    notices={notices}
+                    className="mr-1 flex-1 max-md:hidden"
+                  />
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
                 <GuideTopBarButton />
@@ -221,6 +247,11 @@ export function AppShell({
                 <ThemeToggle className="pointer-coarse:size-10 max-md:hidden" />
               </div>
             </div>
+            {hasNotices && (
+              <div className="flex h-11 items-center border-t border-foreground/5 px-3 md:hidden">
+                <NoticeTicker notices={notices} className="flex-1" />
+              </div>
+            )}
           </div>
         </header>
         <div className="flex min-w-0 flex-1 items-stretch">

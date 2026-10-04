@@ -11,6 +11,7 @@ import { providerContextFactory, type ProviderContextFactory } from "./context"
 import { McpToolError, mapToolError, type CallLogStatus, type ToolErrorPayload } from "./errors"
 import { platformLabel } from "./grant"
 import { CallLog } from "./logging"
+import { appendNotice, currentNoticeText } from "./notices"
 import { consumeWriteRate } from "./rate-limit"
 import type { RequestState } from "./request-state"
 import type { GrantAccount, McpGrant } from "./types"
@@ -115,7 +116,11 @@ export function registerToolSpec<S extends z.ZodObject<any>>(server: McpServer, 
       annotations: { title: spec.title, ...spec.annotations },
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (async (args: any, ctx: ServerContext) => runTool(spec, tctx, args as z.infer<S>, ctx)) as never
+    (async (args: any, ctx: ServerContext) => {
+      // update / system notices ride along with every result (ok and error) as one extra text item
+      const [result, notice] = await Promise.all([runTool(spec, tctx, args as z.infer<S>, ctx), currentNoticeText()])
+      return appendNotice(result, notice)
+    }) as never
   )
 }
 

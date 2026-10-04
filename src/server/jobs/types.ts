@@ -23,6 +23,8 @@ export interface JobDefinition<D = Record<string, unknown>> {
   cron?: string
   /** IANA time zone for `cron` (default APP_TIMEZONE / Asia/Ho_Chi_Minh) */
   tz?: string
+  /** also enqueue one run when the worker starts (singleton: a restart loop cannot pile up runs) */
+  runOnStart?: boolean
   queue?: JobQueueOptions
   /** must be idempotent - pg-boss may retry */
   handler: (data: D, ctx: JobContext) => Promise<unknown>

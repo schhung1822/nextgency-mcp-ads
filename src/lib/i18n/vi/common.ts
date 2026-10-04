@@ -45,6 +45,10 @@ export const common = {
     markAlt: "Ads MCP",
   },
 
+  notices: {
+    label: "Thông báo hệ thống",
+  },
+
   nav: {
     label: "Điều hướng chính",
     dashboard: "Tổng quan",

@@ -49,6 +49,7 @@ export {
 } from "./date-range"
 export { DateRangePicker, type DateRangePickerProps } from "./date-range-picker"
 export { EmptyState, type EmptyStateProps } from "./empty-state"
+export { NoticeTicker } from "./notice-ticker"
 export {
   FilterBar,
   type FilterBarProps,
