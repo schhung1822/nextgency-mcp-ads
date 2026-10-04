@@ -1,0 +1,80 @@
+// Tool catalogue: deterministic order; each toolset registers itself only when the grant allows it
+// (the per-tool `register` re-checks permissions and builds the `platform` enum from the grant).
+import type { McpServer } from "@modelcontextprotocol/server"
+import type { Permission } from "./types"
+import { grantPlatformsWith, type McpGrant } from "./types"
+import type { ToolContext } from "./tool"
+import * as copyObject from "./tools/common/copy-object"
+import * as deleteObject from "./tools/common/delete-object"
+import * as getObject from "./tools/common/get-object"
+import * as getReport from "./tools/common/get-report"
+import * as listAccounts from "./tools/common/list-accounts"
+import * as listObjects from "./tools/common/list-objects"
+import * as lookup from "./tools/common/lookup"
+import * as setStatus from "./tools/common/set-status"
+import * as updateBudget from "./tools/common/update-budget"
+import * as updateObject from "./tools/common/update-object"
+import * as uploadMedia from "./tools/common/upload-media"
+import { registerExtensions } from "./tools/extensions"
+import { metaPagesAllowed, registerMetaPageTools } from "./tools/meta-pages"
+
+export interface ToolsetDef {
+  name: string
+  permission: Permission
+  isAllowed(grant: McpGrant): boolean
+  register(server: McpServer, ctx: ToolContext, taken: Set<string>): void
+}
+
+function common(
+  mod: { NAME: string; register(server: McpServer, ctx: ToolContext): void },
+  permission: Permission
+): ToolsetDef {
+  return {
+    name: mod.NAME,
+    permission,
+    isAllowed: (grant) => grantPlatformsWith(grant, permission).length > 0,
+    register: (server, ctx, taken) => {
+      taken.add(mod.NAME)
+      mod.register(server, ctx)
+    },
+  }
+}
+
+export const TOOLSETS: ToolsetDef[] = [
+  common(listAccounts, "read"),
+  common(getReport, "read"),
+  common(listObjects, "read"),
+  common(getObject, "read"),
+  common(lookup, "read"),
+  common(setStatus, "status"),
+  common(updateBudget, "update"),
+  common(updateObject, "update"),
+  common(copyObject, "copy"),
+  common(uploadMedia, "create"),
+  common(deleteObject, "delete"),
+  {
+    // Facebook Pages (read only): needs Meta "read" + at least one Page in the MCP scope
+    name: "meta_pages",
+    permission: "read",
+    isAllowed: (grant) => metaPagesAllowed(grant),
+    register: (server, ctx, taken) => registerMetaPageTools(server, ctx, taken),
+  },
+  {
+    name: "platform_extensions",
+    permission: "read",
+    isAllowed: (grant) => grantPlatformsWith(grant, "read").length > 0,
+    register: (server, ctx, taken) => registerExtensions(server, ctx, taken),
+  },
+]
+
+/** Names of the common tools (for docs / UI). */
+export const COMMON_TOOL_PERMISSIONS: Record<string, Permission> = Object.fromEntries(
+  TOOLSETS.filter((t) => t.name !== "platform_extensions" && t.name !== "meta_pages").map((t) => [t.name, t.permission])
+)
+
+export function registerAllowedTools(server: McpServer, ctx: ToolContext) {
+  const taken = new Set<string>(Object.keys(COMMON_TOOL_PERMISSIONS))
+  for (const def of TOOLSETS) {
+    if (def.isAllowed(ctx.grant)) def.register(server, ctx, taken)
+  }
+}

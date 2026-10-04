@@ -1,0 +1,421 @@
+"use client"
+
+import * as React from "react"
+import Link from "next/link"
+import {
+  Activity01Icon,
+  Alert02Icon,
+  AlertCircleIcon,
+  Clock01Icon,
+  PencilEdit02Icon,
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
+
+import {
+  KpiCard,
+  PermissionBadges,
+  PlatformIcon,
+  RelativeTime,
+  StatusBadge,
+} from "@/components/app"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
+import { PLATFORM_LABELS } from "@/lib/constants"
+import {
+  formatDate,
+  formatDuration,
+  formatNumber,
+  formatPercent,
+} from "@/lib/format"
+import { mcp as t } from "@/lib/i18n/vi/mcp"
+import {
+  analyzeScope,
+  type PlatformUsability,
+} from "@/lib/schemas/mcp-servers"
+import type {
+  McpDetail,
+  SelectableConnection,
+} from "@/server/services/mcp-servers"
+
+const o = t.overview
+
+const chartConfig = {
+  calls: { label: o.chartCalls, color: "var(--chart-1)" },
+  errors: { label: o.chartErrors, color: "var(--destructive)" },
+} satisfies ChartConfig
+
+function CallsChart({ daily }: { daily: McpDetail["stats"]["daily"] }) {
+  const data = daily.map((d) => ({
+    ...d,
+    label: d.date.slice(8, 10) + "/" + d.date.slice(5, 7),
+  }))
+  return (
+    <ChartContainer
+      config={chartConfig}
+      className="aspect-auto h-56 w-full"
+      initialDimension={{ width: 640, height: 224 }}
+    >
+      <BarChart
+        data={data}
+        margin={{ top: 8, right: 4, bottom: 0, left: -12 }}
+        barCategoryGap={2}
+      >
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          minTickGap={16}
+        />
+        <YAxis
+          allowDecimals={false}
+          tickLine={false}
+          axisLine={false}
+          width={40}
+        />
+        <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+        <Bar
+          dataKey="calls"
+          fill="var(--color-calls)"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={28}
+        />
+      </BarChart>
+    </ChartContainer>
+  )
+}
+
+function SummaryRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm sm:text-right">{children}</dd>
+    </div>
+  )
+}
+
+/** Platforms with permissions but no ad account the MCP can actually use (connection deleted / off, no TKQC on). */
+function NoUsableAccountsAlert({
+  platforms,
+  total,
+}: {
+  platforms: PlatformUsability[]
+  /** how many platforms the MCP has permissions on */
+  total: number
+}) {
+  const n = o.noUsable
+  const all = platforms.length === total
+  return (
+    <Alert className="border-warning/40 bg-warning/10">
+      <HugeiconsIcon
+        icon={Alert02Icon}
+        strokeWidth={2}
+        aria-hidden
+        className="text-warning-strong"
+      />
+      <AlertTitle className="text-warning-strong">
+        {all ? n.titleAll : n.titleSome}
+      </AlertTitle>
+      <AlertDescription className="flex flex-col gap-2.5">
+        <div>{all ? n.descriptionAll : n.descriptionSome}</div>
+        <ul className="flex flex-col gap-1 text-[13px]">
+          {platforms.map((p) => (
+            <li key={p.platform} className="flex items-start gap-1.5">
+              <PlatformIcon
+                platform={p.platform}
+                colored
+                className="mt-0.5 size-4 shrink-0"
+              />
+              <span className="min-w-0 break-words">
+                <span className="font-medium text-foreground">
+                  {PLATFORM_LABELS[p.platform]}
+                </span>
+                {" - "}
+                {n.reason[p.reason ?? "no_accounts"]}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <Button
+          variant="outline"
+          size="sm"
+          asChild
+          className="w-full no-underline! sm:w-fit"
+        >
+          <Link href="/connections">{n.openConnections}</Link>
+        </Button>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+export function OverviewTab({
+  mcp,
+  connections,
+}: {
+  mcp: McpDetail
+  /** connections the owner can use now (enabled accounts only) - what the MCP can really reach */
+  connections: SelectableConnection[]
+}) {
+  const s = mcp.stats
+  const noUsable = analyzeScope(mcp.config, connections).platforms.filter(
+    (p) => p.usableAccounts === 0
+  )
+  const hasCalls = s.daily.some((d) => d.calls > 0)
+  const errorRate = s.calls7d > 0 ? (s.errors7d / s.calls7d) * 100 : null
+  const caps = Object.entries(mcp.settings.maxDailyBudget)
+  const lifetimeCaps = Object.entries(mcp.settings.maxLifetimeBudget)
+  const bidCaps = Object.entries(mcp.settings.maxBid)
+  return (
+    <div className="flex flex-col gap-5">
+      {mcp.status === "expired" && (
+        <Alert className="border-warning/40 bg-warning/10">
+          <HugeiconsIcon
+            icon={Alert02Icon}
+            strokeWidth={2}
+            aria-hidden
+            className="text-warning-strong"
+          />
+          <AlertDescription className="text-warning-strong">
+            {o.expiredNotice}
+          </AlertDescription>
+        </Alert>
+      )}
+      {mcp.status === "disabled" && (
+        <Alert>
+          <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} aria-hidden />
+          <AlertDescription>{o.disabledNotice}</AlertDescription>
+        </Alert>
+      )}
+      {noUsable.length > 0 && (
+        <NoUsableAccountsAlert
+          platforms={noUsable}
+          total={mcp.config.length}
+        />
+      )}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <KpiCard
+          className="max-sm:p-4"
+          label={o.calls7d}
+          value={formatNumber(s.calls7d)}
+          icon={Activity01Icon}
+          hint={
+            s.avgDurationMs !== null
+              ? o.avgDuration(formatDuration(s.avgDurationMs))
+              : undefined
+          }
+          sparkline={
+            hasCalls ? s.daily.slice(-7).map((d) => d.calls) : undefined
+          }
+        />
+        <KpiCard
+          className="max-sm:p-4"
+          label={o.errors7d}
+          value={formatNumber(s.errors7d)}
+          icon={AlertCircleIcon}
+          hint={
+            errorRate !== null
+              ? o.errorRate(formatPercent(errorRate, 1))
+              : undefined
+          }
+          hintTone={s.errors7d > 0 ? "danger" : "default"}
+        />
+        <KpiCard
+          className="max-sm:p-4"
+          label={o.writes7d}
+          value={formatNumber(s.writes7d)}
+          icon={PencilEdit02Icon}
+        />
+        <KpiCard
+          className="max-sm:p-4"
+          label={o.lastUsed}
+          value={
+            <span className="text-base sm:text-xl">
+              {mcp.lastUsedAt ? (
+                <RelativeTime value={mcp.lastUsedAt} />
+              ) : (
+                o.neverUsed
+              )}
+            </span>
+          }
+          icon={Clock01Icon}
+          hint={mcp.lastClient ? o.lastClient(mcp.lastClient) : undefined}
+        />
+      </div>
+
+      <div className="grid items-start gap-5 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">{o.chartTitle}</CardTitle>
+            <CardDescription>{o.chartDescription}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {hasCalls ? (
+              <CallsChart daily={s.daily} />
+            ) : (
+              <p className="flex h-40 items-center justify-center rounded-xl border border-dashed px-4 text-center text-sm text-muted-foreground">
+                {o.chartEmpty}
+              </p>
+            )}
+            {s.byPlatform.length > 0 && (
+              <div>
+                <p className="mb-2 text-sm font-medium">{o.byPlatformTitle}</p>
+                <ul className="flex flex-wrap gap-3 text-sm">
+                  {s.byPlatform.map((p) => (
+                    <li
+                      key={p.platform || "none"}
+                      className="flex items-center gap-1.5"
+                    >
+                      {p.platform in PLATFORM_LABELS ? (
+                        <>
+                          <PlatformIcon
+                            platform={
+                              p.platform as keyof typeof PLATFORM_LABELS
+                            }
+                            colored
+                          />
+                          {
+                            PLATFORM_LABELS[
+                              p.platform as keyof typeof PLATFORM_LABELS
+                            ]
+                          }
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                      <span className="font-medium tabular-nums">
+                        {formatNumber(p.calls)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{o.summaryTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {mcp.config.map((p) => (
+              <div
+                key={p.platform}
+                className="flex flex-col gap-2 rounded-xl border p-3"
+              >
+                <div className="flex items-center gap-2 font-medium">
+                  <PlatformIcon platform={p.platform} colored />
+                  {PLATFORM_LABELS[p.platform]}
+                </div>
+                <PermissionBadges
+                  permissions={p.permissions}
+                  withDescriptions
+                />
+                <ul className="flex flex-col gap-1 text-[13px] text-muted-foreground">
+                  {p.connections.map((c) => (
+                    <li
+                      key={c.connectionId}
+                      className="flex flex-col gap-0.5 border-l-2 pl-2.5"
+                    >
+                      <span className="font-medium break-words text-foreground">
+                        {c.connectionName}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        {c.accountIds === null
+                          ? t.platformsStep.accountsAll
+                          : t.platformsStep.nAccounts(c.accountIds.length)}
+                        {c.connectionDeleted ? (
+                          <span className="text-destructive-strong">
+                            {o.deletedConnection}
+                          </span>
+                        ) : (
+                          c.connectionStatus !== "active" && (
+                            <StatusBadge
+                              kind="connection"
+                              status={c.connectionStatus}
+                            />
+                          )
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <dl className="divide-y">
+              <SummaryRow label={o.summaryTwoStep}>
+                {mcp.settings.twoStepConfirm ? o.on : o.off}
+              </SummaryRow>
+              <SummaryRow label={o.summaryBudgetPct}>
+                ±{mcp.settings.budgetChangeMaxPct}%
+              </SummaryRow>
+              {caps.length > 0 && (
+                <SummaryRow label={o.summaryMaxBudget}>
+                  {caps.map(([cur, n]) => (
+                    <span key={cur} className="block tabular-nums">
+                      {formatNumber(n)} {cur}
+                    </span>
+                  ))}
+                </SummaryRow>
+              )}
+              {lifetimeCaps.length > 0 && (
+                <SummaryRow label={o.summaryMaxLifetime}>
+                  {lifetimeCaps.map(([cur, n]) => (
+                    <span key={cur} className="block tabular-nums">
+                      {formatNumber(n)} {cur}
+                    </span>
+                  ))}
+                </SummaryRow>
+              )}
+              {bidCaps.length > 0 && (
+                <SummaryRow label={o.summaryMaxBid}>
+                  {bidCaps.map(([cur, n]) => (
+                    <span key={cur} className="block tabular-nums">
+                      {formatNumber(n)} {cur}
+                    </span>
+                  ))}
+                </SummaryRow>
+              )}
+              <SummaryRow label={o.summaryRateLimit}>
+                {mcp.settings.rateLimitPerMin}
+              </SummaryRow>
+              <SummaryRow label={o.summaryWriteRate}>
+                {mcp.settings.writeRateLimitPer10Min}
+              </SummaryRow>
+              <SummaryRow label={o.summaryExpires}>
+                {mcp.expiresAt ? formatDate(mcp.expiresAt) : o.noExpiry}
+              </SummaryRow>
+              <SummaryRow label={o.summaryAllowedIps}>
+                {mcp.settings.allowedIps.length
+                  ? o.nIps(mcp.settings.allowedIps.length)
+                  : o.anyIp}
+              </SummaryRow>
+            </dl>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

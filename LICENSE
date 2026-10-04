@@ -1,0 +1,85 @@
+Ads MCP by: noti.vn — Giấy phép Sử dụng Có Uỷ quyền (Proprietary Source-Available License)
+Phiên bản 1.0 — 2026
+
+Copyright (c) 2026 noti.vn. Bảo lưu mọi quyền (All rights reserved).
+
+================================================================================
+TIẾNG VIỆT
+================================================================================
+
+1. ĐỊNH NGHĨA
+   "Phần mềm" là mã nguồn, mã đã biên dịch, tài liệu, hình ảnh, logo và mọi tệp
+   trong kho mã "notivn/Ads-MCP-simple" cùng các bản sửa đổi, bản phái sinh của chúng.
+   "Chủ sở hữu" là noti.vn.
+   "Đơn vị được cấp quyền" là tổ chức hoặc cá nhân đã được Chủ sở hữu cấp quyền sử dụng
+   bằng văn bản (hợp đồng, giấy phép hoặc email xác nhận từ địa chỉ chính thức của noti.vn),
+   trong phạm vi và thời hạn ghi trong văn bản đó.
+
+2. QUYỀN SỬ DỤNG
+   Chỉ Đơn vị được cấp quyền mới được cài đặt, chạy, triển khai, sao chép, sửa đổi
+   Phần mềm, và chỉ trong phạm vi văn bản cấp quyền cho phép. Nếu văn bản cấp quyền
+   không nói khác, Đơn vị được cấp quyền được: (a) cài đặt và vận hành Phần mềm trên hạ
+   tầng do mình kiểm soát cho mục đích nội bộ; (b) sửa đổi Phần mềm để phục vụ mục đích (a).
+
+3. CÁC HÀNH VI BỊ CẤM (khi không có văn bản cấp quyền của Chủ sở hữu)
+   a) Sử dụng, cài đặt, chạy hoặc triển khai Phần mềm dưới bất kỳ hình thức nào;
+   b) Sao chép, phân phối, cho thuê, bán, cấp phép lại, cung cấp dưới dạng dịch vụ (SaaS)
+      hoặc chuyển giao Phần mềm hay bản phái sinh cho bên thứ ba;
+   c) Gỡ bỏ, che giấu hoặc thay đổi thông báo bản quyền, tên "noti.vn" và logo;
+   d) Dùng Phần mềm hoặc bản phái sinh để xây dựng sản phẩm cạnh tranh.
+   Việc mã nguồn được hiển thị công khai (nếu có) chỉ nhằm mục đích tham khảo và đánh giá,
+   KHÔNG cấu thành việc cấp quyền sử dụng.
+
+4. ĐÓNG GÓP
+   Mọi đóng góp (pull request, bản vá, ý tưởng) gửi tới kho mã được coi là chuyển giao
+   cho Chủ sở hữu quyền sử dụng, sửa đổi và cấp phép lại không giới hạn và không tính phí.
+
+5. CHẤM DỨT
+   Quyền sử dụng tự động chấm dứt khi Đơn vị được cấp quyền vi phạm Giấy phép này hoặc
+   văn bản cấp quyền, hoặc khi văn bản cấp quyền hết hạn. Khi chấm dứt, phải ngừng sử dụng
+   và xoá mọi bản sao của Phần mềm.
+
+6. KHÔNG BẢO ĐẢM VÀ GIỚI HẠN TRÁCH NHIỆM
+   PHẦN MỀM ĐƯỢC CUNG CẤP "NGUYÊN TRẠNG", KHÔNG KÈM BẤT KỲ BẢO ĐẢM NÀO. Phần mềm thao
+   tác trực tiếp lên tài khoản quảng cáo và có thể làm phát sinh chi phí thật; người sử dụng
+   tự chịu trách nhiệm về mọi thao tác, chi phí quảng cáo và việc tuân thủ điều khoản của
+   Meta, TikTok, Google, OpenAI. Trong mọi trường hợp, Chủ sở hữu không chịu trách nhiệm
+   cho bất kỳ thiệt hại trực tiếp, gián tiếp hay hệ quả nào phát sinh từ việc sử dụng Phần mềm.
+
+7. LUẬT ÁP DỤNG
+   Giấy phép này được điều chỉnh bởi pháp luật Việt Nam.
+
+Liên hệ cấp quyền: https://noti.vn
+
+================================================================================
+ENGLISH
+================================================================================
+
+1. "Software" means the source code, binaries, documentation, images, logos and all
+   files in the "notivn/Ads-MCP-simple" repository, including modifications and
+   derivative works. "Owner" means noti.vn. "Authorized Licensee" means a person or
+   entity granted a written license by the Owner, within the scope and term of that grant.
+
+2. Only Authorized Licensees may install, run, deploy, copy or modify the Software, and
+   only as permitted by their written grant. Unless the grant states otherwise, an
+   Authorized Licensee may (a) install and operate the Software on infrastructure it
+   controls for internal purposes and (b) modify it for that purpose.
+
+3. Without a written grant from the Owner you may NOT use, install, run, deploy, copy,
+   distribute, sell, sublicense, offer as a service, or create competing products from
+   the Software, nor remove copyright notices, the "noti.vn" name or logos. Public
+   visibility of the source code (if any) is for reference and evaluation only and does
+   not grant any right of use.
+
+4. Contributions submitted to the repository grant the Owner an unlimited, royalty-free
+   right to use, modify and relicense them.
+
+5. Rights terminate automatically upon breach or expiry of the written grant; upon
+   termination all copies must be deleted.
+
+6. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. The Software acts on
+   live advertising accounts and may incur real costs; users are solely responsible for
+   all actions, ad spend and compliance with platform terms. The Owner shall not be
+   liable for any damages arising from use of the Software.
+
+7. Governed by the laws of Vietnam.

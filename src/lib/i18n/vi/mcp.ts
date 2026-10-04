@@ -1,0 +1,531 @@
+// Chuỗi giao diện tiếng Việt - nhóm "mcp". Chỉ agent sở hữu nhóm này sửa file này.
+export const mcp = {
+  meta: {
+    listTitle: "MCP",
+    newTitle: "Tạo MCP",
+    detailTitle: "Chi tiết MCP",
+  },
+
+  list: {
+    title: "MCP",
+    description:
+      "Tạo link MCP để Claude, ChatGPT, Gemini điều khiển quảng cáo trong phạm vi bạn cho phép.",
+    create: "Tạo MCP",
+    tableLabel: "Danh sách MCP",
+    searchPlaceholder: "Tìm theo tên MCP…",
+    searchLabel: "Tìm MCP",
+    filterStatus: "Trạng thái",
+    filterPlatform: "Nền tảng",
+    filterOwner: "Người tạo",
+    viewAll: "Tất cả",
+    viewMine: "Của tôi",
+    col: {
+      name: "Tên",
+      owner: "Người tạo",
+      platforms: "Nền tảng",
+      permissions: "Quyền",
+      status: "Trạng thái",
+      lastUsed: "Lần dùng cuối",
+      calls7d: "Lượt gọi 7 ngày",
+    },
+    neverUsed: "Chưa dùng",
+    errorsHint: (n: number) => `${n} lỗi`,
+    callsLabel: (n: string) => `${n} lượt gọi`,
+    permSummary: {
+      readOnly: "Chỉ xem",
+      operate: "Vận hành",
+      full: "Toàn quyền",
+      more: (n: number) => `+${n}`,
+    },
+    emptyTitle: "Chưa có MCP nào",
+    emptyDescription:
+      "MCP là một đường link bạn dán vào Claude, ChatGPT hoặc Gemini để AI xem và điều khiển quảng cáo theo quyền bạn chọn.",
+    emptyNoMatch: "Không có MCP nào khớp bộ lọc.",
+    openDetail: (name: string) => `Mở MCP ${name}`,
+  },
+
+  wizard: {
+    title: "Tạo MCP",
+    description:
+      "4 bước: đặt tên, chọn tài khoản quảng cáo, chọn quyền và thiết lập bảo vệ.",
+    steps: {
+      name: { title: "Tên", description: "Đặt tên dễ nhớ" },
+      platforms: {
+        title: "Nền tảng & tài khoản",
+        description: "AI được thấy gì",
+      },
+      permissions: { title: "Quyền", description: "AI được làm gì" },
+      protection: { title: "Bảo vệ", description: "Giới hạn an toàn" },
+    },
+    stepProgress: (n: number, total: number, title: string) =>
+      `Bước ${n}/${total} · ${title}`,
+    back: "Quay lại",
+    next: "Tiếp tục",
+    submit: "Tạo MCP",
+    submitting: "Đang tạo…",
+    reauthTitle: "Xác minh để tạo MCP",
+    reauthDescription:
+      "MCP được tạo xong sẽ hiện link dùng được ngay - nhập lại mật khẩu (và mã 2FA nếu đã bật) để xác nhận. Thao tác này được ghi vào nhật ký.",
+    reauthSubmit: "Xác minh và tạo MCP",
+    fixErrors: "Vui lòng sửa các mục được đánh dấu.",
+    noConnectionsTitle: "Bạn chưa có kết nối quảng cáo nào",
+    noConnectionsDescription:
+      "MCP cần ít nhất 1 kết nối (Meta hoặc OpenAI Ads). Thêm kết nối trước, rồi quay lại tạo MCP.",
+    addConnection: "Thêm kết nối",
+  },
+
+  nameStep: {
+    cardTitle: "Thông tin MCP",
+    nameLabel: "Tên MCP",
+    namePlaceholder: "Vd: Báo cáo hằng ngày – Team Meta",
+    nameHelp: "Tên chỉ để bạn nhận biết, AI không thấy tên này.",
+    descriptionLabel: "Mô tả (tuỳ chọn)",
+    descriptionPlaceholder:
+      "Vd: Dùng cho trợ lý Claude của team chạy quảng cáo Meta, chỉ xem số liệu.",
+  },
+
+  platformsStep: {
+    cardTitle: "Chọn nền tảng và tài khoản quảng cáo",
+    cardDescription:
+      "Chỉ hiện nền tảng bạn đã có kết nối. AI chỉ thấy các tài khoản bạn chọn ở đây.",
+    enablePlatform: (p: string) => `Dùng ${p} trong MCP này`,
+    connectionsLabel: "Kết nối",
+    noConnections: (p: string) => `Bạn chưa có kết nối ${p}.`,
+    addConnectionFor: (p: string) => `Thêm kết nối ${p}`,
+    unavailablePlatforms: "Nền tảng chưa có kết nối:",
+    accountsAll: "Tất cả tài khoản",
+    accountsAllHelp: "Gồm cả tài khoản đồng bộ thêm sau này.",
+    accountsPick: "Chọn từng tài khoản",
+    accountCount: (n: number) => `${n} tài khoản đang bật`,
+    noEnabledAccounts: "Kết nối này chưa có tài khoản nào đang bật.",
+    ownerSuffix: (email: string) => `của ${email}`,
+    connectionStatusWarning:
+      "Kết nối đang lỗi hoặc bị tắt - MCP sẽ không dùng được cho tới khi kết nối hoạt động lại.",
+    selectedSummary: (conn: number, acc: string) => `${conn} kết nối · ${acc}`,
+    allAccounts: "tất cả tài khoản",
+    nAccounts: (n: number) => `${n} tài khoản`,
+    accountsListLabel: (name: string) => `Tài khoản của kết nối ${name}`,
+    pagesTitle: "Trang Facebook (chỉ đọc bài viết & chỉ số)",
+    pagesNone: "Không dùng Trang",
+    pagesAll: "Tất cả Trang đang bật",
+    pagesAllHelp: "Gồm cả Trang bật thêm sau này.",
+    pagesPick: "Chọn từng Trang",
+    pageCount: (n: number) => `${n} Trang đang bật`,
+    noEnabledPages:
+      "Kết nối này chưa có Trang nào đang bật - đồng bộ và bật Trang ở trang Kết nối.",
+    pagesListLabel: (name: string) => `Trang Facebook của kết nối ${name}`,
+    pageNoInsights: "không xem được chỉ số",
+  },
+
+  permissionsStep: {
+    cardTitle: "Chọn quyền cho từng nền tảng",
+    cardDescription:
+      "Quyền Xem luôn bật. Các thao tác ghi đều có xác nhận 2 bước nếu bạn bật ở bước Bảo vệ.",
+    presets: "Chọn nhanh",
+    presetReadOnly: "Chỉ xem",
+    presetOperate: "Vận hành (xem + bật/tắt + sửa)",
+    presetFull: "Toàn quyền (trừ xoá)",
+    presetShort: {
+      readOnly: "Chỉ xem",
+      operate: "Vận hành",
+      full: "Toàn quyền",
+      custom: "Tuỳ chỉnh",
+    },
+    presetHint: {
+      readOnly: "AI chỉ đọc số liệu, không thay đổi gì.",
+      operate: "Xem + bật/tắt + sửa ngân sách, giá thầu, lịch chạy.",
+      full: "Thêm sao chép và tạo mới (trừ xoá/lưu trữ).",
+      custom: "Bạn đã tự chọn từng quyền bên dưới.",
+    },
+    presetsLabel: (platform: string) => `Mức quyền cho ${platform}`,
+    individualTitle: "Chi tiết từng quyền",
+    applyPresetAll: "Áp dụng cho mọi nền tảng",
+    alwaysOn: "Luôn bật",
+    deleteWarning:
+      "Xoá/Lưu trữ KHÔNG thể hoàn tác. Chỉ bật khi thật sự cần - AI luôn phải xin xác nhận trước khi xoá.",
+    noPlatforms: "Hãy chọn ít nhất 1 nền tảng ở bước trước.",
+  },
+
+  protectionStep: {
+    cardTitle: "Bảo vệ",
+    cardDescription:
+      "Đã có giá trị mặc định an toàn - bạn có thể bấm Tạo MCP ngay.",
+    twoStepLabel: "Xác nhận 2 bước cho thao tác ghi",
+    twoStepHelp:
+      "AI phải cho bạn xem trước thay đổi (vd ngân sách cũ → mới) và chỉ thực hiện khi bạn đồng ý. Thao tác xoá luôn cần xác nhận.",
+    twoStepOffWarning:
+      "Tắt xác nhận 2 bước: AI sẽ thực hiện thay đổi ngay khi được yêu cầu.",
+    budgetPctLabel: "Giới hạn thay đổi ngân sách mỗi lần",
+    budgetPctHelp:
+      "Vd 50%: ngân sách 1.000.000 ₫ chỉ được đổi trong khoảng 500.000 – 1.500.000 ₫ mỗi lần.",
+    maxBudgetLabel: "Trần ngân sách/ngày (tuỳ chọn)",
+    maxBudgetHelp:
+      "Để trống = không giới hạn. Áp dụng theo loại tiền của tài khoản quảng cáo.",
+    maxBudgetNoCurrency:
+      "Chọn tài khoản ở bước 2 để đặt trần ngân sách theo tiền tệ.",
+    maxBudgetPlaceholder: "Không giới hạn",
+    maxLifetimeLabel: "Trần ngân sách trọn đời (tuỳ chọn)",
+    maxLifetimeHelp:
+      "Khi đã đặt trần ngân sách/ngày, ngân sách trọn đời tự bị giới hạn ở trần ngày × số ngày chạy (hoặc × 30 ngày nếu chưa có ngày kết thúc). Ô này đặt thêm một mức tối đa cố định. Để trống = chỉ áp dụng giới hạn theo ngày.",
+    maxLifetimePlaceholder: "Theo trần ngày",
+    maxBidLabel: "Trần giá thầu/CPA (tuỳ chọn)",
+    maxBidHelp:
+      "Áp dụng cho giá thầu, CPC tối đa, chi phí mục tiêu (CPA)… mà AI đặt. Để trống = không giới hạn.",
+    capsNoCurrency: "Chọn tài khoản ở bước 2 để đặt trần theo tiền tệ.",
+    writeRateLabel: "Giới hạn thao tác ghi / 10 phút",
+    writeRateHelp:
+      "Số thao tác thay đổi quảng cáo (bật/tắt, sửa, tạo, sao chép, xoá…) AI được thực hiện trong 10 phút. Mặc định 20.",
+    perTenMinutesSuffix: "thao tác/10 phút",
+    expiresLabel: "Ngày hết hạn (tuỳ chọn)",
+    expiresHelp:
+      "Sau ngày này (23:59 giờ Việt Nam) link MCP tự ngừng hoạt động. Để trống = không hết hạn.",
+    clearExpiry: "Bỏ ngày hết hạn",
+    rateLimitLabel: "Giới hạn số lệnh mỗi phút",
+    rateLimitHelp: "Chặn AI gọi quá nhiều lần liên tục. Mặc định 60.",
+    allowedIpsLabel: "IP được phép (tuỳ chọn)",
+    allowedIpsPlaceholder:
+      "Mỗi dòng 1 IP hoặc dải CIDR, vd:\n203.0.113.10\n160.79.104.0/21",
+    allowedIpsHelp: "Để trống = mọi IP. Hỗ trợ IPv4/IPv6 và CIDR.",
+    allowedIpsWarning:
+      "Khi đặt danh sách IP, Claude Code và Gemini CLI chạy trên máy cá nhân (IP nhà/4G thay đổi) sẽ bị chặn. Claude trên web/app gọi từ dải 160.79.104.0/21 của Anthropic.",
+    percentSuffix: "%",
+    perMinuteSuffix: "lệnh/phút",
+    groupSafety: "An toàn khi AI sửa quảng cáo",
+    groupSafetyDesc: "Kiểm soát cách AI thay đổi và chi tiêu.",
+    groupSpend: "Trần chi tiêu theo tiền tệ (tuỳ chọn)",
+    groupSpendDesc:
+      "Để trống = không giới hạn. Mỗi loại tiền của tài khoản trong phạm vi MCP có một hàng riêng - không cộng chéo tiền tệ.",
+    capDaily: "Ngân sách/ngày",
+    capLifetime: "Ngân sách trọn đời",
+    capBid: "Giá thầu/CPA",
+    capCurrencyTitle: (cur: string) => `Tiền tệ ${cur}`,
+    capsHelpToggle: "Giải thích các mức trần",
+    groupRate: "Giới hạn tốc độ",
+    groupRateDesc: "Chặn AI gọi quá nhiều lệnh trong thời gian ngắn.",
+    groupAccess: "Thời hạn & địa chỉ truy cập",
+    groupAccessDesc: "Tự ngừng link sau một ngày hoặc chỉ cho phép một số IP.",
+    expiryPresets: {
+      none: "Không hết hạn",
+      d30: "30 ngày",
+      d90: "90 ngày",
+      y1: "1 năm",
+      custom: "Chọn ngày",
+    },
+    expiryPresetsLabel: "Chọn nhanh thời hạn",
+    expiryPickLabel: "Chọn ngày hết hạn",
+    ipCount: (n: number) => `${n} IP/dải đã nhập`,
+  },
+
+  success: {
+    title: (name: string) => `Đã tạo MCP "${name}"`,
+    description:
+      "Sao chép link bên dưới và dán vào Claude, ChatGPT hoặc Gemini theo hướng dẫn.",
+    urlLabel: "Link MCP",
+    warningTitle: "Ai có link này đều dùng được MCP",
+    warning:
+      "Không chia sẻ công khai, không dán vào nhóm chat. Nếu lộ link, vào MCP → Bảo mật → Xoay key để link cũ ngừng hoạt động ngay.",
+    revealNote:
+      "Bạn có thể xem lại link sau trong trang chi tiết MCP (cần nhập lại mật khẩu).",
+    goToDetail: "Xem chi tiết MCP",
+    backToList: "Về danh sách MCP",
+    createAnother: "Tạo MCP khác",
+  },
+
+  detail: {
+    tabs: {
+      overview: "Tổng quan",
+      config: "Cấu hình",
+      connect: "Kết nối AI",
+      logs: "Nhật ký",
+      security: "Bảo mật",
+    },
+    tabsLabel: "Các phần của MCP",
+    ownerLabel: "Người tạo",
+    createdAt: (d: string) => `Tạo lúc ${d}`,
+    notFound: "Không tìm thấy MCP này hoặc bạn không có quyền xem.",
+  },
+
+  overview: {
+    calls7d: "Lượt gọi 7 ngày",
+    errors7d: "Lỗi 7 ngày",
+    writes7d: "Thao tác ghi 7 ngày",
+    lastUsed: "Lần dùng cuối",
+    errorRate: (pct: string) => `Tỉ lệ lỗi ${pct}`,
+    avgDuration: (d: string) => `Trung bình ${d}/lệnh`,
+    neverUsed: "Chưa dùng",
+    lastClient: (c: string) => `Client: ${c}`,
+    chartTitle: "Lượt gọi 14 ngày qua",
+    chartDescription: "Số lệnh AI gửi tới MCP mỗi ngày (giờ Việt Nam).",
+    chartCalls: "Lượt gọi",
+    chartErrors: "Lỗi",
+    chartEmpty: "Chưa có lượt gọi nào. Dán link MCP vào AI để bắt đầu.",
+    byPlatformTitle: "Theo nền tảng (7 ngày)",
+    summaryTitle: "Phạm vi MCP",
+    summaryAccounts: "Tài khoản",
+    summaryPermissions: "Quyền",
+    summaryTwoStep: "Xác nhận 2 bước",
+    summaryBudgetPct: "Giới hạn đổi ngân sách",
+    summaryMaxBudget: "Trần ngân sách/ngày",
+    summaryRateLimit: "Giới hạn lệnh/phút",
+    summaryMaxLifetime: "Trần ngân sách trọn đời",
+    summaryMaxBid: "Trần giá thầu/CPA",
+    summaryWriteRate: "Giới hạn thao tác ghi / 10 phút",
+    summaryExpires: "Hết hạn",
+    summaryAllowedIps: "IP được phép",
+    on: "Bật",
+    off: "Tắt",
+    noExpiry: "Không hết hạn",
+    anyIp: "Mọi IP",
+    nIps: (n: number) => `${n} IP/dải`,
+    expiredNotice:
+      "MCP đã hết hạn - AI không dùng được. Vào Cấu hình để đổi ngày hết hạn.",
+    disabledNotice:
+      "MCP đang tắt - AI không dùng được. Vào Bảo mật để bật lại.",
+    deletedConnection: "(kết nối đã xoá)",
+    /** a platform with permissions but no ad account the MCP can actually use */
+    noUsable: {
+      titleAll: "MCP này chưa có tài khoản dùng được",
+      titleSome: "Một số nền tảng chưa có tài khoản dùng được",
+      descriptionAll: "Bật TKQC trong trang kết nối để AI dùng được MCP này.",
+      descriptionSome:
+        "AI chưa gọi được các nền tảng dưới đây. Bật TKQC trong trang kết nối.",
+      reason: {
+        deleted: "Kết nối đã bị xoá",
+        unavailable: "Kết nối đang tắt hoặc không còn dùng được",
+        no_accounts: "Chưa bật TKQC nào trong các kết nối đã chọn",
+      },
+      openConnections: "Mở trang kết nối",
+    },
+  },
+
+  config: {
+    formId: "mcp-config-form",
+    infoTitle: "Thông tin",
+    saved: "Đã lưu cấu hình. Thay đổi có hiệu lực ở lệnh tiếp theo của AI.",
+    chatgptNote:
+      "ChatGPT Business/Enterprise lưu danh sách tool khi admin xuất bản app. Sau khi đổi quyền, admin workspace cần làm mới (refresh) app trong ChatGPT.",
+    ownerNote: (email: string) =>
+      `MCP này thuộc ${email} - chỉ dùng được kết nối của người tạo.`,
+    /** connections / ad accounts the editor drops when the config is saved (deleted, switched off) */
+    scopeIssues: {
+      title: "Một số kết nối hoặc TKQC không còn dùng được",
+      description:
+        "Những mục dưới đây sẽ bị loại khỏi MCP khi bạn lưu cấu hình; phần còn lại vẫn hoạt động bình thường.",
+      connectionDeleted: (name: string) =>
+        `Kết nối "${name}" đã bị xoá - sẽ bị loại khỏi MCP khi bạn lưu.`,
+      connectionDisabled: (name: string) =>
+        `Kết nối "${name}" đang tắt - sẽ bị loại khỏi MCP khi bạn lưu.`,
+      connectionUnavailable: (name: string) =>
+        `Kết nối "${name}" không còn dùng được cho MCP này - sẽ bị loại khỏi MCP khi bạn lưu.`,
+      /** `names`: account names we know (at most 3 are shown), `unknown`: accounts we have no name for */
+      accountsDisabled: (conn: string, names: string[], unknown: number) => {
+        const shown = names.slice(0, 3).map((n) => `"${n}"`)
+        const more = Math.max(0, names.length - shown.length) + unknown
+        const who =
+          shown.length === 0
+            ? `${more} TKQC`
+            : `TKQC ${shown.join(", ")}${more > 0 ? ` và ${more} TKQC khác` : ""}`
+        return `${who} của kết nối "${conn}" đã tắt - sẽ bị loại khỏi MCP khi bạn lưu.`
+      },
+      platformDropped: (platform: string) =>
+        `${platform} không còn kết nối nào dùng được nên cũng sẽ bị bỏ khỏi MCP khi bạn lưu.`,
+      keepHint:
+        "Muốn giữ lại? Đừng lưu - hãy bật lại kết nối hoặc TKQC ở trang kết nối rồi tải lại trang này.",
+      openConnections: "Mở trang kết nối",
+    },
+    /** contextual save bar while the stored config still points at things that are gone */
+    prune: {
+      summary: (s: { connections: number; accounts: number; platforms: number }) => {
+        const parts: string[] = []
+        if (s.connections > 0) parts.push(`${s.connections} kết nối`)
+        if (s.accounts > 0) parts.push(`${s.accounts} TKQC`)
+        if (s.platforms > 0) parts.push(`${s.platforms} nền tảng`)
+        return parts.length > 1
+          ? `${parts.slice(0, -1).join(", ")} và ${parts[parts.length - 1]}`
+          : (parts[0] ?? "")
+      },
+      barOnly: (summary: string) =>
+        `Lưu để loại ${summary} không còn dùng được khỏi MCP.`,
+      barWithEdits: (summary: string) =>
+        `Có thay đổi chưa lưu - gồm loại ${summary} không còn dùng được khỏi MCP.`,
+    },
+  },
+
+  connect: {
+    urlTitle: "Link MCP",
+    urlDescription:
+      "Link đầy đủ chỉ hiện khi bạn xác minh lại danh tính. Mọi lần xem đều được ghi nhật ký.",
+    maskedLabel: "Link MCP (đã che)",
+    reveal: "Xem lại link",
+    hide: "Ẩn link",
+    revealedLabel: "Link MCP",
+    guideTitle: "Hướng dẫn kết nối",
+    guideDescription: "Chọn ứng dụng AI bạn dùng và làm theo từng bước.",
+    guideMaskedNote:
+      'Bấm "Xem lại link" để điền link thật vào các lệnh bên dưới.',
+  },
+
+  reveal: {
+    title: "Xác minh để xem link",
+    description:
+      "Nhập lại mật khẩu đăng nhập để xem link MCP. Thao tác này được ghi vào nhật ký.",
+    passwordLabel: "Mật khẩu",
+    codeLabel: "Mã xác thực 6 số",
+    codeHelp:
+      "Mở ứng dụng Authenticator (Google Authenticator, Authy…) để lấy mã.",
+    submit: "Xác minh và xem link",
+    submitting: "Đang xác minh…",
+  },
+
+  logs: {
+    title: "Nhật ký MCP",
+    description:
+      "Mọi lệnh AI gửi tới MCP này: thời gian, tool, tài khoản, giá trị trước → sau, trạng thái.",
+    open: "Mở nhật ký MCP",
+    staffNote:
+      "Các thao tác của nhân sự với MCP (tạo, sửa, xoay key, xem lại link…) nằm trong Nhật ký nhân sự.",
+  },
+
+  security: {
+    groupAccess: "Truy cập",
+    groupAccessDesc: "Quản lý link và trạng thái hoạt động của MCP.",
+    dangerZone: "Vùng nguy hiểm",
+    dangerZoneDesc: "Thao tác dưới đây không thể hoàn tác.",
+    rotateTitle: "Xoay key",
+    rotateDescription:
+      "Tạo link mới, link cũ ngừng hoạt động NGAY. Dùng khi nghi lộ link. Bạn sẽ phải dán link mới vào mọi ứng dụng AI đang dùng.",
+    rotateAction: "Xoay key",
+    rotateReauthTitle: "Xác minh để xoay key",
+    rotateReauthDescription:
+      "Link hiện tại sẽ ngừng hoạt động ngay và link mới được tạo. Nhập lại mật khẩu để xác nhận - thao tác này được ghi vào nhật ký.",
+    rotateReauthSubmit: "Xác minh và xoay key",
+    rotatedTitle: "Link MCP mới",
+    rotatedDescription:
+      "Đây là lần duy nhất link mới hiện mà không cần xác minh. Sao chép và cập nhật vào ứng dụng AI.",
+    lastRotated: (d: string) => `Xoay lần cuối: ${d}`,
+    neverRotated: "Chưa xoay key lần nào.",
+    toggleTitleOn: "Tắt MCP",
+    toggleTitleOff: "Bật MCP",
+    toggleDescriptionOn:
+      "Tạm ngừng MCP: AI gọi tới sẽ nhận lỗi không tìm thấy. Có thể bật lại bất cứ lúc nào, link giữ nguyên.",
+    toggleDescriptionOff:
+      "MCP đang tắt. Bật lại để AI dùng tiếp với link hiện tại.",
+    disableAction: "Tắt MCP",
+    enableAction: "Bật MCP",
+    disableConfirmTitle: "Tắt MCP này?",
+    disableConfirmDescription:
+      "AI sẽ không dùng được MCP cho tới khi bạn bật lại.",
+    expiredHint:
+      "MCP đã hết hạn - bật lại không có tác dụng cho tới khi bạn đổi ngày hết hạn trong Cấu hình.",
+    deleteTitle: "Xoá MCP",
+    deleteDescription:
+      "Xoá vĩnh viễn MCP và link của nó. Nhật ký vẫn được giữ theo thời gian lưu trữ.",
+    deleteAction: "Xoá MCP",
+    deleteConfirmTitle: (name: string) => `Xoá MCP "${name}"?`,
+    deleteConfirmDescription:
+      "Link MCP ngừng hoạt động ngay và không thể khôi phục.",
+  },
+
+  toast: {
+    created: "Đã tạo MCP.",
+    updated: "Đã lưu cấu hình MCP.",
+    noChanges: "Không có thay đổi nào.",
+    enabled: "Đã bật MCP.",
+    disabled: "Đã tắt MCP.",
+    rotated: "Đã xoay key. Link cũ đã ngừng hoạt động.",
+    deleted: "Đã xoá MCP.",
+  },
+
+  errors: {
+    generic: "Không thực hiện được thao tác. Vui lòng thử lại.",
+    twoFactorRequired: "Bạn cần bật xác thực 2 bước trước khi tiếp tục.",
+  },
+
+  guide: {
+    tabsLabel: "Ứng dụng AI",
+    copyCommand: "Sao chép lệnh",
+    copySnippet: "Sao chép",
+    stepsLabel: "Các bước",
+    notesLabel: "Lưu ý",
+    serverName: "ads-noti",
+    clients: {
+      claude: {
+        tab: "Claude",
+        title: "Claude (web, desktop, điện thoại)",
+        steps: [
+          "Mở claude.ai → bấm tên bạn (góc dưới trái) → Settings → Connectors.",
+          'Bấm "Add custom connector".',
+          'Đặt tên (vd "Ads MCP") và dán link MCP vào ô URL.',
+          'Mở "Advanced settings" (nếu có) và để trống OAuth - chọn No sign-in / không đăng nhập. Bấm Add.',
+          'Trong cuộc trò chuyện, bấm nút "+" → Connectors → bật "Ads MCP". Ứng dụng desktop và điện thoại tự đồng bộ connector từ web.',
+        ],
+        notes: [
+          "Gói Free chỉ thêm được 1 connector; Pro/Max/Team/Enterprise thêm được nhiều.",
+          "Team/Enterprise: chỉ Owner thêm được (Organization settings → Connectors) và cả workspace dùng chung 1 link - mọi người có cùng quyền của MCP này.",
+          "Máy chủ cần IPv4 (bản ghi A) và chứng chỉ HTTPS hợp lệ. Nếu đặt danh sách IP được phép, thêm dải 160.79.104.0/21 của Anthropic.",
+          "Mỗi kết quả tối đa ~150.000 ký tự, mỗi lệnh tối đa 240 giây.",
+        ],
+      },
+      chatgpt: {
+        tab: "ChatGPT",
+        title: "ChatGPT (web)",
+        steps: [
+          "Vào Settings → Security and login → bật Developer mode.",
+          'Mở chatgpt.com/plugins → bấm "+" để tạo app mới.',
+          'Dán link MCP, đặt tên (vd "Ads MCP"), mục Authentication chọn No authentication.',
+          'Xác nhận tin tưởng app rồi bấm Create. Trong cuộc trò chuyện, chọn app ở menu "+".',
+        ],
+        notes: [
+          "Quyền ghi (bật/tắt, sửa, tạo…) theo tài liệu dành cho Plus/Pro/Business/Enterprise/Edu; một số gói có thể chỉ cho đọc - hãy thử thực tế.",
+          'Business/Enterprise: admin workspace xuất bản app; ChatGPT lưu "ảnh chụp" danh sách tool lúc xuất bản → sau khi đổi quyền MCP, admin cần làm mới (refresh) app.',
+        ],
+      },
+      geminiCli: {
+        tab: "Gemini CLI",
+        title: "Gemini CLI",
+        steps: [
+          "Mở file ~/.gemini/settings.json (tạo mới nếu chưa có).",
+          "Thêm khối mcpServers bên dưới (giữ nguyên các cài đặt khác).",
+          'Khởi động lại Gemini CLI và gõ /mcp để kiểm tra server "adsnoti".',
+        ],
+        notes: [
+          'Tên server không dùng dấu gạch dưới "_".',
+          "httpUrl = giao thức Streamable HTTP (bắt buộc).",
+          "Nếu MCP đặt danh sách IP được phép, máy cá nhân có IP thay đổi sẽ bị chặn.",
+        ],
+      },
+      geminiEnterprise: {
+        tab: "Gemini Enterprise",
+        title: "Gemini Enterprise",
+        steps: [
+          "Admin vào bảng điều khiển Gemini Enterprise → Data stores / Connectors → thêm custom MCP server.",
+          "Dán link MCP vào ô URL.",
+          "Authentication: chọn No authentication. Lưu và bật cho người dùng.",
+        ],
+        notes: [
+          "Chỉ hỗ trợ Streamable HTTP và cần chứng chỉ HTTPS hợp lệ.",
+          "Cả tổ chức dùng chung 1 link - mọi người có cùng quyền của MCP này.",
+        ],
+      },
+      claudeCode: {
+        tab: "Claude Code",
+        title: "Claude Code (dòng lệnh)",
+        steps: [
+          "Mở terminal và chạy lệnh bên dưới (--scope user để dùng ở mọi thư mục).",
+          'Chạy claude, gõ /mcp để kiểm tra kết nối "ads-noti".',
+        ],
+        notes: [
+          "Claude Code cắt kết quả dài hơn ~25.000 token (chỉnh bằng biến MAX_MCP_OUTPUT_TOKENS).",
+          "Nếu MCP đặt danh sách IP được phép, máy cá nhân có IP thay đổi sẽ bị chặn.",
+        ],
+      },
+      geminiApp: {
+        tab: "Gemini app",
+        title: "Ứng dụng Gemini (gemini.google.com)",
+        unsupportedTitle: "Chưa hỗ trợ ở phiên bản này",
+        unsupported:
+          "Ứng dụng Gemini hiện chỉ cho thêm app tuỳ chỉnh ở Mỹ/tiếng Anh và có thể yêu cầu đăng nhập OAuth - Ads MCP v1 chưa hỗ trợ. Hãy dùng Gemini CLI hoặc Gemini Enterprise.",
+      },
+    },
+  },
+} as const

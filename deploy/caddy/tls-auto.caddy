@@ -1,0 +1,2 @@
+# Ads MCP by: noti.vn - CADDY_TLS=auto (mặc định, phương án A): Caddy tự xin và tự gia hạn chứng chỉ
+# (Let's Encrypt, dự phòng ZeroSSL) cho APP_DOMAIN. Cần cổng 80 + 443 mở và bản ghi A trỏ đúng IP VPS. Cố ý để trống.

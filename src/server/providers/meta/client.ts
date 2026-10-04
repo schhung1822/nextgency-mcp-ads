@@ -1,0 +1,529 @@
+// Graph API request helper for the Meta adapter.
+// - Every call goes through httpJson (timeout, abort, jittered retry, token bucket, upstream events).
+// - access_token (+ optional appsecret_proof) is sent as a query param on GET and in the form body on POST,
+//   both are redacted from reported URLs by http.ts.
+// - Meta errors are mapped to ProviderError (meta.md §7); usage headers drive coolDown() (circuit breaker).
+import { createHash, createHmac } from "node:crypto"
+
+import { ProviderError, type ProviderErrorCode } from "../errors"
+import { httpJson, type HttpResponse } from "../http"
+import { RateLimitWaitError, coolDown, type BucketSpec } from "../rate-limit"
+import type { UpstreamEvent } from "../types"
+
+export interface MetaCredentials {
+  accessToken: string
+  appId?: string
+  appSecret?: string
+  businessId?: string
+}
+
+export const META_GRAPH_HOST = "https://graph.facebook.com"
+export const META_VIDEO_HOST = "https://graph-video.facebook.com"
+
+export function metaApiVersion(): string {
+  return process.env.META_API_VERSION ?? "v26.0"
+}
+
+/** Mutable timings so tests can make polling instant. */
+export const META_TIMINGS = {
+  /** async insights poll interval (grows ×1.5 up to 10 s) */
+  pollIntervalMs: 2_000,
+  /** max time spent waiting for an async report inside one tool call */
+  asyncReportMaxWaitMs: 90_000,
+  /** max time waiting for an uploaded video to become ready */
+  videoMaxWaitMs: 60_000,
+}
+
+/** Sustained per-ad-account request rate. Real limits are enforced via usage headers + coolDown(). */
+const BUCKET_SPEC: BucketSpec = { ratePerSec: 4, burst: 8 }
+
+export interface MetaCallContext {
+  credentials: MetaCredentials
+  /** "act_123" - used for the rate-limit bucket */
+  accountId?: string | null
+  /** Page id - Page-token calls are throttled per Page (BUC type "pages", meta.md §10.6) */
+  pageId?: string | null
+  signal?: AbortSignal
+  onUpstream?: (e: UpstreamEvent) => void
+}
+
+export type GraphParams = Record<string, unknown>
+
+export interface GraphRequest {
+  method: "GET" | "POST" | "DELETE"
+  /** path without version, e.g. "act_123/insights" or "123456" */
+  path: string
+  params?: GraphParams
+  /**
+   * Safe to retry on transient errors (GET, status/budget updates). Creates/copies/uploads must be false
+   * (no blind retry after a timeout - meta.md §7).
+   */
+  idempotent?: boolean
+  host?: "graph" | "video"
+  timeoutMs?: number
+  /** override the token sent as access_token (debug_token with an app token) and skip appsecret_proof */
+  accessTokenOverride?: string
+  /** send this Page access token instead of the user token; appsecret_proof is computed from IT (meta.md §10.3) */
+  pageAccessToken?: string
+  /** do not treat insights "too much data" (code 1) as retryable */
+  insights?: boolean
+  /** send POST params as multipart/form-data (large payloads such as base64 image bytes) */
+  multipart?: boolean
+}
+
+export function appSecretProof(accessToken: string, appSecret: string): string {
+  return createHmac("sha256", appSecret).update(accessToken).digest("hex")
+}
+
+export function actId(externalId: string): string {
+  const id = externalId.trim()
+  return id.startsWith("act_") ? id : `act_${id}`
+}
+
+export function accountNumericId(externalId: string): string {
+  return externalId.trim().replace(/^act_/, "")
+}
+
+function bucketKey(ctx: MetaCallContext): string {
+  if (ctx.pageId) return `meta:page:${ctx.pageId}`
+  if (ctx.accountId) return `meta:${actId(ctx.accountId)}`
+  const h = createHash("sha256").update(ctx.credentials.accessToken).digest("hex").slice(0, 16)
+  return `meta:token:${h}`
+}
+
+function encodeParam(v: unknown): string {
+  if (typeof v === "string") return v
+  if (typeof v === "number" || typeof v === "boolean") return String(v)
+  return JSON.stringify(v)
+}
+
+function authParams(ctx: MetaCallContext, req: GraphRequest): Record<string, string> {
+  if (req.accessTokenOverride) return { access_token: req.accessTokenOverride }
+  if (req.pageAccessToken) {
+    const page: Record<string, string> = { access_token: req.pageAccessToken }
+    if (ctx.credentials.appSecret) page.appsecret_proof = appSecretProof(req.pageAccessToken, ctx.credentials.appSecret)
+    return page
+  }
+  const out: Record<string, string> = { access_token: ctx.credentials.accessToken }
+  if (ctx.credentials.appSecret) {
+    out.appsecret_proof = appSecretProof(ctx.credentials.accessToken, ctx.credentials.appSecret)
+  }
+  return out
+}
+
+export interface GraphErrorBody {
+  message?: string
+  type?: string
+  code?: number
+  error_subcode?: number
+  error_user_title?: string
+  error_user_msg?: string
+  fbtrace_id?: string
+  is_transient?: boolean
+}
+
+const THROTTLE_CODES = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80008, 80009, 80014])
+
+export function isThrottleCode(code: number | undefined): boolean {
+  return code !== undefined && THROTTLE_CODES.has(code)
+}
+
+function extractError(body: unknown): GraphErrorBody | null {
+  if (body && typeof body === "object" && "error" in body) {
+    const e = (body as { error: unknown }).error
+    if (e && typeof e === "object") return e as GraphErrorBody
+  }
+  return null
+}
+
+/** Map a Graph error payload (+ HTTP status) to a ProviderError. Never includes the token. */
+export function mapGraphError(
+  err: GraphErrorBody | null,
+  httpStatus: number,
+  requestId: string | null,
+  extra: { retryAfterMs?: number } = {}
+): ProviderError {
+  const code = err?.code
+  const sub = err?.error_subcode
+  const upstream = {
+    code: code ?? null,
+    subcode: sub ?? null,
+    message: err?.message ?? null,
+    requestId: err?.fbtrace_id ?? requestId,
+    httpStatus,
+  }
+  const userMsg = err?.error_user_msg
+    ? `${err.error_user_title ? `${err.error_user_title}: ` : ""}${err.error_user_msg}`
+    : null
+  const make = (
+    c: ProviderErrorCode,
+    vi: string,
+    opts: { retryable?: boolean; hint?: string; retryAfterMs?: number } = {}
+  ) =>
+    new ProviderError({
+      platform: "meta",
+      code: c,
+      message: `Meta API error ${code ?? httpStatus}${sub ? `/${sub}` : ""}: ${err?.message ?? "HTTP " + httpStatus}`,
+      userMessageVi: vi,
+      retryable: opts.retryable ?? false,
+      hint: opts.hint,
+      upstream,
+      retryAfterMs: opts.retryAfterMs,
+    })
+
+  // A Page edge called with the user token (a bug on our side, not a dead token): 190 WITHOUT subcode "must be called
+  // with a Page Access Token", or 210 "A page access token is required" (meta.md §7, tested live). Never auth_invalid -
+  // that would mark a healthy connection invalid.
+  if ((code === 190 && !sub && /page access token/i.test(err?.message ?? "")) || code === 210) {
+    return make("invalid_request", "Thao tác với Trang này cần page access token (lỗi nội bộ của Ads MCP).", {
+      hint: "Báo quản trị viên; token của kết nối vẫn còn dùng được.",
+    })
+  }
+  if (code === 190 || code === 102) {
+    const reason =
+      sub === 463
+        ? "Token đã hết hạn."
+        : sub === 460
+          ? "Token mất hiệu lực do đổi mật khẩu."
+          : sub === 458
+            ? "Người dùng đã gỡ ứng dụng."
+            : "Token không hợp lệ hoặc đã bị thu hồi."
+    return make("auth_invalid", `Kết nối Meta không còn hợp lệ: ${reason} Hãy tạo token mới và cập nhật kết nối.`, {
+      hint: "Tạo token mới (Graph API Explorer hoặc System User) rồi bấm “Thay token” trong trang kết nối.",
+    })
+  }
+  if (code === 613 && sub === 1487632) {
+    return make(
+      "quota_exceeded",
+      "Meta chỉ cho đổi ngân sách nhóm quảng cáo tối đa 4 lần mỗi giờ. Hãy thử lại sau.",
+      { retryAfterMs: extra.retryAfterMs ?? 3_600_000 }
+    )
+  }
+  if (code === 17 && sub === 1885172) {
+    return make("quota_exceeded", "Giới hạn chi tiêu chiến dịch chỉ được đổi tối đa 10 lần mỗi ngày.")
+  }
+  if (code === 613 && sub === 1487225) {
+    return make("quota_exceeded", "Tài khoản đã chạm giới hạn số quảng cáo được tạo. Hãy thử lại sau.")
+  }
+  if (isThrottleCode(code)) {
+    return make(
+      "rate_limited",
+      "Meta đang giới hạn tần suất gọi API cho tài khoản này. Hãy thử lại sau ít phút.",
+      { retryable: true, retryAfterMs: extra.retryAfterMs ?? 60_000, hint: "Đợi rồi gọi lại; không gọi dồn." }
+    )
+  }
+  if (code === 368) {
+    return make("rate_limited", "Meta tạm chặn thao tác này do nghi ngờ lạm dụng. Hãy thử lại sau.", {
+      retryable: true,
+      retryAfterMs: extra.retryAfterMs ?? 15 * 60_000,
+    })
+  }
+  if (code === 10 || code === 294 || (code !== undefined && code >= 200 && code <= 299)) {
+    return make(
+      "permission_denied",
+      userMsg ?? "Token không có quyền với tài sản này (thiếu quyền hoặc chưa được gán tài khoản quảng cáo/Trang).",
+      { hint: "Gán tài khoản quảng cáo/Trang cho System User và kiểm tra quyền ads_management." }
+    )
+  }
+  if (code === 2635) {
+    return make("invalid_request", "Phiên bản Marketing API đang dùng đã ngừng hỗ trợ.", {
+      hint: "Cập nhật META_API_VERSION lên phiên bản mới nhất.",
+    })
+  }
+  if (code === 803 || (code === 100 && sub === 33)) {
+    return make("not_found", "Không tìm thấy đối tượng (hoặc token không có quyền xem).", {
+      hint: "Gọi ads_list_objects để lấy đúng id.",
+    })
+  }
+  if (code === 100 && sub === 4834011) {
+    return make(
+      "invalid_request",
+      userMsg ??
+        "Chiến dịch không có ngân sách chiến dịch phải khai báo is_adset_budget_sharing_enabled (true/false).",
+      { hint: "Truyền adset_budget_sharing khi tạo chiến dịch ABO." }
+    )
+  }
+  if (code === 100 && sub === 1885183) {
+    return make("invalid_request", userMsg ?? "Ứng dụng Meta đang ở chế độ Development nên không tạo được quảng cáo.", {
+      hint: "Chuyển app sang chế độ Live trong App Dashboard.",
+    })
+  }
+  if (code === 1 || code === 2 || err?.is_transient) {
+    return make("upstream_error", "Meta đang gặp lỗi tạm thời. Hãy thử lại sau.", { retryable: true })
+  }
+  if (code === 100 || code === 3858079 || code === 3858081 || sub === 3858079 || sub === 3858081) {
+    return make("invalid_request", userMsg ?? `Meta từ chối yêu cầu: ${err?.message ?? "tham số không hợp lệ"}.`)
+  }
+  if (httpStatus >= 500) {
+    return make("upstream_error", "Meta đang gặp lỗi máy chủ. Hãy thử lại sau.", { retryable: true })
+  }
+  if (httpStatus === 404) return make("not_found", "Không tìm thấy đối tượng trên Meta.")
+  return make("unknown", userMsg ?? `Meta trả lỗi: ${err?.message ?? `HTTP ${httpStatus}`}.`)
+}
+
+interface BucUsageEntry {
+  type?: string
+  call_count?: number
+  total_cputime?: number
+  total_time?: number
+  estimated_time_to_regain_access?: number
+}
+
+function parseJsonHeader(v: string | null): unknown {
+  if (!v) return null
+  try {
+    return JSON.parse(v)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read usage headers and cool the bucket down when Meta reports throttling or high utilisation.
+ * Returns the suggested wait (ms) when throttled, else 0.
+ */
+export function applyUsageHeaders(headers: Headers, key: string): number {
+  let waitMs = 0
+  let maxPct = 0
+  const buc = parseJsonHeader(headers.get("x-business-use-case-usage"))
+  if (buc && typeof buc === "object") {
+    for (const entries of Object.values(buc as Record<string, unknown>)) {
+      if (!Array.isArray(entries)) continue
+      for (const e of entries as BucUsageEntry[]) {
+        maxPct = Math.max(maxPct, e.call_count ?? 0, e.total_cputime ?? 0, e.total_time ?? 0)
+        // estimated_time_to_regain_access is in minutes
+        if (e.estimated_time_to_regain_access && e.estimated_time_to_regain_access > 0) {
+          waitMs = Math.max(waitMs, e.estimated_time_to_regain_access * 60_000)
+        }
+      }
+    }
+  }
+  const acc = parseJsonHeader(headers.get("x-ad-account-usage")) as {
+    acc_id_util_pct?: number
+    reset_time_duration?: number
+  } | null
+  if (acc && typeof acc === "object") {
+    maxPct = Math.max(maxPct, acc.acc_id_util_pct ?? 0)
+    if ((acc.acc_id_util_pct ?? 0) >= 100 && acc.reset_time_duration) {
+      waitMs = Math.max(waitMs, acc.reset_time_duration * 1_000)
+    }
+  }
+  const ins = parseJsonHeader(headers.get("x-fb-ads-insights-throttle")) as {
+    app_id_util_pct?: number
+    acc_id_util_pct?: number
+  } | null
+  if (ins && typeof ins === "object") {
+    maxPct = Math.max(maxPct, ins.app_id_util_pct ?? 0, ins.acc_id_util_pct ?? 0)
+  }
+  const app = parseJsonHeader(headers.get("x-app-usage")) as {
+    call_count?: number
+    total_cputime?: number
+    total_time?: number
+  } | null
+  if (app && typeof app === "object") {
+    maxPct = Math.max(maxPct, app.call_count ?? 0, app.total_cputime ?? 0, app.total_time ?? 0)
+  }
+  if (waitMs === 0 && maxPct >= 100) waitMs = 60_000
+  if (waitMs > 0) {
+    coolDown(key, waitMs)
+    return waitMs
+  }
+  // proactive slow-down above 75% utilisation
+  if (maxPct >= 90) coolDown(key, 5_000)
+  else if (maxPct >= 75) coolDown(key, 1_000)
+  return 0
+}
+
+function retryDecision(req: GraphRequest) {
+  return (res: HttpResponse): boolean => {
+    if (!req.idempotent) return false
+    const err = extractError(res.body)
+    if (err) {
+      if (isThrottleCode(err.code) || err.code === 368) return false // circuit breaker, never hammer
+      if (req.insights && err.code === 1) return false // "reduce the amount of data" → caller switches to async
+      return err.code === 1 || err.code === 2 || err.is_transient === true
+    }
+    return res.status >= 500
+  }
+}
+
+/** Perform one Graph call and return the parsed body, or throw ProviderError. */
+export async function graph<T = Record<string, unknown>>(ctx: MetaCallContext, req: GraphRequest): Promise<T> {
+  const host = req.host === "video" ? META_VIDEO_HOST : META_GRAPH_HOST
+  const path = req.path.replace(/^\/+/, "")
+  const url = `${host}/${metaApiVersion()}/${path}`
+  const key = bucketKey(ctx)
+  const auth = authParams(ctx, req)
+  const params = req.params ?? {}
+
+  let query: Record<string, unknown> | undefined
+  let body: URLSearchParams | FormData | undefined
+  if (req.method === "GET") {
+    query = { ...params, ...auth }
+  } else {
+    const form = req.multipart ? new FormData() : new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null) continue
+      form.set(k, encodeParam(v))
+    }
+    for (const [k, v] of Object.entries(auth)) form.set(k, v)
+    body = form
+  }
+
+  let res: HttpResponse<unknown>
+  try {
+    res = await httpJson<unknown>({
+      platform: "meta",
+      method: req.method,
+      url,
+      query,
+      body,
+      headers: body instanceof URLSearchParams ? { "Content-Type": "application/x-www-form-urlencoded" } : undefined,
+      signal: ctx.signal,
+      timeoutMs: req.timeoutMs,
+      retries: req.idempotent ? 2 : 0,
+      retryOn: retryDecision(req),
+      bucket: { key, spec: BUCKET_SPEC },
+      onUpstream: ctx.onUpstream,
+      requestIdHeader: "x-fb-trace-id",
+      redactQueryKeys: ["input_token"],
+    })
+  } catch (e) {
+    if (e instanceof RateLimitWaitError) {
+      throw new ProviderError({
+        platform: "meta",
+        code: "rate_limited",
+        message: e.message,
+        userMessageVi: "Tài khoản quảng cáo này đang bị Meta giới hạn tần suất. Hãy thử lại sau ít phút.",
+        retryable: true,
+        retryAfterMs: e.retryAfterMs,
+      })
+    }
+    throw e
+  }
+
+  const waitMs = applyUsageHeaders(res.headers, key)
+  const err = extractError(res.body)
+  if (err || res.status >= 400) {
+    if (err && isThrottleCode(err.code)) {
+      const ms = waitMs || 60_000
+      coolDown(key, ms)
+      throw mapGraphError(err, res.status, res.requestId, { retryAfterMs: ms })
+    }
+    throw mapGraphError(err, res.status, res.requestId)
+  }
+  if (res.body === null || typeof res.body !== "object") {
+    throw new ProviderError({
+      platform: "meta",
+      code: "upstream_error",
+      message: `Meta returned a non-JSON body (HTTP ${res.status})`,
+      userMessageVi: "Meta trả về dữ liệu không đọc được.",
+      retryable: true,
+      upstream: { httpStatus: res.status, requestId: res.requestId },
+    })
+  }
+  return res.body as T
+}
+
+export interface GraphPage<T> {
+  data: T[]
+  paging?: { cursors?: { before?: string; after?: string }; next?: string }
+}
+
+/** GET one page of an edge. Returns rows + the `after` cursor when more pages exist. */
+export async function graphPage<T>(
+  ctx: MetaCallContext,
+  path: string,
+  params: GraphParams,
+  opts: { insights?: boolean } = {}
+): Promise<{ data: T[]; after: string | null }> {
+  const page = await graph<GraphPage<T>>(ctx, { method: "GET", path, params, idempotent: true, insights: opts.insights })
+  const data = Array.isArray(page.data) ? page.data : []
+  const after = page.paging?.next ? (page.paging.cursors?.after ?? null) : null
+  return { data, after }
+}
+
+/** GET every page of an edge (bounded by maxItems). */
+export async function graphAll<T>(
+  ctx: MetaCallContext,
+  path: string,
+  params: GraphParams,
+  maxItems = 5_000
+): Promise<{ data: T[]; truncated: boolean }> {
+  const out: T[] = []
+  let after: string | null = null
+  for (;;) {
+    const page: { data: T[]; after: string | null } = await graphPage<T>(ctx, path, after ? { ...params, after } : params)
+    out.push(...page.data)
+    if (out.length >= maxItems) return { data: out.slice(0, maxItems), truncated: page.after !== null || out.length > maxItems }
+    if (!page.after) return { data: out, truncated: false }
+    after = page.after
+  }
+}
+
+export interface BatchOp {
+  method: "GET" | "POST"
+  relative_url: string
+  /** url-encoded body for POST */
+  body?: string
+}
+
+export type BatchResult<T = Record<string, unknown>> = { ok: true; body: T } | { ok: false; error: ProviderError }
+
+/** Graph batch API (≤50 ops per call). Each op is reported individually. */
+export async function graphBatch<T = Record<string, unknown>>(
+  ctx: MetaCallContext,
+  ops: BatchOp[],
+  opts: { idempotent?: boolean; pageAccessToken?: string } = {}
+): Promise<BatchResult<T>[]> {
+  const results: BatchResult<T>[] = []
+  for (let i = 0; i < ops.length; i += 50) {
+    const chunk = ops.slice(i, i + 50)
+    const resp = await graph<unknown>(ctx, {
+      method: "POST",
+      path: "",
+      params: { batch: chunk, include_headers: false },
+      idempotent: opts.idempotent ?? false,
+      pageAccessToken: opts.pageAccessToken,
+    })
+    const arr = Array.isArray(resp) ? resp : []
+    for (let j = 0; j < chunk.length; j++) {
+      const item = arr[j] as { code?: number; body?: string } | null | undefined
+      if (!item) {
+        results.push({
+          ok: false,
+          error: new ProviderError({
+            platform: "meta",
+            code: "timeout",
+            message: "Batch operation returned no result",
+            userMessageVi: "Meta không trả kết quả cho thao tác này (có thể chưa thực hiện).",
+            retryable: true,
+          }),
+        })
+        continue
+      }
+      let parsed: unknown = null
+      try {
+        parsed = item.body ? JSON.parse(item.body) : null
+      } catch {
+        parsed = item.body ?? null
+      }
+      const err = extractError(parsed)
+      if (err || (item.code ?? 200) >= 400) {
+        const mapped = mapGraphError(err, item.code ?? 500, null)
+        // each batch op counts against the limits on its own - honour per-op throttling too
+        if (mapped.code === "rate_limited") coolDown(bucketKey(ctx), mapped.retryAfterMs ?? 60_000)
+        results.push({ ok: false, error: mapped })
+      } else {
+        results.push({ ok: true, body: (parsed ?? {}) as T })
+      }
+    }
+  }
+  return results
+}
+
+/** Validate ISO-8601 datetime WITH offset (Z or ±hh:mm). */
+export function isIsoDateTimeWithOffset(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/.test(s)) return false
+  return Number.isFinite(Date.parse(s))
+}

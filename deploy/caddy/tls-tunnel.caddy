@@ -1,0 +1,12 @@
+# Ads MCP by: noti.vn - CADDY_TLS=tunnel (phương án D - Cloudflare Tunnel). Nạp vào đầu site block.
+# Caddy KHÔNG có chứng chỉ, chỉ nói HTTP trong mạng Docker nội bộ; HTTPS do Cloudflare cấp ở edge, đoạn Cloudflare ->
+# cloudflared là kết nối mã hoá do cloudflared tự mở ra ngoài. Phải đi kèm CADDY_SITE_SCHEME=http:// (site
+# http://APP_DOMAIN), nếu không Caddy sẽ cố xin chứng chỉ Let's Encrypt (thất bại vì không mở cổng) và chuyển hướng
+# HTTP sang HTTPS (vòng lặp ERR_TOO_MANY_REDIRECTS qua tunnel).
+#
+# Khách mở http://APP_DOMAIN: Cloudflare vẫn chuyển request qua tunnel (nếu chưa bật "Always Use HTTPS") với
+# X-Forwarded-Proto: http (Cloudflare luôn ghi đè header này bằng giao thức thật của khách; Caddy giữ nguyên vì
+# cloudflared nằm trong trusted_proxies của client-ip-tunnel.caddy). Chuyển hướng sang HTTPS để không bao giờ phục vụ
+# trang đăng nhập/cookie qua HTTP thường. Request nội bộ không có header này (kiểm tra bằng curl) không bị ảnh hưởng.
+@adsmcp_plain_http header X-Forwarded-Proto http
+redir @adsmcp_plain_http https://{host}{uri} 308

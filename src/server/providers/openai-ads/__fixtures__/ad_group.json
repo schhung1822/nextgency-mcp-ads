@@ -1,0 +1,25 @@
+{
+  "id": "adgrp_201",
+  "created_at": 1788235300,
+  "updated_at": 1788235300,
+  "name": "Trail running",
+  "description": null,
+  "context_hints": ["Trail running shoes for rocky terrain", "Best shoes for ultramarathons"],
+  "product_set": null,
+  "status": "active",
+  "bidding_config": {
+    "billing_event_type": "click",
+    "strategy": "fixed_bid",
+    "max_bid_micros": 2000000,
+    "custom_audience_bid_multipliers": [
+      {
+        "custom_audience_id": "ca_1",
+        "bid_multiplier_micros": 1500000
+      }
+    ]
+  },
+  "landing_page_configuration": null,
+  "geographic_targeting_blocked": false,
+  "advertiser_phone_verification_required": false,
+  "serving_issues": []
+}

@@ -1,0 +1,11 @@
+# Ads MCP by: noti.vn - CADDY_CLIENT_IP=tunnel (phương án D - Cloudflare Tunnel). Nạp vào khối servers {}.
+# Khách -> Cloudflare -> cloudflared (container trong mạng Docker nội bộ) -> Caddy. Kết nối tới Caddy luôn đến từ
+# địa chỉ mạng riêng của Docker (cloudflared), nên tin dải mạng riêng (private_ranges = 10.0.0.0/8, 172.16.0.0/12,
+# 192.168.0.0/16, 127.0.0.1/8, fd00::/8, ::1) và lấy IP khách từ CF-Connecting-IP (Cloudflare tự đặt ở edge, ghi đè
+# giá trị khách gửi, chỉ chứa đúng 1 IP). Caddyfile ghi đè X-Forwarded-For bằng {client_ip} nên app (tin hop đầu
+# X-Forwarded-For) nhận đúng IP thật; X-Forwarded-For khách tự gửi (Cloudflare giữ nguyên rồi nối thêm) bị bỏ.
+# AN TOÀN CHỈ KHI Caddy KHÔNG mở cổng ra Internet: CADDY_HTTP_PORT_BIND / CADDY_HTTPS_PORT_BIND = "127.0.0.1:"
+# (gen-env.mjs --ssl tunnel tự đặt). Nếu vẫn publish 80/443 ra mọi địa chỉ, khách IPv6 đi qua docker-proxy có địa
+# chỉ nguồn là gateway Docker (mạng riêng) và tự khai được CF-Connecting-IP. Đừng dùng file này với phương án A/B.
+trusted_proxies static private_ranges
+client_ip_headers CF-Connecting-IP

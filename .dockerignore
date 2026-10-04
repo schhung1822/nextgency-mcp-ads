@@ -1,0 +1,45 @@
+# Không đưa vào build context: dependency/output cục bộ, secret, dữ liệu runtime, tài liệu
+node_modules
+**/node_modules
+.next
+dist
+out
+build
+coverage
+test-results
+playwright-report
+blob-report
+*.tsbuildinfo
+next-env.d.ts
+
+# git & công cụ
+.git
+.github
+.claude
+.vscode
+.idea
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+
+# secret & dữ liệu runtime — TUYỆT ĐỐI không vào image
+.env
+.env.*
+*.pem
+backups
+
+# file deploy/tài liệu không cần trong image
+Dockerfile
+.dockerignore
+docker-compose*.yml
+Caddyfile
+deploy
+docs
+README.md
+SECURITY.md
+tests/e2e
+*.log
+.DS_Store
+
+# ghi chú phát hành (chỉ dùng cho GitHub Release)
+release-notes

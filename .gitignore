@@ -1,0 +1,46 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# testing
+/coverage
+/test-results
+/playwright-report
+/blob-report
+
+# next.js / build
+/.next/
+/out/
+/build
+/dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+pnpm-debug.log*
+
+# env files (only the example is committed)
+.env*
+!.env.example
+
+# runtime data
+/backups
+
+# TLS certificates / private keys placed on the server (Cloudflare Origin CA, AOP CA) - never commit
+/deploy/caddy/certs/
+*.key
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Claude Code personal files
+.claude/settings.local.json
+CLAUDE.local.md
+
+# agent worktrees
+/.claude/worktrees/

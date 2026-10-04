@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "id": "act_1001",
+      "account_id": "1001",
+      "name": "Shop VN",
+      "account_status": 1,
+      "disable_reason": 0,
+      "currency": "VND",
+      "timezone_name": "Asia/Ho_Chi_Minh",
+      "timezone_offset_hours_utc": 7,
+      "amount_spent": "125000000",
+      "spend_cap": "0",
+      "balance": "350000",
+      "min_daily_budget": 26484,
+      "business": { "id": "555000111", "name": "Shop VN Business" },
+      "user_tasks": ["DRAFT", "ANALYZE", "ADVERTISE", "MANAGE"]
+    },
+    {
+      "id": "act_2002",
+      "account_id": "2002",
+      "name": "Global USD",
+      "account_status": 3,
+      "disable_reason": 0,
+      "currency": "USD",
+      "timezone_name": "America/Los_Angeles",
+      "timezone_offset_hours_utc": -7,
+      "amount_spent": "1234567",
+      "balance": "1250",
+      "min_daily_budget": 100,
+      "user_tasks": ["ANALYZE"]
+    }
+  ],
+  "paging": { "cursors": { "before": "QVFI", "after": "QVFJ" } }
+}

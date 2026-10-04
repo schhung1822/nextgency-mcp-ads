@@ -1,0 +1,271 @@
+# Ads MCP by: noti.vn - chạy production trên 1 VPS bằng IMAGE DỰNG SẴN trên GHCR (hướng dẫn đầy đủ: docs/deploy-vps.md).
+#   1) docker login ghcr.io   (image riêng tư: PAT classic chỉ quyền read:packages)
+#   2) tạo .env:  node scripts/gen-env.mjs --domain mcp.congty.vn --email it@congty.vn
+#                 (VPS không có Node: sh scripts/gen-secrets.sh --domain … --email …)
+#   3) docker compose pull && docker compose up -d --no-build
+#   4) mở https://<APP_DOMAIN>/setup và nhập SETUP_TOKEN trong .env
+# File này KHÔNG có `build:` (cố ý): kéo image thất bại thì báo lỗi rõ ràng, không bao giờ tự build trên VPS
+# (VPS nhỏ build Next.js rất lâu/hết RAM, và image tự build sẽ mang nhãn phiên bản phát hành dù mã nguồn khác).
+# Build từ mã nguồn (máy dev / kiểm thử trước phát hành): thêm file docker-compose.build.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# Cập nhật tự động (admin bấm "Cập nhật" trong web): service `updater` bên dưới, bật qua COMPOSE_PROFILES=updater
+# trong .env (gen-env.mjs tự ghi). Tắt: xoá dòng đó rồi `docker compose rm -sf updater`. Xem 07-deployment.md §6.
+# Updater luôn gọi `docker compose -f docker-compose.yml` (KHÔNG đọc docker-compose.override.yml hay COMPOSE_FILE):
+# mọi tuỳ biến triển khai phải đi qua biến trong .env (CADDY_*, WEB_HOST_PORT...), không qua file override.
+# Thứ tự khởi động: db (healthy) → migrate (chạy xong) → web + worker → caddy.
+# Postgres KHÔNG publish port ra ngoài. Chỉ Caddy mở 80/443 (phương án Nginx: Caddy tắt, web chỉ mở ở 127.0.0.1).
+name: ads-mcp
+
+x-app: &app
+  # APP_IMAGE: chỉ đổi khi dùng bản fork (updater đọc cùng biến này). APP_VERSION (vd 1.0.0, không có "v"):
+  # gen-env ghi phiên bản lúc cài, updater tự ghi khi cập nhật; trống = tag latest.
+  image: ${APP_IMAGE:-ghcr.io/notivn/ads-mcp-simple}:${APP_VERSION:-latest}
+  env_file: .env
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  db:
+    image: postgres:18.6-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: adsmcp
+      POSTGRES_DB: adsmcp
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}"
+    command:
+      - postgres
+      - -c
+      - default_toast_compression=lz4
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - log_min_duration_statement=500ms
+      # Never write bind parameters (ciphertext, emails, MCP args…) into the Postgres log.
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_parameter_max_length_on_error=0
+    # PG18+: mount /var/lib/postgresql (KHÔNG phải /var/lib/postgresql/data)
+    volumes: ["pgdata:/var/lib/postgresql"]
+    shm_size: 256mb
+    # Kiểm tra qua TCP: server tạm lúc initdb chỉ nghe unix socket → tránh báo healthy quá sớm.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U adsmcp -d adsmcp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 60s
+      start_interval: 2s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  migrate:
+    <<: *app
+    command: ["node", "dist/migrate.mjs"]
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    <<: *app
+    # CMD mặc định của image: node server.js
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    expose: ["3000"]
+    # Chỉ mở trên 127.0.0.1 của máy chủ (không bao giờ ra Internet, kể cả khi UFW tắt). Mặc định cổng ngẫu nhiên
+    # (không dùng tới, không tranh cổng). Phương án Nginx trên máy chủ: WEB_HOST_PORT=3000 trong .env.
+    ports: ["127.0.0.1:${WEB_HOST_PORT:-}:3000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["node", "dist/worker.mjs"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # --- Cập nhật tự động (profile "updater") ----------------------------------------------------
+  # Daemon KHÔNG nhận kết nối vào: poll bảng system_update_requests, chạy backup -> pull -> migrate -> up web/worker
+  # -> healthcheck (rollback nếu lỗi). Đây là service DUY NHẤT được mount docker.sock (= quyền root trên máy chủ):
+  # web/worker tuyệt đối không. Giảm thiểu: không publish port, rootfs read-only, cap_drop ALL (chỉ giữ CHOWN/
+  # DAC_OVERRIDE/FOWNER để ghi .env giữ nguyên chủ sở hữu), no-new-privileges, chỉ gọi docker bằng mảng tham số.
+  # Thư mục dự án được mount ĐÚNG ĐƯỜNG DẪN của máy chủ (docker compose gửi đường dẫn bind mount cho daemon trên
+  # máy chủ nên hai phía phải giống nhau). HOST_PROJECT_DIR trong .env (gen-env.mjs tự điền); thiếu thì dùng $PWD
+  # của shell đang chạy docker compose.
+  updater:
+    profiles: ["updater"]
+    image: ${APP_IMAGE:-ghcr.io/notivn/ads-mcp-simple}-updater:${APP_VERSION:-latest}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    environment:
+      HOST_PROJECT_DIR: "${HOST_PROJECT_DIR:-${PWD}}"
+      APP_IMAGE: "${APP_IMAGE:-ghcr.io/notivn/ads-mcp-simple}"
+      DOCKER_CONFIG: /root/.docker
+      # host path of the docker login used below - only to name it in error messages
+      UPDATER_DOCKER_CONFIG_HOST: "${UPDATER_DOCKER_CONFIG:-/root/.docker}"
+      DATABASE_URL: "${DATABASE_URL:-postgres://adsmcp:${POSTGRES_PASSWORD}@db:5432/adsmcp}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_PROJECT_DIR:-${PWD}}:${HOST_PROJECT_DIR:-${PWD}}
+      # Thông tin docker login ghcr.io (khi image riêng tư). Mặc định thư mục của root; nếu đăng nhập bằng user khác,
+      # đặt UPDATER_DOCKER_CONFIG=/home/<user>/.docker trong .env. Chỉ đọc.
+      - ${UPDATER_DOCKER_CONFIG:-/root/.docker}:/root/.docker:ro
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # --- Tuỳ chọn: tách tải MCP (profile "scale") -------------------------------------------
+  # Khi lượng gọi MCP lớn, chạy thêm 1 service cùng image chỉ phục vụ /mcp/*:
+  #   1) Bỏ comment khối dưới.
+  #   2) Trong Caddyfile, đổi `reverse_proxy web:3000` trong `handle @mcp` thành `reverse_proxy mcp:3000`.
+  #   3) docker compose --profile scale up -d --no-build
+  #      (build từ mã nguồn: thêm `mcp: { build: . }` vào docker-compose.build.yml)
+  # mcp:
+  #   <<: *app
+  #   profiles: ["scale"]
+  #   depends_on:
+  #     migrate: { condition: service_completed_successfully }
+  #   expose: ["3000"]
+  #   healthcheck:
+  #     test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 20s
+
+  # Reverse proxy + HTTPS. 4 phương án (docs/deploy-vps.md), chọn bằng biến trong .env (gen-env.mjs --ssl điền sẵn):
+  #   A (mặc định) Caddy tự xin chứng chỉ:       không cần đặt gì
+  #   B Cloudflare (proxy cam):                 CADDY_CLIENT_IP=cloudflare, CADDY_TLS=cloudflare-origin (hoặc -aop)
+  #   C Nginx + Certbot trên máy chủ:           CADDY_REPLICAS=0 (tắt Caddy), WEB_HOST_PORT=3000
+  #   D Cloudflare Tunnel (service cloudflared bên dưới): CLOUDFLARED_REPLICAS=1, TUNNEL_TOKEN=..., CADDY_CLIENT_IP=tunnel,
+  #     CADDY_TLS=tunnel, CADDY_SITE_SCHEME=http://, CADDY_HTTP_PORT_BIND=127.0.0.1: và CADDY_HTTPS_PORT_BIND=127.0.0.1:
+  #     (Caddy chỉ nói HTTP trong mạng Docker, không mở 80/443 ra Internet).
+  # Giá trị CADDY_CLIENT_IP / CADDY_TLS là tên file trong deploy/caddy/ (client-ip-<x>.caddy, tls-<x>.caddy).
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    deploy:
+      replicas: ${CADDY_REPLICAS:-1}
+    # Mặc định (A, B) giống hệt "80:80", "443:443": mở mọi địa chỉ của máy chủ. Phương án D đặt "127.0.0.1:" =
+    # chỉ mở trên loopback với cổng ngẫu nhiên (không ra Internet, không tranh cổng 80/443 với chương trình khác).
+    ports:
+      - "${CADDY_HTTP_PORT_BIND:-80}:80"
+      - "${CADDY_HTTPS_PORT_BIND:-443}:443"
+      - "${CADDY_HTTPS_PORT_BIND:-443}:443/udp"
+    environment:
+      APP_DOMAIN: "${APP_DOMAIN:?Thiếu APP_DOMAIN trong .env}"
+      ACME_EMAIL: "${ACME_EMAIL:?Thiếu ACME_EMAIL trong .env}"
+      CADDY_CLIENT_IP: "${CADDY_CLIENT_IP:-direct}"
+      CADDY_TLS: "${CADDY_TLS:-auto}"
+      # Trống (A, B): Caddy phục vụ HTTPS. "http://" (D): chỉ HTTP, không xin chứng chỉ (Cloudflare lo HTTPS).
+      CADDY_SITE_SCHEME: "${CADDY_SITE_SCHEME:-}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/caddy:/etc/caddy/deploy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  # --- Phương án D: Cloudflare Tunnel (docs/deploy-vps.md mục "Phương án D") ---------------------------------
+  # Mặc định TẮT (CLOUDFLARED_REPLICAS=0). Bật: CLOUDFLARED_REPLICAS=1 + TUNNEL_TOKEN (token của tunnel tạo trong
+  # dashboard Cloudflare, dạng eyJ...) + các biến CADDY_* của phương án D (gen-env.mjs --ssl tunnel điền sẵn).
+  # cloudflared tự mở kết nối RA ngoài tới Cloudflare (cổng 7844 TCP/UDP), KHÔNG publish cổng nào; trong dashboard,
+  # Published application APP_DOMAIN -> Service URL http://caddy:80 (giữ nguyên Host = APP_DOMAIN).
+  # Token = quyền chạy tunnel: chỉ truyền đúng biến này (không env_file .env), không in/ghi log; lộ thì Rotate token.
+  # Metrics/healthcheck chỉ nghe 127.0.0.1 trong container (endpoint /ready; không mở ra mạng Docker).
+  # KHÔNG bật --loglevel debug / TUNNEL_LOGLEVEL=debug: mức debug ghi cả URL và header request (lộ key /mcp/<key>).
+  # Updater không đụng tới service này (chỉ `up -d --no-deps web worker`).
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    deploy:
+      replicas: ${CLOUDFLARED_REPLICAS:-0}
+    # ENTRYPOINT của image: cloudflared --no-autoupdate
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
+    environment:
+      TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"
+      # auto (mặc định: QUIC/UDP 7844, tự lùi về http2/TCP 7844) | http2 (mạng chặn UDP, kết nối hay rớt)
+      TUNNEL_TRANSPORT_PROTOCOL: "${CLOUDFLARED_PROTOCOL:-auto}"
+    # Image distroless (không có shell/curl): dùng chính lệnh `cloudflared tunnel ready` (gọi /ready của metrics,
+    # 200 khi có ít nhất 1 kết nối tới Cloudflare).
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # cloudflared chờ tối đa 30 giây (--grace-period) cho request đang chạy khi dừng.
+    stop_grace_period: 35s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      caddy: { condition: service_started }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Sao lưu Postgres mỗi BACKUP_INTERVAL_SECONDS (mặc định 24h, chạy 1 lần ngay khi khởi động),
+  # nén zstd, giữ BACKUP_KEEP_DAYS ngày trong ./backups. File dump KHÔNG chứa ENCRYPTION_KEYS —
+  # phải sao lưu .env riêng chỗ khác. Bỏ dữ liệu log khỏi bản sao lưu:
+  #   BACKUP_PG_DUMP_ARGS=--exclude-table-data=mcp_call_logs_p* --exclude-table-data=activity_logs_p*
+  backup:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: adsmcp
+      PGDATABASE: adsmcp
+      PGPASSWORD: "${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}"
+      KEEP_DAYS: "${BACKUP_KEEP_DAYS:-14}"
+      INTERVAL: "${BACKUP_INTERVAL_SECONDS:-86400}"
+      EXTRA_ARGS: "${BACKUP_PG_DUMP_ARGS:-}"
+    volumes: ["./backups:/backups"]
+    depends_on:
+      db: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        umask 077
+        while true; do
+          f="/backups/adsmcp_$$(date +%F_%H%M%S).dump"
+          # shellcheck disable=SC2086
+          if pg_dump -Fc -Z zstd:6 $$EXTRA_ARGS -f "$$f.partial"; then
+            mv "$$f.partial" "$$f" && echo "[backup] ok $$f ($$(du -h "$$f" | cut -f1))"
+          else
+            rm -f "$$f.partial"; echo "[backup] FAILED" >&2
+          fi
+          find /backups -name 'adsmcp_*.dump' -mtime +"$$KEEP_DAYS" -delete
+          sleep "$$INTERVAL"
+        done
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+
+volumes:
+  pgdata: {}
+  caddy_data: {}
+  caddy_config: {}

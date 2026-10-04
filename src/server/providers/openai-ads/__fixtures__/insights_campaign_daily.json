@@ -1,0 +1,52 @@
+{
+  "object": "list",
+  "timezone": "America/New_York",
+  "data": [
+    {
+      "id": "start=1788235200:end=1788321600:entity_id=cmpn_101",
+      "start_time": 1788235200,
+      "end_time": 1788321600,
+      "readable_time": "2026-09-01",
+      "campaign_id": "cmpn_101",
+      "campaign_name": "Spring launch",
+      "campaign_status": "active",
+      "impressions": 1200,
+      "clicks": 48,
+      "spend": 18.42,
+      "ctr": 0.04,
+      "cpc": 0.38375,
+      "cpm": 15.35,
+      "conversions": 3,
+      "cpa": 6.14,
+      "post_click_cvr": 0.0625,
+      "order_created_attributed_sales": 120.5,
+      "order_created_attributed_sales_currency": "USD",
+      "order_created_roas": 6.5418
+    },
+    {
+      "id": "start=1788321600:end=1788408000:entity_id=cmpn_101",
+      "start_time": 1788321600,
+      "end_time": 1788408000,
+      "readable_time": "2026-09-02",
+      "campaign_id": "cmpn_101",
+      "campaign_name": "Spring launch",
+      "campaign_status": "active",
+      "impressions": 980,
+      "clicks": 0,
+      "spend": 0,
+      "ctr": 0,
+      "cpc": 0,
+      "cpm": 0,
+      "conversions": 0,
+      "cpa": null,
+      "post_click_cvr": null,
+      "order_created_attributed_sales": null,
+      "order_created_attributed_sales_currency": "USD",
+      "order_created_roas": null
+    }
+  ],
+  "count": 2,
+  "first_id": "start=1788235200:end=1788321600:entity_id=cmpn_101",
+  "last_id": "start=1788321600:end=1788408000:entity_id=cmpn_101",
+  "has_more": true
+}

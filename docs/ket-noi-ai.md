@@ -1,0 +1,92 @@
+# Kết nối MCP với Claude, ChatGPT, Gemini
+
+> Áp dụng cho **Ads MCP by: noti.vn** (10/2026). Giao diện các AI thay đổi thường xuyên — nếu tên menu khác, tìm mục *Connectors / Apps / MCP*.
+
+## Trước khi bắt đầu
+1. Tạo MCP trong Ads MCP (**MCP → Tạo MCP**), sao chép link dạng:
+   ```
+   https://mcp.congty.vn/mcp/amcp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+   Xem lại link sau này: trang MCP → tab **Kết nối AI** → **Xem lại link** (phải nhập lại mật khẩu/OTP).
+2. **Link = mật khẩu.** Không dán vào nhóm chat, tài liệu chia sẻ, ảnh chụp màn hình. Lộ link → **Bảo mật → Xoay key**.
+3. Server phải truy cập được từ Internet qua **HTTPS hợp lệ** và **IPv4** (bản ghi A).
+4. Mở link bằng trình duyệt sẽ thấy trang “Đây là endpoint MCP…” — nghĩa là link đúng và máy chủ đang chạy.
+
+## Claude (claude.ai web, desktop, mobile)
+**Gói**: Free (giới hạn 1 connector tuỳ chỉnh), Pro, Max, Team, Enterprise.
+
+**Cá nhân (Free/Pro/Max)**:
+1. claude.ai → **Settings → Connectors** → **Add custom connector**.
+2. Name: `Ads MCP`; URL: dán link MCP.
+3. Phần xác thực (Advanced settings): **không điền** OAuth Client ID/Secret — chọn **No sign-in** nếu được hỏi.
+4. **Add**. Trong cuộc trò chuyện, bấm nút **+ / Search and tools** → bật **Ads MCP**.
+
+**Team / Enterprise**: chỉ **Owner/Primary owner** thêm được: **Organization settings → Connectors → Add custom connector** → dán link. Cả workspace dùng chung **1 link** (= 1 MCP, cùng phạm vi quyền) → nên tạo MCP riêng cho workspace với quyền phù hợp. Thành viên bật connector trong Settings → Connectors của mình.
+
+**Lưu ý**:
+- Claude kết nối từ dải IP `160.79.104.0/21` — nếu MCP có **danh sách IP cho phép**, phải thêm dải này; nếu VPS có tường lửa, không chặn dải này.
+- Mỗi lệnh tool tối đa ~240 giây, kết quả ~150.000 ký tự — app tự chia trang khi dữ liệu lớn.
+- Claude hỏi quyền trước khi chạy tool ghi: chọn *Allow once* để xem từng thao tác.
+
+## Claude Code (CLI)
+```bash
+claude mcp add --transport http ads-noti https://mcp.congty.vn/mcp/<key> --scope user
+claude mcp list          # kiểm tra trạng thái: ✓ Connected
+```
+- `--scope user`: dùng cho mọi dự án trên máy. Dùng `--scope project` sẽ ghi link vào `.mcp.json` của dự án — **đừng commit file đó** vì link là bí mật.
+- Kết quả tool lớn bị cắt ở 25.000 token (biến môi trường `MAX_MCP_OUTPUT_TOKENS`) — hỏi khoảng ngày ngắn hơn hoặc nhờ AI dùng phân trang.
+- Trong phiên: gõ `/mcp` để xem tool, kết nối lại.
+
+## ChatGPT (chatgpt.com)
+**Gói**: Plus, Pro, Business, Enterprise, Edu (quyền ghi đầy đủ có thể khác nhau theo gói — kiểm tra thực tế; một số tài liệu của OpenAI nói gói Pro chỉ đọc).
+1. **Settings → Security and login** (hoặc *Apps & Connectors → Advanced settings*) → bật **Developer mode**.
+2. Mở <https://chatgpt.com/plugins> (hoặc Settings → Apps & Connectors) → **“+” / Create** → đặt tên `Ads MCP`, dán link MCP.
+3. **Authentication: No authentication** → tick xác nhận rủi ro → **Create**.
+4. Trong cuộc trò chuyện: **+ → Developer mode** → chọn **Ads MCP**.
+
+**Business / Enterprise**: admin workspace tạo và **publish** app cho thành viên. ChatGPT **“đóng băng” danh sách tool** lúc publish → sau khi đổi quyền MCP trong Ads MCP, admin phải vào app → **Refresh** để ChatGPT thấy tool mới.
+
+## Gemini CLI
+Sửa file `~/.gemini/settings.json` (Windows: `%USERPROFILE%\.gemini\settings.json`):
+```json
+{
+  "mcpServers": {
+    "adsnoti": {
+      "httpUrl": "https://mcp.congty.vn/mcp/<key>",
+      "timeout": 120000
+    }
+  }
+}
+```
+- Tên server **không dùng dấu gạch dưới** `_` (dùng `adsnoti`, `ads-noti`).
+- `httpUrl` = Streamable HTTP (đúng loại Ads MCP hỗ trợ); **không** dùng `url` (SSE cũ).
+- Khởi động lại `gemini`, gõ `/mcp` để xem trạng thái và danh sách tool. Kết quả quá ~40.000 ký tự có thể bị cắt.
+
+## Gemini Enterprise (Google Cloud)
+1. Admin vào **Gemini Enterprise → Connectors / Data stores → Add custom MCP server**.
+2. URL: dán link MCP; Authentication: **No authentication**.
+3. Chỉ hỗ trợ Streamable HTTP và chứng chỉ TLS hợp lệ (Caddy tự lo).
+4. Như Claude Team: cả tổ chức dùng chung 1 link → tạo MCP riêng với quyền phù hợp.
+
+## Gemini app (gemini.google.com)
+Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản US/tiếng Anh và có thể yêu cầu OAuth → **chưa hỗ trợ ở v1**. Dùng Gemini CLI hoặc Gemini Enterprise.
+
+## Câu lệnh mẫu
+- “Liệt kê các tài khoản quảng cáo tôi được dùng.” *(AI luôn gọi bước này trước để biết tiền tệ, múi giờ, quyền)*
+- “Chi tiêu, lượt nhấp, CPA hôm qua của tất cả tài khoản Meta và OpenAI Ads, xếp theo chi tiêu.”
+- “Báo cáo theo ngày từ 1/9 đến 30/9 của chiến dịch X.”
+- “Tắt các quảng cáo có CPA trên 200.000đ trong 7 ngày qua.” → AI hiện **bản xem trước** → bạn đồng ý → AI xác nhận.
+- “Tăng ngân sách nhóm Y lên 1 triệu/ngày.” *(bị chặn nếu vượt giới hạn % thay đổi đã cấu hình)*
+- “Nhân bản chiến dịch Z, thêm hậu tố ‘T10’.” *(bản sao luôn ở trạng thái tạm dừng)*
+
+## Khi có lỗi
+| Hiện tượng | Xử lý |
+|---|---|
+| **404** / “server not found” | Link sai hoặc MCP đã tắt / hết hạn / xoá / xoay key → lấy lại link trong tab **Kết nối AI** |
+| **403** | IP không nằm trong danh sách cho phép của MCP |
+| **429** | Vượt giới hạn lệnh/phút → đợi, hoặc tăng giới hạn trong cấu hình MCP |
+| Không thấy tool ghi | MCP chưa cấp quyền tương ứng (Bật/Tắt, Sửa, Sao chép…) hoặc ChatGPT Business chưa *Refresh* |
+| Lệnh dài bị ngắt sau 125 giây (lỗi 524) | Tên miền đi qua Cloudflare proxy → chia nhỏ yêu cầu, hoặc chuyển tên miền sang *DNS only* (cần chứng chỉ công khai) - xem [deploy-vps.md §9.7](deploy-vps.md#97-giới-hạn-thời-gian-125-giây-và-mcp) |
+| Claude không thêm được connector | Kiểm tra bản ghi A IPv4, chứng chỉ HTTPS, tường lửa cho dải `160.79.104.0/21` |
+
+Mọi lượt gọi đều được ghi ở **Nhật ký → Nhật ký MCP** (client, tool, tham số đã che bí mật, kết quả, giá trị trước → sau).

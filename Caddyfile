@@ -1,0 +1,93 @@
+# Ads MCP by: noti.vn - reverse proxy + HTTPS tự động (Let's Encrypt), hoặc chỉ HTTP nội bộ sau Cloudflare Tunnel.
+# APP_DOMAIN / ACME_EMAIL lấy từ biến môi trường (docker-compose.yml truyền vào từ .env).
+# Phương án SSL/proxy (docs/deploy-vps.md) chọn bằng 2 biến, mỗi giá trị là 1 file trong deploy/caddy/
+# (mount vào /etc/caddy/deploy):
+#   CADDY_CLIENT_IP = direct (mặc định) | cloudflare | tunnel   -> client-ip-<giá trị>.caddy (cách xác định IP thật của khách)
+#   CADDY_TLS       = auto (mặc định) | cloudflare-origin | cloudflare-origin-aop | tunnel  -> tls-<giá trị>.caddy
+# và CADDY_SITE_SCHEME = trống (mặc định: site HTTPS) | http:// (phương án D - Cloudflare Tunnel: site chỉ HTTP, không
+# xin chứng chỉ; container cloudflared gọi http://caddy:80 với Host = APP_DOMAIN).
+# App CHỈ tin hop đầu của X-Forwarded-For (src/server/mcp/net.ts): mọi reverse_proxy bên dưới GHI ĐÈ header này
+# bằng {client_ip} (= IP kết nối tới Caddy, hoặc CF-Connecting-IP khi kết nối đến từ proxy đã tin: dải IP Cloudflare
+# ở phương án B, container cloudflared trong mạng Docker nội bộ ở phương án D).
+{
+	email {$ACME_EMAIL}
+	# Log mặc định (gồm http.log.error khi upstream lỗi/timeout): cũng che key MCP trong path, Referer
+	# và nội dung lỗi — access log bên dưới đã có bộ lọc riêng.
+	log default {
+		output stderr
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp "^/mcp/[^/?#]+" "/mcp/[redacted]"
+				request>headers>Referer regexp "/mcp/[^/?#\s\"]+" "/mcp/[redacted]"
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				error regexp "/mcp/[^/?#\s\"]+" "/mcp/[redacted]"
+				msg regexp "/mcp/[^/?#\s\"]+" "/mcp/[redacted]"
+			}
+		}
+	}
+	servers {
+		timeouts {
+			read_header 15s
+			idle 5m
+		}
+		import /etc/caddy/deploy/client-ip-{$CADDY_CLIENT_IP:direct}.caddy
+	}
+}
+
+{$CADDY_SITE_SCHEME}{$APP_DOMAIN} {
+	import /etc/caddy/deploy/tls-{$CADDY_TLS:auto}.caddy
+
+	# Access log: che key MCP trong path, xoá header nhạy cảm.
+	log {
+		output stdout
+		format filter {
+			request>uri regexp "^/mcp/[^/?#]+" "/mcp/[redacted]"
+			request>headers>Referer regexp "/mcp/[^/?#]+" "/mcp/[redacted]"
+			request>headers>Authorization delete
+			request>headers>Cookie delete
+			resp_headers>Set-Cookie delete
+		}
+	}
+
+	# Header bảo mật chung. Có thao tác xoá (-Server) nên Caddy tự "defer": áp dụng sau khi nhận
+	# response từ upstream → ghi đè (không nhân đôi) header Next.js đã đặt.
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+		-X-Powered-By
+	}
+
+	# Endpoint MCP: không nén (tránh buffer SSE), đẩy dữ liệu ngay, giới hạn body 1 MB.
+	# Không đặt timeout upstream: tool chạy lâu không bị cắt (app tự timeout gọi nền tảng 60 s).
+	@mcp path /mcp/*
+	handle @mcp {
+		header {
+			Referrer-Policy "no-referrer"
+			Cache-Control "no-store"
+			defer
+		}
+		request_body {
+			max_size 1MB
+		}
+		# Profile "scale": đổi thành `reverse_proxy mcp:3000` (xem docker-compose.yml)
+		reverse_proxy web:3000 {
+			flush_interval -1
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	handle {
+		header {
+			Referrer-Policy "strict-origin-when-cross-origin"
+			defer
+		}
+		encode zstd gzip
+		reverse_proxy web:3000 {
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+}

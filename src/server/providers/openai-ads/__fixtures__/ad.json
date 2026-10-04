@@ -1,0 +1,28 @@
+{
+  "id": "ad_301",
+  "name": "Trail shoe launch",
+  "created_at": 1788235400,
+  "updated_at": 1788235400,
+  "creative": {
+    "type": "chat_card",
+    "title": "Find your next trail shoe",
+    "body": "Explore shoes made for your next outdoor run.",
+    "file_id": "file_123",
+    "image_url": "https://cdn.ads.openai.example/file_123.png",
+    "target_url": "https://example.com/trail-shoes"
+  },
+  "status": "active",
+  "review_status": "in_review",
+  "review": {
+    "status": "in_review"
+  },
+  "landing_page_configuration": null,
+  "appeal": null,
+  "geographic_targeting_blocked": false,
+  "advertiser_phone_verification_required": false,
+  "serving_issues": [
+    {
+      "code": "ad_in_review"
+    }
+  ]
+}

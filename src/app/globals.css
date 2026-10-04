@@ -1,0 +1,565 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens - see .claude/docs/06-ui-design-system.md §2–3.
+ * Brand: red #ED3C47 / orange #F26A1B (logo, accents, charts - never as a fill behind white text).
+ * Primary button gradient: #D6303C → #CC4A0E (AA 4.5:1 with white text).
+ */
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Brand */
+  --color-brand-red: var(--brand-red);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-ink: var(--brand-ink);
+  --color-primary-from: var(--primary-from);
+  --color-primary-to: var(--primary-to);
+
+  /* Status (solid = dots/icons/fills, *-strong = AA text on tinted backgrounds) */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-strong: var(--success-strong);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-strong: var(--warning-strong);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-strong: var(--info-strong);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-strong: var(--destructive-strong);
+  --color-destructive-solid: var(--destructive-solid);
+
+  /* Ad platforms (icons / small badges only) */
+  --color-platform-meta: var(--platform-meta);
+  --color-platform-tiktok: var(--platform-tiktok);
+  --color-platform-tiktok-accent: var(--platform-tiktok-accent);
+  --color-platform-google: var(--platform-google);
+  --color-platform-openai: var(--platform-openai);
+  /* Per-platform chart series (categorical, NOT the brand colours - see :root) */
+  --color-chart-platform-meta: var(--chart-platform-meta);
+  --color-chart-platform-tiktok: var(--chart-platform-tiktok);
+  --color-chart-platform-google: var(--chart-platform-google);
+  --color-chart-platform-openai: var(--chart-platform-openai);
+  --color-chart-platform-other: var(--chart-platform-other);
+}
+
+:root {
+  color-scheme: light;
+
+  /* Brand */
+  --brand-red: oklch(0.627 0.212 22.8); /* #ED3C47 */
+  --brand-orange: oklch(0.682 0.186 44.8); /* #F26A1B */
+  --brand-ink: oklch(
+    0.52 0.19 24
+  ); /* brand-coloured text, AA on light surfaces */
+  --primary-from: oklch(0.576 0.201 22.9); /* #D6303C */
+  --primary-to: oklch(0.581 0.176 40); /* #CC4A0E */
+
+  /* shadcn surface tokens - warm neutrals */
+  --background: oklch(0.985 0.004 30);
+  --foreground: oklch(0.2 0.006 30);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.006 30);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.006 30);
+  --primary: var(--primary-from);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.962 0.006 30);
+  --secondary-foreground: oklch(0.25 0.008 30);
+  --muted: oklch(0.962 0.006 30);
+  --muted-foreground: oklch(0.505 0.014 30);
+  --accent: oklch(0.955 0.012 30);
+  --accent-foreground: oklch(0.25 0.008 30);
+  --destructive: oklch(0.586 0.253 17.585); /* rose-600 */
+  --destructive-foreground: oklch(0.985 0 0);
+  --destructive-strong: oklch(0.514 0.222 16.935); /* rose-700 */
+  --destructive-solid: oklch(
+    0.586 0.253 17.585
+  ); /* rose-600 - solid buttons with white text (AA) in both themes */
+  --border: oklch(0.915 0.008 30);
+  --input: oklch(0.905 0.008 30);
+  --ring: var(--brand-red);
+
+  /* Status */
+  --success: oklch(0.596 0.145 163.225); /* emerald-600 */
+  --success-foreground: oklch(0.985 0 0);
+  --success-strong: oklch(0.508 0.118 165.612); /* emerald-700 */
+  --warning: oklch(0.769 0.188 70.08); /* amber-500 */
+  --warning-foreground: oklch(0.279 0.077 45.635); /* amber-950 */
+  --warning-strong: oklch(0.555 0.163 48.998); /* amber-700 */
+  --info: oklch(0.588 0.158 241.966); /* sky-600 */
+  --info-foreground: oklch(0.985 0 0);
+  --info-strong: oklch(0.5 0.134 242.749); /* sky-700 */
+
+  /* Charts */
+  --chart-1: var(--brand-red);
+  --chart-2: var(--brand-orange);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.588 0.158 241.966);
+  --chart-5: oklch(0.55 0.03 30);
+
+  /*
+   * Chart series per ad platform. Brand colours are unusable here (Meta/Google both blue,
+   * TikTok/OpenAI both black), so this is a categorical set: blue / red / teal / amber / grey,
+   * distinguishable under common colour-vision deficiencies, ≥ 3:1 against --card (WCAG 1.4.11).
+   * Light on white card: 5.2 / 3.9 / 3.7 / 3.6 / 3.7 : 1.
+   */
+  --chart-platform-meta: #2563eb;
+  --chart-platform-tiktok: #e5484d;
+  --chart-platform-google: #0d9488;
+  --chart-platform-openai: #b7791f;
+  --chart-platform-other: #8a8580;
+
+  /* Platforms */
+  --platform-meta: oklch(0.556 0.235 261.6); /* #0866FF */
+  --platform-tiktok: oklch(0.145 0 0); /* #000 */
+  --platform-tiktok-accent: oklch(0.645 0.233 15.4); /* #FE2C55 */
+  --platform-google: oklch(0.63 0.178 259.4); /* #4285F4 */
+  --platform-openai: oklch(0.145 0 0);
+
+  --radius: 0.75rem;
+
+  /* Liquid Glass */
+  --glass-tint: oklch(1 0 0 / 0.62);
+  --glass-tint-strong: oklch(1 0 0 / 0.8);
+  --glass-edge: oklch(1 0 0 / 0.75);
+  --glass-specular: oklch(1 0 0 / 0.95);
+  --glass-shade: oklch(0.25 0.02 30 / 0.06);
+  --glass-drop:
+    0 1px 1px oklch(0.2 0.02 30 / 0.04),
+    0 10px 30px -10px oklch(0.2 0.02 30 / 0.18);
+  --glass-blur: 18px;
+  --glass-sat: 1.8;
+
+  /* Sidebar (floating glass) */
+  --sidebar: var(--glass-tint);
+  --sidebar-foreground: oklch(0.2 0.006 30);
+  --sidebar-primary: var(--primary-from);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.2 0.02 30 / 0.06);
+  --sidebar-accent-foreground: oklch(0.2 0.006 30);
+  --sidebar-border: oklch(0.2 0.02 30 / 0.08);
+  --sidebar-ring: var(--brand-red);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --brand-ink: oklch(0.76 0.14 28);
+
+  --background: oklch(0.16 0.01 30);
+  --foreground: oklch(0.965 0.004 30);
+  --card: oklch(0.205 0.01 30);
+  --card-foreground: oklch(0.965 0.004 30);
+  --popover: oklch(0.215 0.01 30);
+  --popover-foreground: oklch(0.965 0.004 30);
+  --secondary: oklch(0.26 0.01 30);
+  --secondary-foreground: oklch(0.965 0.004 30);
+  --muted: oklch(0.26 0.01 30);
+  --muted-foreground: oklch(0.72 0.012 30);
+  --accent: oklch(0.27 0.014 30);
+  --accent-foreground: oklch(0.965 0.004 30);
+  --destructive: oklch(0.645 0.246 16.439); /* rose-500 */
+  --destructive-foreground: oklch(0.985 0 0);
+  --destructive-strong: oklch(0.81 0.117 11.638); /* rose-300 */
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+
+  --success: oklch(0.696 0.17 162.48); /* emerald-500 */
+  --success-foreground: oklch(0.262 0.051 172.552);
+  --success-strong: oklch(0.845 0.143 164.978); /* emerald-300 */
+  --warning: oklch(0.828 0.189 84.429); /* amber-400 */
+  --warning-foreground: oklch(0.279 0.077 45.635);
+  --warning-strong: oklch(0.879 0.169 91.605); /* amber-300 */
+  --info: oklch(0.685 0.169 237.323); /* sky-500 */
+  --info-foreground: oklch(0.293 0.066 243.157);
+  --info-strong: oklch(0.828 0.111 230.318); /* sky-300 */
+
+  --chart-3: oklch(0.828 0.189 84.429);
+  --chart-4: oklch(0.685 0.169 237.323);
+  --chart-5: oklch(0.7 0.03 30);
+
+  /* lighter variants for the dark card: 5.9 / 5.8 / 7.2 / 7.4 / 5.9 : 1 */
+  --chart-platform-meta: #5b93f7;
+  --chart-platform-tiktok: #f0676c;
+  --chart-platform-google: #14b8a6;
+  --chart-platform-openai: #d69e2e;
+  --chart-platform-other: #9a948f;
+
+  --platform-tiktok: oklch(0.985 0 0);
+  --platform-openai: oklch(0.985 0 0);
+  --platform-meta: oklch(0.65 0.2 259);
+  --platform-google: oklch(0.7 0.15 259);
+
+  --glass-tint: oklch(0.22 0.01 30 / 0.55);
+  --glass-tint-strong: oklch(0.22 0.01 30 / 0.75);
+  --glass-edge: oklch(1 0 0 / 0.12);
+  --glass-specular: oklch(1 0 0 / 0.18);
+  --glass-shade: oklch(0 0 0 / 0.35);
+  --glass-drop:
+    0 1px 1px oklch(0 0 0 / 0.3), 0 16px 40px -12px oklch(0 0 0 / 0.7);
+
+  --sidebar: var(--glass-tint);
+  --sidebar-foreground: oklch(0.965 0.004 30);
+  --sidebar-accent: oklch(1 0 0 / 0.07);
+  --sidebar-accent-foreground: oklch(0.965 0.004 30);
+  --sidebar-border: oklch(1 0 0 / 0.1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    /* no layout jump when a dialog/sheet locks page scroll */
+    scrollbar-gutter: stable;
+  }
+  /* Calm, thin scrollbars on every scroller (page, tables, JSON, sheets). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 28%, transparent)
+      transparent;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--brand-red) 28%, transparent);
+  }
+  /* Tabular figures wherever numbers line up (tables, KPI, counters). */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Warm ambient backdrop so glass has something to refract. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        1100px 520px at 0% -10%,
+        color-mix(in oklab, var(--brand-red) 16%, transparent),
+        transparent 65%
+      ),
+      radial-gradient(
+        900px 480px at 100% 0%,
+        color-mix(in oklab, var(--brand-orange) 14%, transparent),
+        transparent 60%
+      ),
+      var(--background);
+  }
+  .dark body::before {
+    background:
+      radial-gradient(
+        1100px 520px at 0% -10%,
+        color-mix(in oklab, var(--brand-red) 20%, transparent),
+        transparent 65%
+      ),
+      radial-gradient(
+        900px 480px at 100% 0%,
+        color-mix(in oklab, var(--brand-orange) 12%, transparent),
+        transparent 60%
+      ),
+      var(--background);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/*
+ * Liquid Glass - only for "chrome" floating above content (top bar, floating sidebar,
+ * menus/popovers/dialogs, floating action bars, KPI cards, login card). Never glass-on-glass,
+ * never animate backdrop-filter. Falls back to a solid card surface when transparency is
+ * unsupported or reduced (OS setting or the in-app toggle html[data-transparency="reduced"]),
+ * when high contrast is requested, and in forced-colors mode.
+ */
+@utility glass {
+  position: relative;
+  background-color: var(--glass-bg, var(--glass-tint));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-specular),
+    inset 0 -1px 0 0 var(--glass-shade),
+    var(--glass-drop);
+
+  @supports not (
+    (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+  ) {
+    background-color: var(--card);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  :root[data-transparency="reduced"] & {
+    background-color: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  @media (prefers-contrast: more), (forced-colors: active) {
+    background-color: var(--card);
+    border-color: var(--border);
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@utility glass-strong {
+  @apply glass;
+  --glass-bg: var(--glass-tint-strong);
+}
+
+/* Floating glass sidebar: <Sidebar variant="floating" collapsible="icon"> */
+[data-slot="sidebar-inner"] {
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-edge),
+    inset 0 1px 0 var(--glass-specular),
+    var(--glass-drop);
+  border-radius: calc(var(--radius) * 1.6);
+}
+.dark [data-slot="sidebar-inner"] {
+  box-shadow:
+    inset 0 0 0 1px var(--glass-edge),
+    inset 0 1px 0 var(--glass-specular),
+    var(--glass-drop);
+}
+
+/* Mobile sidebar (Sheet) + overlay surfaces: menus, popovers, selects, dialogs, sheets. */
+[data-slot="sidebar"][data-mobile="true"],
+[data-slot="popover-content"],
+[data-slot="dropdown-menu-content"],
+[data-slot="dropdown-menu-sub-content"],
+[data-slot="select-content"],
+[data-slot="hover-card-content"],
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"],
+[data-slot="sheet-content"],
+[data-slot="drawer-content"] {
+  background-color: var(--glass-tint-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+/* Lighter scrim so dialogs read as glass floating over the page. */
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"],
+[data-slot="sheet-overlay"],
+[data-slot="drawer-overlay"] {
+  background-color: oklch(0.2 0.02 30 / 0.32);
+}
+.dark
+  :is(
+    [data-slot="dialog-overlay"],
+    [data-slot="alert-dialog-overlay"],
+    [data-slot="sheet-overlay"],
+    [data-slot="drawer-overlay"]
+  ) {
+  background-color: oklch(0 0 0 / 0.6);
+}
+
+/* Reduced transparency / high contrast → solid surfaces everywhere. */
+:root[data-transparency="reduced"],
+:root[data-transparency="reduced"].dark {
+  --sidebar: var(--card);
+}
+:root[data-transparency="reduced"]
+  :is(
+    [data-slot="sidebar-inner"],
+    [data-slot="sidebar"][data-mobile="true"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"],
+    [data-slot="hover-card-content"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="sheet-content"],
+    [data-slot="drawer-content"]
+  ) {
+  background-color: var(--popover);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-transparency="reduced"] [data-slot="sidebar-inner"] {
+  background-color: var(--card);
+}
+@media (prefers-reduced-transparency: reduce),
+  (prefers-contrast: more),
+  (forced-colors: active) {
+  :root {
+    --sidebar: var(--card);
+  }
+  :is(
+    [data-slot="sidebar-inner"],
+    [data-slot="sidebar"][data-mobile="true"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"],
+    [data-slot="hover-card-content"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="sheet-content"],
+    [data-slot="drawer-content"]
+  ) {
+    background-color: var(--popover);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  [data-slot="sidebar-inner"] {
+    background-color: var(--card);
+  }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  [data-slot="sidebar-inner"] {
+    box-shadow: none;
+    border: 1px solid var(--border);
+  }
+}
+
+/*
+ * Phones (< 768px): fixed bottom bar + full-bleed layout - .claude/docs/06-ui-design-system.md §11.
+ * --app-bottom-offset = height of everything fixed to the bottom (bar + safe area). Sticky/fixed bottom
+ * elements (wizard action bars, toasts…) add it to their own offset; it is 0 on md+ and while the on-screen
+ * keyboard is open (the bar hides, see bottom-nav.tsx).
+ */
+:root {
+  --app-bottom-offset: 0px;
+}
+@media (max-width: 767px) {
+  :root {
+    --app-bottomnav-h: 3.75rem;
+    --app-bottom-offset: calc(
+      var(--app-bottomnav-h) + env(safe-area-inset-bottom)
+    );
+  }
+  :root[data-kb-open] {
+    --app-bottom-offset: 0px;
+  }
+  :root[data-kb-open] [data-slot="bottom-nav"] {
+    display: none;
+  }
+
+  /* flush top bar: full width, no floating pill; only a hairline + soft blur underneath */
+  [data-slot="app-topbar"] {
+    border-radius: 0;
+    border-width: 0 0 1px;
+    background-color: color-mix(in oklab, var(--card) 92%, transparent);
+    box-shadow: none;
+  }
+  /* flush bottom bar: top hairline, no rounding */
+  [data-slot="bottom-nav"] {
+    border-radius: 0;
+    border-width: 1px 0 0;
+    /* near-opaque: icon labels must stay crisp over scrolling content */
+    background-color: color-mix(in oklab, var(--card) 94%, transparent);
+    box-shadow: 0 -10px 24px -16px oklch(0.2 0.02 30 / 0.22);
+  }
+
+  /*
+   * Full-bleed cards: top-level cards on a page run edge to edge (square, no side ring); the 16px page
+   * gutter stays for text, filters and buttons. Cards nested in cards, inside buttons (platform picker)
+   * or in overlays keep their normal look. Only cards whose width follows their container stretch.
+   */
+  #main-content
+    [data-slot="card"]:not(
+      [data-slot="card"] [data-slot="card"],
+      button [data-slot="card"]
+    ) {
+    margin-inline: calc(var(--page-gutter, 1rem) * -1);
+    border-radius: 0;
+  }
+  /* a button wrapping a card (platform picker) bleeds as one piece */
+  #main-content button:has(> [data-slot="card"]) {
+    margin-inline: calc(var(--page-gutter, 1rem) * -1);
+    width: calc(100% + var(--page-gutter, 1rem) * 2);
+    border-radius: 0;
+  }
+  #main-content button > [data-slot="card"] {
+    border-radius: 0;
+  }
+}
+
+/* Auth screens on phones: no floating glass card - the form is the screen (layout.tsx paints it solid). */
+@media (max-width: 639px) {
+  [data-slot="auth-card"] {
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    background-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Guide panel: collapsed state is on <html> (set before paint), so the CSS alone hides the panel. */
+:root[data-guide-collapsed] [data-slot="guide-panel"] {
+  display: none;
+}
+@media (min-width: 1024px) {
+  :root[data-guide-collapsed] [data-slot="guide-reopen"] {
+    display: inline-flex;
+  }
+}

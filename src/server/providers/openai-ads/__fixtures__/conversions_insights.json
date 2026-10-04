@@ -1,0 +1,15 @@
+{
+  "object": "list",
+  "account_currency": "USD",
+  "data": [
+    {
+      "entity_id": "cmpn_101",
+      "conversions": 10,
+      "click_through_conversions": 7,
+      "view_through_conversions": 3,
+      "order_created_attributed_sales": "100.5",
+      "order_created_attributed_sales_currency": "USD"
+    }
+  ],
+  "count": 1
+}

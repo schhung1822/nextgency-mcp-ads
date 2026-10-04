@@ -1,0 +1,11 @@
+# Ads MCP by: noti.vn - CADDY_TLS=cloudflare-origin-aop (phương án B + Authenticated Origin Pulls):
+# như cloudflare-origin, thêm yêu cầu Cloudflare xuất trình chứng chỉ client (mTLS) -> ai gọi thẳng IP VPS
+# (không qua Cloudflare) đều bị từ chối ở bước bắt tay TLS. Bật AOP trong Cloudflare TRƯỚC khi dùng file này
+# (SSL/TLS -> Origin Server -> Authenticated Origin Pulls), nếu không mọi truy cập qua Cloudflare sẽ lỗi.
+# Cần thêm: deploy/caddy/certs/cloudflare-origin-pull-ca.pem (CA "zone-level" của Cloudflare, xem docs/deploy-vps.md).
+tls /etc/caddy/deploy/certs/origin.pem /etc/caddy/deploy/certs/origin.key {
+	client_auth {
+		mode require_and_verify
+		trust_pool file /etc/caddy/deploy/certs/cloudflare-origin-pull-ca.pem
+	}
+}

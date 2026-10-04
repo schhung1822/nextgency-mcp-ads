@@ -1,0 +1,259 @@
+// CLI commands against a private throw-away database: create-admin / reset-password / reset-2fa / unlock /
+// reencrypt, argument handling, exit codes, password length 8, argv-secret warnings, hash compatibility with
+// Better Auth sign-in, activity_logs rows (actor role "cli") and "no secrets in output/logs".
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+
+const tmp = await vi.hoisted(async () => {
+  try {
+    process.loadEnvFile(".env")
+  } catch {
+    /* no .env */
+  }
+  const { createTempDb } = await import("../src/server/__tests__/people/temp-db")
+  const t = await createTempDb("cli")
+  if (t) process.env.DATABASE_URL = t.url
+  return t
+})
+vi.mock("server-only", () => ({}))
+vi.mock("next/headers", async () => (await import("@/server/__tests__/people/harness")).nextHeadersMock())
+
+import { and, eq, sql } from "drizzle-orm"
+
+import { __setKeyRing, aad, encryptSecret } from "@/server/crypto/secret-box"
+import { db } from "@/server/db/client"
+import { account, activityLogs, connections, session as sessionTable, twoFactor, user, verification } from "@/server/db/schema"
+import { lockoutIpKey, lockoutKey, recordLoginFailure } from "@/server/auth/lockout"
+import { createTestUser, enableTotp, PASSWORD, randomIp, signIn, uid } from "@/server/__tests__/people/harness"
+
+import { main } from "./cli"
+
+const hasDb = !!tmp
+const P = `tcli_${uid()}`
+const email = (n: string) => `${P}_${n}@example.test`
+
+interface Run {
+  code: number
+  out: string
+  err: string
+}
+
+/** Runs a CLI command in-process, capturing stdout/stderr; `main` ends the pool, so recreate it afterwards. */
+async function cli(args: string[], env: Record<string, string> = {}): Promise<Run> {
+  const saved: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(env)) {
+    saved[k] = process.env[k]
+    process.env[k] = v
+  }
+  const out: string[] = []
+  const err: string[] = []
+  const so = vi.spyOn(process.stdout, "write").mockImplementation((c: string | Uint8Array) => (out.push(String(c)), true))
+  const se = vi.spyOn(process.stderr, "write").mockImplementation((c: string | Uint8Array) => (err.push(String(c)), true))
+  try {
+    const code = await main(args)
+    return { code, out: out.join(""), err: err.join("") }
+  } finally {
+    so.mockRestore()
+    se.mockRestore()
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    await resetPool()
+  }
+}
+
+/** `main` ends the shared pool; also end whatever the test helpers created since, then start fresh. */
+async function resetPool(): Promise<void> {
+  const g = globalThis as { __adsMcpPool?: { ended?: boolean; end: () => Promise<void> }; __adsMcpDb?: unknown; __adsMcpAuth?: unknown }
+  const p = g.__adsMcpPool
+  g.__adsMcpPool = undefined
+  g.__adsMcpDb = undefined
+  g.__adsMcpAuth = undefined // the Better Auth instance holds a Drizzle handle bound to the old pool
+  if (p && !p.ended) await p.end().catch(() => {})
+}
+
+const tempPasswordOf = (out: string) => /Mật khẩu tạm: (\S+)/.exec(out)?.[1]
+const userByEmail = async (e: string) => (await db.select().from(user).where(eq(user.email, e)))[0]
+const logsOf = async (action: string) => db.select().from(activityLogs).where(eq(activityLogs.action, action))
+
+describe.skipIf(!hasDb)("CLI (DB)", () => {
+  beforeAll(() => {
+    __setKeyRing(undefined)
+  })
+  afterAll(async () => {
+    await resetPool()
+    await tmp?.drop()
+  })
+  beforeEach(async () => {
+    await resetPool()
+  })
+
+  describe("create-admin", () => {
+    it("tạo admin đầu tiên với mật khẩu tạm ngẫu nhiên (≥ 8 ký tự), buộc đổi mật khẩu, đăng nhập được, ghi nhật ký cli", async () => {
+      const r = await cli(["create-admin", "--email", email("first").toUpperCase(), "--name", "Chủ hệ thống"])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain("người dùng đầu tiên")
+      const pw = tempPasswordOf(r.out)!
+      expect(pw.length).toBeGreaterThanOrEqual(8)
+      const u = (await userByEmail(email("first")))!
+      expect(u).toMatchObject({ role: "admin", mustChangePassword: true, banned: false, name: "Chủ hệ thống" })
+      expect(u.twoFactorEnabled).toBeFalsy() // optional by default
+      // the hash is compatible with Better Auth's sign-in
+      const s = await signIn({ id: u.id, email: u.email, password: pw, role: "admin", name: u.name })
+      expect(s.sessionId).toBeTruthy()
+      const logs = await db.select().from(activityLogs).where(and(eq(activityLogs.targetId, u.id), eq(activityLogs.action, "setup.first_admin")))
+      expect(logs).toHaveLength(1)
+      expect(logs[0]).toMatchObject({ actorRole: "cli", actorId: null, status: "success" })
+      expect(JSON.stringify(logs[0]!.metadata)).not.toContain(pw)
+    })
+
+    it("mật khẩu từ biến môi trường ADMIN_PASSWORD: 7 ký tự bị từ chối (exit 1, không tạo), 8 ký tự được nhận", async () => {
+      const short = await cli(["create-admin", "--email", email("short")], { ADMIN_PASSWORD: "Abcde12" })
+      expect(short.code).toBe(1)
+      expect(short.err).toContain("ít nhất 8 ký tự")
+      expect(await userByEmail(email("short"))).toBeUndefined()
+      const ok = await cli(["create-admin", "--email", email("eight")], { ADMIN_PASSWORD: "Abcdef78" })
+      expect(ok.code).toBe(0)
+      expect(ok.out).not.toContain("Abcdef78") // given secrets are never echoed
+      expect(tempPasswordOf(ok.out)).toBeUndefined()
+      const u = (await userByEmail(email("eight")))!
+      await expect(signIn({ id: u.id, email: u.email, password: "Abcdef78", role: "admin", name: u.name })).resolves.toBeTruthy()
+      const tooLong = await cli(["create-admin", "--email", email("long")], { ADMIN_PASSWORD: "a".repeat(129) })
+      expect(tooLong.code).toBe(1)
+    })
+
+    it("--password trên dòng lệnh vẫn chạy nhưng cảnh báo lộ qua ps/lịch sử shell", async () => {
+      const r = await cli(["create-admin", "--email", email("argv"), "--password", "Abcdef78"])
+      expect(r.code).toBe(0)
+      expect(r.err).toMatch(/--password.*ADMIN_PASSWORD/)
+      expect(r.out).not.toContain("Abcdef78")
+    })
+
+    it("email trùng / không hợp lệ / thiếu / tham số lạ: exit 1 với thông báo tiếng Việt, không in stack", async () => {
+      expect((await cli(["create-admin", "--email", email("first")])).err).toMatch(/đã có tài khoản/)
+      const bad = await cli(["create-admin", "--email", "khong-phai-email"])
+      expect(bad).toMatchObject({ code: 1 })
+      expect(bad.err).toMatch(/Email không hợp lệ/)
+      expect((await cli(["create-admin"])).code).toBe(1)
+      const unknown = await cli(["create-admin", "--email", email("x"), "--role", "admin"])
+      expect(unknown.code).toBe(1)
+      expect(unknown.err).not.toMatch(/\n\s+at /)
+      expect(await userByEmail(email("x"))).toBeUndefined()
+    })
+
+    it("lệnh lạ in trợ giúp và thoát 1; không có lệnh / help thoát 0", async () => {
+      expect(await cli(["nonsense"])).toMatchObject({ code: 1 })
+      expect((await cli(["nonsense"])).out).toContain("Cách dùng")
+      expect((await cli([])).code).toBe(0)
+      expect((await cli(["help"])).code).toBe(0)
+      expect((await cli(["--help"])).out).toContain("create-admin")
+    })
+
+    it("lỗi cơ sở dữ liệu bất ngờ không in tham số truy vấn (hash mật khẩu, id, email) ra stderr", async () => {
+      // Drizzle's "Failed query: … params: <values>" would carry the password hash — force such a failure:
+      await db.execute(sql`alter table account add constraint pa_cli_boom check (false) not valid`)
+      try {
+        const r = await cli(["create-admin", "--email", email("dberr")], { ADMIN_PASSWORD: "Abcdef78" })
+        expect(r.code).toBe(1)
+        expect(r.err).toMatch(/^✖ /)
+        expect(r.err).not.toMatch(/params:/i)
+        expect(r.err).not.toMatch(/[0-9a-f]{32,}/i) // scrypt hash / ids
+        expect(r.err).not.toContain("Abcdef78")
+        expect(r.err).not.toContain(email("dberr"))
+      } finally {
+        await db.execute(sql`alter table account drop constraint pa_cli_boom`)
+      }
+      expect(await userByEmail(email("dberr"))).toBeUndefined() // the whole transaction rolled back
+    })
+  })
+
+  describe("reset-password / reset-2fa / unlock", () => {
+    it("reset-password: mật khẩu cũ chết, phiên bị xoá, buộc đổi mật khẩu, mật khẩu tạm đăng nhập được, nhật ký cli không chứa mật khẩu", async () => {
+      const u = await createTestUser(P, "rp", { role: "staff" })
+      await signIn(u)
+      const r = await cli(["reset-password", u.email.toUpperCase()])
+      expect(r.code).toBe(0)
+      const pw = tempPasswordOf(r.out)!
+      expect(pw.length).toBeGreaterThanOrEqual(8)
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.userId, u.id))).toHaveLength(0)
+      expect((await userByEmail(u.email))!.mustChangePassword).toBe(true)
+      await expect(signIn(u)).rejects.toThrow()
+      await expect(signIn({ ...u, password: pw })).resolves.toBeTruthy()
+      const log = (await logsOf("user.password.reset")).find((l) => l.targetId === u.id)!
+      expect(log).toMatchObject({ actorRole: "cli", status: "success" })
+      expect(log.metadata).toMatchObject({ via: "cli", forcedChangeOnLogin: true })
+      expect(JSON.stringify(log.metadata)).not.toContain(pw)
+    })
+
+    it("reset-password cho email không tồn tại / không hợp lệ: exit 1", async () => {
+      expect((await cli(["reset-password", email("nobody")])).code).toBe(1)
+      expect((await cli(["reset-password", "--email", email("nobody")])).code).toBe(1)
+      expect((await cli(["reset-password"])).code).toBe(1)
+      // alias
+      expect((await cli(["user:reset-password", email("nobody")])).code).toBe(1)
+    })
+
+    it("reset-2fa: xoá bí mật + mã dự phòng + thiết bị tin cậy, đăng xuất mọi thiết bị, đăng nhập lại chỉ cần mật khẩu", async () => {
+      const u = await createTestUser(P, "r2", { role: "admin" })
+      await enableTotp(await signIn(u))
+      expect((await userByEmail(u.email))!.twoFactorEnabled).toBe(true)
+      const r = await cli(["reset-2fa", u.email])
+      expect(r.code).toBe(0)
+      expect((await userByEmail(u.email))!.twoFactorEnabled).toBe(false)
+      expect(await db.select().from(twoFactor).where(eq(twoFactor.userId, u.id))).toHaveLength(0)
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.userId, u.id))).toHaveLength(0)
+      await expect(signIn(u)).resolves.toBeTruthy()
+      const log = (await logsOf("user.2fa.reset")).find((l) => l.targetId === u.id)!
+      expect(log).toMatchObject({ actorRole: "cli" })
+      expect(log.metadata).toMatchObject({ via: "cli", before: { twoFactorEnabled: true }, after: { twoFactorEnabled: false } })
+      expect((await cli(["reset-2fa", email("nobody")])).code).toBe(1)
+    })
+
+    it("unlock: xoá bộ đếm khoá đăng nhập (email + từng IP) và khoá 2FA; email lạ vẫn exit 0", async () => {
+      const u = await createTestUser(P, "un", { role: "staff" })
+      for (let i = 0; i < 3; i++) await recordLoginFailure(u.email, randomIp())
+      expect((await db.select().from(verification).where(eq(verification.id, lockoutKey(u.email)))).length).toBe(1)
+      const r = await cli(["unlock", u.email])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain("Đã gỡ khoá")
+      const left = (await db.select().from(verification)).filter((v) => v.id.startsWith(lockoutKey(u.email)))
+      expect(left).toHaveLength(0)
+      expect(lockoutIpKey(u.email, "1.2.3.4")).toContain(lockoutKey(u.email))
+      expect((await cli(["unlock", email("ghost")])).code).toBe(0)
+      expect((await logsOf("user.update")).some((l) => l.targetId === u.id && (l.metadata as { op?: string }).op === "unlock")).toBe(true)
+    })
+  })
+
+  describe("reencrypt", () => {
+    it("--dry-run chỉ đếm; chạy thật mã hoá lại bằng khoá đang hoạt động và vẫn giải mã được", async () => {
+      const owner = await createTestUser(P, "enc", { role: "staff" })
+      const k1 = Buffer.alloc(32, 1).toString("base64")
+      const k2 = Buffer.alloc(32, 2).toString("base64")
+      __setKeyRing(`1:${k1}`)
+      const id = crypto.randomUUID()
+      await db.insert(connections).values({
+        id,
+        ownerId: owner.id,
+        platform: "meta",
+        name: `${P} enc`,
+        credentialsEncrypted: encryptSecret('{"accessToken":"x"}', aad.connectionCredentials(id)),
+      })
+      __setKeyRing(`2:${k2},1:${k1}`)
+      const dry = await cli(["reencrypt", "--dry-run"])
+      expect(dry.code).toBe(0)
+      expect(dry.out).toMatch(/1 kết nối/)
+      const [before] = await db.select().from(connections).where(eq(connections.id, id))
+      expect(before!.credentialsEncrypted.startsWith("v1.")).toBe(true)
+      const real = await cli(["reencrypt"])
+      expect(real.code).toBe(0)
+      const [after] = await db.select().from(connections).where(eq(connections.id, id))
+      expect(after!.credentialsEncrypted.startsWith("v2.")).toBe(true)
+      expect((await db.select().from(activityLogs).where(and(eq(activityLogs.action, "connection.update"), eq(activityLogs.actorRole, "cli")))).length).toBe(1)
+      expect((await cli(["reencrypt", "--bogus"])).code).toBe(1)
+      __setKeyRing(undefined)
+    })
+  })
+})
+
+void PASSWORD
+void account

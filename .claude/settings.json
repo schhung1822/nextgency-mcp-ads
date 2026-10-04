@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm dev*)",
+      "Bash(pnpm build*)",
+      "Bash(pnpm lint*)",
+      "Bash(pnpm typecheck*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm db:generate*)",
+      "Bash(pnpm install)",
+      "Bash(pnpm install --frozen-lockfile)",
+      "Bash(pnpm exec tsc *)",
+      "Bash(pnpm exec eslint *)",
+      "Bash(pnpm exec prettier *)",
+      "Bash(pnpm exec vitest *)",
+      "Bash(pnpm exec playwright *)",
+      "Bash(pnpm exec drizzle-kit generate*)",
+      "Bash(pnpm list*)",
+      "Bash(pnpm why *)",
+      "Bash(pnpm outdated*)",
+      "Bash(npm view *)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs *)",
+      "Bash(docker compose config*)",
+      "Bash(docker compose up -d db*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show *)",
+      "Bash(git branch*)",
+      "WebSearch",
+      "WebFetch(domain:developers.facebook.com)",
+      "WebFetch(domain:business-api.tiktok.com)",
+      "WebFetch(domain:ads.tiktok.com)",
+      "WebFetch(domain:developers.google.com)",
+      "WebFetch(domain:googleads.googleapis.com)",
+      "WebFetch(domain:developers.openai.com)",
+      "WebFetch(domain:modelcontextprotocol.io)",
+      "WebFetch(domain:ts.sdk.modelcontextprotocol.io)",
+      "WebFetch(domain:claude.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:ui.shadcn.com)",
+      "WebFetch(domain:nextjs.org)",
+      "WebFetch(domain:www.better-auth.com)",
+      "WebFetch(domain:better-auth.com)",
+      "WebFetch(domain:orm.drizzle.team)",
+      "WebFetch(domain:tailwindcss.com)",
+      "WebFetch(domain:caddyserver.com)",
+      "WebFetch(domain:www.postgresql.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:registry.npmjs.org)"
+    ],
+    "ask": [
+      "Bash(pnpm add *)",
+      "Bash(pnpm remove *)",
+      "Bash(pnpm db:migrate*)",
+      "Bash(docker compose up*)",
+      "Bash(docker compose down*)",
+      "Bash(git commit*)",
+      "Bash(git push*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.production)",
+      "Read(./.env.development.local)",
+      "Read(./backups/**)",
+      "Edit(./.env)",
+      "Edit(./.env.local)",
+      "Edit(./.env.production)",
+      "Edit(./drizzle/meta/**)",
+      "Bash(docker compose down -v*)",
+      "Bash(docker volume rm *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(rm -rf /*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-on-edit.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

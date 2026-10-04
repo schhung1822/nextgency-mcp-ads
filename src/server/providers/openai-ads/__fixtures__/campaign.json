@@ -1,0 +1,46 @@
+{
+  "id": "cmpn_101",
+  "created_at": 1788235200,
+  "updated_at": 1788321600,
+  "name": "Spring launch",
+  "description": "Promote the new productivity bundle.",
+  "status": "active",
+  "mode": null,
+  "product_feed_id": null,
+  "business_agent_id": null,
+  "start_time": 1788235200,
+  "end_time": 1893456000,
+  "budget": {
+    "daily_spend_limit_micros": 50000000
+  },
+  "bidding_type": "clicks",
+  "objective": "clicks",
+  "billing_event_type": "click",
+  "conversion_event_setting_ids": [],
+  "targeting": {
+    "locations": {
+      "countries": ["US"],
+      "include": [
+        {
+          "id": "geo_2840_ny",
+          "name": "New York",
+          "type": "region",
+          "country_code": "US",
+          "region_code": "NY"
+        }
+      ]
+    },
+    "platforms": {
+      "included": ["ios_app", "desktop_web"]
+    },
+    "custom_audiences": {
+      "ids": ["ca_1"]
+    }
+  },
+  "landing_page_configuration": {
+    "query_string_template": "utm_source=chatgpt&utm_campaign={campaign_id}"
+  },
+  "geographic_targeting_blocked": false,
+  "advertiser_phone_verification_required": false,
+  "serving_issues": []
+}

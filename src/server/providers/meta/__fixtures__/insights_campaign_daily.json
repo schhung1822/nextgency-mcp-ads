@@ -1,0 +1,72 @@
+{
+  "data": [
+    {
+      "account_currency": "VND",
+      "campaign_id": "120210000000000001",
+      "campaign_name": "Sales - Tết 2026",
+      "spend": "1523400",
+      "impressions": "84512",
+      "reach": "51230",
+      "frequency": "1.649658",
+      "clicks": "2310",
+      "inline_link_clicks": "1874",
+      "ctr": "2.733338",
+      "cpc": "659.480519",
+      "cpm": "18025.369179",
+      "actions": [
+        { "action_type": "link_click", "value": "1874" },
+        { "action_type": "landing_page_view", "value": "1502" },
+        { "action_type": "video_view", "value": "930" },
+        { "action_type": "offsite_conversion.fb_pixel_purchase", "value": "41" },
+        { "action_type": "purchase", "value": "41" },
+        { "action_type": "omni_purchase", "value": "43" },
+        { "action_type": "onsite_conversion.messaging_conversation_started_7d", "value": "12" }
+      ],
+      "action_values": [
+        { "action_type": "offsite_conversion.fb_pixel_purchase", "value": "18450000" },
+        { "action_type": "omni_purchase", "value": "19230000" }
+      ],
+      "cost_per_action_type": [{ "action_type": "omni_purchase", "value": "35427.906977" }],
+      "purchase_roas": [{ "action_type": "omni_purchase", "value": "12.623080" }],
+      "results": [
+        {
+          "indicator": "actions:offsite_conversion.fb_pixel_purchase",
+          "values": [{ "value": "41", "attribution_windows": ["default"] }]
+        }
+      ],
+      "cost_per_result": [
+        {
+          "indicator": "actions:offsite_conversion.fb_pixel_purchase",
+          "values": [{ "value": "37156.097561", "attribution_windows": ["default"] }]
+        }
+      ],
+      "date_start": "2026-09-28",
+      "date_stop": "2026-09-28"
+    },
+    {
+      "account_currency": "VND",
+      "campaign_id": "120210000000000002",
+      "campaign_name": "Leads - Form tư vấn",
+      "spend": "402000",
+      "impressions": "30110",
+      "reach": "22004",
+      "frequency": "1.368387",
+      "clicks": "640",
+      "inline_link_clicks": "512",
+      "ctr": "2.125540",
+      "cpc": "628.125",
+      "cpm": "13351.045",
+      "actions": [
+        { "action_type": "link_click", "value": "512" },
+        { "action_type": "lead", "value": "27" },
+        { "action_type": "onsite_conversion.lead_grouped", "value": "27" }
+      ],
+      "date_start": "2026-09-28",
+      "date_stop": "2026-09-28"
+    }
+  ],
+  "paging": {
+    "cursors": { "before": "MAZDZD", "after": "MQZDZD" },
+    "next": "https://graph.facebook.com/v26.0/act_1001/insights?after=MQZDZD"
+  }
+}

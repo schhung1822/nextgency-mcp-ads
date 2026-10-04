@@ -1,0 +1,170 @@
+name: Docker image
+
+# Phát hành bằng tag:  git tag v1.2.3 && git push origin v1.2.3
+#   - kiểm tra package.json#version khớp tag (lệch -> fail ngay, chưa build)
+#   - build + đẩy ghcr.io/notivn/ads-mcp-simple:<ver> (web/worker/migrate/cli) và ...-updater:<ver> (daemon cập nhật)
+#   - sau khi image đã có trên GHCR: tạo GitHub Release (nội dung: release-notes/<tag>.md) - CHỈ với tag đúng dạng vMAJOR.MINOR.PATCH
+#     (tag có hậu tố như v1.2.3-rc.1 chỉ build image, không tạo Release nên admin không thấy là "bản mới")
+# Push lên main KHÔNG build image (tiết kiệm phút Actions của repo private); chạy tay (workflow_dispatch) trên main
+# thì đẩy :main / :sha-xxxx với APP_BUILD_VERSION=dev. Quy trình đầy đủ: .claude/docs/07-deployment.md §6.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/notivn/ads-mcp-simple
+  IMAGE_UPDATER: ghcr.io/notivn/ads-mcp-simple-updater
+
+jobs:
+  build:
+    name: Build & push (amd64 + arm64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      stable: ${{ steps.ver.outputs.stable }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # v1.2.3 -> APP_BUILD_VERSION=1.2.3 (phải bằng package.json#version) · nhánh/dispatch -> dev
+      - id: ver
+        name: Resolve version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            case "$REF_NAME" in
+              v[0-9]*) ;;
+              *) echo "::error::Tag '$REF_NAME' không đúng dạng vMAJOR.MINOR.PATCH"; exit 1 ;;
+            esac
+            version="${REF_NAME#v}"
+            pkg="$(node -p "require('./package.json').version")"
+            if [ "$pkg" != "$version" ]; then
+              echo "::error::package.json#version ($pkg) không khớp tag $REF_NAME. Sửa version rồi tạo lại tag."
+              exit 1
+            fi
+            if printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then stable=true; else stable=false; fi
+          else
+            version=dev
+            stable=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+          echo "APP_BUILD_VERSION=$version (stable release: $stable)"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # v1.2.3 → 1.2.3, 1.2, v1.2.3, latest · main → main, sha-xxxxxxx
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
+            type=ref,event=branch
+            type=sha,format=short
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=Ads MCP by: noti.vn
+            org.opencontainers.image.vendor=noti.vn
+            org.opencontainers.image.licenses=LicenseRef-noti.vn-Proprietary
+
+      - id: meta-updater
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_UPDATER }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
+            type=ref,event=branch
+            type=sha,format=short
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=Ads MCP by: noti.vn - updater
+            org.opencontainers.image.vendor=noti.vn
+            org.opencontainers.image.licenses=LicenseRef-noti.vn-Proprietary
+
+      # Web/worker/migrate/cli image (target mặc định: runner)
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            APP_BUILD_VERSION=${{ steps.ver.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+
+      # Updater image: dùng lại layer builder đã có trong cache của bước trên
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: updater
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            APP_BUILD_VERSION=${{ steps.ver.outputs.version }}
+          tags: ${{ steps.meta-updater.outputs.tags }}
+          labels: ${{ steps.meta-updater.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+
+  # Chỉ chạy khi cả 2 image đã được đẩy xong và tag là bản chính thức vMAJOR.MINOR.PATCH
+  release:
+    name: GitHub Release
+    needs: build
+    if: github.ref_type == 'tag' && needs.build.outputs.stable == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # release-notes/<tag>.md (Vietnamese, written by the maintainer) is the release body the admins read in
+      # "Cài đặt → Cập nhật hệ thống"; auto-generated notes are only a fallback when the file is missing.
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: release-notes
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG đã tồn tại, bỏ qua."
+          elif [ -f "release-notes/$TAG.md" ]; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "release-notes/$TAG.md"
+          else
+            echo "::warning::Thiếu release-notes/$TAG.md - dùng ghi chú tự sinh."
+            gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          fi

@@ -1,0 +1,2 @@
+ALTER TABLE "system_update_requests" DROP CONSTRAINT "system_update_requests_target_chk";--> statement-breakpoint
+ALTER TABLE "system_update_requests" ADD CONSTRAINT "system_update_requests_target_chk" CHECK ("system_update_requests"."target_version" ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$');
