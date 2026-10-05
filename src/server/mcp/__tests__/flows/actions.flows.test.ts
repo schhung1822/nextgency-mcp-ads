@@ -38,7 +38,8 @@ import {
 } from "@/server/actions/mcp-servers"
 import { AuthorizationError } from "@/server/auth/session"
 import { db } from "@/server/db/client"
-import { activityLogs, appSettings, connections, mcpServers } from "@/server/db/schema"
+import { quotaId } from "@/server/db/quota"
+import { activityLogs, appSettings, connections, mcpServers, verification } from "@/server/db/schema"
 import { demoAccounts, loadTestEnv, World, type ConnInfo, type McpInfo } from "./world"
 
 const hasDb = loadTestEnv()
@@ -62,10 +63,13 @@ describe.skipIf(!hasDb)("server actions with a crafted client", { timeout: 180_0
   afterAll(async () => {
     if (w) await w.cleanup()
   }, 60_000)
-  beforeEach(() => {
+  beforeEach(async () => {
     reauthOutcome = "ok"
     requireUserForAction.mockReset()
     w.reset()
+    // provider calls are throttled per user (10 / min): every test starts with an empty budget
+    const ids = Object.values(w.users).map((u) => quotaId("connection-verify", u.id))
+    await db.delete(verification).where(inArray(verification.id, ids))
   })
 
   const validMcpInput = (conn: ConnInfo, extra: Record<string, unknown> = {}) => ({ ...w.toInput({ platforms: { meta: { permissions: ["read"], connections: [{ conn }] } } }), password: "x", ...extra })
@@ -256,6 +260,28 @@ describe.skipIf(!hasDb)("server actions with a crafted client", { timeout: 180_0
       if (prev) await db.update(appSettings).set({ value: prev.value }).where(eq(appSettings.key, "require_2fa_all"))
       else await db.delete(appSettings).where(inArray(appSettings.key, ["require_2fa_all"]))
     }
+  })
+
+  it("calls that reach the ad platform are throttled per user: the 11th within a minute is refused, other users are not affected", async () => {
+    asUser(w.users.staff)
+    for (let i = 0; i < 10; i++) {
+      const r = await testConnectionAction({ connectionId: staffConn.id })
+      expect(r.ok, `call ${i + 1}`).toBe(true)
+    }
+    const throttled = await testConnectionAction({ connectionId: staffConn.id })
+    expect(throttled).toMatchObject({ ok: false, error: expect.stringMatching(/quá nhanh.*\d+ giây/) })
+    // every provider-facing action shares the budget
+    expect(await syncConnectionAccountsAction({ connectionId: staffConn.id })).toMatchObject({ ok: false, error: expect.stringMatching(/quá nhanh/) })
+    expect(await previewConnectionAction({ platform: "meta", credentials: { token: "abc" } })).toMatchObject({ ok: false, error: expect.stringMatching(/quá nhanh/) })
+    expect(await replaceCredentialsAction({ connectionId: staffConn.id, credentials: { token: "abc" }, password: "x" })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/quá nhanh/),
+    })
+    // other actions are not throttled
+    expect((await connectionUsageAction({ connectionId: staffConn.id })).ok).toBe(true)
+    // another user has their own budget
+    asUser(w.users.admin, true)
+    expect((await testConnectionAction({ connectionId: staffConn.id })).ok).toBe(true)
   })
 
   it("deleting needs the exact name; the answer never contains the key; the old link is dead afterwards", async () => {

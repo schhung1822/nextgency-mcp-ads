@@ -1,24 +1,27 @@
 name: Docker image
 
-# Phát hành bằng tag:  git tag v1.2.3 && git push origin v1.2.3
-#   - kiểm tra package.json#version khớp tag (lệch -> fail ngay, chưa build)
-#   - build + đẩy ghcr.io/notivn/ads-mcp-simple:<ver> (web/worker/migrate/cli) và ...-updater:<ver> (daemon cập nhật)
+# Phát hành bằng tag:  git tag v1.2.3 && git push origin v1.2.3   (tag phải trỏ vào commit đã có trên main)
+#   - kiểm tra package.json#version khớp tag (lệch -> fail ngay, chưa build), tag nằm trên nhánh mặc định,
+#     và bản vX.Y.Z chưa từng phát hành (không ghi đè image của bản đã phát hành - tạo bản vá mới)
+#   - build + đẩy ghcr.io/notivn/ads-mcp-simple:<ver> (web/worker/migrate/cli) và ...-updater:<ver> (daemon cập nhật),
+#     kèm SBOM + provenance, rồi KÝ cả 2 image bằng cosign keyless (OIDC của GitHub Actions). Updater của khách
+#     chỉ nhận image có chữ ký của đúng workflow này cho đúng tag: image tự build/tự push tay sẽ bị từ chối.
 #   - sau khi image đã có trên GHCR: tạo GitHub Release (nội dung: release-notes/<tag>.md) - CHỈ với tag đúng dạng vMAJOR.MINOR.PATCH
 #     (tag có hậu tố như v1.2.3-rc.1 chỉ build image, không tạo Release nên admin không thấy là "bản mới")
-# Push lên main KHÔNG build image (tiết kiệm phút Actions của repo private); chạy tay (workflow_dispatch) trên main
-# thì đẩy :main / :sha-xxxx với APP_BUILD_VERSION=dev. Quy trình đầy đủ: .claude/docs/07-deployment.md §6.
+# Push lên main KHÔNG build image (tiết kiệm phút Actions của repo private); chạy tay (workflow_dispatch) CHỈ trên
+# nhánh mặc định thì đẩy :main / :sha-xxxx với APP_BUILD_VERSION=dev. Không gắn tag `latest`.
+# Quy trình đầy đủ: .claude/docs/07-deployment.md §6.
+# Mọi action ghim theo commit SHA (Dependabot đề xuất cập nhật); quyền token cấp riêng từng job.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
 
 concurrency:
   group: docker-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # không bao giờ huỷ giữa chừng một lần đẩy image phát hành
 
 env:
   IMAGE: ghcr.io/notivn/ads-mcp-simple
@@ -26,14 +29,23 @@ env:
 
 jobs:
   build:
-    name: Build & push (amd64 + arm64)
+    name: Build, push & sign (amd64 + arm64)
+    # tag, hoặc chạy tay trên nhánh mặc định (chạy tay trên nhánh khác bị bỏ qua)
+    if: github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # cosign keyless: chứng chỉ ký gắn với workflow + tag này
     outputs:
       version: ${{ steps.ver.outputs.version }}
       stable: ${{ steps.ver.outputs.stable }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0 # cần lịch sử nhánh mặc định để kiểm tra tag nằm trên đó
+          persist-credentials: false
 
       # v1.2.3 -> APP_BUILD_VERSION=1.2.3 (phải bằng package.json#version) · nhánh/dispatch -> dev
       - id: ver
@@ -41,6 +53,8 @@ jobs:
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ "$REF_TYPE" = "tag" ]; then
@@ -55,6 +69,14 @@ jobs:
               exit 1
             fi
             if printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then stable=true; else stable=false; fi
+            # Gói GitHub Free không có tag ruleset: workflow tự chặn tag tạo trên nhánh chưa merge ...
+            git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH" \
+              || { echo "::error::Tag $REF_NAME không trỏ vào commit trên $DEFAULT_BRANCH"; exit 1; }
+            # ... và việc đẩy lại image của một bản đã phát hành (Release chỉ được tạo ở cuối, nên chạy lại
+            # sau khi lỗi giữa chừng vẫn được)
+            if [ "$stable" = true ] && gh release view "$REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::$REF_NAME đã phát hành - không ghi đè image của bản đã phát hành (tạo bản vá mới)"; exit 1
+            fi
           else
             version=dev
             stable=false
@@ -63,53 +85,54 @@ jobs:
           echo "stable=$stable" >> "$GITHUB_OUTPUT"
           echo "APP_BUILD_VERSION=$version (stable release: $stable)"
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.IMAGE }}
-          # v1.2.3 → 1.2.3, 1.2, v1.2.3, latest · main → main, sha-xxxxxxx
+          # v1.2.3 → 1.2.3, 1.2, v1.2.3 · main → main, sha-xxxxxxx · KHÔNG gắn latest (compose luôn dùng APP_VERSION)
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=tag
-            type=ref,event=branch
+            type=ref,event=branch,enable={{is_default_branch}}
             type=sha,format=short
           flavor: |
-            latest=auto
+            latest=false
           labels: |
             org.opencontainers.image.title=Ads MCP by: noti.vn
             org.opencontainers.image.vendor=noti.vn
             org.opencontainers.image.licenses=LicenseRef-noti.vn-Proprietary
 
       - id: meta-updater
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.IMAGE_UPDATER }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=tag
-            type=ref,event=branch
+            type=ref,event=branch,enable={{is_default_branch}}
             type=sha,format=short
           flavor: |
-            latest=auto
+            latest=false
           labels: |
             org.opencontainers.image.title=Ads MCP by: noti.vn - updater
             org.opencontainers.image.vendor=noti.vn
             org.opencontainers.image.licenses=LicenseRef-noti.vn-Proprietary
 
       # Web/worker/migrate/cli image (target mặc định: runner)
-      - uses: docker/build-push-action@v6
+      - id: build-web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           target: runner
@@ -122,9 +145,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
+          sbom: true
 
       # Updater image: dùng lại layer builder đã có trong cache của bước trên
-      - uses: docker/build-push-action@v6
+      - id: build-updater
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           target: updater
@@ -137,8 +162,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
+          sbom: true
 
-  # Chỉ chạy khi cả 2 image đã được đẩy xong và tag là bản chính thức vMAJOR.MINOR.PATCH
+      # Ký digest (index multi-arch = digest mà `docker pull <tag>` ghi vào RepoDigests). Danh tính chứng chỉ:
+      # https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/vX.Y.Z
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (cosign v3.0.6)
+      - name: Sign images (cosign keyless, GitHub OIDC)
+        env:
+          DIGEST_WEB: ${{ steps.build-web.outputs.digest }}
+          DIGEST_UPD: ${{ steps.build-updater.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST_WEB}"
+          cosign sign --yes "${IMAGE_UPDATER}@${DIGEST_UPD}"
+
+  # Chỉ chạy khi cả 2 image đã được đẩy + ký xong và tag là bản chính thức vMAJOR.MINOR.PATCH
   release:
     name: GitHub Release
     needs: build
@@ -150,9 +188,10 @@ jobs:
     steps:
       # release-notes/<tag>.md (Vietnamese, written by the maintainer) is the release body the admins read in
       # "Cài đặt → Cập nhật hệ thống"; auto-generated notes are only a fallback when the file is missing.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           sparse-checkout: release-notes
+          persist-credentials: false
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

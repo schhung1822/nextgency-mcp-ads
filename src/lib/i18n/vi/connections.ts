@@ -227,6 +227,7 @@ export const connections = {
 
   errors: {
     notFound: "Không tìm thấy kết nối hoặc bạn không có quyền xem.",
+    tooManyChecks: (sec: number) => `Bạn kiểm tra kết nối quá nhanh. Vui lòng thử lại sau ${sec} giây.`,
     accountNotFound: "Không tìm thấy tài khoản quảng cáo trong kết nối này.",
     invalidInput: "Thông tin chưa hợp lệ. Vui lòng kiểm tra lại.",
     tokenInvalid:

@@ -152,7 +152,8 @@ export interface PagesSyncDto {
 }
 
 export interface McpUsage {
-  id: string
+  /** null when the MCP belongs to someone else and the viewer is staff (no foreign MCP ids for staff) */
+  id: string | null
   /** null when the MCP belongs to someone else and the viewer is staff */
   name: string | null
   ownedByViewer: boolean

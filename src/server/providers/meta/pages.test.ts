@@ -13,6 +13,7 @@ import {
   listMetaPagePosts,
   listMetaPages,
   normalizePageTasks,
+  PAGE_TOKEN_TTL_MS,
   pageCapabilities,
   postBelongsToPage,
 } from "./pages"
@@ -28,6 +29,13 @@ const PAGE = "4036745737"
 const PAGE_TOKEN = "EAApagetokenvalue000000000000000000"
 const SECRET = "app-secret-123"
 const ctx = () => providerCtx({}, { appId: "111", appSecret: SECRET })
+
+describe("page access token cache", () => {
+  it("keeps Page tokens in memory for at most 5 minutes", () => {
+    expect(PAGE_TOKEN_TTL_MS).toBeGreaterThan(0)
+    expect(PAGE_TOKEN_TTL_MS).toBeLessThanOrEqual(5 * 60_000)
+  })
+})
 
 beforeEach(() => {
   __resetBuckets()

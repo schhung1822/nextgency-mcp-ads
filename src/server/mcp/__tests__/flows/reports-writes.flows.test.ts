@@ -280,7 +280,7 @@ describe.skipIf(!hasDb)("reports and writes on all platforms (services → endpo
       expect(objs.find((o) => o.id === "c4")!.status).toBe("paused")
     })
 
-    it("write idempotency: the same client idempotency_key reaches the adapter as the same key (scoped per MCP)", async () => {
+    it("write idempotency: the same client idempotency_key + same args reaches the adapter as the same key (scoped per MCP and args)", async () => {
       const mk = () =>
         w.mcp(w.users.staff, {
           settings: { twoStepConfirm: false },
@@ -291,12 +291,14 @@ describe.skipIf(!hasDb)("reports and writes on all platforms (services → endpo
       const args = (n: string) => ({ platform, account_id: acc().externalId, level: "campaign", id: "c1", name: n, idempotency_key: "same-key-1" })
       w.state.executions.length = 0
       await w.call(a.key, "ads_update_object", args("N1"))
+      await w.call(a.key, "ads_update_object", args("N1"))
       await w.call(a.key, "ads_update_object", args("N2"))
       await w.call(b.key, "ads_update_object", args("N1"))
       const keys = w.state.executions.filter((e) => e.op === "update_object").map((e) => e.idem)
-      expect(keys).toHaveLength(3)
-      expect(keys[0]).toBe(keys[1]) // same MCP + tool + client key
-      expect(keys[2]).not.toBe(keys[0]) // another MCP never shares keys
+      expect(keys).toHaveLength(4)
+      expect(keys[1]).toBe(keys[0]) // same MCP + tool + args + client key
+      expect(keys[2]).not.toBe(keys[0]) // same client key with other args is another write
+      expect(keys[3]).not.toBe(keys[0]) // another MCP never shares keys
       expect(keys.every((k) => typeof k === "string" && k.startsWith("mcpw-"))).toBe(true)
     })
 
@@ -354,5 +356,163 @@ describe.skipIf(!hasDb)("reports and writes on all platforms (services → endpo
       // reads are never limited by it
       expect((await w.call(mcp.key, "ads_list_objects", { platform, account_id: acc().externalId, level: "campaign" })).isError).toBe(false)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Mandatory daily caps (new MCPs) / legacy MCPs, and lifetime caps that follow the real flight
+// (schedule changes, Meta CBO campaigns over their ad sets, ABO campaigns switched on with their ad sets).
+describe.skipIf(!hasDb)("money caps: mandatory caps, legacy MCPs and lifetime flights (Meta)", { timeout: 300_000 }, () => {
+  let w: World
+  let conn: ConnInfo
+  const DAY = 86_400_000
+  const inDays = (n: number) => new Date(Date.now() + n * DAY).toISOString()
+  const acc = () => demoAccounts(w.prefix, "meta")[0]! // VND
+  const objs = () => w.state.objects.get(acc().externalId)!
+  const obj = (id: string) => objs().find((o) => o.id === id)!
+  const ALL = ["read", "status", "update", "copy", "create"] as const
+
+  beforeAll(async () => {
+    w = await World.create()
+    conn = await w.connect(w.users.staff, "meta", demoAccounts(w.prefix, "meta"))
+  }, 120_000)
+  afterAll(async () => {
+    if (w) await w.cleanup()
+  }, 60_000)
+  beforeEach(() => w.reset())
+
+  const mk = (settings: Record<string, unknown> = {}) =>
+    w.mcp(w.users.staff, {
+      settings: { twoStepConfirm: false, budgetChangeMaxPct: 500, ...settings },
+      platforms: { meta: { permissions: [...ALL], connections: [{ conn }] } },
+    })
+  const setStatus = (key: string, level: string, ids: string[], status = "active", extra: Record<string, unknown> = {}) =>
+    w.call(key, "ads_set_status", { platform: "meta", account_id: acc().externalId, level, ids, status, ...extra })
+  const budget = (key: string, level: string, id: string, budget_type: string, amount: number, extra: Record<string, unknown> = {}) =>
+    w.call(key, "ads_update_budget", { platform: "meta", account_id: acc().externalId, level, id, budget_type, amount, ...extra })
+
+  it("a legacy MCP (row without money_caps_required) still writes without caps, and its previews warn", async () => {
+    w.seedObjects(acc().externalId, [
+      { id: "c1", level: "campaign", name: "C1", status: "paused", parentId: null, budget: { type: "daily", amount: 9e9, level: "campaign" } },
+    ])
+    const mcp = await mk({ twoStepConfirm: true })
+    await w.makeLegacy(mcp.id, { twoStepConfirm: true }) // no caps at all
+    const p = await budget(mcp.key, "campaign", "c1", "daily", 1e10)
+    expect(p.sc.status, p.text).toBe("confirmation_required")
+    expect((p.sc.preview.warnings as string[])[0]).toMatch(/chưa đặt trần ngân sách\/ngày cho VND/)
+    const on = await setStatus(mcp.key, "campaign", ["c1"])
+    expect(on.sc.status, on.text).toBe("confirmation_required")
+    expect((on.sc.preview.warnings as string[]).join(" ")).toMatch(/chưa đặt trần/)
+    const done = await setStatus(mcp.key, "campaign", ["c1"], "active", { confirm_token: on.sc.confirm_token })
+    expect(done.sc.status, done.text).toBe("success")
+    const ext = await w.call(mcp.key, "meta_fake_create_adgroup", { account_id: acc().externalId, name: "G", daily_budget: 9e9 })
+    expect(ext.sc.status, ext.text).toBe("confirmation_required")
+    expect((ext.sc.preview.warnings as string[])[0]).toMatch(/chưa đặt trần/)
+  })
+
+  it("a new MCP without a daily cap for the account currency cannot start or raise spend (budget_cap_missing)", async () => {
+    w.seedObjects(acc().externalId, [
+      { id: "c1", level: "campaign", name: "C1", status: "paused", parentId: null, budget: { type: "daily", amount: 100, level: "campaign" } },
+    ])
+    const { mcpServers } = await import("@/server/db/schema")
+    const { invalidateGrantCache } = await import("@/server/mcp/grant")
+    const mcp = await mk()
+    // e.g. the VND account was synced after the MCP was saved: caps required, no VND cap
+    const [row] = await db.select({ settings: mcpServers.settings }).from(mcpServers).where(eq(mcpServers.id, mcp.id))
+    const stored = row!.settings as { max_daily_budget: Record<string, number>; money_caps_required: boolean }
+    expect(stored.money_caps_required).toBe(true)
+    const { VND: _vnd, ...others } = stored.max_daily_budget
+    await db.update(mcpServers).set({ settings: { ...stored, max_daily_budget: others } }).where(eq(mcpServers.id, mcp.id))
+    invalidateGrantCache(mcp.id)
+    const before = w.state.executions.length
+
+    for (const r of [
+      await setStatus(mcp.key, "campaign", ["c1"]),
+      await budget(mcp.key, "campaign", "c1", "daily", 110),
+      await w.call(mcp.key, "meta_fake_create_adgroup", { account_id: acc().externalId, name: "G", daily_budget: 10 }),
+      await w.call(mcp.key, "ads_update_object", { platform: "meta", account_id: acc().externalId, level: "campaign", id: "c1", end_time: inDays(3) }),
+    ]) {
+      expect(r.sc.code, r.text).toBe("budget_cap_missing")
+      expect(r.sc.hint).toMatch(/Cấu hình/)
+    }
+    expect(w.state.executions.length).toBe(before)
+    // what cannot spend more stays allowed: pausing, renaming, creating without money
+    expect((await setStatus(mcp.key, "campaign", ["c1"], "paused")).isError).toBe(false)
+    expect((await w.call(mcp.key, "ads_update_object", { platform: "meta", account_id: acc().externalId, level: "campaign", id: "c1", name: "C1b" })).isError).toBe(false)
+    expect((await w.call(mcp.key, "meta_fake_create_campaign", { account_id: acc().externalId, name: "N" })).isError).toBe(false)
+  })
+
+  it("pulling in the end of an ad set with a lifetime budget re-checks the lifetime cap on both steps", async () => {
+    w.seedObjects(acc().externalId, [
+      { id: "cg", level: "campaign", name: "CG", status: "active", parentId: null, budget: null },
+      { id: "gl", level: "ad_group", name: "GL", status: "active", parentId: "cg", budget: { type: "lifetime", amount: 20_000, level: "ad_group" }, endTime: inDays(30) },
+    ])
+    const mcp = await mk({ twoStepConfirm: true, maxDailyBudget: { VND: 1000 } })
+    const upd = (end: string, extra: Record<string, unknown> = {}) =>
+      w.call(mcp.key, "ads_update_object", { platform: "meta", account_id: acc().externalId, level: "ad_group", id: "gl", end_time: end, ...extra })
+    // 20 000 over 5 days = 4 000/day > 1 000/day cap
+    const short = await upd(inDays(5))
+    expect(short.sc.code, short.text).toBe("budget_cap_exceeded")
+    expect(short.text).toMatch(/lịch chạy mới/)
+    // 25 days: allowed at preview time …
+    const end25 = inDays(25)
+    const p = await upd(end25)
+    expect(p.sc.status, p.text).toBe("confirmation_required")
+    // … but the budget grew before the confirmation: refused at the confirm step, nothing executed
+    obj("gl").budget = { type: "lifetime", amount: 28_000, level: "ad_group" }
+    const before = w.state.executions.length
+    const late = await upd(end25, { confirm_token: p.sc.confirm_token })
+    expect(late.sc.code, late.text).toBe("budget_cap_exceeded")
+    expect(w.state.executions.length).toBe(before)
+  })
+
+  it("a CBO lifetime campaign without stop_time is capped over its ad sets' flight, not 30 days", async () => {
+    w.seedObjects(acc().externalId, [
+      { id: "cb", level: "campaign", name: "CB", status: "paused", parentId: null, budget: { type: "lifetime", amount: 20_000, level: "campaign" } },
+      // configured ACTIVE (the campaign is paused, so it does not deliver yet) - ends in 10 days
+      { id: "cbA", level: "ad_group", name: "A", status: "paused", configuredStatus: "ACTIVE", parentId: "cb", budget: null, endTime: inDays(10) },
+      { id: "cbB", level: "ad_group", name: "B", status: "paused", parentId: "cb", budget: null, endTime: inDays(60) },
+    ])
+    const mcp = await mk({ maxDailyBudget: { VND: 1000 } })
+    // cap = 1 000 × 10 days (ad set A) = 10 000 < 20 000 (the old rule allowed 1 000 × 30 days)
+    const on = await setStatus(mcp.key, "campaign", ["cb"])
+    expect(on.sc.code, on.text).toBe("budget_cap_exceeded")
+    expect(on.text).toMatch(/10 ngày/)
+    expect(obj("cb").status).toBe("paused")
+    // switching on ad set B too makes the flight 60 days: 60 000 ≥ 20 000
+    const b = await setStatus(mcp.key, "ad_group", ["cbB"])
+    expect(b.isError, b.text).toBe(false)
+    // an ad set with no end and a campaign with no stop_time: the flight is unknown → refused
+    obj("cbA").endTime = null
+    const unknown = await setStatus(mcp.key, "campaign", ["cb"])
+    expect(unknown.sc.code, unknown.text).toBe("budget_flight_unknown")
+  })
+
+  it("switching on an ABO campaign checks its ad sets that are configured on; paused ones are ignored", async () => {
+    w.seedObjects(acc().externalId, [
+      { id: "ab", level: "campaign", name: "AB", status: "paused", parentId: null, budget: null },
+      { id: "abA", level: "ad_group", name: "A", status: "paused", configuredStatus: "ACTIVE", parentId: "ab", budget: { type: "daily", amount: 5000, level: "ad_group" } },
+      { id: "abP", level: "ad_group", name: "P", status: "paused", parentId: "ab", budget: { type: "daily", amount: 9e9, level: "ad_group" } },
+    ])
+    const mcp = await mk({ maxDailyBudget: { VND: 1000 } })
+    const on = await setStatus(mcp.key, "campaign", ["ab"])
+    expect(on.sc.code, on.text).toBe("budget_cap_exceeded")
+    expect(on.text).toMatch(/abA/)
+    obj("abA").configuredStatus = "PAUSED"
+    const ok = await setStatus(mcp.key, "campaign", ["ab"])
+    expect(ok.isError, ok.text).toBe(false)
+  })
+
+  it("ads_update_budget on a CBO lifetime budget uses the ad-set flight", async () => {
+    w.seedObjects(acc().externalId, [
+      { id: "cu", level: "campaign", name: "CU", status: "active", parentId: null, budget: { type: "lifetime", amount: 5000, level: "campaign" } },
+      { id: "cuA", level: "ad_group", name: "A", status: "active", parentId: "cu", budget: null, endTime: inDays(10) },
+    ])
+    const mcp = await mk({ maxDailyBudget: { VND: 1000 } })
+    const over = await budget(mcp.key, "campaign", "cu", "lifetime", 12_000)
+    expect(over.sc.code, over.text).toBe("budget_cap_exceeded")
+    const ok = await budget(mcp.key, "campaign", "cu", "lifetime", 9000)
+    expect(ok.isError, ok.text).toBe(false)
+    expect(obj("cu").budget!.amount).toBe(9000)
   })
 })

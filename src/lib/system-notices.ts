@@ -1,6 +1,6 @@
 // System notices (.claude/docs/13-system-notices.md): short announcements fetched hourly from the noti.vn webhook
-// and shown in the top bar ticker + appended to MCP tool results. Framework-free and import-free: used by the
-// worker job, the web app, the MCP layer and client components.
+// and shown ONLY in the web top bar ticker (never sent to AI clients through MCP results). Framework-free and
+// import-free: used by the worker job, the web app and client components.
 
 export interface SystemNotice {
   /** stable key for React lists (webhook row id when present) */
@@ -89,24 +89,4 @@ export function parseNoticesPayload(payload: unknown): SystemNotice[] {
     out.push({ id: out.some((n) => n.id === id) ? `${id}-${i}` : id, content })
   }
   return out
-}
-
-/** Exact sentence shown in AI chats while a newer release waits to be installed. */
-export const MCP_UPDATE_NOTICE =
-  "Ads MCP Simple có bản update, vui lòng update để sử dụng tính năng mới nhất nhé"
-
-/** One line per notice, the form the AI client receives. */
-export function mcpNoticeLine(content: string): string {
-  return `Thông báo hệ thống Ads MCP Simple: "${content}"`
-}
-
-/** Text block appended to MCP tool results; null when there is nothing to say. */
-export function buildMcpNoticeText(o: {
-  updateAvailable: boolean
-  notices: readonly SystemNotice[]
-}): string | null {
-  const lines: string[] = []
-  if (o.updateAvailable) lines.push(MCP_UPDATE_NOTICE)
-  for (const n of o.notices) lines.push(mcpNoticeLine(n.content))
-  return lines.length ? lines.join("\n") : null
 }

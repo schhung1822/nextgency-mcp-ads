@@ -234,6 +234,46 @@ describe("fetchLatestRelease - lỗi GitHub", () => {
   })
 })
 
+describe("fetchLatestRelease - chuyển hướng (redirect)", () => {
+  const redirect = (location: string, status = 301) => new Response(null, { status, headers: { location } })
+  const withToken = { repo: "notivn/ads-mcp-simple", token: TOKEN }
+
+  it("301 sang api.github.com (repo đổi tên) được theo, vẫn gửi token, không để fetch tự theo", async () => {
+    const moved = "https://api.github.com/repositories/1/releases/latest"
+    const f = vi.fn(async (input: string | URL | Request, _init?: RequestInit) =>
+      String(input) === moved ? json(release()) : redirect(moved)
+    )
+    const r = await run(f as unknown as typeof fetch, withToken)
+    expect(r.version).toBe("1.3.0")
+    expect(f).toHaveBeenCalledTimes(2)
+    const [url2, init2] = f.mock.calls[1] as unknown as [string, RequestInit]
+    expect(url2).toBe(moved)
+    expect((init2.headers as Record<string, string>).Authorization).toBe(`Bearer ${TOKEN}`)
+    for (const [, init] of f.mock.calls as unknown as [string, RequestInit][]) expect(init.redirect).toBe("manual")
+  })
+
+  it("302 sang tên miền khác -> unavailable, không gọi tiếp (token không rời api.github.com)", async () => {
+    const f = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => redirect("https://evil.example/", 302))
+    await expect(run(f as unknown as typeof fetch, withToken)).rejects.toMatchObject({ name: "UpdateCheckError", code: "unavailable" })
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it("quá 2 lần chuyển hướng -> unavailable", async () => {
+    let n = 0
+    const f = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => redirect(`https://api.github.com/repositories/1/hop${++n}`))
+    await expect(run(f as unknown as typeof fetch)).rejects.toMatchObject({ code: "unavailable" })
+    expect(f).toHaveBeenCalledTimes(3)
+  })
+
+  it("3xx không có Location hoặc Location hỏng -> unavailable", async () => {
+    const none = vi.fn(async () => new Response(null, { status: 307 }))
+    await expect(run(none as unknown as typeof fetch)).rejects.toMatchObject({ code: "unavailable" })
+    const bad = vi.fn(async () => redirect("http://[::1"))
+    await expect(run(bad as unknown as typeof fetch)).rejects.toMatchObject({ code: "unavailable" })
+    expect(bad).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("fetchLatestRelease - kích thước phản hồi", () => {
   it("phản hồi quá lớn bị coi là dữ liệu không đọc được", async () => {
     const big = JSON.stringify(release({ body: "x".repeat(1_200_000) }))

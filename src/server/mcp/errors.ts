@@ -1,6 +1,7 @@
 // Business / permission errors raised inside tool handlers, and their mapping to tool results
 // ({ isError: true, structuredContent: { code, message (VI), platform_error, hint } }).
 import { redactString } from "../audit/redact"
+import { safeErrorForLog } from "../audit/safe-error"
 import { isProviderError } from "../providers/errors"
 import type { Platform } from "../providers/types"
 
@@ -80,16 +81,19 @@ const PROVIDER_HINTS: Partial<Record<string, string>> = {
   unsupported: "Thao tác này không có trên nền tảng/tài khoản này.",
 }
 
-/** Map anything thrown by a tool handler to a tool error payload. Never leaks internals. */
+/**
+ * Map anything thrown by a tool handler to a tool error payload. Never leaks internals: every text that reaches
+ * the AI is redacted (provider messages can echo tokens / signed URLs).
+ */
 export function mapToolError(e: unknown): MappedError {
   if (e instanceof McpToolError) {
     return {
       payload: {
         code: e.code,
-        message: e.messageVi,
+        message: redactString(e.messageVi),
         platform: null,
         platform_error: null,
-        hint: e.hint ?? null,
+        hint: e.hint ? redactString(e.hint) : null,
         retryable: false,
         ...(e.details ? { details: e.details } : {}),
       },
@@ -113,10 +117,10 @@ export function mapToolError(e: unknown): MappedError {
     return {
       payload: {
         code: j.code,
-        message: j.message,
+        message: redactString(j.message).slice(0, 1000),
         platform: j.platform,
         platform_error: platformError,
-        hint: j.hint ?? PROVIDER_HINTS[j.code] ?? null,
+        hint: redactString(j.hint ?? PROVIDER_HINTS[j.code] ?? "").slice(0, 500) || null,
         retryable: j.retryable,
       },
       logStatus: j.code === "permission_denied" ? "denied" : j.code === "invalid_request" ? "invalid_request" : "error",
@@ -149,7 +153,6 @@ export function mapToolError(e: unknown): MappedError {
       upstreamRequestId: null,
     }
   }
-  const msg = e instanceof Error ? e.message : String(e)
   return {
     payload: {
       code: "internal_error",
@@ -160,7 +163,8 @@ export function mapToolError(e: unknown): MappedError {
       retryable: true,
     },
     logStatus: "error",
-    logMessage: redactString(msg).slice(0, 2000),
+    // Drizzle errors carry the query params (ciphertext, args…): never the raw message
+    logMessage: safeErrorForLog(e),
     upstreamRequestId: null,
   }
 }

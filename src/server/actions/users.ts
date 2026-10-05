@@ -9,6 +9,7 @@ import {
   banSchema,
   changeRoleSchema,
   createUserSchema,
+  deleteUserSchema,
   resetPasswordSchema,
   resetTwoFactorSchema,
   revokeSessionsSchema,
@@ -94,21 +95,22 @@ export async function setUserBannedAction(input: unknown): Promise<ActionResult>
   try {
     const s = await requireUserForAction({ role: "admin" })
     const parsed = banSchema.safeParse(input)
-    if (!parsed.success) return fail(tUsers.errors.notFound)
-    await usersService.setUserBanned(s, parsed.data)
+    if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? tUsers.errors.notFound, zodFieldErrors(parsed.error))
+    const { reauth, ...data } = parsed.data
+    await usersService.setUserBanned(s, data, await verifierFor(s, reauth))
     revalidatePath(USERS_PATH)
-    return ok(undefined, parsed.data.banned ? tUsers.toast.banned : tUsers.toast.unbanned)
+    return ok(undefined, data.banned ? tUsers.toast.banned : tUsers.toast.unbanned)
   } catch (e) {
-    return fail(toUserMessage(e, "users.ban"))
+    return failFrom(e, "users.ban")
   }
 }
 
 export async function listUserSessionsAction(input: unknown): Promise<ActionResult<usersService.SessionItem[]>> {
   try {
-    await requireUserForAction({ role: "admin" })
+    const s = await requireUserForAction({ role: "admin" })
     const parsed = userTargetSchema.safeParse(input)
     if (!parsed.success) return fail(tUsers.errors.notFound)
-    return ok(await usersService.listSessionsOf(parsed.data.userId))
+    return ok(await usersService.listSessionsOf(s, parsed.data.userId))
   } catch (e) {
     return fail(toUserMessage(e, "users.sessions"))
   }
@@ -118,24 +120,26 @@ export async function revokeUserSessionsAction(input: unknown): Promise<ActionRe
   try {
     const s = await requireUserForAction({ role: "admin" })
     const parsed = revokeSessionsSchema.safeParse(input)
-    if (!parsed.success) return fail(tUsers.errors.notFound)
-    const n = await usersService.revokeUserSessionsByAdmin(s, parsed.data)
+    if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? tUsers.errors.notFound, zodFieldErrors(parsed.error))
+    const { reauth, ...data } = parsed.data
+    const n = await usersService.revokeUserSessionsByAdmin(s, data, await verifierFor(s, reauth))
     revalidatePath(USERS_PATH)
-    return ok({ count: n }, parsed.data.sessionId ? tUsers.toast.sessionRevoked : tUsers.toast.sessionsRevoked)
+    return ok({ count: n }, data.sessionId ? tUsers.toast.sessionRevoked : tUsers.toast.sessionsRevoked)
   } catch (e) {
-    return fail(toUserMessage(e, "users.revokeSessions"))
+    return failFrom(e, "users.revokeSessions")
   }
 }
 
 export async function deleteUserAction(input: unknown): Promise<ActionResult> {
   try {
     const s = await requireUserForAction({ role: "admin" })
-    const parsed = userTargetSchema.safeParse(input)
-    if (!parsed.success) return fail(tUsers.errors.notFound)
-    await usersService.deleteUserByAdmin(s, parsed.data)
+    const parsed = deleteUserSchema.safeParse(input)
+    if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? tUsers.errors.notFound, zodFieldErrors(parsed.error))
+    const { reauth, ...data } = parsed.data
+    await usersService.deleteUserByAdmin(s, data, await verifierFor(s, reauth))
     revalidatePath(USERS_PATH)
     return ok(undefined, tUsers.toast.deleted)
   } catch (e) {
-    return fail(toUserMessage(e, "users.delete"))
+    return failFrom(e, "users.delete")
   }
 }

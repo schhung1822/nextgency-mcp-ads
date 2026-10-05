@@ -8,6 +8,7 @@
 //   reset-password <email>            (alias: user:reset-password)
 //   reset-2fa <email>                 (alias: user:reset-2fa)
 //   unlock <email>                    gỡ khoá đăng nhập (sai mật khẩu nhiều lần + khoá 2FA)
+//   unban <email>                     mở khoá tài khoản bị quản trị viên khoá (alias: user:unban)
 //   reencrypt [--dry-run]             mã hoá lại credential/key MCP bằng khoá ENCRYPTION_KEYS đang dùng
 // Secrets passed as argv (--password) still work but print a warning: argv is visible
 // in `ps`, shell history and container inspect output.
@@ -51,6 +52,9 @@ Cách dùng: node dist/cli.mjs <lệnh> [tham số]   (dev: pnpm cli <lệnh>)
   unlock <email>
       Gỡ khoá đăng nhập của email (khoá do nhập sai mật khẩu — theo email và theo IP — và khoá 2FA do nhập
       sai mã nhiều lần). Không đổi mật khẩu, không đăng xuất thiết bị.
+  unban <email>
+      Mở khoá tài khoản đã bị quản trị viên khoá (Người dùng → Khoá tài khoản). Không đổi mật khẩu, không đổi 2FA.
+      Khác với "unlock" (gỡ khoá do nhập sai mật khẩu nhiều lần).
   reencrypt [--dry-run]
       Mã hoá lại credential kết nối và key MCP chưa dùng khoá ENCRYPTION_KEYS đang hoạt động.
 `
@@ -244,12 +248,16 @@ async function resetPassword(args: string[]) {
     }
     await tx.update(user).set({ mustChangePassword: true }).where(eq(user.id, u.id))
     await tx.delete(session).where(eq(session.userId, u.id))
+    // "trust this device" cookies must not skip 2FA after a password reset
+    await tx
+      .delete(verification)
+      .where(and(like(verification.identifier, "trust-device-%"), eq(verification.value, u.id)))
     await insertActivity(
       {
         actor: CLI_ACTOR,
         action: "user.password.reset",
         target: { type: "user", id: u.id, label: email },
-        metadata: { via: "cli", forcedChangeOnLogin: true, sessionsRevoked: true },
+        metadata: { via: "cli", forcedChangeOnLogin: true, sessionsRevoked: true, trustedDevicesRevoked: true },
       },
       tx
     )
@@ -305,58 +313,135 @@ async function unlock(args: string[]) {
   out(`✔ Đã gỡ khoá đăng nhập cho ${email} (${cleared} bộ đếm sai mật khẩu${u ? "" : "; không có tài khoản nào dùng email này"}).`)
 }
 
+async function unban(args: string[]) {
+  const email = normEmail(args[0])
+  const u = await findUserByEmail(email)
+  if (!u.banned) {
+    out(`Tài khoản ${email} không bị khoá - không cần mở khoá.`)
+    return
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .update(user)
+      .set({ banned: false, banReason: null, banExpires: null, updatedAt: new Date() })
+      .where(eq(user.id, u.id))
+    await insertActivity(
+      {
+        actor: CLI_ACTOR,
+        action: "user.unban",
+        target: { type: "user", id: u.id, label: email },
+        metadata: { via: "cli", before: { banned: true }, after: { banned: false } },
+      },
+      tx
+    )
+  })
+  out(`✔ Đã mở khoá tài khoản ${email}. Người dùng đăng nhập lại bằng mật khẩu hiện tại.`)
+}
+
+type ReencryptFailure = { kind: "connection" | "mcp"; id: string; reason: string }
+
+/**
+ * Re-encrypt every row of one table that is not under the active key. Row by row: a row that cannot be decrypted
+ * (its key version is no longer in ENCRYPTION_KEYS, or the ciphertext is damaged) is reported and skipped instead of
+ * aborting the whole run. Compare-and-swap update: a row changed meanwhile (e.g. token replaced) is left alone.
+ */
+async function reencryptRows(
+  kind: ReencryptFailure["kind"],
+  rows: { id: string; enc: string }[],
+  aadOf: (id: string) => string,
+  save: (id: string, prev: string, next: string) => Promise<boolean>,
+  dry: boolean,
+  failures: ReencryptFailure[]
+): Promise<{ count: number; raced: number; failed: number }> {
+  let count = 0
+  let raced = 0
+  let failed = 0
+  for (const r of rows) {
+    if (!needsReencrypt(r.enc)) continue
+    try {
+      const plain = decryptSecret(r.enc, aadOf(r.id))
+      if (dry) {
+        count++
+        continue
+      }
+      if (await save(r.id, r.enc, encryptSecret(plain, aadOf(r.id)))) count++
+      else raced++
+    } catch (e) {
+      failed++
+      failures.push({ kind, id: r.id, reason: safeErrorForLog(e) })
+    }
+  }
+  return { count, raced, failed }
+}
+
 async function reencrypt(args: string[]) {
   const { values } = parseArgs({ args, options: { "dry-run": { type: "boolean" } }, strict: true })
   const dry = !!values["dry-run"]
-  let conn = 0
-  let mcp = 0
+  const failures: ReencryptFailure[] = []
   const connRows = await db
     .select({ id: connections.id, enc: connections.credentialsEncrypted })
     .from(connections)
-  for (const r of connRows) {
-    if (!needsReencrypt(r.enc)) continue
-    conn++
-    if (dry) continue
-    const plain = decryptSecret(r.enc, aad.connectionCredentials(r.id))
-    const next = encryptSecret(plain, aad.connectionCredentials(r.id))
-    await db
-      .update(connections)
-      .set({ credentialsEncrypted: next })
-      .where(and(eq(connections.id, r.id), eq(connections.credentialsEncrypted, r.enc)))
-  }
+  const conn = await reencryptRows(
+    "connection",
+    connRows,
+    aad.connectionCredentials,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(connections)
+          .set({ credentialsEncrypted: next })
+          .where(and(eq(connections.id, id), eq(connections.credentialsEncrypted, prev)))
+          .returning({ id: connections.id })
+      ).length === 1,
+    dry,
+    failures
+  )
   const mcpRows = await db.select({ id: mcpServers.id, enc: mcpServers.keyEncrypted }).from(mcpServers)
-  for (const r of mcpRows) {
-    if (!needsReencrypt(r.enc)) continue
-    mcp++
-    if (dry) continue
-    const plain = decryptSecret(r.enc, aad.mcpKey(r.id))
-    const next = encryptSecret(plain, aad.mcpKey(r.id))
-    await db
-      .update(mcpServers)
-      .set({ keyEncrypted: next })
-      .where(and(eq(mcpServers.id, r.id), eq(mcpServers.keyEncrypted, r.enc)))
-  }
+  const mcp = await reencryptRows(
+    "mcp",
+    mcpRows,
+    aad.mcpKey,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(mcpServers)
+          .set({ keyEncrypted: next })
+          .where(and(eq(mcpServers.id, id), eq(mcpServers.keyEncrypted, prev)))
+          .returning({ id: mcpServers.id })
+      ).length === 1,
+    dry,
+    failures
+  )
   if (!dry) {
-    if (conn > 0)
+    if (conn.count > 0 || conn.failed > 0)
       await insertActivity({
         actor: CLI_ACTOR,
         action: "connection.update",
         target: { type: "connection", id: null, label: "reencrypt" },
-        metadata: { via: "cli", op: "reencrypt", count: conn },
+        metadata: { via: "cli", op: "reencrypt", count: conn.count, failed: conn.failed },
       })
-    if (mcp > 0)
+    if (mcp.count > 0 || mcp.failed > 0)
       await insertActivity({
         actor: CLI_ACTOR,
         action: "mcp.update",
         target: { type: "mcp", id: null, label: "reencrypt" },
-        metadata: { via: "cli", op: "reencrypt", count: mcp },
+        metadata: { via: "cli", op: "reencrypt", count: mcp.count, failed: mcp.failed },
       })
   }
   out(
     dry
-      ? `Cần mã hoá lại: ${conn} kết nối, ${mcp} key MCP (chạy lại không có --dry-run để thực hiện).`
-      : `✔ Đã mã hoá lại ${conn} kết nối và ${mcp} key MCP bằng khoá đang hoạt động.`
+      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP (chạy lại không có --dry-run để thực hiện).`
+      : `✔ Đã mã hoá lại ${conn.count} kết nối và ${mcp.count} key MCP bằng khoá đang hoạt động.`
   )
+  // ids + a redacted error message only - never ciphertext or plaintext
+  for (const f of failures) process.stderr.write(`✖ ${f.kind === "connection" ? "kết nối" : "MCP"} ${f.id}: ${f.reason}\n`)
+  const raced = conn.raced + mcp.raced
+  if (raced > 0) out(`  ${raced} bản ghi vừa được thay đổi trong lúc chạy - chạy lại lệnh để mã hoá nốt.`)
+  if (failures.length > 0) {
+    throw new CliError(
+      `${failures.length} bản ghi không ${dry ? "giải mã" : "mã hoá lại"} được (giữ khoá cũ trong ENCRYPTION_KEYS, kiểm tra rồi chạy lại).`
+    )
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +465,10 @@ export async function main(argv: string[]): Promise<number> {
       case "unlock":
       case "user:unlock":
         await unlock(rest)
+        break
+      case "unban":
+      case "user:unban":
+        await unban(rest)
         break
       case "reencrypt":
         await reencrypt(rest)

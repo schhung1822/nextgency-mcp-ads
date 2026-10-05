@@ -95,7 +95,8 @@ export async function setStatus(
       changes.push({ objectId: id, objectName: current.name, level, field: "status", before: current.status, after })
     } catch (e) {
       if (unique.length === 1) throw e
-      failures.push(`${id}: ${isProviderError(e) ? e.userMessageVi : (e as Error).message}`)
+      // only curated Vietnamese messages reach the AI (a raw Error message may carry internals)
+      failures.push(`${id}: ${isProviderError(e) ? e.userMessageVi : "lỗi không xác định"}`)
     }
   }
   if (failures.length) {

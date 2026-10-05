@@ -1,0 +1,33 @@
+# Dependabot: đề xuất cập nhật action GitHub (ghim theo SHA) và image Docker (ghim theo digest).
+# npm/pnpm cố ý không bật ở đây: lockfile pnpm 11 chưa kiểm chứng với Dependabot; pnpm đã có minimumReleaseAge.
+# cooldown: chỉ đề xuất bản đã phát hành ít nhất 7 ngày (tránh bản bị chèn mã độc rồi gỡ trong vài ngày đầu).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "03:00", timezone: Asia/Ho_Chi_Minh }
+    cooldown: { default-days: 7 }
+    groups:
+      # bản minor/patch gộp 1 PR; bản major tách PR riêng (cần chủ dự án duyệt)
+      actions-minor: { patterns: ["*"], update-types: [minor, patch] }
+    commit-message: { prefix: ci }
+
+  # FROM trong Dockerfile (phải viết thẳng tên image, không qua ARG)
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major] # giữ Node 24 LTS
+    commit-message: { prefix: build }
+
+  # postgres, caddy, cloudflared trong docker-compose*.yml
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major] # nâng major Postgres cần pg_upgrade
+    commit-message: { prefix: build }

@@ -18,6 +18,11 @@ export const users = {
   },
 
   you: "Bạn",
+  /** re-auth hint when the target of a sensitive action is an admin (ban / unban / delete / revoke sessions) */
+  adminTargetReauthHint: "Người này là quản trị viên - nhập lại mật khẩu (và mã 2FA) của bạn để xác nhận.",
+  /** re-auth hint for staff targets once the session is no longer fresh (reset password / 2FA) */
+  reauthFreshHint:
+    "Thao tác nhạy cảm - nhập lại mật khẩu (và mã 2FA) của bạn để xác nhận. Sau khi xác nhận, bạn không phải nhập lại trong 10 phút.",
   noName: "(chưa đặt tên)",
   neverLoggedIn: "Chưa đăng nhập",
   twoFactorOn: "Đã bật",
@@ -163,6 +168,8 @@ export const users = {
     lastActive: "Hoạt động gần nhất",
     ip: "IP",
     unknownIp: "Không rõ IP",
+    reauthTitle: (name: string) => `Thu hồi phiên đăng nhập của ${name}`,
+    reauthDescription: "Người này là quản trị viên - nhập lại mật khẩu (và mã 2FA) của bạn để xác nhận.",
   },
 
   toast: {

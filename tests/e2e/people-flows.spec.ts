@@ -2,7 +2,8 @@
 //  1. an admin who opted into 2FA can turn it off again from /account while the policy does not require it
 //     (regression: the action used to refuse every admin),
 //  2. an admin WITHOUT 2FA switches "Bắt buộc 2FA cho quản trị viên" on in /settings, is sent to the enrolment
-//     step on the next page, completes it and gets back in (no lock-out deadlock),
+//     step on the next page, completes it and gets back in (no lock-out deadlock); switching it OFF again relaxes
+//     security and asks for the password + TOTP first,
 //  3. typos at the login form: friendly error, no session cookie, no 5xx — the owner is not locked out,
 //  4. the sign-in lockout: attackers from ONE IP cannot lock the owner out, and the owner's usual IP always works.
 import { expect, request as pwRequest, test, type Page } from "@playwright/test"
@@ -77,7 +78,7 @@ test("khi bật 'bắt buộc 2FA cho quản trị viên' trong Cài đặt: adm
   expect(secret).toMatch(/^[A-Z2-7]+=*$/)
   // the seeded helper only knows its own key: compute the code for the one the server just generated
   const { createHmac } = await import("node:crypto")
-  const code = (() => {
+  const codeAt = (offsetMs: number) => {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     let bits = 0
     let value = 0
@@ -91,19 +92,38 @@ test("khi bật 'bắt buộc 2FA cho quản trị viên' trong Cài đặt: adm
       }
     }
     const counter = Buffer.alloc(8)
-    counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 1000 / 30)))
+    counter.writeBigUInt64BE(BigInt(Math.floor((Date.now() + offsetMs) / 1000 / 30)))
     const h = createHmac("sha1", Buffer.from(bytes)).update(counter).digest()
     const off = h[h.length - 1]! & 0x0f
     const bin = ((h[off]! & 0x7f) << 24) | (h[off + 1]! << 16) | (h[off + 2]! << 8) | h[off + 3]!
     return String(bin % 1_000_000).padStart(6, "0")
-  })()
-  await page.locator("#enable2fa-code").fill(code)
+  }
+  await page.locator("#enable2fa-code").fill(codeAt(0))
   await expect(page.getByTestId("backup-codes").locator("li")).toHaveCount(10)
   await page.getByLabel("Tôi đã lưu mã dự phòng ở nơi an toàn").check()
   await page.getByRole("button", { name: "Hoàn tất" }).click()
   await page.waitForURL((u) => !u.pathname.startsWith("/security"))
   const res = await page.goto("/users")
   expect(res?.status()).toBe(200)
+
+  // switching the requirement OFF again relaxes security: password + TOTP first
+  await page.goto("/settings")
+  await page.getByLabel("Bắt buộc xác thực 2 bước cho quản trị viên").click()
+  await page.getByRole("button", { name: "Lưu", exact: true }).click()
+  const reauth = page.getByRole("dialog")
+  await expect(reauth.getByRole("heading", { name: "Xác nhận thay đổi bảo mật" })).toBeVisible()
+  await reauth.locator("#settings-reauth-password").fill("sai-mat-khau-1")
+  await reauth.getByLabel("Mã xác thực 6 số").fill(codeAt(30_000))
+  await reauth.getByRole("button", { name: "Lưu thay đổi" }).click()
+  await expect(reauth.getByRole("alert")).toBeVisible()
+  const still = await db((c) => c.query(`select value from app_settings where key = 'require_2fa_admin'`))
+  expect(still.rows[0].value).toBe(true)
+  await reauth.locator("#settings-reauth-password").fill(PASSWORD)
+  await reauth.getByLabel("Mã xác thực 6 số").fill(codeAt(30_000))
+  await reauth.getByRole("button", { name: "Lưu thay đổi" }).click()
+  await expect
+    .poll(async () => (await db((c) => c.query(`select value from app_settings where key = 'require_2fa_admin'`))).rows[0].value)
+    .toBe(false)
   await setPolicy({ admin: false, all: false })
 })
 

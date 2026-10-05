@@ -1,6 +1,6 @@
 // System notices: fetch from the noti.vn webhook (worker job `notices.fetch`, hourly) and the app_settings key
-// they live in (.claude/docs/13-system-notices.md). Shared by the worker, the web layout and the MCP layer, so it
-// must stay framework-free: no `next/*`, no `server-only`.
+// they live in (.claude/docs/13-system-notices.md). Shared by the worker and the web layout (notices are shown on
+// the web top bar only, never in MCP results), so it must stay framework-free: no `next/*`, no `server-only`.
 //
 // app_settings key (internal: NOT in SETTING_SCHEMAS, the Settings form never touches it):
 //   system_notices   { items: SystemNotice[], fetchedAt, lastSuccessAt | null, error | null }
@@ -19,7 +19,7 @@ export const NOTICES_TIMEOUT_MS = 10_000
 export const NOTICES_MAX_BYTES = 64 * 1024
 /** when the webhook keeps failing, the last good notices are kept this long, then hidden */
 export const NOTICES_STALE_MS = 24 * 60 * 60_000
-/** in-process cache of the stored value (web layout + every MCP tool result read it) */
+/** in-process cache of the stored value (read by the web layout only) */
 export const NOTICES_CACHE_MS = 60_000
 
 /**
@@ -205,7 +205,7 @@ export async function runNoticesFetch(
 }
 
 // ---------------------------------------------------------------------------
-// cached read (web layout, MCP results)
+// cached read (web layout only)
 // ---------------------------------------------------------------------------
 
 let cache: { at: number; items: SystemNotice[] } | null = null

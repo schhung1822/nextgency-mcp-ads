@@ -84,6 +84,34 @@ describe("redact", () => {
       )
     ).toBe("[redacted-private-key]")
   })
+  it("redacts Meta app access tokens (<app_id>|<app_secret>)", () => {
+    const s = redactString("debug_token?input_token=x with 1234567890123456|0123456789abcdef0123456789abcdef failed")
+    expect(s).not.toMatch(/0123456789abcdef0123456789abcdef/)
+    expect(s).toContain("1234567890123456|[redacted]")
+  })
+  it("redacts secrets in a bare form body but keeps other fields", () => {
+    const s = redactString("client_secret=s3cr3tVal&grant_type=fb_exchange_token&fb_exchange_token=short1")
+    expect(s).not.toMatch(/s3cr3tVal/)
+    expect(s).not.toMatch(/short1/)
+    expect(s).toContain("grant_type=fb_exchange_token")
+  })
+  it("redacts the password of URL userinfo", () => {
+    const pg = redactString("connect failed: postgres://adsmcp:pgS3cret@db:5432/adsmcp")
+    expect(pg).not.toMatch(/pgS3cret/)
+    expect(pg).toContain("postgres://adsmcp:[redacted]@db:5432/adsmcp")
+    expect(redactString("GET https://u:p4ss@x.example/a")).not.toMatch(/p4ss/)
+    expect(redactString("https://example.com/a:b@c")).toBe("https://example.com/a:b@c")
+  })
+  it("keeps Meta image hashes (32-hex) readable", () => {
+    expect(redactString("image_hash a1b2c3d4e5f60718293a4b5c6d7e8f90")).toBe("image_hash a1b2c3d4e5f60718293a4b5c6d7e8f90")
+  })
+  it("redacts secret values inside JSON text", () => {
+    const s = redactString('body {"error":"x","client_secret":"cs-1","access_token" : "tok\\"en2","name":"keep"}')
+    expect(s).not.toMatch(/cs-1/)
+    expect(s).not.toMatch(/en2/)
+    expect(s).toContain('"client_secret":"[redacted]"')
+    expect(s).toContain('"name":"keep"')
+  })
 })
 
 describe("capJson", () => {

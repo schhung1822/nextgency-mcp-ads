@@ -20,6 +20,11 @@ function pepper(): Buffer {
   return buf
 }
 
+/** Startup check (web only): throws a Vietnamese message (never the pepper) when MCP_KEY_PEPPER is unusable. */
+export function assertMcpKeyPepper(): void {
+  pepper()
+}
+
 export function hashMcpKey(raw: string): string {
   return createHmac("sha256", pepper()).update(raw, "utf8").digest("hex")
 }

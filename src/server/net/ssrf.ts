@@ -206,6 +206,9 @@ export const MEDIA_LIMITS = {
   video: { maxBytes: 500 * 1024 * 1024, types: /^video\// },
 } as const
 
+/** Overall deadline of each probe request incl. redirects (a slow-drip server cannot hold a tool call open). */
+export const MEDIA_TIMEOUTS = { probeTotalMs: 20_000 }
+
 export interface MediaProbe {
   finalUrl: string
   contentType: string | null
@@ -216,9 +219,10 @@ export interface MediaProbe {
 /** Check that a media URL is public, reachable, of the right type and within size limits. */
 export async function probeMedia(raw: string, type: "image" | "video", signal?: AbortSignal): Promise<MediaProbe> {
   const limits = MEDIA_LIMITS[type]
-  let res = await safeFetch(raw, { method: "HEAD", timeoutMs: 15_000, signal })
+  const totalTimeoutMs = MEDIA_TIMEOUTS.probeTotalMs
+  let res = await safeFetch(raw, { method: "HEAD", timeoutMs: 15_000, totalTimeoutMs, signal })
   if (res.status === 405 || res.status === 403 || res.status === 501) {
-    res = await safeFetch(raw, { method: "GET", headers: { range: "bytes=0-0" }, timeoutMs: 15_000, readBody: false, signal })
+    res = await safeFetch(raw, { method: "GET", headers: { range: "bytes=0-0" }, timeoutMs: 15_000, totalTimeoutMs, readBody: false, signal })
   }
   if (res.status >= 400) {
     throw invalid("media_unreachable", `URL trả về HTTP ${res.status}.`, "Dùng URL công khai tải trực tiếp được tệp ảnh/video.")

@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto"
 import { eq, inArray } from "drizzle-orm"
 import { expect } from "vitest"
 
-import type { McpSettingsInput } from "@/lib/schemas/mcp-servers"
+import { toStoredMcpSettings, type McpSettingsInput } from "@/lib/schemas/mcp-servers"
 import { flushMcpLogs } from "@/server/audit/mcp-log-writer"
 import { db } from "@/server/db/client"
 import { activityLogs, adAccounts, connections, mcpCallLogs, mcpServers, user } from "@/server/db/schema"
@@ -86,9 +86,15 @@ export interface ToolResult {
   isError: boolean
   sc: Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- test helper: structured content is inspected loosely
   text: string
-  /** every text content item (the notice block, when present, is the last one) */
+  /** every text content item */
   texts?: string[]
 }
+
+/**
+ * Daily caps every test MCP gets unless the test overrides that currency: caps are mandatory for MCPs with
+ * write permissions, and this high value never limits a test that is not about caps.
+ */
+export const DEFAULT_TEST_DAILY_CAPS: Record<string, number> = { VND: 1e12, USD: 1e12, JPY: 1e12, EUR: 1e12 }
 
 export const DEFAULT_SETTINGS: McpSettingsInput = {
   twoStepConfirm: true,
@@ -234,7 +240,11 @@ export class World {
               : conn.accounts.filter((a) => accounts.includes(a.externalId)).map((a) => a.id),
         })),
       })),
-      settings: { ...DEFAULT_SETTINGS, ...cfg.settings },
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ...cfg.settings,
+        maxDailyBudget: { ...DEFAULT_TEST_DAILY_CAPS, ...cfg.settings?.maxDailyBudget },
+      },
       expiresAt: cfg.expiresAt ? cfg.expiresAt.toISOString() : null,
     }
   }
@@ -248,6 +258,16 @@ export class World {
     const r = await createMcpServer(actor, input, okVerify)
     this.mcpIds.push(r.id)
     return { id: r.id, url: r.url, key: keyOf(r.url) }
+  }
+
+  /**
+   * Turn an MCP into a row written before the security release: stored settings WITHOUT `money_caps_required`
+   * (caps optional, preview warnings only). `settings` replaces the defaults (daily caps default to none).
+   */
+  async makeLegacy(mcpId: string, settings: Partial<McpSettingsInput> = {}) {
+    const { money_caps_required: _flag, ...stored } = toStoredMcpSettings({ ...DEFAULT_SETTINGS, ...settings })
+    await db.update(mcpServers).set({ settings: stored }).where(eq(mcpServers.id, mcpId))
+    invalidateGrantCache(mcpId)
   }
 
   update = updateMcpServer

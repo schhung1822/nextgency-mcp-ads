@@ -470,7 +470,8 @@ export async function listMetaPages(
 // Page access tokens (memory only)
 // ---------------------------------------------------------------------------
 
-const PAGE_TOKEN_TTL_MS = 30 * 60_000
+/** Page tokens never reach the DB or logs; keep the in-memory copy short-lived (05-security.md §4). */
+export const PAGE_TOKEN_TTL_MS = 5 * 60_000
 const g = globalThis as unknown as {
   __adsMcpMetaPageTokens?: LRUCache<string, string>
 }

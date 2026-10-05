@@ -8,7 +8,8 @@ import { PLATFORMS, type FieldChange, type MutationResult, type Platform, type P
 import { previewChanges, type PreviewInfo } from "../confirm"
 import { denied } from "../errors"
 import { assertGrant } from "../grant"
-import { enforceMoneyItems, moneyLikePaths } from "../guardrails"
+import { enforceMoneyItems, legacyCapWarning, moneyLikePaths, requireMoneyCaps } from "../guardrails"
+import { stripMediaUrlQueries } from "../log-args"
 import { changesForLog } from "../logging"
 import { accountIdSchema, writeFields } from "../schemas"
 import {
@@ -120,6 +121,8 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
     annotations,
     input,
     output,
+    // signed media URLs (image_url, video_url…) must not end up in mcp_call_logs / mcp_pending_actions
+    logArgs: (a) => stripMediaUrlQueries(a as Record<string, unknown>),
     async handler(args, env) {
       // idempotency_key stays in args: runWrite derives the deterministic adapter key from it
       const { account_id, confirm_token: _c, idempotency_key: _i, reason: _r, ...rest } = args as Record<string, unknown> & {
@@ -130,10 +133,17 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
       // re-validate with the provider's own schema (strips the mcp-core fields)
       const parsed = (ext.input as z.ZodObject).parse(rest)
 
+      // preview warnings of a legacy MCP (no daily cap for this currency) that sets money
+      let moneyWarnings: string[] = []
       if (ext.write) {
         // money guardrails (both steps, before preview/execute): create tools must not bypass the caps
         if (ext.moneyOf) {
-          enforceMoneyItems(env.grant.settings, account.currency, ext.moneyOf(parsed))
+          const items = ext.moneyOf(parsed)
+          if (items.length) {
+            requireMoneyCaps(env.grant.settings, account.currency, "đặt ngân sách/giá thầu")
+            moneyWarnings = legacyCapWarning(env.grant.settings, account.currency)
+          }
+          enforceMoneyItems(env.grant.settings, account.currency, items)
         } else {
           const paths = moneyLikePaths(parsed)
           if (paths.length) {
@@ -173,7 +183,7 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
             const details = payload !== undefined && jsonLength(payload) <= 8_000 ? { payload } : undefined
             return {
               changes: previewChanges(r.changes),
-              warnings: [...(ext.permission === "create" ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : []), ...r.warnings],
+              warnings: [...moneyWarnings, ...(ext.permission === "create" ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : []), ...r.warnings],
               effective_at: r.effectiveAt ?? null,
               ...(details ? { details } : {}),
             }
@@ -181,7 +191,7 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
           const details = asRecord(r)
           return {
             changes: [{ object: ext.name, object_id: "-", level: null, field: ext.permission, before: null, after: "xem details" }],
-            warnings: ext.permission === "create" ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : [],
+            warnings: [...moneyWarnings, ...(ext.permission === "create" ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : [])],
             effective_at: null,
             details: jsonLength(details) > 8_000 ? { _truncated: true } : details,
           }

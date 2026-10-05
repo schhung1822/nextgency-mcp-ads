@@ -13,8 +13,7 @@ import { safeErrorForLog } from "@/server/audit/safe-error"
 import { reauthFieldsSchema } from "@/lib/schemas/reauth"
 import { appBaseUrl } from "@/server/env"
 import {
-  isReauthFresh,
-  REAUTH_FRESH_MINUTES,
+  isSessionFresh,
   REAUTH_MESSAGES,
   ReauthError,
   requestReauthVerifier,
@@ -113,13 +112,6 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
-/** Fresh = signed in ≤10 min ago, or re-authenticated (any sensitive action) ≤10 min ago. */
-async function isFresh(session: AppSession): Promise<boolean> {
-  const created = session.sessionCreatedAt
-  if (created && Date.now() - created <= REAUTH_FRESH_MINUTES * 60_000) return true
-  return isReauthFresh(session.sessionId)
-}
-
 export async function POST(req: Request): Promise<Response> {
   let session: AppSession
   try {
@@ -135,7 +127,7 @@ export async function POST(req: Request): Promise<Response> {
   if (query.tab === "staff" && user.role !== "admin") return json(403, { error: tl.errors.exportForbidden })
 
   // Fresh session or re-auth (password + TOTP when 2FA is on).
-  if (!(await isFresh(session))) {
+  if (!(await isSessionFresh(session))) {
     if (typeof body.password !== "string" || body.password === "") {
       return json(401, { error: REAUTH_MESSAGES.required, code: "reauth_required", twoFactorEnabled: user.twoFactorEnabled })
     }

@@ -170,13 +170,52 @@ function NoUsableAccountsAlert({
   )
 }
 
+/** Money-write scope without a daily cap for some currencies (legacy MCP, or an account synced later). */
+function CapsMissingAlert({
+  currencies,
+  required,
+  onOpenConfig,
+}: {
+  currencies: string[]
+  /** the MCP already requires caps (writes in these currencies are refused) */
+  required: boolean
+  onOpenConfig?: () => void
+}) {
+  const list = currencies.join(", ")
+  return (
+    <Alert variant="destructive" className="border-destructive/40 bg-destructive/5">
+      <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
+      <AlertTitle>{o.capsMissingTitle}</AlertTitle>
+      {/* only the title is red: body text in the foreground colour for AA contrast */}
+      <AlertDescription className="flex flex-col gap-2.5 text-foreground/80!">
+        <div>
+          {required ? o.capsMissingBodyRequired(list) : o.capsMissingBody(list)}
+        </div>
+        {onOpenConfig && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-foreground sm:w-fit"
+            onClick={onOpenConfig}
+          >
+            {o.capsMissingAction}
+          </Button>
+        )}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 export function OverviewTab({
   mcp,
   connections,
+  onOpenConfig,
 }: {
   mcp: McpDetail
   /** connections the owner can use now (enabled accounts only) - what the MCP can really reach */
   connections: SelectableConnection[]
+  /** switch to the Config tab (caps warning action) */
+  onOpenConfig?: () => void
 }) {
   const s = mcp.stats
   const noUsable = analyzeScope(mcp.config, connections).platforms.filter(
@@ -207,6 +246,13 @@ export function OverviewTab({
           <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} aria-hidden />
           <AlertDescription>{o.disabledNotice}</AlertDescription>
         </Alert>
+      )}
+      {mcp.capsMissing.length > 0 && (
+        <CapsMissingAlert
+          currencies={mcp.capsMissing}
+          required={mcp.settings.moneyCapsRequired}
+          onOpenConfig={onOpenConfig}
+        />
       )}
       {noUsable.length > 0 && (
         <NoUsableAccountsAlert

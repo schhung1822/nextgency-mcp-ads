@@ -4,6 +4,9 @@
 // - per MCP writes: sliding window, settings.writeRateLimitPer10Min executed writes per 10 minutes
 // - per client (IPv4 address / IPv6 /64): counts 404 (unknown key) answers to slow down key guessing.
 //   Only ever applied to requests whose key does NOT resolve - a valid key is never blocked by it.
+//   A blocked client's keys are checked against the in-memory set of usable MCP keys (grant.ts isActiveMcpKey), so a
+//   blocked guesser costs no per-request database query.
+// All of this lives in process memory and resets on restart (accepted: one web instance).
 import { LRUCache } from "lru-cache"
 import { ipBucketKey } from "./net"
 

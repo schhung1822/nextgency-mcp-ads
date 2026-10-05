@@ -11,6 +11,7 @@ import {
   ReauthFields,
   reauthComplete,
   reauthPayload,
+  ReauthDialog,
   RelativeTime,
   useCopy,
   type ReauthValues,
@@ -26,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -33,6 +35,7 @@ import { auth as tAuth } from "@/lib/i18n/vi/auth"
 import { common } from "@/lib/i18n/vi/common"
 import { formatIp } from "@/lib/format-ip"
 import { users as tUsers } from "@/lib/i18n/vi/users"
+import { REAUTH_REQUIRED_FIELD } from "@/lib/schemas/reauth"
 import { changeRoleSchema, generateTempPassword, resetPasswordSchema } from "@/lib/schemas/users"
 
 import { RolePicker } from "./role-picker"
@@ -163,11 +166,17 @@ export function ResetPasswordDialog({
   onDone,
   action,
   actorTwoFactor,
-}: RowDialogProps & { action: UserActions["resetPassword"]; actorTwoFactor: boolean }) {
+  needsReauth: initialNeedsReauth,
+}: RowDialogProps & {
+  action: UserActions["resetPassword"]
+  actorTwoFactor: boolean
+  /** ask for the acting admin's password (+ TOTP) up front: ADMIN target, or the session is no longer fresh */
+  needsReauth: boolean
+}) {
   const t = tUsers.resetPassword
   const { copy } = useCopy({ toastMessage: tUsers.toast.credentialsCopied })
-  // resetting ANOTHER ADMIN's password requires re-authentication (password + TOTP)
-  const needsReauth = user.role === "admin"
+  // the server decides (admin target, or staff target without a fresh session) - its marker switches this on
+  const [needsReauth, setNeedsReauth] = React.useState(initialNeedsReauth)
   const [reauth, setReauth] = React.useState<ReauthValues>(EMPTY_REAUTH)
   const [reauthErrors, setReauthErrors] = React.useState<{ password?: string; code?: string }>({})
   const [password, setPassword] = React.useState(() => generateTempPassword())
@@ -198,6 +207,7 @@ export function ResetPasswordDialog({
       if (!res.ok) {
         setReauth(EMPTY_REAUTH)
         setReauthErrors(reauthErrorsFrom(res.fieldErrors))
+        if (res.fieldErrors?.[REAUTH_REQUIRED_FIELD]) setNeedsReauth(true)
         return setError(res.error)
       }
       toast.success(res.message ?? tUsers.toast.passwordReset)
@@ -266,7 +276,7 @@ export function ResetPasswordDialog({
                     value={reauth}
                     onChange={setReauth}
                     errors={reauthErrors}
-                    hint={tUsers.resetPassword.adminReauthHint}
+                    hint={user.role === "admin" ? tUsers.resetPassword.adminReauthHint : tUsers.reauthFreshHint}
                   />
                 </FieldGroup>
               </div>
@@ -297,11 +307,22 @@ export function SessionsSheet({
   onDone,
   list,
   revoke,
-}: RowDialogProps & { list: UserActions["listSessions"]; revoke: UserActions["revokeSessions"] }) {
+  actorTwoFactor,
+  needsReauth: initialNeedsReauth,
+}: RowDialogProps & {
+  list: UserActions["listSessions"]
+  revoke: UserActions["revokeSessions"]
+  actorTwoFactor: boolean
+  /** ADMIN target and the acting admin's session is not fresh: confirm with the password (+ TOTP) first */
+  needsReauth: boolean
+}) {
   const t = tUsers.sessions
   const [sessions, setSessions] = React.useState<SessionRow[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
+  const [needsReauth, setNeedsReauth] = React.useState(initialNeedsReauth)
+  /** pending revoke waiting for the re-auth dialog (`sessionId` undefined = every session) */
+  const [reauthFor, setReauthFor] = React.useState<{ sessionId?: string } | null>(null)
 
   const apply = React.useCallback(
     (res: Awaited<ReturnType<typeof list>> | null) => {
@@ -330,14 +351,26 @@ export function SessionsSheet({
     }
   }, [open, list, user.id, apply])
 
+  const revoked = async (message?: string) => {
+    toast.success(message)
+    onDone()
+    await load()
+  }
+
   async function doRevoke(sessionId?: string) {
+    if (needsReauth) return setReauthFor({ sessionId })
     setBusy(sessionId ?? "all")
     try {
       const res = await revoke(sessionId ? { userId: user.id, sessionId } : { userId: user.id })
-      if (!res.ok) return toast.error(res.error)
-      toast.success(res.message)
-      onDone()
-      await load()
+      if (!res.ok) {
+        // admin target and the session is no longer fresh: ask for the password, then retry
+        if (res.fieldErrors?.[REAUTH_REQUIRED_FIELD]) {
+          setNeedsReauth(true)
+          return setReauthFor({ sessionId })
+        }
+        return toast.error(res.error)
+      }
+      await revoked(res.message)
     } finally {
       setBusy(null)
     }
@@ -408,7 +441,73 @@ export function SessionsSheet({
             </>
           )}
         </div>
+        {reauthFor && (
+          <ReauthDialog
+            open
+            onOpenChange={(o) => !o && setReauthFor(null)}
+            twoFactorEnabled={actorTwoFactor}
+            idPrefix="revoke-reauth"
+            texts={{ title: t.reauthTitle(user.name || user.email), description: t.reauthDescription, submit: t.revoke }}
+            onSubmit={(reauth) =>
+              revoke({ userId: user.id, ...(reauthFor.sessionId ? { sessionId: reauthFor.sessionId } : {}), reauth })
+            }
+            onSuccess={(_, message) => {
+              // the re-auth keeps the session fresh for 10 minutes: no password for the next revokes
+              setNeedsReauth(false)
+              void revoked(message)
+            }}
+          />
+        )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+/** Deleting ANOTHER ADMIN: type the e-mail address AND re-authenticate (password + TOTP). */
+export function DeleteAdminDialog({
+  user,
+  open,
+  onOpenChange,
+  onDone,
+  action,
+  actorTwoFactor,
+}: RowDialogProps & { action: UserActions["remove"]; actorTwoFactor: boolean }) {
+  const [typed, setTyped] = React.useState("")
+  const matches = typed.trim() === user.email
+  return (
+    <ReauthDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      destructive
+      twoFactorEnabled={actorTwoFactor}
+      idPrefix="delete"
+      hint={tUsers.adminTargetReauthHint}
+      canSubmit={matches}
+      texts={{
+        title: tUsers.delete.title(user.name || user.email),
+        description: tUsers.delete.description,
+        submit: tUsers.delete.confirm,
+      }}
+      onSubmit={(reauth) => action({ userId: user.id, reauth })}
+      onSuccess={(_, message) => {
+        toast.success(message ?? tUsers.toast.deleted)
+        onDone()
+      }}
+    >
+      <Field data-invalid={typed.length > 0 && !matches ? true : undefined}>
+        <FieldLabel htmlFor="delete-confirm-email">{common.confirmDialog.typeToConfirm(user.email)}</FieldLabel>
+        <Input
+          id="delete-confirm-email"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={typed.length > 0 && !matches ? true : undefined}
+          className="font-mono"
+        />
+      </Field>
+    </ReauthDialog>
   )
 }

@@ -453,12 +453,20 @@ describe.skipIf(!HAS_DB)("connections service (DB)", () => {
     await db.insert(mcpAccountScopes).values({ mcpId: mcp!.id, connectionId: id, adAccountId: null })
 
     const usageStaff = await getConnectionUsage(staffA, id)
-    expect(usageStaff).toEqual([{ id: mcp!.id, name: null, ownedByViewer: false }]) // admin's MCP name hidden
+    expect(usageStaff).toEqual([{ id: null, name: null, ownedByViewer: false }]) // admin's MCP id + name hidden
     const usageAdmin = await getConnectionUsage(admin, id)
     expect(usageAdmin[0]!.name).toBe(`${PREFIX} admin mcp`)
+    expect(usageAdmin[0]!.id).toBe(mcp!.id)
 
     const res = await deleteConnection(staffA, id)
-    expect(res.affectedMcpIds).toEqual([mcp!.id])
+    // staff never receive the id of another user's MCP - only the count
+    expect(res).toEqual({ affectedMcpIds: [], affectedMcpCount: 1 })
+    const [delLog] = await db
+      .select()
+      .from(activityLogs)
+      .where(and(eq(activityLogs.targetId, id), eq(activityLogs.action, "connection.delete")))
+    expect(delLog!.metadata).toMatchObject({ affectedMcpIds: [], affectedMcpCount: 1 })
+    expect(JSON.stringify(delLog!.metadata)).not.toContain(mcp!.id)
     const [row] = await db.select().from(connections).where(eq(connections.id, id))
     expect(row!.deletedAt).not.toBeNull()
     expect(decryptJson(row!.credentialsEncrypted, aad.connectionCredentials(id))).toEqual({})

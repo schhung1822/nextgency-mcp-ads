@@ -22,17 +22,91 @@ import { PERMISSIONS, grantAllows, type GrantAccount, type GrantPage, type McpGr
 /** Grants are rebuilt per request; this tiny cache only absorbs bursts (≤ 5 s staleness, per spec). */
 const GRANT_CACHE_TTL_MS = 3_000
 
-const g = globalThis as unknown as { __adsMcpGrantCache?: LRUCache<string, { grant: McpGrant | null }> }
+/**
+ * Key hashes that resolved to nothing: a repeated unknown key (a client still configured with a deleted MCP, a
+ * guesser replaying a key) does not hit the database again for 30 s. Keys are random, so a brand-new key is never in
+ * here; re-enabling an MCP clears it (invalidateGrantCache). Per process.
+ */
+const MISS_CACHE_TTL_MS = 30_000
+/**
+ * Key hashes of every usable MCP (active, not deleted, not expired, owner not banned), refreshed at most every 60 s
+ * and dropped by invalidateGrantCache. Used only for clients blocked by the unknown-key limiter (serve.ts): their
+ * valid keys go on to the normal lookup, anything else is answered without touching the database.
+ */
+const ACTIVE_KEYS_TTL_MS = 60_000
+
+const g = globalThis as unknown as {
+  __adsMcpGrantCache?: LRUCache<string, { grant: McpGrant | null }>
+  __adsMcpGrantMiss?: LRUCache<string, true>
+  __adsMcpActiveKeys?: { at: number; hashes: Promise<Set<string>> } | null
+  __adsMcpGrantDbLookups?: number
+}
 function cache() {
   g.__adsMcpGrantCache ??= new LRUCache<string, { grant: McpGrant | null }>({ max: 1_000, ttl: GRANT_CACHE_TTL_MS })
   return g.__adsMcpGrantCache
 }
+function missCache() {
+  g.__adsMcpGrantMiss ??= new LRUCache<string, true>({ max: 10_000, ttl: MISS_CACHE_TTL_MS })
+  return g.__adsMcpGrantMiss
+}
 
-/** Drop cached grants (call after disabling / rotating / editing an MCP). No argument = everything. */
+/**
+ * Drop cached grants (call after creating / enabling / disabling / rotating / editing an MCP). No argument =
+ * everything. The unknown-key cache and the active-key set are always cleared entirely (keyed by key hash).
+ */
 export function invalidateGrantCache(mcpId?: string) {
+  missCache().clear()
+  g.__adsMcpActiveKeys = null
   const c = cache()
   if (!mcpId) return c.clear()
   for (const [k, v] of c.entries()) if (v.grant?.mcpId === mcpId) c.delete(k)
+}
+
+/** test helper: key queries that reached the database (grant lookups + active-key set loads) since the process started */
+export function __grantDbLookups(): number {
+  return g.__adsMcpGrantDbLookups ?? 0
+}
+
+/** An MCP whose key may resolve: active, not deleted, not expired (the owner ban is checked in code). */
+function usableMcp() {
+  return and(
+    eq(mcpServers.status, "active"),
+    isNull(mcpServers.deletedAt),
+    or(isNull(mcpServers.expiresAt), gt(mcpServers.expiresAt, sql`now()`))
+  )
+}
+
+function ownerBanned(banned: boolean | null, banExpires: Date | null): boolean {
+  return !!banned && (!banExpires || banExpires.getTime() > Date.now())
+}
+
+async function loadActiveKeyHashes(): Promise<Set<string>> {
+  g.__adsMcpGrantDbLookups = (g.__adsMcpGrantDbLookups ?? 0) + 1
+  const rows = await db
+    .select({ keyHash: mcpServers.keyHash, banned: user.banned, banExpires: user.banExpires })
+    .from(mcpServers)
+    .innerJoin(user, eq(user.id, mcpServers.ownerId))
+    .where(usableMcp())
+  return new Set(rows.filter((r) => !ownerBanned(r.banned, r.banExpires)).map((r) => r.keyHash))
+}
+
+/**
+ * Is this the key of a usable MCP? One small query per minute at most (cached set, cleared by invalidateGrantCache).
+ * Only asked for clients blocked by the unknown-key limiter, so their valid keys are never refused while unknown
+ * keys cost no database access.
+ */
+export async function isActiveMcpKey(rawKey: string, now = Date.now()): Promise<boolean> {
+  if (!isWellFormedMcpKey(rawKey)) return false
+  let entry = g.__adsMcpActiveKeys
+  if (!entry || now - entry.at >= ACTIVE_KEYS_TTL_MS) {
+    const hashes = loadActiveKeyHashes()
+    entry = g.__adsMcpActiveKeys = { at: now, hashes }
+    // a failed load is not cached: the next blocked request retries
+    hashes.catch(() => {
+      if (g.__adsMcpActiveKeys === entry) g.__adsMcpActiveKeys = null
+    })
+  }
+  return (await entry.hashes).has(hashMcpKey(rawKey))
 }
 
 /** Only the exact role "admin" is admin (no comma lists, no whitespace/case variants). */
@@ -98,9 +172,15 @@ export async function loadGrantByKey(rawKey: string): Promise<McpGrant | null> {
   const keyHash = hashMcpKey(rawKey)
   const hit = cache().get(keyHash)
   if (hit) return hit.grant
+  if (missCache().has(keyHash)) return null
+  g.__adsMcpGrantDbLookups = (g.__adsMcpGrantDbLookups ?? 0) + 1
   const grant = await loadGrantByHash(keyHash)
-  // do not cache misses for long: a just-created key should work immediately
-  if (grant) cache().set(keyHash, { grant })
+  if (grant) {
+    cache().set(keyHash, { grant })
+    missCache().delete(keyHash)
+  } else {
+    missCache().set(keyHash, true)
+  }
   return grant
 }
 
@@ -118,18 +198,11 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
     })
     .from(mcpServers)
     .innerJoin(user, eq(user.id, mcpServers.ownerId))
-    .where(
-      and(
-        eq(mcpServers.keyHash, keyHash),
-        eq(mcpServers.status, "active"),
-        isNull(mcpServers.deletedAt),
-        or(isNull(mcpServers.expiresAt), gt(mcpServers.expiresAt, sql`now()`))
-      )
-    )
+    .where(and(eq(mcpServers.keyHash, keyHash), usableMcp()))
     .limit(1)
   const m = rows[0]
   if (!m) return null
-  if (m.ownerBanned && (!m.ownerBanExpires || m.ownerBanExpires.getTime() > Date.now())) return null
+  if (ownerBanned(m.ownerBanned, m.ownerBanExpires)) return null
 
   const ownerIsAdmin = isAdminRole(m.ownerRole)
 

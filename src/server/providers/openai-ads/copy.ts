@@ -18,7 +18,7 @@ function invalid(message: string, vi: string, hint?: string) {
 }
 
 function errText(e: unknown): string {
-  return isProviderError(e) ? `${e.userMessageVi}${e.upstream?.requestId ? ` (request id ${e.upstream.requestId})` : ""}` : (e as Error).message
+  return isProviderError(e) ? `${e.userMessageVi}${e.upstream?.requestId ? ` (request id ${e.upstream.requestId})` : ""}` : "lỗi không xác định"
 }
 
 interface Plan {

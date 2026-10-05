@@ -80,10 +80,15 @@
 		}
 	}
 
+	# Giao diện quản trị: form/server action nhỏ (Next giới hạn server action 1 MB) - chặn body lớn từ sớm,
+	# giống client_max_body_size 5m của Nginx (deploy/nginx/ads-mcp.conf).
 	handle {
 		header {
 			Referrer-Policy "strict-origin-when-cross-origin"
 			defer
+		}
+		request_body {
+			max_size 5MB
 		}
 		encode zstd gzip
 		reverse_proxy web:3000 {

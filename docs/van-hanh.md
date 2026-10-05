@@ -20,16 +20,24 @@ docker compose logs -f --tail=200 web worker
 docker compose restart web worker
 docker compose run --rm web node dist/cli.mjs <lệnh>   # CLI quản trị
 ```
-CLI: `create-admin --email <email>` (mật khẩu tạm: biến `ADMIN_PASSWORD` hoặc `--password-stdin`, không có thì tự sinh) · `reset-password <email>` · `reset-2fa <email>` · `unlock <email>` (gỡ khoá đăng nhập do nhập sai nhiều lần) · `reencrypt`.
+CLI: `create-admin --email <email>` (mật khẩu tạm: biến `ADMIN_PASSWORD` hoặc `--password-stdin`, không có thì tự sinh) · `reset-password <email>` · `reset-2fa <email>` · `unlock <email>` (gỡ khoá đăng nhập do nhập sai nhiều lần) · `unban <email>` (mở khoá tài khoản bị khoá) · `reencrypt`.
 
 Không đặt mật khẩu/secret trên dòng lệnh (lộ qua `ps`, lịch sử shell).
+`docker-compose.yml` chỉ truyền vào container các biến có trong danh sách của nó, nên `ADMIN_PASSWORD` ghi trong `.env` **không** tới được CLI. Muốn tự đặt mật khẩu tạm, truyền qua biến của shell (không ghi giá trị trên dòng lệnh) hoặc stdin:
+```bash
+read -rsp "Mật khẩu tạm: " ADMIN_PASSWORD; echo; export ADMIN_PASSWORD
+docker compose run --rm -e ADMIN_PASSWORD web node dist/cli.mjs create-admin --email ban@congty.vn; unset ADMIN_PASSWORD
+```
+(hoặc `--password-stdin` kèm `docker compose run --rm -T web ...`; không đặt gì thì CLI tự sinh mật khẩu tạm và in ra 1 lần).
+
+Trang công khai cho app Meta/OpenAI (không cần đăng nhập): `https://<tên miền>/privacy`, `/terms`, `/data-deletion` - điền **Cài đặt → Thông tin pháp lý** (tên đơn vị vận hành, email liên hệ) trước khi dán vào Meta App Dashboard; sao chép nhanh ở khối "Liên kết cho ứng dụng" dưới sidebar.
 
 ## Cập nhật phiên bản
 ### Tự động (admin bấm nút trong web)
-Service `updater` (bật bằng `COMPOSE_PROFILES=updater` + `HOST_PROJECT_DIR` trong `.env`; cài mới có sẵn). Một lần cập nhật: sao lưu `backups/pre-update-<thời gian>.dump` (giữ lại) → tải image `ghcr.io/notivn/ads-mcp-simple:<bản mới>` → chạy migration bằng image mới → ghi `APP_VERSION` vào `.env` (bản gốc ở `.env.bak`) → thay `web`/`worker` → kiểm tra sức khoẻ; lỗi thì tự quay về bản cũ. Web gián đoạn khoảng 1-2 phút. Theo dõi: trang Cập nhật trong web, hoặc `docker compose logs -f updater`.
+Service `updater` (bật bằng `COMPOSE_PROFILES=updater` + `HOST_PROJECT_DIR` trong `.env`; cài mới có sẵn). Một lần cập nhật: sao lưu `backups/pre-update-<thời gian>.dump` (giữ lại) → tải image `ghcr.io/notivn/ads-mcp-simple:<bản mới>` và xác minh chữ ký số (cosign, do GitHub Actions của noti.vn ký cho đúng tag; cần ra Internet tới Sigstore) → chạy migration bằng image mới → ghi `APP_VERSION` vào `.env` (bản gốc ở `.env.bak`) → thay `web`/`worker` → kiểm tra sức khoẻ; lỗi thì tự quay về bản cũ. Web gián đoạn khoảng 1-2 phút. Theo dõi: trang Cập nhật trong web, hoặc `docker compose logs -f updater`.
 - Updater báo "chưa bật": `docker compose ps updater`, `docker compose logs updater` (thường do `HOST_PROJECT_DIR` sai hoặc chưa `up -d` sau khi thêm `COMPOSE_PROFILES=updater`).
-- Image riêng tư: trên VPS `docker login ghcr.io` bằng PAT classic chỉ quyền `read:packages` (đăng nhập bằng user chạy compose; nếu không phải root đặt `UPDATER_DOCKER_CONFIG=/home/<user>/.docker`; không dùng credential helper). Repo riêng tư: đặt `UPDATE_GITHUB_TOKEN` để web thấy bản mới. Chi tiết: [deploy-vps.md §5-6](deploy-vps.md#5-quyền-truy-cập-github-mã-nguồn--image-riêng-tư).
-- Updater chỉ đổi image, **không** cập nhật `docker-compose.yml`/`Caddyfile`/`deploy/`: khi ghi chú phát hành báo các file này đổi, làm thêm `git pull` theo mục dưới.
+- Image riêng tư: trên VPS `docker login ghcr.io` bằng **Token A** (PAT classic chỉ quyền `read:packages`; đăng nhập bằng user chạy compose; nếu không phải root đặt `UPDATER_DOCKER_CONFIG=/home/<user>/.docker`; không dùng credential helper). Repo riêng tư: đặt `UPDATE_GITHUB_TOKEN` = **Token B** (PAT classic chỉ `repo`) để web thấy bản mới; Token B cũng là mật khẩu khi `git pull` hỏi (không lưu bằng `credential.helper store`). Chi tiết: [deploy-vps.md §5-6](deploy-vps.md#5-quyền-truy-cập-github-mã-nguồn--image-riêng-tư).
+- Updater chỉ đổi image, **không** cập nhật `docker-compose.yml`/`Caddyfile`/`deploy/`: khi ghi chú phát hành báo các file này đổi, làm thêm `git pull` theo mục dưới, và chạy `docker compose up -d --no-build` **trước** lần bấm Cập nhật tiếp theo.
 - Nếu cập nhật tự động báo `failed` ở bước quay về bản cũ: làm theo mục "Khôi phục từ file pre-update" trong `.claude/docs/07-deployment.md` §6.6 (dữ liệu trước cập nhật nằm ở `backups/pre-update-*.dump`). Dọn các file `pre-update-*` cũ bằng tay (updater không tự xoá).
 - Cập nhật tay khi tắt updater: §6.8 cùng tài liệu.
 
@@ -38,7 +46,7 @@ VPS **không build** từ mã nguồn (`docker-compose.yml` không có `build:`)
 ```bash
 # 1) sao lưu ngay trước khi cập nhật
 docker compose exec backup sh -c 'pg_dump -Fc -Z zstd:6 -f /backups/adsmcp_pre-update_$(date +%F_%H%M%S).dump'
-# 2) lấy file cấu hình mới + chọn phiên bản (không có "v")
+# 2) lấy file cấu hình mới (git hỏi Username + Token B) + chọn phiên bản (không có "v", bắt buộc)
 git pull --ff-only
 sed -i 's/^APP_VERSION=.*/APP_VERSION=1.2.3/' .env
 # 3) kéo image và khởi động lại
@@ -72,6 +80,8 @@ restic -r s3:s3.amazonaws.com/congty-ads-mcp-backup forget --keep-daily 14 --kee
 ```
 (Có thể dùng `rclone copy ./backups remote:ads-mcp --max-age 48h` tới Google Drive/OneDrive với remote mã hoá `crypt`.)
 
+File dump là **dữ liệu bí mật** (email người dùng, hash mật khẩu, token nền tảng đã mã hoá, nhật ký): chỉ đưa ra ngoài VPS khi đã mã hoá phía máy chủ (restic, rclone `crypt`, hoặc `age`), và cất mật khẩu/khoá mã hoá bản sao lưu **riêng**, không để chung với `.env` hay với nơi chứa dump.
+
 **Sao lưu bí mật riêng**: lưu bản sao `.env` (tối thiểu `ENCRYPTION_KEYS`, `MCP_KEY_PEPPER`, `BETTER_AUTH_SECRET`, `POSTGRES_PASSWORD`) trong trình quản lý mật khẩu của công ty, **khác nơi** chứa file dump.
 - Mất `ENCRYPTION_KEYS` → mọi token nền tảng trong DB không giải mã được (phải dán lại toàn bộ).
 - Mất `MCP_KEY_PEPPER` → mọi link MCP ngừng hoạt động (phải xoay key từng MCP).
@@ -92,7 +102,7 @@ docker compose up -d
 Làm **mỗi quý** (và sau mỗi lần đổi cấu hình backup) — backup chưa thử khôi phục coi như chưa có:
 ```bash
 # DB tạm, không ảnh hưởng hệ thống đang chạy
-docker run -d --name restore-test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=adsmcp -e POSTGRES_DB=adsmcp postgres:18.6-alpine
+docker run -d --name restore-test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=adsmcp -e POSTGRES_DB=adsmcp postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
 sleep 5
 docker cp backups/<file>.dump restore-test:/tmp/x.dump
 docker exec restore-test pg_restore -U adsmcp -d adsmcp --no-owner /tmp/x.dump
@@ -148,6 +158,7 @@ Làm theo [deploy-vps.md §9](deploy-vps.md#9-phương-án-b---cloudflare): `CAD
 
 ## Bảo mật máy chủ
 - Chỉ mở cổng 22, 80, 443: `ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443 && ufw enable`. Lưu ý Docker bỏ qua ufw với cổng được publish - compose này chỉ publish 80/443 của Caddy ra Internet; web chỉ publish ra `127.0.0.1`; Postgres không publish.
-- SSH bằng key, tắt đăng nhập mật khẩu; bật cập nhật bảo mật tự động của hệ điều hành.
+- SSH bằng key, tắt đăng nhập mật khẩu và đăng nhập root (README bước 3.6); bật cập nhật bảo mật tự động của hệ điều hành.
+- Container chạy với rootfs chỉ đọc, bỏ capability, `no-new-privileges`, giới hạn RAM/tiến trình (đổi bằng `*_MEM_LIMIT` trong `.env`, xem deploy-vps §6.3). Caddy/cloudflared ở mạng `edge`, không thấy được `db`.
 - Quyền file: `chmod 600 .env`; thư mục `backups/` chỉ root đọc được (dump chứa dữ liệu đã mã hoá + email người dùng).
 - Nhân sự nghỉ việc: khoá tài khoản trong **Người dùng**, xoay key các MCP họ từng dùng, thu hồi token nền tảng nếu họ từng giữ.

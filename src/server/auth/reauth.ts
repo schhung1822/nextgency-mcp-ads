@@ -1,8 +1,9 @@
 // Shared re-authentication gate for sensitive actions (05-security.md §1 "Xác minh lại").
 //
-// Used by: MCP create / reveal / rotate, creating an admin, resetting another admin's password/2FA, role
-// changes, connection credential replacement, password change, 2FA setup/disable, backup-code regeneration
-// and CSV log export (when the session is not fresh).
+// Used by: MCP create / reveal / rotate, creating an admin, resetting another admin's password/2FA, banning /
+// unbanning / deleting an admin, role changes, relaxing security settings, connection credential replacement,
+// password change, 2FA setup/disable, backup-code regeneration - and, unless the session is fresh
+// (isSessionFresh), CSV log export, revoking an admin's sessions and resetting a staff member's password/2FA.
 //
 // - Verifies the CURRENT session's password through Better Auth (`verifyPassword`), plus the TOTP code when
 //   the user has 2FA enabled (unless `passwordOnly` - used where the factor being managed is 2FA itself).
@@ -17,6 +18,7 @@ import { and, eq, gt, gte, sql } from "drizzle-orm"
 import { headers as nextHeaders } from "next/headers"
 
 import { reauth as t } from "@/lib/i18n/vi/reauth"
+import { REAUTH_REQUIRED_FIELD } from "@/lib/schemas/reauth"
 import { actorOf, logActivity, type ActivityAction } from "@/server/audit/activity-log"
 import { db, type Tx } from "@/server/db/client"
 import { activityLogs, verification } from "@/server/db/schema"
@@ -25,7 +27,7 @@ import { UserFacingError } from "./errors"
 
 export const REAUTH_MAX_FAILURES = 5
 export const REAUTH_WINDOW_MINUTES = 15
-/** A successful re-auth (or a new sign-in) keeps the session "fresh" this long (CSV export). */
+/** A successful re-auth (or a new sign-in) keeps the session "fresh" this long (CSV export, see isSessionFresh). */
 export const REAUTH_FRESH_MINUTES = 10
 
 export type ReauthOutcome = "ok" | "bad_password" | "bad_code" | "code_required"
@@ -46,6 +48,14 @@ export class ReauthError extends UserFacingError {
     super(message)
     this.name = "ReauthError"
   }
+}
+
+/**
+ * "Please re-enter your password" (no verifier was sent). `fieldErrors[REAUTH_REQUIRED_FIELD]` tells the UI to open
+ * its re-auth dialog; `extra` keeps field-specific hints (e.g. "reauth.password").
+ */
+export function reauthRequiredError(extra: Record<string, string> = {}): ReauthError {
+  return new ReauthError("reauth_required", REAUTH_MESSAGES.required, { ...extra, [REAUTH_REQUIRED_FIELD]: "required" })
 }
 
 export interface ReauthActor {
@@ -101,6 +111,36 @@ export async function isReauthFresh(sessionId: string): Promise<boolean> {
     .where(and(eq(verification.id, freshKey(sessionId)), gt(verification.expiresAt, new Date())))
     .limit(1)
   return rows.length > 0
+}
+
+/** The parts of AppSession the freshness rule needs. */
+export interface FreshnessSession {
+  sessionId: string
+  /** epoch ms of the sign-in that created the session */
+  sessionCreatedAt?: number
+}
+
+const FRESH_MS = REAUTH_FRESH_MINUTES * 60_000
+
+/**
+ * Fresh = signed in ≤ REAUTH_FRESH_MINUTES ago OR re-authenticated ≤ REAUTH_FRESH_MINUTES ago (any sensitive action).
+ * One rule for CSV export, revoking an admin's sessions and resetting a staff member's password / 2FA.
+ */
+export async function isSessionFresh(s: FreshnessSession): Promise<boolean> {
+  if (s.sessionCreatedAt && Date.now() - s.sessionCreatedAt <= FRESH_MS) return true
+  return isReauthFresh(s.sessionId)
+}
+
+/** Epoch ms until which the session stays fresh (see isSessionFresh), or null when it is not fresh now. UI hint only. */
+export async function sessionFreshUntil(s: FreshnessSession): Promise<number | null> {
+  const signedInUntil = s.sessionCreatedAt ? s.sessionCreatedAt + FRESH_MS : 0
+  const [row] = await db
+    .select({ expiresAt: verification.expiresAt })
+    .from(verification)
+    .where(eq(verification.id, freshKey(s.sessionId)))
+    .limit(1)
+  const until = Math.max(signedInUntil, row ? row.expiresAt.getTime() : 0)
+  return until > Date.now() ? until : null
 }
 
 /** Re-authenticate, then run `onSuccess` in the same transaction (see file header). */

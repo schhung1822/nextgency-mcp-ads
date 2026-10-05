@@ -23,6 +23,7 @@ import {
 import { safeErrorForLog } from "@/server/audit/safe-error"
 import { ReauthError, requestReauthVerifier, requireReauth } from "@/server/auth/reauth"
 import { AuthorizationError, requireUserForAction, type AppSession } from "@/server/auth/session"
+import { consumeQuota } from "@/server/db/quota"
 import { setAdAccountsEnabled, setMetaPagesEnabled } from "@/server/services/ad-accounts"
 import {
   ConnectionServiceError,
@@ -72,6 +73,18 @@ async function reauthForConnection(
   )
 }
 
+/**
+ * Calls that reach the ad platform with a credential (preview, create, test, sync, replace token) are throttled per
+ * user: they cost the platform's rate limit and would otherwise let a script probe tokens at full speed.
+ */
+const PROVIDER_QUOTA_MAX = 10
+const PROVIDER_QUOTA_WINDOW_MS = 60_000
+
+async function throttleProvider(session: AppSession): Promise<ActionResult<never> | null> {
+  const q = await consumeQuota("connection-verify", session.user.id, PROVIDER_QUOTA_MAX, PROVIDER_QUOTA_WINDOW_MS)
+  return q.allowed ? null : fail(m.errors.tooManyChecks(q.retryAfterSec))
+}
+
 function revalidateConnection(id?: string) {
   revalidatePath(LIST)
   if (id) revalidatePath(`${LIST}/${id}`)
@@ -85,6 +98,8 @@ export async function previewConnectionAction(input: unknown): Promise<ActionRes
     const session = await requireUserForAction()
     const parsed = previewConnectionSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
     return ok(await previewConnection(session.user, parsed.data))
   } catch (e) {
     return toFail(e)
@@ -96,6 +111,8 @@ export async function createConnectionAction(input: unknown): Promise<ActionResu
     const session = await requireUserForAction()
     const parsed = createConnectionSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
     const res = await createConnection(session.user, parsed.data)
     revalidateConnection(res.id)
     return ok(res, m.new.saved)
@@ -122,6 +139,8 @@ export async function replaceCredentialsAction(input: unknown): Promise<ActionRe
     const session = await requireUserForAction()
     const parsed = replaceCredentialsSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
     await reauthForConnection(session, parsed.data.connectionId, parsed.data)
     const res = await replaceCredentials(session.user, parsed.data)
     revalidateConnection(parsed.data.connectionId)
@@ -136,6 +155,8 @@ export async function testConnectionAction(input: unknown): Promise<ActionResult
     const session = await requireUserForAction()
     const parsed = connectionIdSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
     const res = await testConnection(session.user, parsed.data.connectionId)
     revalidateConnection(parsed.data.connectionId)
     return ok(res, m.detail.rechecked)
@@ -149,6 +170,8 @@ export async function syncConnectionAccountsAction(input: unknown): Promise<Acti
     const session = await requireUserForAction()
     const parsed = connectionIdSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
     const res = await syncConnectionAccounts(session.user, parsed.data.connectionId)
     revalidateConnection(parsed.data.connectionId)
     return ok(res)
@@ -195,7 +218,9 @@ export async function connectionUsageAction(input: unknown): Promise<ActionResul
   }
 }
 
-export async function deleteConnectionAction(input: unknown): Promise<ActionResult<{ affectedMcpIds: string[] }>> {
+export async function deleteConnectionAction(
+  input: unknown
+): Promise<ActionResult<{ affectedMcpIds: string[]; affectedMcpCount: number }>> {
   try {
     const session = await requireUserForAction()
     const parsed = connectionIdSchema.safeParse(input)

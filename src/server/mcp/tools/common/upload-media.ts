@@ -1,8 +1,8 @@
 import { z } from "zod"
-import { redactUrl } from "../../../audit/redact"
 import { fetchMediaBytes, MEDIA_LIMITS, probeMedia } from "../../../net/ssrf"
 import type { MediaUploadRequest, Platform } from "../../../providers/types"
 import { assertGrant } from "../../grant"
+import { stripMediaUrlQueries } from "../../log-args"
 import { accountIdSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { CREATE_ANNOTATIONS, providerFor, registerToolSpec, runWrite, type ToolContext } from "../../tool"
 import { grantPlatformsWith } from "../../types"
@@ -47,7 +47,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     }),
     output: writeOutputSchema,
     // signed URLs (S3/GCS/CDN tokens) must not end up in mcp_call_logs / mcp_pending_actions
-    logArgs: (args) => ({ ...args, url: redactUrl(String(args.url ?? "")) }),
+    logArgs: (args) => stripMediaUrlQueries(args),
     async handler(args, env) {
       const account = assertGrant(env.grant, { platform: args.platform, accountId: args.account_id, permission: "create" })
       env.log.setTarget({ platform: account.platform, accountId: account.externalId })

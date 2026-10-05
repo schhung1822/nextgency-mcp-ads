@@ -4,6 +4,8 @@
 import { PgBoss } from "pg-boss"
 
 import { redactString } from "@/server/audit/redact"
+import { safeErrorForLog } from "@/server/audit/safe-error"
+import { assertKeyRing } from "@/server/crypto/secret-box"
 import { pool } from "@/server/db/client"
 import { JOBS, jobTimezone, type JobDefinition } from "@/server/jobs"
 import { ensureProvidersRegistered } from "@/server/providers"
@@ -14,8 +16,9 @@ function log(msg: string) {
   console.log(`[worker] ${redactString(msg)}`)
 }
 
+/** one line, redacted, Drizzle `params:` stripped (also thrown into the pg-boss job output) */
 function errText(e: unknown): string {
-  return redactString(e instanceof Error ? `${e.name}: ${e.message}` : String(e)).slice(0, 500)
+  return safeErrorForLog(e)
 }
 
 async function registerJob(boss: PgBoss, job: JobDefinition, signal: AbortSignal) {
@@ -54,6 +57,9 @@ async function registerJob(boss: PgBoss, job: JobDefinition, signal: AbortSignal
 async function main() {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) throw new Error("DATABASE_URL chưa được cấu hình")
+  // jobs decrypt connection credentials: fail fast on a malformed ENCRYPTION_KEYS (only this env: the worker
+  // does not receive BETTER_AUTH_SECRET / MCP_KEY_PEPPER, so env() is NOT called here)
+  assertKeyRing()
   process.env.APP_PROCESS_NAME ??= "ads-mcp-worker"
   ensureProvidersRegistered()
 

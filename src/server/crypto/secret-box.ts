@@ -33,6 +33,11 @@ function loadRing(): Ring {
   return ring
 }
 
+/** Startup check (web + worker): throws a Vietnamese message (never key material) when ENCRYPTION_KEYS is unusable. */
+export function assertKeyRing(): void {
+  loadRing()
+}
+
 /** test helper */
 export function __setKeyRing(spec: string | undefined) {
   ring = spec === undefined ? undefined : parseKeyRing(spec)

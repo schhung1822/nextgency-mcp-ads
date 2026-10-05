@@ -4,7 +4,7 @@ import { __resetBuckets } from "../rate-limit"
 import type { ProviderExtension } from "../types"
 import type { MetaCredentials } from "./client"
 import { metaExtensions, type MetaWriteResult } from "./extensions"
-import { graphError, json, mockGraph, providerCtx } from "./test-utils"
+import { graphError, json, mockGraph, providerCtx, type Route } from "./test-utils"
 
 beforeEach(() => __resetBuckets())
 
@@ -188,6 +188,16 @@ describe("meta_create_adset", () => {
   })
 })
 
+/** Pages of act_1001 usable for ads: 888 (promote_pages), 777 (me/accounts + ADVERTISE); 666 is moderate-only. */
+const advertisable: Route[] = [
+  ["GET", "act_1001/promote_pages", () => json({ data: [{ id: "888", name: "Shop VN" }] })],
+  [
+    "GET",
+    "me/accounts",
+    () => json({ data: [{ id: "777", name: "Via Page", tasks: ["ADVERTISE"] }, { id: "666", name: "Mod only", tasks: ["MODERATE"] }] }),
+  ],
+]
+
 describe("meta_create_ad", () => {
   const adset = {
     id: "2001",
@@ -201,6 +211,7 @@ describe("meta_create_ad", () => {
   it("link ad: PAUSED, inline creative, Advantage+ creative features OPT_OUT unless requested", async () => {
     const m = mockGraph([
       ["GET", "2001", () => json(adset)],
+      ...advertisable,
       ["POST", "act_1001/ads", () => json({ id: "11" })],
     ])
     await run("meta_create_ad", {
@@ -241,6 +252,7 @@ describe("meta_create_ad", () => {
   it("video ad requires a thumbnail; existing post uses object_story_id", async () => {
     const m = mockGraph([
       ["GET", "2001", () => json(adset)],
+      ...advertisable,
       ["POST", "act_1001/ads", () => json({ id: "12" })],
     ])
     await expect(
@@ -262,11 +274,49 @@ describe("meta_create_ad", () => {
   it("dryRun never creates", async () => {
     const m = mockGraph([
       ["GET", "2001", () => json(adset)],
+      ...advertisable,
       ["POST", "act_1001/ads", () => json({ success: true })],
     ])
     const res = await run("meta_create_ad", { adset_id: "2001", name: "Ad", page_id: "888", creative: { type: "link", link: "https://shop.vn" } }, { dryRun: true })
     expect(res.preview).toBe(true)
     expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("page_id outside the ad account's advertisable Pages is refused (dry run and execute) before any POST", async () => {
+    const link = (page_id: string) => ({ adset_id: "2001", name: "Ad", page_id, creative: { type: "link", link: "https://shop.vn" } })
+    for (const opts of [{}, { dryRun: true }]) {
+      const m = mockGraph([["GET", "2001", () => json(adset)], ...advertisable, ["POST", /.*/, () => json({ id: "13" })]])
+      // unknown Page, and a Page the via only moderates (no ADVERTISE task)
+      for (const page of ["999", "666"]) {
+        await expect(run("meta_create_ad", link(page), opts)).rejects.toMatchObject({
+          code: "invalid_request",
+          userMessageVi: `Trang ${page} không nằm trong danh sách Trang mà tài khoản quảng cáo này được dùng để chạy quảng cáo.`,
+          hint: "Gọi ads_lookup kind=pages để lấy page_id hợp lệ.",
+        })
+      }
+      expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    }
+  })
+
+  it("existing_post: the Page prefix of object_story_id is checked; a me/accounts Page with ADVERTISE passes", async () => {
+    const m = mockGraph([["GET", "2001", () => json(adset)], ...advertisable, ["POST", "act_1001/ads", () => json({ id: "14" })]])
+    const post = (id: string) => ({ adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: id } })
+    await expect(run("meta_create_ad", post("999_1"))).rejects.toThrow(/Trang 999/)
+    // a valid page_id does not launder a post of another Page
+    await expect(run("meta_create_ad", { ...post("999_1"), page_id: "888" })).rejects.toThrow(/Trang 999/)
+    expect(m.mutatingPosts()).toHaveLength(0)
+    await run("meta_create_ad", post("777_5"))
+    expect(JSON.parse(m.mutatingPosts()[0].params.creative).object_story_id).toBe("777_5")
+  })
+
+  it("meta_create_adset: promoted_object.page_id must be advertisable too", async () => {
+    const input = { ...adsetInput, promoted_object: { ...adsetInput.promoted_object, page_id: "999" } }
+    const m = mockGraph([["GET", "3001", () => json(aboCampaign)], ...advertisable, ["POST", "act_1001/adsets", () => json({ id: "2003" })]])
+    await expect(run("meta_create_adset", input, { dryRun: true })).rejects.toThrow(/Trang 999/)
+    await expect(run("meta_create_adset", input)).rejects.toThrow(/Trang 999/)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    await run("meta_create_adset", { ...input, promoted_object: { ...input.promoted_object, page_id: "888" } })
+    expect(JSON.parse(m.mutatingPosts()[0].params.promoted_object).page_id).toBe("888")
   })
 })
 

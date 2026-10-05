@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Tạo file .env từ .env.example với secret ngẫu nhiên.
-// Dùng: node scripts/gen-env.mjs [--dev] [--force] [--print] [--domain <tên miền>] [--email <email>]
+// Dùng: node scripts/gen-env.mjs [--dev] [--force] [--print] [--domain <tên miền>] [--email <email>] [--app-version <x.y.z>]
 //   --dev            : cấu hình chạy local (localhost:3000, Postgres qua docker-compose.dev.yml)
 //   --force          : ghi đè .env đã có
 //   --print          : in nội dung ra màn hình thay vì ghi file .env
@@ -10,11 +10,13 @@
 //   --ssl <p>        : phương án HTTPS (docs/deploy-vps.md): auto (mặc định, Caddy tự xin chứng chỉ) |
 //                      cloudflare (sau proxy Cloudflare, chứng chỉ Origin CA) | nginx (Nginx + Certbot trên máy chủ) |
 //                      tunnel (Cloudflare Tunnel; sau đó dán TUNNEL_TOKEN vào .env)
+//   --app-version <v>: phiên bản image sẽ chạy (x.y.z, không có "v"); mặc định = package.json#version
 // HOST_PROJECT_DIR (đường dẫn thư mục dự án trên máy chủ) lấy từ biến môi trường cùng tên hoặc thư mục hiện tại.
-// APP_VERSION (tag image sẽ kéo) = package.json#version (production).
+// APP_VERSION (tag image sẽ kéo, BẮT BUỘC - docker-compose.yml không còn tag latest) = --app-version hoặc
+// package.json#version (production); --dev ghi APP_VERSION=dev. File .env luôn được đặt quyền 600.
 // VPS chưa cài Node: dùng `sh scripts/gen-secrets.sh` với cùng tham số.
 import { randomBytes } from "node:crypto"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 
 // --ssl -> biến của docker-compose.yml (giữ đồng bộ với SSL_PRESETS trong scripts/gen-secrets.sh).
 // Mọi preset đặt ĐỦ các biến (giá trị mặc định khi không dùng) để đổi phương án không để sót giá trị cũ.
@@ -42,7 +44,7 @@ function parseArgs(argv) {
   const opts = {}
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
-    const m = /^--(domain|email|ssl)(?:=(.*))?$/.exec(a)
+    const m = /^--(domain|email|ssl|app-version)(?:=(.*))?$/.exec(a)
     if (m) {
       const v = m[2] ?? argv[++i]
       if (!v || v.startsWith("--")) fail(`Thiếu giá trị cho --${m[1]}`)
@@ -78,6 +80,7 @@ if (opts.ssl !== undefined && !Object.hasOwn(SSL_PRESETS, opts.ssl)) {
   fail(`--ssl phải là một trong: ${Object.keys(SSL_PRESETS).join(", ")}`)
 }
 if (dev && opts.ssl !== undefined) fail("--ssl chỉ dùng cho production (không dùng với --dev)")
+if (dev && opts["app-version"] !== undefined) fail("--app-version chỉ dùng cho production (--dev luôn ghi APP_VERSION=dev)")
 if (!print && existsSync(".env") && !flags.has("force")) {
   fail(".env đã tồn tại. Dùng --force để ghi đè (nhớ giữ lại ENCRYPTION_KEYS cũ nếu đã có dữ liệu!).")
 }
@@ -91,13 +94,22 @@ const updaterOn = !dev && !flags.has("no-updater")
 const b64 = (n = 32) => randomBytes(n).toString("base64")
 const pg = randomBytes(18).toString("base64url")
 
-// Tag image phát hành = package.json#version (chỉ nhận x.y.z; bản khác -> để trống = latest)
+// Tag image phát hành = --app-version hoặc package.json#version (chỉ nhận x.y.z). Production không bao giờ để trống.
+const SEMVER = /^\d+\.\d+\.\d+$/
 let appVersion = ""
-try {
-  const v = JSON.parse(readFileSync("package.json", "utf8")).version
-  if (typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v)) appVersion = v
-} catch {
-  // không có package.json hợp lệ: giữ trống
+if (dev) {
+  appVersion = "dev"
+} else if (opts["app-version"] !== undefined) {
+  appVersion = opts["app-version"].replace(/^v/, "")
+  if (!SEMVER.test(appVersion)) fail(`--app-version không hợp lệ: ${opts["app-version"]} (ví dụ đúng: 1.0.2)`)
+} else {
+  try {
+    const v = JSON.parse(readFileSync("package.json", "utf8")).version
+    if (typeof v === "string" && SEMVER.test(v)) appVersion = v
+  } catch {
+    // không có package.json hợp lệ: báo lỗi ngay dưới đây
+  }
+  if (!appVersion) fail("Không xác định được phiên bản từ package.json. Chạy lại với --app-version x.y.z (bản đã có trên trang Releases).")
 }
 
 const values = {
@@ -114,7 +126,7 @@ const values = {
   ...(!dev && opts.email ? { ACME_EMAIL: opts.email } : {}),
   COMPOSE_PROFILES: updaterOn ? "updater" : "",
   ...(!dev && projectDir ? { HOST_PROJECT_DIR: projectDir } : {}),
-  ...(!dev && appVersion ? { APP_VERSION: appVersion } : {}),
+  APP_VERSION: appVersion,
   ...(!dev ? SSL_PRESETS[opts.ssl ?? "auto"] : {}),
 }
 
@@ -130,6 +142,12 @@ if (print) {
   process.stdout.write(out.endsWith("\n") ? out : out + "\n")
 } else {
   writeFileSync(".env", out, { mode: 0o600 })
+  // `mode` chỉ áp dụng khi tạo file mới: --force ghi đè file cũ thì đặt lại quyền
+  try {
+    chmodSync(".env", 0o600)
+  } catch {
+    // hệ thống không hỗ trợ chmod (Windows): bỏ qua
+  }
   console.log(`Đã tạo .env${dev ? " (dev)" : ""}. SETUP_TOKEN và các khoá nằm trong file này — hãy sao lưu ENCRYPTION_KEYS riêng.`)
   if (updaterOn && !projectDir) {
     console.log("Cập nhật tự động đã bật nhưng chưa xác định được HOST_PROJECT_DIR (cần đường dẫn Linux tuyệt đối, vd /opt/ads-mcp). Hãy điền vào .env hoặc chạy lại trên VPS.")
@@ -138,7 +156,7 @@ if (print) {
     console.log("Nhớ sửa APP_DOMAIN, BETTER_AUTH_URL, ACME_EMAIL trong .env (hoặc chạy lại với --domain/--email --force).")
   }
   if (!dev) {
-    console.log(`Phương án HTTPS: ${opts.ssl ?? "auto"} · APP_VERSION=${appVersion || "(trống = latest)"} - xem docs/deploy-vps.md.`)
+    console.log(`Phương án HTTPS: ${opts.ssl ?? "auto"} · APP_VERSION=${appVersion} - xem docs/deploy-vps.md.`)
   }
   if (opts.ssl === "tunnel") {
     console.log("Cloudflare Tunnel: dán token của tunnel vào dòng TUNNEL_TOKEN= trong .env (xem docs/deploy-vps.md, Phương án D).")

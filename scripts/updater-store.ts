@@ -1,6 +1,7 @@
 // Updater (I/O): all SQL of the updater. Contract: .claude/docs/10-update-system.md §3
 //   system_update_requests (one active row at a time), app_settings 'updater_heartbeat', activity_logs.
 // Takes a minimal pg-like handle so tests can pass a real pg.Pool (throw-away DB) or a fake.
+import { safeErrorForLog } from "@/server/audit/safe-error"
 import { ACTION_BY_STATUS, STALE_PENDING_MINUTES, type FinalStatus, type UpdateStep } from "./updater-core"
 
 export interface Queryable {
@@ -77,7 +78,7 @@ export function createPgStore(pool: PoolLike): Store {
       await tx.query("RELEASE SAVEPOINT activity")
     } catch (e) {
       await tx.query("ROLLBACK TO SAVEPOINT activity")
-      console.error(`[updater] ghi activity_logs lỗi: ${e instanceof Error ? e.message : String(e)}`)
+      console.error(`[updater] ghi activity_logs lỗi: ${safeErrorForLog(e)}`)
     }
   }
 

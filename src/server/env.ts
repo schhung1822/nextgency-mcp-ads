@@ -50,6 +50,11 @@ const schema = baseSchema.superRefine((v, ctx) => {
 
 export type Env = z.infer<typeof schema>
 
+/** .env.example ships `change-me` as the PostgreSQL password: warn (do not refuse, existing installs keep running). */
+export function hasSamplePostgresPassword(databaseUrl: string): boolean {
+  return databaseUrl.includes(":change-me@")
+}
+
 let cached: Env | undefined
 
 /** Validate an environment object (tests, startup). */
@@ -65,6 +70,9 @@ export function env(): Env {
     throw new Error(`Cấu hình môi trường không hợp lệ:\n${msg}`)
   }
   cached = parsed.data
+  if (hasSamplePostgresPassword(cached.DATABASE_URL)) {
+    console.warn("[env] CẢNH BÁO: Mật khẩu PostgreSQL đang là giá trị mẫu change-me — đổi ngay")
+  }
   return cached
 }
 

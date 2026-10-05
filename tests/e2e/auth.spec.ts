@@ -9,6 +9,8 @@ import { expect, test, type Page } from "@playwright/test"
 import pg from "pg"
 
 test.describe.configure({ mode: "serial" })
+// wide enough that the users DataTable renders as a table (< 768px container -> cards) even with the guide panel open
+test.use({ viewport: { width: 1600, height: 900 } })
 
 const ADMIN = { name: "Quản trị E2E", email: "admin.e2e@example.com", password: "Admin-Pass-2026!" }
 const STAFF = { name: "Nhân viên E2E", email: "staff.e2e@example.com", temp: "Temp-Pass-2026-xyz", next: "Staff-New-Pass-2026!" }
@@ -158,7 +160,11 @@ test("admin tạo nhân viên với mật khẩu tạm", async ({ page }) => {
 
   await page.goto("/users")
   await expect(page.getByRole("heading", { name: "Người dùng", level: 1 })).toBeVisible()
-  await page.getByRole("button", { name: "Thêm người dùng" }).click()
+  // the dev server may full-reload the page right after its first compile: retry until the dialog is really open
+  await expect(async () => {
+    await page.getByRole("button", { name: "Thêm người dùng" }).click()
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 3_000 })
+  }).toPass({ timeout: 90_000 })
   const dialog = page.getByRole("dialog")
   await dialog.getByLabel("Họ tên").fill(STAFF.name)
   await dialog.getByLabel("Email").fill(STAFF.email)

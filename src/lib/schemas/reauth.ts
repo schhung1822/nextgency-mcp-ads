@@ -3,6 +3,12 @@ import { z } from "zod"
 
 import { reauth as t } from "@/lib/i18n/vi/reauth"
 
+/**
+ * `fieldErrors[REAUTH_REQUIRED_FIELD]` on a failed action result = "this operation needs your password (+ TOTP)":
+ * the UI opens its re-auth dialog and retries with `reauth`. The ActionResult shape stays unchanged.
+ */
+export const REAUTH_REQUIRED_FIELD = "_reauth"
+
 /** 6-digit TOTP code; required by the server when the user has 2FA enabled. "" → undefined. */
 export const reauthCodeSchema = z
   .string()

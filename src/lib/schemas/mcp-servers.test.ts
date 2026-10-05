@@ -13,6 +13,8 @@ import {
   isoToExpiryDate,
   matchPermissionPreset,
   mcpSettingsSchema,
+  missingDailyCapCurrencies,
+  MONEY_WRITE_PERMISSIONS,
   normalizePermissions,
   parseAmountText,
   parseIpList,
@@ -154,6 +156,7 @@ describe("mcp-servers schemas", () => {
       rate_limit_per_min: 600,
       write_rate_limit_per_10min: 20,
       allowed_ips: ["::1"],
+      money_caps_required: true,
     })
   })
 
@@ -638,5 +641,46 @@ describe("Facebook Page scopes", () => {
     expect(kept.platforms.meta.connections[0]).toMatchObject({ pagesMode: "pick", pageIds: [PAGE2] })
     const gone = pruneToSelectable(metaForm("pick", [PAGE1]), selectable)
     expect(gone.platforms.meta.connections[0]).toMatchObject({ pagesMode: "none", pageIds: [] })
+  })
+})
+
+describe("mandatory daily caps", () => {
+  it("money-write permissions exclude read and delete", () => {
+    expect([...MONEY_WRITE_PERMISSIONS]).toEqual(["status", "update", "copy", "create"])
+  })
+
+  it("missingDailyCapCurrencies lists required currencies without a positive cap (upper case, sorted, unique)", () => {
+    expect(missingDailyCapCurrencies({ VND: 5_000_000 }, ["VND"])).toEqual([])
+    expect(missingDailyCapCurrencies({ VND: 5_000_000 }, ["usd", "VND", "JPY", "USD"])).toEqual(["JPY", "USD"])
+    expect(missingDailyCapCurrencies({ VND: 0, USD: Number.NaN }, ["VND", "USD"])).toEqual(["USD", "VND"])
+    expect(missingDailyCapCurrencies({}, [])).toEqual([])
+  })
+
+  it("stored settings always mark the MCP as 'caps required'", () => {
+    expect(toStoredMcpSettings(DEFAULT_SETTINGS_INPUT).money_caps_required).toBe(true)
+    // the client cannot set or clear the marker: the schema strips it
+    const parsed = mcpSettingsSchema.parse({ ...DEFAULT_SETTINGS_INPUT, moneyCapsRequired: false })
+    expect(parsed).not.toHaveProperty("moneyCapsRequired")
+  })
+
+  it("validateProtectionStep flags a missing daily cap for each required currency", () => {
+    const v = defaultMcpFormValues()
+    expect(validateProtectionStep(v, { requiredCapCurrencies: [] })).toEqual({})
+    const e = validateProtectionStep(v, { requiredCapCurrencies: ["VND", "USD"] })
+    expect(e).toEqual({
+      "maxDailyBudget.USD": expect.stringMatching(/USD.*bắt buộc/),
+      "maxDailyBudget.VND": expect.stringMatching(/VND.*bắt buộc/),
+    })
+    // a blank entry is missing, a valid amount is enough, an invalid amount keeps its own message
+    v.maxDailyBudget = { VND: "5.000.000", USD: "  " }
+    expect(Object.keys(validateProtectionStep(v, { requiredCapCurrencies: ["VND", "USD"] }))).toEqual(["maxDailyBudget.USD"])
+    v.maxDailyBudget = { VND: "abc", USD: "10" }
+    expect(validateProtectionStep(v, { requiredCapCurrencies: ["VND", "USD"] })).toEqual({
+      "maxDailyBudget.VND": "Trần ngân sách phải là số dương hợp lệ.",
+    })
+    // a lifetime cap does not replace the daily cap
+    v.maxDailyBudget = {}
+    v.maxLifetimeBudget = { VND: "100.000.000" }
+    expect(Object.keys(validateProtectionStep(v, { requiredCapCurrencies: ["VND"] }))).toEqual(["maxDailyBudget.VND"])
   })
 })

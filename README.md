@@ -18,7 +18,7 @@ Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm l�
 ## Mục lục
 
 - [Bước 0. Chuẩn bị](#bước-0-chuẩn-bị)
-- [Bước 1. Tạo token GitHub](#bước-1-tạo-token-github)
+- [Bước 1. Chuẩn bị quyền GitHub](#bước-1-chuẩn-bị-quyền-github)
 - [Bước 2. Kết nối vào VPS](#bước-2-kết-nối-vào-vps)
 - [Bước 3. Cài đặt máy chủ](#bước-3-cài-đặt-máy-chủ)
 - [Bước 4. Tải phần mềm về VPS](#bước-4-tải-phần-mềm-về-vps)
@@ -27,6 +27,7 @@ Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm l�
 - [Bước 7. Khởi chạy](#bước-7-khởi-chạy)
 - [Bước 8. Tạo tài khoản Admin](#bước-8-tạo-tài-khoản-admin)
 - [Bước 9. Sao lưu file cấu hình](#bước-9-sao-lưu-file-cấu-hình)
+- [Liên kết chính sách cho Meta/OpenAI app](#liên-kết-chính-sách-cho-metaopenai-app)
 - [Cập nhật phiên bản mới](#cập-nhật-phiên-bản-mới)
 - [Sao lưu và khôi phục dữ liệu](#sao-lưu-và-khôi-phục-dữ-liệu)
 - [Các lệnh hay dùng](#các-lệnh-hay-dùng)
@@ -56,21 +57,47 @@ Trong hướng dẫn, thay các giá trị mẫu bằng thông tin của bạn:
 
 ---
 
-## Bước 1. Tạo token GitHub
+## Bước 1. Chuẩn bị quyền GitHub
 
-Token là "mật khẩu riêng" để VPS tải phần mềm từ GitHub. **Một token dùng cho cả 3 việc**: tải mã nguồn, tải image Docker, và kiểm tra bản cập nhật mới.
+noti.vn thêm **tài khoản GitHub của bạn** vào kho phần mềm với quyền **chỉ đọc (Read)**. Bạn tạo **2 token** (2 "mật khẩu riêng") từ tài khoản đó, mỗi token chỉ làm **đúng 1 việc**:
 
-1. Đăng nhập GitHub bằng tài khoản đã được cấp quyền.
+| Token       | Dùng để                                                                   | Tích đúng 1 ô   |
+| ----------- | ------------------------------------------------------------------------- | --------------- |
+| **Token A** | Tải image Docker (phần mềm đã đóng gói)                                   | `read:packages` |
+| **Token B** | Tải mã nguồn (`git clone`, `git pull`) và để phần mềm tự kiểm tra bản mới | `repo`          |
+
+> [!WARNING]
+> GitHub bắt buộc tích `repo` cho Token B (kho được chia sẻ cho tài khoản ngoài tổ chức chỉ dùng được loại token này). Quyền `repo` cho phép **đọc và ghi mọi kho (repo) của chính tài khoản GitHub đó**. Nếu tài khoản của bạn có kho quan trọng, nên **tạo một tài khoản GitHub riêng cho máy chủ** (ví dụ `congty-ads-server`) rồi gửi tên tài khoản này cho noti.vn để được thêm quyền (không bắt buộc). Với kho của noti.vn, tài khoản chỉ có quyền Read nên token không sửa được phần mềm.
+
+### 1.1 Tạo Token A (tải image)
+
+1. Đăng nhập GitHub bằng tài khoản đã được noti.vn cấp quyền.
 2. Mở <https://github.com/settings/tokens/new> (Personal access tokens → **Tokens (classic)**).
-3. **Note**: gõ `ads-mcp-vps`.
-4. **Expiration**: chọn **1 năm** (hoặc _Custom_ ngày cụ thể). Ghi lịch nhắc gia hạn trước khi hết hạn.
-5. Tích đúng 2 ô:
-   - ☑ **repo**
-   - ☑ **read:packages**
+3. **Note**: gõ `ads-mcp-vps-image`.
+4. **Expiration**: chọn **1 năm** (hoặc _Custom_ ngày cụ thể). Ghi lịch nhắc gia hạn trước khi hết hạn 2 tuần.
+5. Chỉ tích **☑ read:packages**. Không tích ô nào khác.
 6. Kéo xuống cuối, bấm **Generate token**.
-7. **Sao chép token ngay** (bắt đầu bằng `ghp_...`) và lưu vào nơi an toàn. GitHub chỉ hiện token **một lần**.
+7. **Sao chép token ngay** (bắt đầu bằng `ghp_...`), lưu vào trình quản lý mật khẩu với ghi chú "Token A". GitHub chỉ hiện token **một lần**.
 
-> Token này chỉ đọc được các dự án mà tài khoản GitHub của bạn có quyền. Không gửi token cho người khác.
+### 1.2 Tạo Token B (mã nguồn + kiểm tra bản mới)
+
+Làm lại đúng như 1.1, chỉ khác:
+
+- **Note**: gõ `ads-mcp-vps-repo`.
+- Chỉ tích **☑ repo** (các ô con bên dưới tự được tích theo). Không tích `read:packages` hay ô nào khác.
+- Lưu với ghi chú "Token B".
+
+> Không gửi token cho người khác, không dán vào chat/email. Token hết hạn thì phần mềm vẫn chạy bình thường, chỉ không tải hoặc kiểm tra được bản mới: tạo token mới rồi làm lại bước 4.2 (Token A) hoặc 6.2 (Token B).
+
+> [!IMPORTANT]
+> **Đã cài theo hướng dẫn cũ** (1 token tích cả `repo` và `read:packages`, có chạy lệnh `git config --global credential.helper store`)? Làm lần lượt trên VPS bằng user `deploy`:
+>
+> 1. Tạo Token A và Token B mới (bước 1.1, 1.2).
+> 2. Xoá token cũ đang lưu trên VPS: `rm -f ~/.git-credentials && git config --global --unset credential.helper`. Từ giờ `git pull` sẽ hỏi `Username` (tên GitHub) và `Password` (dán Token B).
+> 3. Đăng nhập lại kho image bằng Token A: chạy `docker logout ghcr.io`, rồi làm bước 4.2.
+> 4. `cd /opt/ads-mcp && nano .env`, thay giá trị dòng `UPDATE_GITHUB_TOKEN=` bằng Token B, lưu lại, rồi chạy `docker compose up -d --no-build`.
+> 5. Vào <https://github.com/settings/tokens>, bấm **Delete** ở token cũ.
+> 6. Trong web, vào **Cài đặt → Cập nhật**, bấm **Kiểm tra ngay**: phải thấy phiên bản mới nhất, không báo lỗi.
 
 ---
 
@@ -114,14 +141,33 @@ Lệnh `adduser` sẽ hỏi mật khẩu cho user `deploy` 2 lần, hãy đặt 
 
 ### 3.2 Cài Docker
 
+Cài từ kho chính thức của Docker (dán cả khối):
+
 ```bash
-curl -fsSL https://get.docker.com | sh
+. /etc/os-release
+case "$ID" in ubuntu|debian) ;; *) echo "Chỉ hỗ trợ Ubuntu/Debian"; false ;; esac
+apt -y install ca-certificates curl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/$ID
+Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+apt update
+apt -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 usermod -aG docker deploy
 ```
 
 Đợi 1-3 phút đến khi chạy xong.
 
-> Nếu thấy cảnh báo `the "docker" command appears to already exist` và `sleep 20`: máy đã có Docker từ trước. Bấm **Ctrl+C** để huỷ, kiểm tra bằng `docker --version` và `docker compose version`. Nếu Docker từ bản **28** trở lên và có `Docker Compose version v2` trở lên thì dùng luôn; nếu không thì chạy lại lệnh cài và để chạy hết. Sau khi huỷ, chạy riêng lại lệnh `usermod -aG docker deploy`.
+> Máy đã có Docker từ trước: kiểm tra bằng `docker --version` (bản **28** trở lên) và `docker compose version` (`v2` trở lên). Đủ thì bỏ qua khối trên, chỉ chạy `usermod -aG docker deploy`.
+>
+> Nhóm `docker` có quyền **tương đương root** trên máy chủ: chỉ thêm user quản trị tin cậy.
 
 ### 3.3 Tạo bộ nhớ swap (cho VPS ít RAM)
 
@@ -183,6 +229,52 @@ docker ps
 
 > Nếu dòng nhắc đã là `deploy@...` thì không cần `exit`, chỉ cần kiểm tra `docker ps` như trên.
 
+### 3.6 Đăng nhập bằng khoá SSH, tắt đăng nhập bằng mật khẩu
+
+Mật khẩu SSH dễ bị dò. Bước này cho máy tính của bạn đăng nhập VPS bằng **khoá SSH**, rồi tắt hẳn đăng nhập bằng mật khẩu và đăng nhập `root`.
+
+> Ngồi trực tiếp trên mini PC và không bao giờ SSH từ máy khác: có thể bỏ qua bước này.
+
+**Trên máy tính của bạn** (mở **cửa sổ PowerShell/Terminal mới**, không gõ trong cửa sổ đang kết nối VPS):
+
+- **Windows (PowerShell):**
+
+  ```powershell
+  ssh-keygen -t ed25519
+  ```
+
+  Bấm Enter 3 lần (giữ mặc định). Sau đó chép khoá lên VPS (thay `IP_VPS`, nhập mật khẩu của `deploy` khi được hỏi):
+
+  ```powershell
+  type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh deploy@IP_VPS "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  ```
+
+- **macOS (Terminal):**
+
+  ```bash
+  ssh-keygen -t ed25519
+  ssh-copy-id deploy@IP_VPS
+  ```
+
+**Kiểm tra:** mở thêm **một cửa sổ mới**, gõ `ssh deploy@IP_VPS`. Phải vào được VPS **mà không hỏi mật khẩu VPS**. **Giữ nguyên cửa sổ cũ** đang kết nối, phòng khi có lỗi.
+
+**Trên VPS** (trong cửa sổ vừa vào được bằng khoá; `sudo` hỏi mật khẩu của `deploy`):
+
+```bash
+sudo tee /etc/ssh/sshd_config.d/00-ads-mcp-hardening.conf >/dev/null <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+EOF
+sudo sshd -t && sudo systemctl reload ssh
+sudo sshd -T | grep -Ei '^(passwordauthentication|permitrootlogin)'
+```
+
+Dòng cuối phải in ra `passwordauthentication no` và `permitrootlogin no`. Từ giờ chỉ đăng nhập bằng `ssh deploy@IP_VPS` từ máy tính đã có khoá.
+
+> [!WARNING]
+> Mất khoá (đổi máy tính, cài lại Windows) là **không SSH vào VPS được nữa**. Khi đó dùng **console web** trong trang quản lý của nhà cung cấp VPS (mini PC: bàn phím và màn hình gắn trực tiếp) để đăng nhập `deploy` và thêm khoá mới. Nên sao lưu thư mục `.ssh` của máy tính ở nơi an toàn. Tuỳ chọn chống dò mật khẩu thêm: fail2ban ([docs/deploy-vps.md](docs/deploy-vps.md) mục 3.6).
+
 ---
 
 ## Bước 4. Tải phần mềm về VPS
@@ -191,24 +283,28 @@ docker ps
 
 ```bash
 sudo mkdir -p /opt/ads-mcp && sudo chown deploy: /opt/ads-mcp
-git config --global credential.helper store
 git clone https://github.com/notivn/Ads-MCP-simple.git /opt/ads-mcp
 ```
 
 - Có thể được hỏi mật khẩu của `deploy` (do lệnh `sudo`): nhập mật khẩu đã đặt ở bước 3.1.
 - `Username`: nhập `TEN_GITHUB` = **tên đăng nhập (username) GitHub** của tài khoản đã tạo token ở bước 1. Xem username: đăng nhập GitHub → bấm avatar góc trên bên phải → dòng in đậm. **Không** nhập email.
-- `Password`: **dán token** ở bước 1 (không hiện ký tự), Enter. **Không** nhập mật khẩu GitHub, GitHub chỉ nhận token.
+- `Password`: **dán Token B** ở bước 1.2 (không hiện ký tự), Enter. **Không** nhập mật khẩu GitHub, GitHub chỉ nhận token.
 
-Token được lưu lại trên VPS để lần cập nhật sau không phải nhập nữa.
+Token **không** được lưu trên VPS: mỗi lần `git pull` (khi cập nhật) sẽ hỏi lại `Username` và `Password` (Token B). **Không** chạy `git config credential.helper store` (lệnh đó lưu token thành chữ thường trên ổ đĩa).
+
+> Tuỳ chọn, đỡ phải dán lại nhiều lần trong 1 buổi làm việc: `git config --global credential.helper 'cache --timeout=900'` (chỉ nhớ token trong RAM 15 phút).
 
 ### 4.2 Đăng nhập kho image
 
+Dán nguyên khối lệnh dưới đây (thay `TEN_GITHUB`); khi thấy dòng `Dán Token A rồi Enter:` thì **dán Token A** ở bước 1.1 (không hiện ký tự) rồi Enter:
+
 ```bash
 cd /opt/ads-mcp
-docker login ghcr.io -u TEN_GITHUB
+read -rsp "Dán Token A rồi Enter: " CR_PAT; echo
+printf '%s' "$CR_PAT" | docker login ghcr.io -u TEN_GITHUB --password-stdin; unset CR_PAT
 ```
 
-`Password`: **dán token** ở bước 1, Enter. Thấy `Login Succeeded` là đúng.
+Thấy `Login Succeeded` là đúng (cảnh báo `credentials are stored unencrypted` là bình thường trên máy chủ Linux).
 
 ---
 
@@ -293,13 +389,13 @@ Lần đầu chạy có thể mất 1-2 phút (tải công cụ tạo khoá). Ch
 
 ### 6.2 Thêm token GitHub vào cấu hình
 
-Để phần mềm tự kiểm tra và tải bản cập nhật. Dán nguyên khối lệnh dưới đây; khi thấy dòng `Dán token GitHub rồi Enter:` thì **dán token thật** ở bước 1 (không hiện ký tự) rồi Enter:
+Để phần mềm tự kiểm tra và tải bản cập nhật. Dán nguyên khối lệnh dưới đây; khi thấy dòng `Dán Token B rồi Enter:` thì **dán Token B** ở bước 1.2 (không hiện ký tự) rồi Enter:
 
 ```bash
-read -rsp "Dán token GitHub rồi Enter: " GH_TOKEN; echo
+read -rsp "Dán Token B rồi Enter: " GH_TOKEN; echo
 echo "UPDATE_GITHUB_TOKEN=$GH_TOKEN" >> .env; unset GH_TOKEN
 echo "UPDATER_DOCKER_CONFIG=$HOME/.docker" >> .env
-grep -c "^UPDATE_GITHUB_TOKEN=ghp_" .env
+grep -cE "^UPDATE_GITHUB_TOKEN=(ghp_|github_pat_)" .env
 ```
 
 Dòng cuối in ra `1` là đúng. In ra `0` nghĩa là chưa dán đúng token: mở `nano .env`, sửa dòng `UPDATE_GITHUB_TOKEN=` ở cuối file.
@@ -393,16 +489,38 @@ Bôi đen toàn bộ nội dung, sao chép, lưu vào **trình quản lý mật 
 
 ---
 
+## Liên kết chính sách cho Meta/OpenAI app
+
+Ứng dụng nhà phát triển (Meta App Dashboard → **App settings → Basic** / *Cài đặt ứng dụng → Thông tin cơ bản*: *URL chính sách quyền riêng tư*, *URL điều khoản dịch vụ*, *Xoá dữ liệu người dùng → URL hướng dẫn xoá dữ liệu*; OpenAI tương tự) cần các trang công khai. Mỗi bản cài đặt đã có sẵn 3 trang, **không cần đăng nhập**, tiếng Việt + bản tiếng Anh:
+
+| Trang | Địa chỉ |
+|---|---|
+| Chính sách quyền riêng tư | `https://mcp.congty.vn/privacy` |
+| Điều khoản dịch vụ | `https://mcp.congty.vn/terms` |
+| Hướng dẫn xoá dữ liệu | `https://mcp.congty.vn/data-deletion` |
+
+1. Đăng nhập bằng Admin → **Cài đặt → Thông tin pháp lý**: nhập **Tên đơn vị vận hành** (công ty của bạn - bên chịu trách nhiệm về dữ liệu) và **Email liên hệ quyền riêng tư** → Lưu. Để trống thì trang dùng tên miền và ghi "quản trị viên hệ thống".
+2. Lấy liên kết: thanh bên trái, dưới tên tài khoản, khối **Liên kết cho ứng dụng** - bấm tên trang để mở, bấm biểu tượng sao chép để lấy địa chỉ đầy đủ (điện thoại: tab **Menu**).
+3. Dán 3 địa chỉ vào ứng dụng Meta/OpenAI.
+
+---
+
 ## Cập nhật phiên bản mới
 
-**Cách 1 - Trong web (khuyến nghị):** khi có bản mới, Admin thấy thông báo ở menu tài khoản. Vào **Cài đặt → Cập nhật** → bấm **Cập nhật lên vX.Y.Z** → nhập lại mật khẩu. Hệ thống tự sao lưu dữ liệu, tải bản mới, khởi động lại (web gián đoạn khoảng 1-2 phút) và **tự quay về bản cũ nếu lỗi**.
+**Cách 1 - Trong web (khuyến nghị):** khi có bản mới, Admin thấy thông báo ở menu tài khoản. Vào **Cài đặt → Cập nhật** → bấm **Cập nhật lên vX.Y.Z** → nhập lại mật khẩu. Hệ thống tự sao lưu dữ liệu, tải bản mới, **kiểm tra chữ ký số của noti.vn** (bản không có chữ ký bị từ chối), khởi động lại (web gián đoạn khoảng 1-2 phút) và **tự quay về bản cũ nếu lỗi**.
+
+> Ghi chú phát hành yêu cầu lấy cấu hình mới (`git pull`)? Chạy trước khi bấm Cập nhật (git hỏi `Username` và `Password` = Token B):
+>
+> ```bash
+> cd /opt/ads-mcp && git pull --ff-only && docker compose up -d --no-build
+> ```
 
 **Cách 2 - Chạy lệnh** (dùng khi ghi chú phát hành yêu cầu, hoặc nút Cập nhật không dùng được). Thay `X.Y.Z` bằng số phiên bản mới (không có chữ `v`):
 
 ```bash
 cd /opt/ads-mcp
 docker compose exec -T db pg_dump -U adsmcp -d adsmcp -Fc > backups/truoc-cap-nhat-$(date +%F).dump
-git pull
+git pull --ff-only
 sed -i 's/^APP_VERSION=.*/APP_VERSION=X.Y.Z/' .env
 docker compose pull
 docker compose up -d --no-build
@@ -413,6 +531,8 @@ docker compose up -d --no-build
 ## Sao lưu và khôi phục dữ liệu
 
 Phần mềm **tự sao lưu cơ sở dữ liệu mỗi ngày** vào thư mục `/opt/ads-mcp/backups`, giữ 14 ngày. Nên định kỳ tải thư mục này về máy hoặc đồng bộ lên dịch vụ lưu trữ khác.
+
+> File sao lưu chứa email người dùng, mật khẩu đã băm và token quảng cáo đã mã hoá: giữ **bí mật** như file `.env`, **mã hoá trước khi** đưa lên dịch vụ lưu trữ (ví dụ rclone `crypt`, restic - xem [docs/van-hanh.md](docs/van-hanh.md)) và không để chung chỗ với bản sao `.env`.
 
 Xem danh sách bản sao lưu:
 
@@ -461,8 +581,9 @@ Luôn `cd /opt/ads-mcp` trước khi chạy:
 
 | Hiện tượng                                                                                      | Cách xử lý                                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git clone` báo `Authentication failed` / `Repository not found`                                | Token sai hoặc tài khoản GitHub chưa được noti.vn cấp quyền. Kiểm tra lại bước 1 (đã tích **repo**). Xoá token đã lưu: `rm ~/.git-credentials` rồi clone lại.                                                              |
-| `docker compose pull` báo `denied` / `unauthorized`                                             | Chạy lại `docker login ghcr.io -u TEN_GITHUB` với token còn hạn (đã tích **read:packages**).                                                                                                                               |
+| `git clone` / `git pull` báo `Authentication failed` / `Repository not found`                   | Sai `Username`, Token B sai/hết hạn (phải tích **repo**), hoặc tài khoản GitHub chưa được noti.vn cấp quyền. Kiểm tra lại bước 1.2 rồi chạy lại lệnh, dán đúng Token B khi được hỏi `Password`.                            |
+| `docker compose pull` báo `denied` / `unauthorized`                                             | Đăng nhập lại kho image bằng Token A còn hạn (chỉ tích **read:packages**): làm lại bước 4.2.                                                                                                                               |
+| Mọi lệnh `docker compose` báo `Thiếu APP_VERSION trong .env`                                    | `nano .env`, đặt dòng `APP_VERSION=` bằng phiên bản đang chạy (ví dụ `APP_VERSION=1.0.2`, không có chữ `v`; xem trang Releases trên GitHub), lưu rồi chạy lại lệnh.                                                        |
 | `permission denied ... docker.sock`                                                             | `sudo usermod -aG docker deploy`, rồi `exit` và đăng nhập lại (`ssh deploy@IP_VPS` hoặc `su - deploy`) - xem bước 3.5.                                                                                                     |
 | Bước 3 báo `Permission denied` / `Only root may add a user`                                     | Đang ở user thường: gõ `sudo -i` rồi chạy lại (xem bước 2).                                                                                                                                                                |
 | `ssh: Could not resolve hostname deploy`                                                        | Gõ thiếu IP: dùng `ssh deploy@IP_VPS`, hoặc `su - deploy` nếu đang ngồi trên chính máy chủ.                                                                                                                                |
@@ -473,6 +594,9 @@ Luôn `cd /opt/ads-mcp` trước khi chạy:
 | Cách B: lỗi **502**                                                                             | Public hostname phải là `HTTP` + `caddy:80`.                                                                                                                                                                               |
 | Cách B: lỗi **chuyển hướng quá nhiều lần**                                                      | File `.env` không tạo bằng `--ssl tunnel`. Làm lại bước 6 với `--ssl tunnel --force`.                                                                                                                                      |
 | Trang Cập nhật báo "Chưa bật"                                                                   | `docker compose ps -a updater` phải `running`. Kiểm tra `.env` có dòng `COMPOSE_PROFILES=updater` và `UPDATER_DOCKER_CONFIG`, rồi `docker compose up -d --no-build`.                                                       |
+| Trang Cập nhật báo "Không tìm thấy bản phát hành nào"                                           | Token B sai/hết hạn hoặc tài khoản GitHub mất quyền Read: tạo Token B mới (bước 1.2), sửa dòng `UPDATE_GITHUB_TOKEN=` trong `.env`, rồi `docker compose up -d --no-build`.                                                 |
+| Cập nhật lỗi ở bước "tải image": `không xác minh được chữ ký số`                                | Máy chủ phải ra Internet được tới `ghcr.io` và Sigstore (`*.sigstore.dev`): kiểm tra tường lửa chiều ra rồi bấm Cập nhật lại. Bản đang chạy không bị ảnh hưởng. Không tự tắt bước kiểm tra chữ ký: hỏi noti.vn trước.      |
+| Admin bị khoá tài khoản                                                                         | `docker compose run --rm web node dist/cli.mjs unban email@congty.vn`                                                                                                                                                      |
 | AI báo lỗi **524** (Cách B)                                                                     | Yêu cầu quá 125 giây: nhờ AI chia nhỏ (ít tài khoản hơn, khoảng ngày ngắn hơn).                                                                                                                                            |
 
 Cần hỗ trợ: gửi cho noti.vn kết quả của `docker compose ps -a` và `docker compose logs --tail=100 <tên dịch vụ lỗi>`. **Không gửi nội dung file `.env`.**

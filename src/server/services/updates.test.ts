@@ -370,7 +370,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
 
   describe("getUpdateStatus / getVersionBadge", () => {
     it("trạng thái trống: chưa có bản mới, updater offline", async () => {
-      const s = await getUpdateStatus(NOW)
+      const s = await getUpdateStatus(admin, NOW)
       expect(s).toMatchObject({
         current: "1.2.0",
         currentIsRelease: true,
@@ -407,7 +407,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
         requestedBy: admin.id,
         createdAt: new Date(NOW.getTime() - 60_000),
       })
-      const s = await getUpdateStatus(NOW)
+      const s = await getUpdateStatus(admin, NOW)
       expect(s.latest?.version).toBe("1.3.0")
       expect(s.hasUpdate).toBe(true)
       expect(s.updater).toMatchObject({ online: true, version: "1.2.0" })
@@ -423,9 +423,9 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
     it("heartbeat đúng ranh giới 90 giây", async () => {
       await setLatest("1.3.0")
       await setHeartbeat(89, NOW)
-      expect((await getUpdateStatus(NOW)).updater.online).toBe(true)
+      expect((await getUpdateStatus(admin, NOW)).updater.online).toBe(true)
       await setHeartbeat(91, NOW)
-      const s = await getUpdateStatus(NOW)
+      const s = await getUpdateStatus(admin, NOW)
       expect(s.updater.online).toBe(false)
       expect(s.blockReason).toBe("updater_offline")
     })
@@ -434,7 +434,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
       await setKey(UPDATE_LATEST_KEY, { version: 5 })
       await setKey(UPDATER_HEARTBEAT_KEY, "rác")
       await setKey(UPDATE_CHECK_ERROR_KEY, [])
-      const s = await getUpdateStatus(NOW)
+      const s = await getUpdateStatus(admin, NOW)
       expect(s.latest).toBeNull()
       expect(s.updater.online).toBe(false)
       expect(s.checkError).toBeNull()
@@ -443,7 +443,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
     it("bản chạy là dev: không có bản mới để cập nhật", async () => {
       process.env.APP_BUILD_VERSION = "dev"
       await ready()
-      const s = await getUpdateStatus()
+      const s = await getUpdateStatus(admin)
       expect(s).toMatchObject({ current: "dev", currentIsRelease: false, hasUpdate: false, blockReason: "dev_build" })
     })
 
@@ -467,11 +467,19 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
   })
 
   describe("khoá cài đặt nội bộ không lọt vào form Cài đặt", () => {
-    it("getAllSettings chỉ trả 5 khoá của form dù app_settings có update_latest / heartbeat", async () => {
+    it("getAllSettings chỉ trả 7 khoá của form dù app_settings có update_latest / heartbeat", async () => {
       await ready()
       await setKey(UPDATE_CHECK_ERROR_KEY, { at: NOW.toISOString(), message: "x" })
       const all = await getAllSettings()
-      expect(Object.keys(all).sort()).toEqual(["log_retention_months_mcp", "log_retention_months_staff", "require_2fa_admin", "require_2fa_all", "session_max_hours"])
+      expect(Object.keys(all).sort()).toEqual([
+        "legal_contact_email",
+        "legal_org_name",
+        "log_retention_months_mcp",
+        "log_retention_months_staff",
+        "require_2fa_admin",
+        "require_2fa_all",
+        "session_max_hours",
+      ])
     })
   })
 
@@ -490,6 +498,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
       const f = githubOk()
       vi.stubGlobal("fetch", f)
       await expect(checkForUpdatesNow(staff)).rejects.toMatchObject({ code: "forbidden" })
+      await expect(getUpdateStatus(staff)).rejects.toMatchObject({ code: "forbidden" })
       expect(f).not.toHaveBeenCalled()
     })
 

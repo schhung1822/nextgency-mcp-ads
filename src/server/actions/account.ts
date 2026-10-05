@@ -71,6 +71,8 @@ export async function changePasswordAction(input: unknown): Promise<ActionResult
       },
       headers: await headers(),
     })
+    // a stolen "trust this device" cookie must not keep skipping 2FA after the password changed (L2)
+    await usersService.forgetTrustedDevices(s.user.id)
     if (s.user.mustChangePassword) await usersService.clearMustChangePassword(s.user.id)
     // No revalidatePath: the forced page would redirect mid-flight; clients navigate/refresh themselves.
     return ok(undefined, tAuth.changePassword.changedToast)

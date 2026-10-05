@@ -11,7 +11,6 @@ import { providerContextFactory, type ProviderContextFactory } from "./context"
 import { McpToolError, mapToolError, type CallLogStatus, type ToolErrorPayload } from "./errors"
 import { platformLabel } from "./grant"
 import { CallLog } from "./logging"
-import { appendNotice, currentNoticeText } from "./notices"
 import { consumeWriteRate } from "./rate-limit"
 import type { RequestState } from "./request-state"
 import type { GrantAccount, McpGrant } from "./types"
@@ -116,11 +115,7 @@ export function registerToolSpec<S extends z.ZodObject<any>>(server: McpServer, 
       annotations: { title: spec.title, ...spec.annotations },
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (async (args: any, ctx: ServerContext) => {
-      // update / system notices ride along with every result (ok and error) as one extra text item
-      const [result, notice] = await Promise.all([runTool(spec, tctx, args as z.infer<S>, ctx), currentNoticeText()])
-      return appendNotice(result, notice)
-    }) as never
+    (async (args: any, ctx: ServerContext) => runTool(spec, tctx, args as z.infer<S>, ctx)) as never
   )
 }
 
@@ -208,8 +203,8 @@ export interface WriteExecution {
 /**
  * Idempotency key handed to the adapter for an executed write. Deterministic (never random) so an
  * adapter-level retry after a 5xx/timeout cannot create duplicates:
- *  - caller-supplied idempotency_key → scoped to MCP + tool
- *  - confirmed action → the consumed mcp_pending_actions id
+ *  - confirmed action → the consumed mcp_pending_actions id (a client key cannot override it)
+ *  - caller-supplied idempotency_key → MCP + tool + args hash + key (the same key with other args is another write)
  *  - two-step off → MCP + tool + args hash + minute bucket
  */
 export function writeIdempotencyKey(
@@ -217,10 +212,10 @@ export function writeIdempotencyKey(
   now = Date.now()
 ): string {
   const user = typeof o.args.idempotency_key === "string" ? o.args.idempotency_key.trim() : ""
-  const material = user
-    ? `user\n${o.mcpId}\n${o.toolName}\n${user}`
-    : o.pendingActionId
-      ? `pending\n${o.pendingActionId}`
+  const material = o.pendingActionId
+    ? `pending\n${o.pendingActionId}`
+    : user
+      ? `user\n${o.mcpId}\n${o.toolName}\n${argsHash(o.toolName, o.args)}\n${user}`
       : `auto\n${o.mcpId}\n${o.toolName}\n${argsHash(o.toolName, o.args)}\n${Math.floor(now / 60_000)}`
   return `mcpw-${createHash("sha256").update(material).digest("hex").slice(0, 40)}`
 }

@@ -44,6 +44,8 @@
 
 Scopes: `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement` (tùy chọn: `pages_manage_ads`, `catalog_management`). **Không cần** `read_insights` cho ads insights. Standard access tự có cho app Business quản lý tài sản của chính business → **không cần App Review**.
 
+Gửi token: tài liệu Marketing API không mô tả xác thực bằng header `Authorization: Bearer` cho Graph API → **giữ `access_token` (+ `appsecret_proof`) trong query/form** như hiện tại; URL luôn được redact trước khi log (`redactUrl`/`redactString`) và client Graph không tự theo redirect (`redirect: "manual"`).
+
 Access tier (đổi tên 2026-05-04): **Limited** (mặc định, rate limit chặt) / **Full** (cần ≥500 call thành công trong 15 ngày, lỗi <15%).
 
 ### Form kết nối (UI)

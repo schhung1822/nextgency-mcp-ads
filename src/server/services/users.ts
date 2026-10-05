@@ -23,10 +23,19 @@ import { getAuth } from "@/server/auth/auth"
 import { apiErrorCode, UserFacingError } from "@/server/auth/errors"
 import { readTwoFactorPolicy } from "@/server/auth/two-factor-policy"
 import { checkUserOp, isQualifyingAdmin, roleChangeOp, verifySetupToken, type UserOp } from "@/server/auth/guards"
-import { ReauthError, REAUTH_MESSAGES, requireReauth, type ReauthLog, type ReauthVerifier } from "@/server/auth/reauth"
+import {
+  isSessionFresh,
+  ReauthError,
+  REAUTH_MESSAGES,
+  reauthRequiredError,
+  requireReauth,
+  type ReauthLog,
+  type ReauthVerifier,
+} from "@/server/auth/reauth"
 import { AuthorizationError, type AppSession } from "@/server/auth/session"
 import { runWithUserCreateContext } from "@/server/auth/user-create-context"
 import { db, type Tx } from "@/server/db/client"
+import { invalidateGrantCache } from "@/server/mcp/grant"
 import { activityLogs, connections, mcpServers, session, twoFactor, user, verification } from "@/server/db/schema"
 
 /** pg_advisory_xact_lock keys (arbitrary constants, distinct from scripts/migrate.ts). */
@@ -66,8 +75,9 @@ export async function countUsers(): Promise<number> {
   return Number(row?.n ?? 0)
 }
 
-/** Admin only (caller must have passed requireAdmin / requireUserForAction({role:"admin"})). */
-export async function listUsers(): Promise<UserListItem[]> {
+/** Admin only (re-checked here even though the page already passed requireAdmin). */
+export async function listUsers(actor: Pick<AppSession, "user">): Promise<UserListItem[]> {
+  if (actor.user.role !== "admin") throw new AuthorizationError()
   const rows = await db
     .select({
       id: user.id,
@@ -103,8 +113,12 @@ export async function listUsers(): Promise<UserListItem[]> {
   }))
 }
 
-/** Active sessions of `userId` (caller authorizes: self or admin). Never returns the session token. */
-export async function listSessionsOf(userId: string, currentSessionId?: string): Promise<SessionItem[]> {
+/** Active sessions of `userId`: the user themself or an admin. Never returns the session token. */
+export async function listSessionsOf(
+  actor: Pick<AppSession, "user" | "sessionId">,
+  userId: string
+): Promise<SessionItem[]> {
+  if (actor.user.id !== userId && actor.user.role !== "admin") throw new AuthorizationError()
   const rows = await db
     .select({
       id: session.id,
@@ -124,7 +138,7 @@ export async function listSessionsOf(userId: string, currentSessionId?: string):
     createdAt: r.createdAt.toISOString(),
     lastActiveAt: (r.updatedAt ?? r.createdAt).toISOString(),
     expiresAt: r.expiresAt.toISOString(),
-    current: r.id === currentSessionId,
+    current: r.id === actor.sessionId,
   }))
 }
 
@@ -260,19 +274,38 @@ async function withUserGuard<T>(
 
 /**
  * Re-authentication of the acting admin (password + TOTP) for the most sensitive user-management actions
- * (creating an admin, resetting another admin's password/2FA, changing roles). Shared failure budget.
- * `verify` missing → "please re-enter your password" (the UI collects it when the target is an admin).
+ * (creating an admin; resetting the password/2FA of, banning, unbanning or deleting another admin; changing
+ * roles). Shared failure budget. `verify` missing → "please re-enter your password" (`fieldErrors._reauth`
+ * tells the UI to open its re-auth dialog).
  */
 async function reauthAdmin(actor: AppSession, log: ReauthLog, verify: ReauthVerifier | undefined): Promise<void> {
-  if (!verify) {
-    throw new ReauthError("reauth_required", REAUTH_MESSAGES.required, { "reauth.password": REAUTH_MESSAGES.required })
-  }
+  if (!verify) throw reauthRequiredError({ "reauth.password": REAUTH_MESSAGES.required })
   await requireReauth(
     { id: actor.user.id, email: actor.user.email, role: actor.user.role },
     log,
     verify,
     { sessionId: actor.sessionId }
   )
+}
+
+/**
+ * Gate of a user-management operation. `strict`: a real re-auth is required (admin targets). `fresh-ok`: a
+ * re-auth OR a fresh session of the acting admin (signed in / re-authenticated ≤ 10 min ago - isSessionFresh).
+ * Returns true when a real re-auth passed (callers re-check under the lock when the target turned out to be an admin).
+ */
+async function gateUserOp(
+  actor: AppSession,
+  log: ReauthLog,
+  verify: ReauthVerifier | undefined,
+  mode: "strict" | "fresh-ok"
+): Promise<boolean> {
+  if (verify) {
+    await reauthAdmin(actor, log, verify)
+    return true
+  }
+  if (mode === "fresh-ok" && (await isSessionFresh(actor))) return false
+  await reauthAdmin(actor, log, undefined) // throws reauth_required
+  return false
 }
 
 /** Log a failed admin mutation (outside the rolled-back transaction). Never throws. */
@@ -295,8 +328,16 @@ async function logFailure(
   }).catch(() => {})
 }
 
-async function deleteTrustedDevices(tx: Tx, userId: string) {
+async function deleteTrustedDevices(tx: Tx | typeof db, userId: string) {
   await tx.delete(verification).where(and(like(verification.identifier, "trust-device-%"), eq(verification.value, userId)))
+}
+
+/**
+ * Forget every "trust this device" (skip 2FA for 14 days) entry of `userId` - after a credential change, a stolen
+ * trust cookie must not survive (L2). Used by the self-service password change.
+ */
+export async function forgetTrustedDevices(userId: string): Promise<void> {
+  await deleteTrustedDevices(db, userId)
 }
 
 export async function createUserByAdmin(
@@ -386,28 +427,28 @@ async function roleOfUser(userId: string): Promise<UserRole | null> {
 export async function resetUserPassword(
   actor: AppSession,
   input: { userId: string; password: string },
-  /** required when the target is an ADMIN */
+  /** required when the target is an ADMIN; for staff unless the acting admin's session is fresh */
   verify?: ReauthVerifier
 ): Promise<void> {
   const h = await headers()
   try {
-    let reauthed = false
-    if ((await roleOfUser(input.userId)) === "admin") {
-      await reauthAdmin(actor, { action: "user.password.reset", target: { type: "user", id: input.userId } }, verify)
-      reauthed = true
-    }
+    const mode = (await roleOfUser(input.userId)) === "admin" ? "strict" : "fresh-ok"
+    const log: ReauthLog = { action: "user.password.reset", target: { type: "user", id: input.userId } }
+    const reauthed = await gateUserOp(actor, log, verify, mode)
     await withUserGuard(actor, input.userId, "resetPassword", async ({ tx, target }) => {
       // re-checked under the lock (the target may have been promoted meanwhile)
       if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action: "user.password.reset" }, undefined)
       await getAuth().api.setUserPassword({ body: { userId: target.id, newPassword: input.password }, headers: h })
       await tx.update(user).set({ mustChangePassword: true }).where(eq(user.id, target.id))
       await tx.delete(session).where(eq(session.userId, target.id))
+      // a "trust this device" cookie must not let anyone skip 2FA with the new password (L2)
+      await deleteTrustedDevices(tx, target.id)
       await logActivity(
         {
           actor: actorOf(actor.user),
           action: "user.password.reset",
           target: { type: "user", id: target.id, label: target.email },
-          metadata: { forcedChangeOnLogin: true, sessionsRevoked: true },
+          metadata: { forcedChangeOnLogin: true, sessionsRevoked: true, trustedDevicesRevoked: true },
         },
         tx
       )
@@ -421,15 +462,13 @@ export async function resetUserPassword(
 export async function resetUserTwoFactor(
   actor: AppSession,
   input: { userId: string },
-  /** required when the target is an ADMIN */
+  /** required when the target is an ADMIN; for staff unless the acting admin's session is fresh */
   verify?: ReauthVerifier
 ): Promise<void> {
   try {
-    let reauthed = false
-    if ((await roleOfUser(input.userId)) === "admin") {
-      await reauthAdmin(actor, { action: "user.2fa.reset", target: { type: "user", id: input.userId } }, verify)
-      reauthed = true
-    }
+    const mode = (await roleOfUser(input.userId)) === "admin" ? "strict" : "fresh-ok"
+    const log: ReauthLog = { action: "user.2fa.reset", target: { type: "user", id: input.userId } }
+    const reauthed = await gateUserOp(actor, log, verify, mode)
     await withUserGuard(actor, input.userId, "reset2fa", async ({ tx, target }) => {
       if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action: "user.2fa.reset" }, undefined)
       await tx.delete(twoFactor).where(eq(twoFactor.userId, target.id))
@@ -452,14 +491,25 @@ export async function resetUserTwoFactor(
   }
 }
 
-export async function setUserBanned(actor: AppSession, input: { userId: string; banned: boolean }): Promise<void> {
+export async function setUserBanned(
+  actor: AppSession,
+  input: { userId: string; banned: boolean },
+  /** required when the target is an ADMIN (ban and unban) */
+  verify?: ReauthVerifier
+): Promise<void> {
   const h = await headers()
   const action = input.banned ? "user.ban" : "user.unban"
   try {
+    const reauthed =
+      (await roleOfUser(input.userId)) === "admin" &&
+      (await gateUserOp(actor, { action, target: { type: "user", id: input.userId } }, verify, "strict"))
     await withUserGuard(actor, input.userId, input.banned ? "ban" : "unban", async ({ tx, target }) => {
+      // re-checked under the lock (the target may have been promoted meanwhile)
+      if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action }, undefined)
       if (input.banned) {
-        // banUser also deletes every session of the user.
+        // banUser also deletes every session of the user; trusted devices must not outlive the ban (L2).
         await getAuth().api.banUser({ body: { userId: target.id }, headers: h })
+        await deleteTrustedDevices(tx, target.id)
       } else {
         await getAuth().api.unbanUser({ body: { userId: target.id }, headers: h })
       }
@@ -473,6 +523,8 @@ export async function setUserBanned(actor: AppSession, input: { userId: string; 
         tx
       )
     })
+    // the owner's ban state gates every MCP key they own: drop cached grants / active-key set at once
+    invalidateGrantCache()
   } catch (e) {
     await logFailure(actor, action, input.userId, e)
     throw e
@@ -481,10 +533,20 @@ export async function setUserBanned(actor: AppSession, input: { userId: string; 
 
 export async function revokeUserSessionsByAdmin(
   actor: AppSession,
-  input: { userId: string; sessionId?: string }
+  input: { userId: string; sessionId?: string },
+  /** ADMIN target: required unless the acting admin's session is fresh (staff target: not needed) */
+  verify?: ReauthVerifier
 ): Promise<number> {
   try {
+    const log: ReauthLog = { action: "user.sessions.revoke", target: { type: "user", id: input.userId } }
+    let gated = false
+    if ((await roleOfUser(input.userId)) === "admin") {
+      await gateUserOp(actor, log, verify, "fresh-ok")
+      gated = true
+    }
     return await withUserGuard(actor, input.userId, "revokeSessions", async ({ tx, target }) => {
+      // re-checked under the lock (the target may have been promoted meanwhile)
+      if (toRole(target.role) === "admin" && !gated) await gateUserOp(actor, log, undefined, "fresh-ok")
       const where = input.sessionId
         ? and(eq(session.userId, target.id), eq(session.id, input.sessionId))
         : eq(session.userId, target.id)
@@ -506,10 +568,20 @@ export async function revokeUserSessionsByAdmin(
   }
 }
 
-export async function deleteUserByAdmin(actor: AppSession, input: { userId: string }): Promise<void> {
+export async function deleteUserByAdmin(
+  actor: AppSession,
+  input: { userId: string },
+  /** required when the target is an ADMIN */
+  verify?: ReauthVerifier
+): Promise<void> {
   const h = await headers()
   try {
+    const reauthed =
+      (await roleOfUser(input.userId)) === "admin" &&
+      (await gateUserOp(actor, { action: "user.delete", target: { type: "user", id: input.userId } }, verify, "strict"))
     await withUserGuard(actor, input.userId, "delete", async ({ tx, target }) => {
+      // re-checked under the lock (the target may have been promoted meanwhile)
+      if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action: "user.delete" }, undefined)
       // connections/mcp_servers.owner_id are ON DELETE RESTRICT (also soft-deleted rows).
       const [[c], [m]] = await Promise.all([
         tx.select({ n: count() }).from(connections).where(eq(connections.ownerId, target.id)),

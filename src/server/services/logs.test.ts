@@ -192,9 +192,11 @@ describe.skipIf(!hasDb)("logs service (DB)", async () => {
   })
 
   it("thông tin dung lượng bảng log", async () => {
-    const info = await svc.getLogStorageInfo()
+    const info = await svc.getLogStorageInfo(admin)
     expect(info.tables.map((t) => t.table)).toEqual(["mcp_call_logs", "activity_logs"])
     expect(info.tables[0].partitions.some((p) => p.name === "mcp_call_logs_default")).toBe(true)
+    // admins only (the settings page is admin-only too; the service re-checks)
+    await expect(svc.getLogStorageInfo(staffA)).rejects.toBeInstanceOf(AuthorizationError)
   })
 })
 
@@ -213,6 +215,15 @@ describe("CSV helpers", async () => {
     expect(csvEscape("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)")
     expect(csvEscape("+1")).toBe("'+1")
     expect(csvEscape("@cmd")).toBe("'@cmd")
+    // after leading whitespace, control characters and full-width forms
+    expect(csvEscape(" =1+1")).toBe("' =1+1")
+    expect(csvEscape("\t=1")).toBe("'\t=1")
+    expect(csvEscape("\n@x")).toBe(`"'\n@x"`)
+    expect(csvEscape("＝cmd")).toBe("'＝cmd")
+    expect(csvEscape("＋1")).toBe("'＋1")
+    expect(csvEscape("－1")).toBe("'－1")
+    expect(csvEscape("＠x")).toBe("'＠x")
+    expect(csvEscape(" bình thường")).toBe(" bình thường")
   })
 
   it("có BOM UTF-8 cho Excel", () => {

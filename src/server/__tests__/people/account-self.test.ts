@@ -103,9 +103,13 @@ describe.skipIf(!hasDb)("tài khoản của tôi + đăng nhập (DB + Better Au
       const s = await signIn(u)
       await signIn(u) // second device
       expect(await sessionRows(u.id)).toHaveLength(2)
+      // a "trust this device" entry (2FA skip cookie) must not survive the password change
+      const trustId = `trust-device-${P}-pw3`
+      await db.insert(verification).values({ id: trustId, identifier: trustId, value: u.id, expiresAt: new Date(Date.now() + 86_400_000) })
       actAs(s)
       const r = await changePasswordAction({ currentPassword: PASSWORD, newPassword: "NewPass8", confirmPassword: "NewPass8" })
       expect(r).toMatchObject({ ok: true })
+      expect(await db.select().from(verification).where(eq(verification.id, trustId))).toHaveLength(0)
       expect((await row(u.id)).mustChangePassword).toBe(false)
       // other devices are gone (Better Auth keeps/rotates only the current one)
       expect((await sessionRows(u.id)).length).toBeLessThanOrEqual(1)

@@ -3,11 +3,14 @@
 // (exec / store / files / sleep / now) so the whole flow is tested with fakes (updater-run.test.ts).
 // Safety rules (10-update-system.md §1): the running web/worker are untouched until migrate succeeded;
 // every external command is spawn(args[]) with values validated here, nothing from the DB is concatenated
-// into a shell string; the log tail is redacted before it is stored.
+// into a shell string; the log tail is redacted before it is stored. Images of noti.vn must carry the cosign
+// signature of the release workflow for the exact tag (verifyImageSignature) before they are used.
 import { posix as path } from "node:path"
 
 import {
   LogBuffer,
+  SIGNER_OIDC_ISSUER,
+  VERIFY_SIGNATURE_ENV,
   backupFileName,
   checkTargetVersion,
   collectSecretValues,
@@ -18,8 +21,11 @@ import {
   makeRedactor,
   parseComposePs,
   readEnvVar,
+  repoDigestsFor,
   setEnvVar,
   shortMessage,
+  signatureMode,
+  signerIdentity,
   type FinalStatus,
   type UpdateStep,
 } from "./updater-core"
@@ -105,6 +111,63 @@ export function composeArgs(cfg: UpdaterConfig, ...rest: string[]): string[] {
   return ["compose", "--project-directory", cfg.projectDir, "-f", path.join(cfg.projectDir, "docker-compose.yml"), ...rest]
 }
 
+// ---------------------------------------------------------------------------------------------
+// Image signature (cosign keyless; needs egress to ghcr.io + Sigstore, the docker login of DOCKER_CONFIG)
+// ---------------------------------------------------------------------------------------------
+export const COSIGN_TIMEOUT_MS = 180_000
+/** cosign's TUF cache: /tmp is a tmpfs in every compose version (the rootfs is read-only, HOME is not writable) */
+export const COSIGN_TUF_ROOT = "/tmp/sigstore-tuf"
+
+type CmdRunner = (
+  cmd: "docker" | "cosign",
+  label: string,
+  args: string[],
+  timeoutMs: number,
+  extra: { env?: Record<string, string>; capture?: boolean; quiet?: boolean }
+) => Promise<ExecResult & { tail?: string[] }>
+
+/**
+ * The already pulled `<repo>:<version>` must have a registry digest whose cosign signature was made by the
+ * docker.yml workflow of the tag v<version> (exact identity, GitHub OIDC issuer). null = verified, otherwise
+ * a short reason for the log. The later compose commands use the local tag (pull_policy missing), so a tag
+ * moved on the registry after this check cannot change what runs.
+ */
+export async function verifyImageSignature(runCmd: CmdRunner, repo: string, version: string): Promise<string | null> {
+  const ref = `${repo}:${version}`
+  const insp = await runCmd("docker", `image inspect ${ref} (RepoDigests)`, ["image", "inspect", "--format", "{{json .RepoDigests}}", ref], 60_000, {
+    capture: true,
+    quiet: true,
+  })
+  if (!ok(insp)) return `không đọc được digest của image (${describe(insp)})`
+  const digests = repoDigestsFor(insp.stdout ?? "", repo)
+  if (digests.length === 0) return "image không có digest của registry"
+  let last: ExecResult & { tail?: string[] } = insp
+  for (const digest of digests) {
+    const target = `${repo}@${digest}`
+    last = await runCmd(
+      "cosign",
+      `verify ${target}`,
+      ["verify", "--certificate-identity", signerIdentity(version), "--certificate-oidc-issuer", SIGNER_OIDC_ISSUER, target],
+      COSIGN_TIMEOUT_MS,
+      { env: { TUF_ROOT: COSIGN_TUF_ROOT }, capture: true, quiet: true }
+    )
+    if (ok(last)) return null
+  }
+  return describe(last)
+}
+
+function signatureFailure(ref: string, version: string): string {
+  return (
+    `không xác minh được chữ ký số của image ${ref} (image không do GitHub Actions của noti.vn ký cho tag v${version}, ` +
+    `hoặc máy chủ không kết nối được tới Sigstore). Bỏ qua (không khuyến nghị): thêm ${VERIFY_SIGNATURE_ENV}=0 vào .env rồi bấm Cập nhật lại`
+  )
+}
+
+const SKIP_NOTE = {
+  "skip-image": "Bỏ qua xác minh chữ ký số: APP_IMAGE không phải image của noti.vn (bản fork / registry riêng)",
+  "skip-env": `Bỏ qua xác minh chữ ký số: ${VERIFY_SIGNATURE_ENV}=0 trong .env (không khuyến nghị)`,
+} as const
+
 /**
  * Runs one update request to its final state and records it (store.finish). Never throws for expected failures.
  */
@@ -133,10 +196,16 @@ export async function runUpdate(req: UpdateRequest, d: RunDeps): Promise<FinalSt
     lastFlush = d.now()
     await d.store.progress(req.id, { step, message, log: log.tail() }).catch(() => {})
   }
-  const run = async (label: string, args: string[], timeoutMs: number, extra: { env?: Record<string, string>; stdoutFile?: string; stdinFile?: string; capture?: boolean; quiet?: boolean } = {}): Promise<RunResult> => {
-    note(`$ docker ${label}`)
+  const run = async (
+    label: string,
+    args: string[],
+    timeoutMs: number,
+    extra: { cmd?: "docker" | "cosign"; env?: Record<string, string>; stdoutFile?: string; stdinFile?: string; capture?: boolean; quiet?: boolean } = {}
+  ): Promise<RunResult> => {
+    const cmd = extra.cmd ?? "docker"
+    note(`$ ${cmd} ${label}`)
     const tail: string[] = []
-    const r = await d.exec("docker", args, {
+    const r = await d.exec(cmd, args, {
       env: { ...cfg.baseEnv, ...extra.env },
       cwd: cfg.projectDir,
       timeoutMs,
@@ -305,6 +374,18 @@ export async function runUpdate(req: UpdateRequest, d: RunDeps): Promise<FinalSt
       throw new StepError("pull", `image ${imageRef} không mang đúng phiên bản (${baked ?? "thiếu APP_BUILD_VERSION"})`)
     }
     note("Đã tải image và xác nhận đúng phiên bản")
+    // still step "pull" (no new UpdateStep: the DB CHECK, the UI and older web builds know only these steps)
+    const mode = signatureMode(cfg.image, envContent)
+    if (mode !== "verify") {
+      note(SKIP_NOTE[mode])
+      return
+    }
+    const why = await verifyImageSignature((cmd, label, args, timeoutMs, extra) => run(label, args, timeoutMs, { ...extra, cmd }), cfg.image, req.targetVersion)
+    if (why !== null) {
+      note(`Xác minh chữ ký số thất bại: ${why}`)
+      throw new StepError("pull", signatureFailure(imageRef, req.targetVersion))
+    }
+    note("Đã xác minh chữ ký số của image (GitHub Actions của noti.vn, đúng tag)")
   }
 
   async function stepMigrate() {
@@ -396,7 +477,7 @@ export const SELF_UPDATE_HELPER = "ads-mcp-updater-selfupdate"
  * Called only after the final status was written. Any failure leaves the old updater running.
  */
 export async function recreateUpdater(
-  deps: Pick<RunDeps, "cfg" | "exec">,
+  deps: Pick<RunDeps, "cfg" | "exec" | "files">,
   targetVersion: string,
   say: (line: string) => void
 ): Promise<"skipped" | "started" | "failed"> {
@@ -409,6 +490,40 @@ export async function recreateUpdater(
   if (!ok(pull)) {
     say(`Không tải được image updater mới (${describe(pull)}); giữ updater hiện tại`)
     return "failed"
+  }
+  // the new updater image gets docker.sock: same signature rule as the app image (an unreadable .env = verify)
+  let envContent = ""
+  try {
+    envContent = deps.files.readEnv()
+  } catch {
+    /* keep the default: verify */
+  }
+  const updaterRepo = `${cfg.image}-updater`
+  const mode = signatureMode(cfg.image, envContent)
+  if (mode === "verify") {
+    const why = await verifyImageSignature(
+      (cmd, label, args, timeoutMs, extra) => {
+        say(`$ ${cmd} ${label}`)
+        return exec(cmd, args, {
+          env: { ...env, ...extra.env },
+          cwd: cfg.projectDir,
+          timeoutMs,
+          capture: extra.capture,
+          onLine: (l, stream) => {
+            if (!(extra.quiet && stream === "stdout")) say(l)
+          },
+        })
+      },
+      updaterRepo,
+      targetVersion
+    )
+    if (why !== null) {
+      say(`Không xác minh được chữ ký số của image updater mới (${why}); giữ updater hiện tại`)
+      return "failed"
+    }
+    say("Đã xác minh chữ ký số của image updater mới")
+  } else {
+    say(SKIP_NOTE[mode])
   }
   await exec("docker", ["rm", "-f", SELF_UPDATE_HELPER], { ...base, timeoutMs: 60_000 })
   const dir = cfg.projectDir

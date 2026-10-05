@@ -171,8 +171,11 @@ describe.skipIf(!hasDb)("CLI (DB)", () => {
     it("reset-password: mật khẩu cũ chết, phiên bị xoá, buộc đổi mật khẩu, mật khẩu tạm đăng nhập được, nhật ký cli không chứa mật khẩu", async () => {
       const u = await createTestUser(P, "rp", { role: "staff" })
       await signIn(u)
+      const trustId = `trust-device-${P}-rp`
+      await db.insert(verification).values({ id: trustId, identifier: trustId, value: u.id, expiresAt: new Date(Date.now() + 86_400_000) })
       const r = await cli(["reset-password", u.email.toUpperCase()])
       expect(r.code).toBe(0)
+      expect(await db.select().from(verification).where(eq(verification.id, trustId))).toHaveLength(0)
       const pw = tempPasswordOf(r.out)!
       expect(pw.length).toBeGreaterThanOrEqual(8)
       expect(await db.select().from(sessionTable).where(eq(sessionTable.userId, u.id))).toHaveLength(0)
@@ -222,6 +225,35 @@ describe.skipIf(!hasDb)("CLI (DB)", () => {
       expect((await cli(["unlock", email("ghost")])).code).toBe(0)
       expect((await logsOf("user.update")).some((l) => l.targetId === u.id && (l.metadata as { op?: string }).op === "unlock")).toBe(true)
     })
+
+    it("unban: mở khoá tài khoản bị quản trị viên khoá, đăng nhập lại bằng mật khẩu hiện tại, nhật ký user.unban (cli)", async () => {
+      const u = await createTestUser(P, "ban", { role: "staff", banned: true })
+      await db.update(user).set({ banReason: "test", banExpires: new Date(Date.now() + 86_400_000) }).where(eq(user.id, u.id))
+      await expect(signIn(u)).rejects.toThrow()
+      const r = await cli(["unban", u.email.toUpperCase()])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain("Đã mở khoá")
+      expect(await userByEmail(u.email)).toMatchObject({ banned: false, banReason: null, banExpires: null })
+      await expect(signIn(u)).resolves.toBeTruthy()
+      const logs = (await logsOf("user.unban")).filter((l) => l.targetId === u.id)
+      expect(logs).toHaveLength(1)
+      expect(logs[0]).toMatchObject({ actorRole: "cli", actorId: null, status: "success" })
+      expect(logs[0]!.metadata).toMatchObject({ via: "cli", before: { banned: true }, after: { banned: false } })
+
+      // not banned → exit 0, nothing logged
+      const again = await cli(["unban", u.email])
+      expect(again.code).toBe(0)
+      expect(again.out).toContain("không bị khoá")
+      expect((await logsOf("user.unban")).filter((l) => l.targetId === u.id)).toHaveLength(1)
+
+      // alias + unknown / invalid email
+      await db.update(user).set({ banned: true }).where(eq(user.id, u.id))
+      expect((await cli(["user:unban", u.email])).code).toBe(0)
+      expect((await userByEmail(u.email))!.banned).toBe(false)
+      expect((await cli(["unban", email("nobody")])).code).toBe(1)
+      expect((await cli(["unban"])).code).toBe(1)
+      expect((await cli(["--help"])).out).toContain("unban <email>")
+    })
   })
 
   describe("reencrypt", () => {
@@ -251,6 +283,47 @@ describe.skipIf(!hasDb)("CLI (DB)", () => {
       expect((await db.select().from(activityLogs).where(and(eq(activityLogs.action, "connection.update"), eq(activityLogs.actorRole, "cli")))).length).toBe(1)
       expect((await cli(["reencrypt", "--bogus"])).code).toBe(1)
       __setKeyRing(undefined)
+    })
+
+    it("bản ghi không giải mã được (khoá cũ đã bỏ) được báo theo id, bản ghi khác vẫn mã hoá lại; exit 1, không in bản mã", async () => {
+      const owner = await createTestUser(P, "enc2", { role: "staff" })
+      const k1 = Buffer.alloc(32, 1).toString("base64")
+      const k2 = Buffer.alloc(32, 2).toString("base64")
+      await db.delete(connections) // only this test's rows below
+      __setKeyRing(`1:${k1}`)
+      const good = crypto.randomUUID()
+      const broken = crypto.randomUUID()
+      const goodEnc = encryptSecret('{"accessToken":"good"}', aad.connectionCredentials(good))
+      // encrypted under a key version that is not in the ring any more
+      const brokenEnc = `v9.${goodEnc.split(".").slice(1).join(".")}`
+      await db.insert(connections).values([
+        { id: good, ownerId: owner.id, platform: "meta", name: `${P} good`, credentialsEncrypted: goodEnc },
+        { id: broken, ownerId: owner.id, platform: "meta", name: `${P} broken`, credentialsEncrypted: brokenEnc },
+      ])
+      __setKeyRing(`2:${k2},1:${k1}`)
+      try {
+        const dry = await cli(["reencrypt", "--dry-run"])
+        expect(dry.code).toBe(1)
+        expect(dry.err).toContain(broken)
+
+        const before = (await db.select().from(activityLogs).where(eq(activityLogs.action, "connection.update"))).length
+        const r = await cli(["reencrypt"])
+        expect(r.code).toBe(1)
+        expect(r.err).toContain(broken)
+        expect(r.err).not.toContain(brokenEnc.split(".")[3]!)
+        expect(r.err).toMatch(/1 bản ghi không mã hoá lại được/)
+        const rows = await db.select().from(connections)
+        expect(rows.find((c) => c.id === good)!.credentialsEncrypted.startsWith("v2.")).toBe(true)
+        expect(rows.find((c) => c.id === broken)!.credentialsEncrypted).toBe(brokenEnc)
+        const logs = await db
+          .select()
+          .from(activityLogs)
+          .where(and(eq(activityLogs.action, "connection.update"), eq(activityLogs.actorRole, "cli")))
+        expect(logs.length).toBe(before + 1)
+        expect(logs.some((l) => (l.metadata as { failed?: number; count?: number }).failed === 1 && (l.metadata as { count?: number }).count === 1)).toBe(true)
+      } finally {
+        __setKeyRing(undefined)
+      }
     })
   })
 })

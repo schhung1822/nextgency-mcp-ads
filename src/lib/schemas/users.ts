@@ -46,22 +46,32 @@ export type ChangeRoleInput = z.input<typeof changeRoleSchema>
 export const resetPasswordSchema = z.object({
   userId: userIdSchema,
   password: newPasswordSchema,
-  /** acting admin's password (+ TOTP) - required by the server when the target is an ADMIN */
+  /** acting admin's password (+ TOTP) - required for an ADMIN target, and for staff unless the session is fresh */
   reauth: reauthFieldsSchema.optional(),
 })
 export type ResetPasswordInput = z.input<typeof resetPasswordSchema>
 
 export const userTargetSchema = z.object({ userId: userIdSchema })
 
-/** Reset 2FA: `reauth` required by the server when the target is an ADMIN. */
+/** Reset 2FA: `reauth` required for an ADMIN target, and for staff unless the acting admin's session is fresh. */
 export const resetTwoFactorSchema = userTargetSchema.extend({ reauth: reauthFieldsSchema.optional() })
 
-export const banSchema = z.object({ userId: userIdSchema, banned: z.boolean() })
+/** Ban / unban: `reauth` required by the server when the target is an ADMIN. */
+export const banSchema = z.object({
+  userId: userIdSchema,
+  banned: z.boolean(),
+  reauth: reauthFieldsSchema.optional(),
+})
+
+/** Delete: `reauth` required by the server when the target is an ADMIN. */
+export const deleteUserSchema = userTargetSchema.extend({ reauth: reauthFieldsSchema.optional() })
 
 export const revokeSessionsSchema = z.object({
   userId: userIdSchema,
   /** omit = revoke every session of the user */
   sessionId: userIdSchema.optional(),
+  /** ADMIN target: required by the server unless the acting admin's session is fresh */
+  reauth: reauthFieldsSchema.optional(),
 })
 
 // Unambiguous alphabet (no 0/O, 1/l/I) so temp passwords can be read aloud / retyped.

@@ -8,6 +8,7 @@ import { isProviderError } from "../errors"
 import { metaCurrencyOffset, toMetaMinor } from "../money"
 import type { FieldChange, MutationOptions, MutationResult, ProviderContext, ProviderExtension } from "../types"
 import { actId, graph, graphPage, isIsoDateTimeWithOffset, type MetaCredentials } from "./client"
+import { advertisablePages } from "./lookup"
 import { validateOnly } from "./mutate"
 import { readNode, type RawNode } from "./objects"
 import { callCtx, fmtMoney, hasBudget, invalid } from "./shared"
@@ -327,7 +328,10 @@ export function buildCampaignPayload(input: CreateCampaignInput, currency: strin
     summary.budget_mode = "CBO"
     summary.budget = { type: input.budget.type, amount: b.major, currency, display: b.display, minor_units_sent: b.minor }
     summary.bid_strategy = payload.bid_strategy
-    if (input.budget.type === "lifetime") warnings.push("Ngân sách trọn đời: mọi nhóm quảng cáo cần có end_time.")
+    if (input.budget.type === "lifetime") {
+      warnings.push("Ngân sách trọn đời: mọi nhóm quảng cáo cần có end_time.")
+      warnings.push("Ngân sách trọn đời của chiến dịch sẽ được kiểm tra lại theo lịch chạy của các nhóm quảng cáo khi bật chạy.")
+    }
     if (input.bid_strategy && input.bid_strategy !== "LOWEST_COST_WITHOUT_CAP") {
       warnings.push("Chiến lược giá thầu có giới hạn: mỗi nhóm quảng cáo cần bid_amount (hoặc ROAS tối thiểu).")
     }
@@ -467,6 +471,9 @@ export function buildAdsetPayload(
   if ((input.budget?.type === "lifetime" || campaignLifetime) && !input.end_time) {
     throw invalid("Ngân sách trọn đời cần end_time.")
   }
+  if (campaignLifetime) {
+    warnings.push("Chiến dịch dùng ngân sách trọn đời (CBO): khi bật chạy, trần ngân sách được tính theo ngày kết thúc của các nhóm quảng cáo.")
+  }
   const now = Date.now()
   if (input.end_time && Date.parse(input.end_time) <= now) throw invalid("end_time phải ở tương lai.")
   if (input.start_time && input.end_time && Date.parse(input.end_time) <= Date.parse(input.start_time)) {
@@ -591,8 +598,28 @@ const createAdset: ProviderExtension<MetaCredentials, CreateAdsetInput, MetaWrit
     ])
     const warnings: string[] = ["Nhóm quảng cáo được tạo ở trạng thái TẠM DỪNG."]
     const { payload, summary } = buildAdsetPayload(input, campaign, ctx.account.currency, warnings)
+    // dry run AND execute: the Page must be one this ad account may advertise for
+    await assertAdvertisablePages(ctx, [input.promoted_object?.page_id])
     return runCreate(ctx, "adsets", payload, summary, warnings, opts, "ad_group")
   },
+}
+
+/**
+ * Every given Page id must be in advertisablePages(ctx) (promote_pages of the ad account + me/accounts Pages with the
+ * ADVERTISE task) - not any Page id the AI picks. Unrelated to the MCP Page scope (read-only Pages tools only).
+ */
+async function assertAdvertisablePages(ctx: ProviderContext<MetaCredentials>, ids: (string | undefined)[]): Promise<void> {
+  const wanted = [...new Set(ids.filter((id): id is string => !!id))]
+  if (wanted.length === 0) return
+  const allowed = new Set((await advertisablePages(ctx)).map((p) => p.id)) // one lookup per run
+  for (const id of wanted) {
+    if (!allowed.has(id)) {
+      throw invalid(
+        `Trang ${id} không nằm trong danh sách Trang mà tài khoản quảng cáo này được dùng để chạy quảng cáo.`,
+        "Gọi ads_lookup kind=pages để lấy page_id hợp lệ."
+      )
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +788,9 @@ const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResul
     ])
     const warnings: string[] = ["Quảng cáo được tạo ở trạng thái TẠM DỪNG và cần Meta duyệt trước khi chạy."]
     const { payload, summary } = buildAdPayload(input, adset, warnings)
+    // dry run AND execute: page_id and the Page of an existing post (PAGEID_POSTID) must be advertisable
+    const postPage = input.creative.type === "existing_post" ? input.creative.object_story_id.split("_")[0] : undefined
+    await assertAdvertisablePages(ctx, [input.page_id, postPage])
     return runCreate(ctx, "ads", payload, summary, warnings, opts, "ad")
   },
 }

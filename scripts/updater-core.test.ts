@@ -17,7 +17,10 @@ import {
   parseComposePs,
   parseSemver,
   readEnvVar,
+  repoDigestsFor,
   setEnvVar,
+  signatureMode,
+  signerIdentity,
   writeFileAtomicKeepMode,
 } from "./updater-core"
 
@@ -45,6 +48,34 @@ describe("semver", () => {
     expect(checkTargetVersion("1.2.0-rc.1", []).ok).toBe(false)
     expect(checkTargetVersion("1.2.0 && curl evil", []).ok).toBe(false)
     expect(checkTargetVersion(undefined, []).ok).toBe(false)
+  })
+})
+
+describe("image signature helpers", () => {
+  const D1 = `sha256:${"a".repeat(64)}`
+  const D2 = `sha256:${"b".repeat(64)}`
+
+  it("binds the signer identity to the exact release tag of the official repo", () => {
+    expect(signerIdentity("1.2.3")).toBe("https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/v1.2.3")
+    for (const bad of ["v1.2.3", "1.2", "1.2.3-rc.1", "1.2.3@refs/heads/x", ""]) expect(() => signerIdentity(bad), bad).toThrow()
+  })
+
+  it("extracts distinct registry digests of the given repository only", () => {
+    const img = "ghcr.io/notivn/ads-mcp-simple"
+    const json = JSON.stringify([`${img}@${D1}`, `${img}-updater@${D2}`, `${img}@${D1}`, `evil.io/x@${D2}`, `${img}@sha256:short`, `${img}@${D2.toUpperCase()}`, 42])
+    expect(repoDigestsFor(json, img)).toEqual([D1])
+    expect(repoDigestsFor(json, `${img}-updater`)).toEqual([D2])
+    for (const bad of ["", "null", "[]", "{}", "not json", "<no value>"]) expect(repoDigestsFor(bad, img), bad).toEqual([])
+  })
+
+  it("verifies only the official image unless the .env switch is exactly 0", () => {
+    const img = "ghcr.io/notivn/ads-mcp-simple"
+    expect(signatureMode(img, "A=1\n")).toBe("verify")
+    expect(signatureMode(img, "UPDATER_VERIFY_SIGNATURE=1\n")).toBe("verify")
+    expect(signatureMode(img, "UPDATER_VERIFY_SIGNATURE=false\n")).toBe("verify")
+    expect(signatureMode(img, "# UPDATER_VERIFY_SIGNATURE=0\n")).toBe("verify")
+    expect(signatureMode(img, "UPDATER_VERIFY_SIGNATURE=0\n")).toBe("skip-env")
+    expect(signatureMode("localhost:5000/ads-mcp", "")).toBe("skip-image")
   })
 })
 

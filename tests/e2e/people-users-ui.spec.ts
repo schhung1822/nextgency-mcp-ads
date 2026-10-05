@@ -1,6 +1,6 @@
 // User management through the real /users UI (admin session, seeded users): create an ADMIN (re-auth gate),
-// change role, reset password (staff + admin target), ban / unban, sessions sheet, delete (type the email),
-// and the self row has no destructive actions. Every step is verified against the database and the staff
+// change role, reset password (staff + admin target, fresh vs. aged session), ban / unban (staff + admin target),
+// sessions sheet, delete (type the email), and the self row has no destructive actions. Every step is verified against the database and the staff
 // activity log (actor, action, status).
 import { expect, test, type Page } from "@playwright/test"
 
@@ -8,6 +8,8 @@ import { db, nextIp, PASSWORD, RUN, seedUser, setPolicy } from "./people-helpers
 
 test.describe.configure({ mode: "serial" })
 test.setTimeout(240_000)
+// wide enough that the users DataTable renders as a table (< 768px container -> cards) even with the guide panel open
+test.use({ viewport: { width: 1600, height: 900 } })
 
 let admin: { id: string; email: string }
 let staff: { id: string; email: string }
@@ -59,7 +61,11 @@ test("admin tạo quản trị viên mới: sai mật khẩu xác nhận bị t�
   await expect(page.getByRole("heading", { name: "Người dùng", level: 1 })).toBeVisible()
   const email = `ui.newadmin.${RUN}@example.test`
 
-  await page.getByRole("button", { name: "Thêm người dùng" }).click()
+  // the dev server may full-reload the page right after its first compile: retry until the dialog is really open
+  await expect(async () => {
+    await page.getByRole("button", { name: "Thêm người dùng" }).click()
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 3_000 })
+  }).toPass({ timeout: 90_000 })
   const dialog = page.getByRole("dialog")
   await dialog.locator("#new-user-name").fill("Admin mới UI")
   await dialog.locator("#new-user-email").fill(email)
@@ -114,7 +120,7 @@ test("đổi vai trò nhân viên → quản trị viên → nhân viên cần m
   }
 })
 
-test("đặt lại mật khẩu: nhân viên không cần xác nhận lại, admin khác thì cần; mật khẩu tạm buộc đổi", async ({ page }) => {
+test("đặt lại mật khẩu: nhân viên không cần xác nhận lại khi phiên còn mới (≤ 10 phút), admin khác thì luôn cần; mật khẩu tạm buộc đổi", async ({ page }) => {
   await login(page, admin.email)
   await page.goto("/users")
 
@@ -143,6 +149,54 @@ test("đặt lại mật khẩu: nhân viên không cần xác nhận lại, adm
   expect((await lastLog(admin.id, "user.password.reset"))?.status).toBe("success")
 })
 
+test("đặt lại mật khẩu nhân viên khi phiên đã cũ (> 10 phút): hộp xác nhận mật khẩu hiện ngay", async ({ page }) => {
+  await login(page, admin.email)
+  // age every session of the admin (signed in 11 minutes ago, no recent re-auth) and reload the list
+  await db((c) => c.query(`update session set created_at = now() - interval '11 min' where user_id = $1`, [admin.id]))
+  await page.goto("/users")
+  await page.getByLabel("Tìm người dùng").fill(staff.email)
+  await openRowMenu(page, "Ma trận uistaff")
+  await page.getByRole("menuitem", { name: "Đặt lại mật khẩu" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.locator("#reset-password").fill("Mat-Khau-Tam-79")
+  await expect(dialog.locator("#reset-reauth-password")).toBeVisible()
+  await dialog.locator("#reset-reauth-password").fill("sai-mat-khau-1")
+  await dialog.getByRole("button", { name: "Đặt lại mật khẩu" }).click()
+  await expect(dialog.getByRole("alert")).toBeVisible()
+  await dialog.locator("#reset-reauth-password").fill(PASSWORD)
+  await dialog.getByRole("button", { name: "Đặt lại mật khẩu" }).click()
+  await expect(dialog.getByRole("heading", { name: "Đã đặt lại mật khẩu" })).toBeVisible()
+  await dialog.getByRole("button", { name: "Xong" }).click()
+  expect((await lastLog(admin.id, "user.password.reset"))?.status).toBe("success")
+})
+
+test("khoá ADMIN khác cần nhập lại mật khẩu: sai bị từ chối, đúng thì khoá; mở khoá cũng cần", async ({ page }) => {
+  await login(page, admin.email)
+  await page.goto("/users")
+  await page.getByLabel("Tìm người dùng").fill(otherAdmin.email)
+  await openRowMenu(page, "Ma trận uiother")
+  await page.getByRole("menuitem", { name: "Khoá tài khoản" }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.locator("#ban-password")).toBeVisible()
+  await dialog.locator("#ban-password").fill("sai-mat-khau-1")
+  await dialog.getByRole("button", { name: "Khoá tài khoản" }).click()
+  await expect(dialog.getByRole("alert")).toBeVisible()
+  expect((await userRow(otherAdmin.email))?.banned).toBe(false)
+  expect((await lastLog(admin.id, "user.ban"))?.metadata).toMatchObject({ reauth: true })
+  await dialog.locator("#ban-password").fill(PASSWORD)
+  await dialog.getByRole("button", { name: "Khoá tài khoản" }).click()
+  await expect.poll(async () => (await userRow(otherAdmin.email))?.banned).toBe(true)
+  expect((await lastLog(admin.id, "user.ban"))?.status).toBe("success")
+
+  await expect(page.getByRole("row").filter({ hasText: otherAdmin.email })).toContainText("Đã khoá")
+  await openRowMenu(page, "Ma trận uiother")
+  await page.getByRole("menuitem", { name: "Mở khoá" }).click()
+  const d2 = page.getByRole("dialog")
+  await d2.locator("#ban-password").fill(PASSWORD)
+  await d2.getByRole("button", { name: "Mở khoá" }).click()
+  await expect.poll(async () => (await userRow(otherAdmin.email))?.banned).toBe(false)
+})
+
 test("khoá rồi mở khoá tài khoản; người bị khoá không đăng nhập được", async ({ page, browser }) => {
   await login(page, admin.email)
   await page.goto("/users")
@@ -157,7 +211,7 @@ test("khoá rồi mở khoá tài khoản; người bị khoá không đăng nh�
   const p2 = await ctx.newPage()
   await p2.goto("/login")
   await p2.getByLabel("Email").fill(staff.email)
-  await p2.getByLabel("Mật khẩu", { exact: true }).fill("Mat-Khau-Tam-77")
+  await p2.getByLabel("Mật khẩu", { exact: true }).fill("Mat-Khau-Tam-79")
   await p2.getByRole("button", { name: "Đăng nhập" }).click()
   await expect(p2.getByRole("alert").filter({ hasText: "Tài khoản của bạn đã bị khoá" })).toBeVisible()
   await ctx.close()

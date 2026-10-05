@@ -19,6 +19,7 @@ import {
   type SegmentedOption,
 } from "@/components/mcp/segmented-control"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -60,6 +61,7 @@ import {
 } from "@/lib/constants"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
 import {
+  hasMoneyWritePermission,
   MCP_CAP_FIELDS,
   MCP_LIMITS,
   MCP_PERMISSIONS,
@@ -83,6 +85,9 @@ import type { SelectableConnection } from "@/server/services/mcp-servers"
 
 export type FormUpdater = (fn: (prev: McpFormValues) => McpFormValues) => void
 
+/** id of the per-currency caps section (the overview "set caps" action scrolls here) */
+export const CAPS_SECTION_ID = "mcp-caps"
+
 function setPlatform(
   update: FormUpdater,
   platform: Platform,
@@ -104,13 +109,15 @@ export function availablePlatforms(
 /** Currencies of the accounts currently in scope (for the per-currency daily budget cap). */
 export function scopeCurrencies(
   values: McpFormValues,
-  connections: SelectableConnection[]
+  connections: SelectableConnection[],
+  /** only platforms whose permissions pass this filter */
+  platformFilter: (d: PlatformDraft) => boolean = () => true
 ): string[] {
   const byId = new Map(connections.map((c) => [c.id, c]))
   const out = new Set<string>()
   for (const p of MCP_PLATFORMS) {
     const d = values.platforms[p]
-    if (!d.enabled) continue
+    if (!d.enabled || !platformFilter(d)) continue
     for (const c of d.connections) {
       const conn = byId.get(c.connectionId)
       if (!conn) continue
@@ -121,6 +128,19 @@ export function scopeCurrencies(
     }
   }
   return [...out].sort()
+}
+
+/**
+ * Currencies that MUST have a daily cap: accounts of the platforms with a money-write permission
+ * (status/update/copy/create) - the same rule the server enforces on save.
+ */
+export function moneyScopeCurrencies(
+  values: McpFormValues,
+  connections: SelectableConnection[]
+): string[] {
+  return scopeCurrencies(values, connections, (d) =>
+    hasMoneyWritePermission(d.permissions)
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -818,7 +838,7 @@ function GroupHeading({
 }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <h3 id={id} className="text-sm font-semibold">
+      <h3 id={id} tabIndex={-1} className="text-sm font-semibold outline-none">
         {title}
       </h3>
       {description && (
@@ -834,11 +854,14 @@ function CurrencyCapsRow({
   values,
   update,
   errors,
+  required = false,
 }: {
   cur: string
   values: McpFormValues
   update: FormUpdater
   errors: StepErrors
+  /** the daily cap of this currency is mandatory (money-write scope) */
+  required?: boolean
 }) {
   const s = t.protectionStep
   const fields: {
@@ -849,7 +872,9 @@ function CurrencyCapsRow({
     {
       field: "maxDailyBudget",
       label: s.capDaily,
-      placeholder: s.maxBudgetPlaceholder,
+      placeholder: required
+        ? s.maxDailyRequiredPlaceholder
+        : s.maxBudgetPlaceholder,
     },
     {
       field: "maxLifetimeBudget",
@@ -873,6 +898,7 @@ function CurrencyCapsRow({
         {fields.map(({ field, label, placeholder }) => {
           const key = `${field}.${cur}`
           const inputId = `mcp-${field}-${cur}`
+          const isRequired = required && field === "maxDailyBudget"
           return (
             <Field
               key={field}
@@ -881,15 +907,25 @@ function CurrencyCapsRow({
             >
               <FieldLabel htmlFor={inputId} className="text-[13px]">
                 {label}
+                {isRequired && (
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-warning/40 bg-warning/10 font-medium text-warning-strong"
+                  >
+                    {s.capRequired}
+                  </Badge>
+                )}
               </FieldLabel>
               <InputGroup>
                 <InputGroupInput
                   id={inputId}
                   inputMode="decimal"
                   aria-label={`${label} (${cur})`}
+                  aria-required={isRequired || undefined}
                   placeholder={placeholder}
                   value={values[field][cur] ?? ""}
                   aria-invalid={!!errors[key] || undefined}
+                  aria-describedby={errors[key] ? `${inputId}-error` : undefined}
                   onChange={(e) => {
                     const text = e.target.value
                     update((v) => ({
@@ -902,11 +938,22 @@ function CurrencyCapsRow({
                   <InputGroupText className="font-mono">{cur}</InputGroupText>
                 </InputGroupAddon>
               </InputGroup>
-              {errors[key] && <FieldError>{errors[key]}</FieldError>}
             </Field>
           )
         })}
       </div>
+      {/* errors span the whole row (a long message in one narrow column wraps into several lines) */}
+      {fields.some(({ field }) => errors[`${field}.${cur}`]) && (
+        <div className="mt-2 flex flex-col gap-1">
+          {fields.map(({ field }) =>
+            errors[`${field}.${cur}`] ? (
+              <FieldError key={field} id={`mcp-${field}-${cur}-error`}>
+                {errors[`${field}.${cur}`]}
+              </FieldError>
+            ) : null
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -995,6 +1042,7 @@ export function ProtectionSection({
 }) {
   const s = t.protectionStep
   const derived = scopeCurrencies(values, connections)
+  const required = new Set(moneyScopeCurrencies(values, connections))
   // currencies in scope + any currency that already has a cap (so a saved cap never disappears)
   const currencies = [
     ...new Set([
@@ -1068,7 +1116,11 @@ export function ProtectionSection({
       <Separator />
 
       {/* 2 · money caps per currency */}
-      <section aria-labelledby="prot-spend" className="flex flex-col gap-4">
+      <section
+        id={CAPS_SECTION_ID}
+        aria-labelledby="prot-spend"
+        className="flex scroll-mt-24 flex-col gap-4"
+      >
         <GroupHeading
           id="prot-spend"
           title={s.groupSpend}
@@ -1087,6 +1139,7 @@ export function ProtectionSection({
                 values={values}
                 update={update}
                 errors={errors}
+                required={required.has(cur)}
               />
             ))}
           </div>

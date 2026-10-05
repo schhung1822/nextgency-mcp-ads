@@ -2,6 +2,7 @@
 import "server-only"
 import { eq } from "drizzle-orm"
 import { z } from "zod"
+import { legalContactEmailSchema, legalOrgNameSchema } from "@/lib/legal"
 import { db, type Tx } from "@/server/db/client"
 import { appSettings } from "@/server/db/schema"
 
@@ -13,6 +14,9 @@ export const SETTING_SCHEMAS = {
   require_2fa_admin: z.boolean(),
   require_2fa_all: z.boolean(),
   session_max_hours: z.coerce.number().int().min(1).max(168),
+  /** public legal pages (/privacy, /terms, /data-deletion): operator name + privacy contact; "" = not set */
+  legal_org_name: legalOrgNameSchema,
+  legal_contact_email: legalContactEmailSchema,
 } as const
 
 export type SettingKey = keyof typeof SETTING_SCHEMAS
@@ -29,6 +33,8 @@ function defaults(): { [K in SettingKey]: SettingValue<K> } {
     require_2fa_admin: false,
     require_2fa_all: false,
     session_max_hours: 12,
+    legal_org_name: "",
+    legal_contact_email: "",
   }
 }
 

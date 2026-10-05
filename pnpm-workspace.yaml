@@ -1,5 +1,9 @@
 packages: []
 
+# Chuỗi cung ứng: chỉ nhận bản phát hành đã có ít nhất 3 ngày (bản bị chèn mã độc thường bị gỡ trong vài ngày đầu).
+# KHÔNG bật trustPolicy: no-downgrade: pnpm 11 kiểm cả lockfile hiện có và từ chối 4 gói (cài --frozen-lockfile lỗi).
+minimumReleaseAge: 4320
+
 allowBuilds:
   sharp: true
   unrs-resolver: true

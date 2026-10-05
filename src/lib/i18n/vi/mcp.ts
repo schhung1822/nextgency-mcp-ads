@@ -30,6 +30,9 @@ export const mcp = {
     },
     neverUsed: "Chưa dùng",
     errorsHint: (n: number) => `${n} lỗi`,
+    capsMissingBadge: "Chưa đặt trần",
+    capsMissingHint: (curs: string) =>
+      `Có quyền ghi nhưng chưa đặt trần ngân sách/ngày cho ${curs}`,
     callsLabel: (n: string) => `${n} lượt gọi`,
     permSummary: {
       readOnly: "Chỉ xem",
@@ -149,7 +152,7 @@ export const mcp = {
   protectionStep: {
     cardTitle: "Bảo vệ",
     cardDescription:
-      "Đã có giá trị mặc định an toàn - bạn có thể bấm Tạo MCP ngay.",
+      "Đã có giá trị mặc định an toàn. Nếu MCP có quyền ghi, hãy nhập trần Ngân sách/ngày cho từng loại tiền rồi bấm Tạo MCP.",
     twoStepLabel: "Xác nhận 2 bước cho thao tác ghi",
     twoStepHelp:
       "AI phải cho bạn xem trước thay đổi (vd ngân sách cũ → mới) và chỉ thực hiện khi bạn đồng ý. Thao tác xoá luôn cần xác nhận.",
@@ -160,10 +163,12 @@ export const mcp = {
       "Vd 50%: ngân sách 1.000.000 ₫ chỉ được đổi trong khoảng 500.000 – 1.500.000 ₫ mỗi lần.",
     maxBudgetLabel: "Trần ngân sách/ngày (tuỳ chọn)",
     maxBudgetHelp:
-      "Để trống = không giới hạn. Áp dụng theo loại tiền của tài khoản quảng cáo.",
+      "Bắt buộc khi MCP có quyền ghi. AI không được đặt hoặc bật ngân sách/ngày vượt mức này. Áp dụng theo loại tiền của tài khoản quảng cáo.",
     maxBudgetNoCurrency:
       "Chọn tài khoản ở bước 2 để đặt trần ngân sách theo tiền tệ.",
     maxBudgetPlaceholder: "Không giới hạn",
+    maxDailyRequiredPlaceholder: "Nhập mức tối đa",
+    capRequired: "Bắt buộc",
     maxLifetimeLabel: "Trần ngân sách trọn đời (tuỳ chọn)",
     maxLifetimeHelp:
       "Khi đã đặt trần ngân sách/ngày, ngân sách trọn đời tự bị giới hạn ở trần ngày × số ngày chạy (hoặc × 30 ngày nếu chưa có ngày kết thúc). Ô này đặt thêm một mức tối đa cố định. Để trống = chỉ áp dụng giới hạn theo ngày.",
@@ -192,9 +197,9 @@ export const mcp = {
     perMinuteSuffix: "lệnh/phút",
     groupSafety: "An toàn khi AI sửa quảng cáo",
     groupSafetyDesc: "Kiểm soát cách AI thay đổi và chi tiêu.",
-    groupSpend: "Trần chi tiêu theo tiền tệ (tuỳ chọn)",
+    groupSpend: "Trần chi tiêu theo tiền tệ",
     groupSpendDesc:
-      "Để trống = không giới hạn. Mỗi loại tiền của tài khoản trong phạm vi MCP có một hàng riêng - không cộng chéo tiền tệ.",
+      "Bắt buộc nhập Ngân sách/ngày cho mỗi loại tiền khi MCP có quyền bật/tắt, sửa, sao chép hoặc tạo quảng cáo. Mỗi loại tiền của tài khoản trong phạm vi MCP có một hàng riêng - không cộng chéo tiền tệ.",
     capDaily: "Ngân sách/ngày",
     capLifetime: "Ngân sách trọn đời",
     capBid: "Giá thầu/CPA",
@@ -296,6 +301,13 @@ export const mcp = {
       },
       openConnections: "Mở trang kết nối",
     },
+    capsMissingTitle: "MCP này chưa có trần ngân sách/ngày",
+    capsMissingBody: (curs: string) =>
+      `MCP được tạo trước bản cập nhật bảo mật, đang có quyền ghi nhưng chưa đặt trần ngân sách/ngày cho ${curs}. AI vẫn dùng được nhưng không có giới hạn chi tiêu. Hãy mở tab Cấu hình và nhập trần cho từng loại tiền.`,
+    /** a "caps required" MCP whose scope gained a currency without a cap (e.g. a new ad account synced later) */
+    capsMissingBodyRequired: (curs: string) =>
+      `MCP chưa có trần ngân sách/ngày cho ${curs} (vd tài khoản quảng cáo mới được đồng bộ) nên AI không được bật chạy hoặc đổi ngân sách ở các tài khoản dùng loại tiền này. Hãy mở tab Cấu hình và nhập trần.`,
+    capsMissingAction: "Đặt trần ngân sách",
   },
 
   config: {
@@ -306,6 +318,8 @@ export const mcp = {
       "ChatGPT Business/Enterprise lưu danh sách tool khi admin xuất bản app. Sau khi đổi quyền, admin workspace cần làm mới (refresh) app trong ChatGPT.",
     ownerNote: (email: string) =>
       `MCP này thuộc ${email} - chỉ dùng được kết nối của người tạo.`,
+    /** name shown instead of a connection the viewer may not see */
+    otherOwnerConnection: "Kết nối của người dùng khác",
     /** connections / ad accounts the editor drops when the config is saved (deleted, switched off) */
     scopeIssues: {
       title: "Một số kết nối hoặc TKQC không còn dùng được",

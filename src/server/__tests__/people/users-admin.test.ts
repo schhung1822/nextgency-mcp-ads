@@ -33,7 +33,7 @@ vi.mock("@/server/audit/activity-log", async (importOriginal) => {
 import { and, desc, eq } from "drizzle-orm"
 
 import { db } from "@/server/db/client"
-import { activityLogs, connections, session as sessionTable, twoFactor, user } from "@/server/db/schema"
+import { activityLogs, connections, session as sessionTable, twoFactor, user, verification } from "@/server/db/schema"
 import { encryptSecret } from "@/server/crypto/secret-box"
 
 import {
@@ -93,6 +93,25 @@ async function logCount(action: string, status?: "success" | "failure") {
 
 async function sessionCount(userId: string) {
   return (await db.select({ id: sessionTable.id }).from(sessionTable).where(eq(sessionTable.userId, userId))).length
+}
+
+/** Pretend the session was signed in 11 minutes ago (no longer "fresh"). */
+async function ageSession(s: Signed) {
+  await db
+    .update(sessionTable)
+    .set({ createdAt: new Date(Date.now() - 11 * 60_000) })
+    .where(eq(sessionTable.id, s.sessionId))
+}
+
+/** A "trust this device" row of Better Auth's twoFactor plugin for `userId`. */
+async function addTrustedDevice(userId: string) {
+  const id = `trust-device-${uid()}${uid()}`
+  await db.insert(verification).values({ id, identifier: id, value: userId, expiresAt: new Date(Date.now() + 86_400_000) })
+  return id
+}
+
+async function trustedDeviceExists(id: string) {
+  return (await db.select({ id: verification.id }).from(verification).where(eq(verification.id, id))).length > 0
 }
 
 describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
@@ -230,16 +249,42 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       const victim = await createTestUser(P, "rp1", { role: "staff" })
       await signIn(victim)
       expect(await sessionCount(victim.id)).toBe(1)
+      const trusted = await addTrustedDevice(victim.id)
       actAs(sA)
       const r = await resetUserPasswordAction({ userId: victim.id, password: "Mat-Khau-Tam-2" })
       expect(r.ok).toBe(true)
       expect(await sessionCount(victim.id)).toBe(0)
+      expect(await trustedDeviceExists(trusted)).toBe(false)
       expect((await row(victim.id)).mustChangePassword).toBe(true)
       await expect(signIn(victim)).rejects.toThrow(/sign-in/)
       await expect(signIn(victim, randomIp(), "Mat-Khau-Tam-2")).resolves.toBeTruthy()
       const log = await lastLog("user.password.reset", victim.id)
       expect(log).toMatchObject({ status: "success", actorId: adminA.id })
+      expect(log!.metadata).toMatchObject({ trustedDevicesRevoked: true })
       expect(JSON.stringify(log!.metadata)).not.toContain("Mat-Khau-Tam-2")
+    })
+
+    it("đặt lại mật khẩu / 2FA của NHÂN VIÊN khi phiên không còn mới (> 10 phút): cần xác thực lại", async () => {
+      const { resetUserPasswordAction, resetUserTwoFactorAction } = await actions()
+      const admin = await createTestUser(P, "agedadmin", { role: "admin" })
+      const victim = await createTestUser(P, "agedvictim", { role: "staff" })
+      const s = await signIn(admin)
+      await ageSession(s)
+      actAs(s)
+      const missing = await resetUserPasswordAction({ userId: victim.id, password: "Mat-Khau-Tam-7" })
+      expect(missing).toMatchObject({ ok: false, fieldErrors: { _reauth: "required" } })
+      await expect(signIn(victim, randomIp(), "Mat-Khau-Tam-7")).rejects.toThrow()
+      expect(await resetUserTwoFactorAction({ userId: victim.id })).toMatchObject({ ok: false, fieldErrors: { _reauth: "required" } })
+
+      const wrong = await resetUserPasswordAction({ userId: victim.id, password: "Mat-Khau-Tam-7", reauth: { password: "nope-nope-1" } })
+      expect(wrong.ok).toBe(false)
+      expect((await lastLog("user.password.reset", victim.id))!.metadata).toMatchObject({ reauth: true })
+
+      const ok = await resetUserPasswordAction({ userId: victim.id, password: "Mat-Khau-Tam-7", reauth: { password: PASSWORD } })
+      expect(ok.ok).toBe(true)
+      await expect(signIn(victim, randomIp(), "Mat-Khau-Tam-7")).resolves.toBeTruthy()
+      // the successful re-auth keeps the session fresh for 10 minutes: no password needed for the next one
+      expect((await resetUserTwoFactorAction({ userId: victim.id })).ok).toBe(true)
     })
 
     it("đặt lại mật khẩu: tối thiểu 8 ký tự; không tự đặt lại chính mình", async () => {
@@ -302,9 +347,11 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       actAs(sv)
       await expect(requireUserForAction()).resolves.toBeTruthy()
 
+      const trusted = await addTrustedDevice(victim.id)
       actAs(sA)
       expect((await setUserBannedAction({ userId: victim.id, banned: true })).ok).toBe(true)
       expect(await sessionCount(victim.id)).toBe(0)
+      expect(await trustedDeviceExists(trusted)).toBe(false)
       expect((await lastLog("user.ban", victim.id))!.metadata).toEqual({ before: { banned: false }, after: { banned: true } })
 
       actAs(sv) // stale cookie of the banned user
@@ -330,10 +377,42 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       await expect(requireUserForAction()).rejects.toThrow()
     })
 
+    it("khoá / mở khoá ADMIN khác cần xác thực lại (kể cả phiên vừa đăng nhập): thiếu → _reauth, sai → nhật ký reauth, đúng → được", async () => {
+      const { setUserBannedAction } = await actions()
+      const target = await createTestUser(P, "banadmin", { role: "admin" })
+      // own acting admin: adminA has already spent its shared re-auth budget (5 wrong passwords / 15 min) above
+      const actor = await createTestUser(P, "banactor", { role: "admin" })
+      actAs(await signIn(actor))
+      const missing = await setUserBannedAction({ userId: target.id, banned: true })
+      expect(missing).toMatchObject({ ok: false, fieldErrors: { _reauth: "required" } })
+      expect((await row(target.id)).banned).toBe(false)
+
+      const wrong = await setUserBannedAction({ userId: target.id, banned: true, reauth: { password: "sai-mat-khau-9" } })
+      expect(wrong.ok).toBe(false)
+      expect((await row(target.id)).banned).toBe(false)
+      const fail = await lastLog("user.ban", target.id)
+      expect(fail).toMatchObject({ status: "failure", actorId: actor.id })
+      expect(fail!.metadata).toMatchObject({ reauth: true })
+
+      expect((await setUserBannedAction({ userId: target.id, banned: true, reauth: { password: PASSWORD } })).ok).toBe(true)
+      expect((await row(target.id)).banned).toBe(true)
+      expect((await lastLog("user.ban", target.id))!.status).toBe("success")
+
+      // unban restores a full admin → re-auth as well
+      expect(await setUserBannedAction({ userId: target.id, banned: false })).toMatchObject({
+        ok: false,
+        fieldErrors: { _reauth: "required" },
+      })
+      expect((await row(target.id)).banned).toBe(true)
+      expect((await setUserBannedAction({ userId: target.id, banned: false, reauth: { password: PASSWORD } })).ok).toBe(true)
+      expect((await row(target.id)).banned).toBe(false)
+    })
+
     it("không tự khoá mình; nhân viên không khoá được ai", async () => {
       const { setUserBannedAction } = await actions()
       actAs(sA)
       expect(await setUserBannedAction({ userId: adminA.id, banned: true })).toMatchObject({ ok: false })
+      expect(await setUserBannedAction({ userId: adminA.id, banned: true, reauth: { password: PASSWORD } })).toMatchObject({ ok: false })
       expect((await row(adminA.id)).banned).toBe(false)
       const s = await signIn(staff1)
       actAs(s)
@@ -367,6 +446,29 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       expect(all.ok && all.data.count).toBe(1)
       expect(await revokeUserSessionsAction({ userId: adminA.id })).toMatchObject({ ok: false })
       expect(await lastLog("user.sessions.revoke", victim.id)).toBeTruthy()
+    })
+
+    it("thu hồi phiên của ADMIN khác: phiên mới (≤ 10 phút) thì được; phiên cũ cần xác thực lại", async () => {
+      const { revokeUserSessionsAction } = await actions()
+      const actor = await createTestUser(P, "revokeactor", { role: "admin" })
+      const target = await createTestUser(P, "revoketarget", { role: "admin" })
+      const s = await signIn(actor)
+      await signIn(target)
+      actAs(s)
+      const fresh = await revokeUserSessionsAction({ userId: target.id })
+      expect(fresh.ok && fresh.data.count).toBe(1)
+
+      await signIn(target)
+      await ageSession(s)
+      const stale = await revokeUserSessionsAction({ userId: target.id })
+      expect(stale).toMatchObject({ ok: false, fieldErrors: { _reauth: "required" } })
+      expect(await sessionCount(target.id)).toBe(1)
+      const wrong = await revokeUserSessionsAction({ userId: target.id, reauth: { password: "nope-nope-1" } })
+      expect(wrong.ok).toBe(false)
+      expect((await lastLog("user.sessions.revoke", target.id))!.metadata).toMatchObject({ reauth: true })
+      const ok = await revokeUserSessionsAction({ userId: target.id, reauth: { password: PASSWORD } })
+      expect(ok.ok && ok.data.count).toBe(1)
+      expect(await sessionCount(target.id)).toBe(0)
     })
 
     it("nhân viên không xem/thu hồi phiên của người khác", async () => {
@@ -409,12 +511,31 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       await db.delete(connections).where(eq(connections.ownerId, owner.id))
     })
 
+    it("xoá ADMIN cần xác thực lại: thiếu → _reauth, sai → nhật ký reauth, đúng → xoá", async () => {
+      const { deleteUserAction } = await actions()
+      const target = await createTestUser(P, "deladmin", { role: "admin" })
+      // own acting admin: adminA has already spent its shared re-auth budget (5 wrong passwords / 15 min)
+      const actor = await createTestUser(P, "delactor", { role: "admin" })
+      actAs(await signIn(actor))
+      expect(await deleteUserAction({ userId: target.id })).toMatchObject({ ok: false, fieldErrors: { _reauth: "required" } })
+      expect(await row(target.id)).toBeTruthy()
+      expect((await deleteUserAction({ userId: target.id, reauth: { password: "sai-mat-khau-8" } })).ok).toBe(false)
+      expect(await row(target.id)).toBeTruthy()
+      expect((await lastLog("user.delete", target.id))!.metadata).toMatchObject({ reauth: true })
+      expect((await deleteUserAction({ userId: target.id, reauth: { password: PASSWORD } })).ok).toBe(true)
+      expect(await db.select().from(user).where(eq(user.id, target.id))).toHaveLength(0)
+      // never yourself, even with the right password
+      expect(await deleteUserAction({ userId: actor.id, reauth: { password: PASSWORD } })).toMatchObject({ ok: false })
+      expect(await row(actor.id)).toBeTruthy()
+    })
+
     it("xoá admin đã tạo người khác không làm hỏng người được tạo (createdById chỉ là chuỗi tham chiếu)", async () => {
       const { deleteUserAction } = await actions()
       const creator = await createTestUser(P, "creator", { role: "admin" })
       const child = await createTestUser(P, "child", { role: "staff", createdById: creator.id })
-      actAs(sA)
-      expect((await deleteUserAction({ userId: creator.id })).ok).toBe(true)
+      const actor = await createTestUser(P, "creatoractor", { role: "admin" }) // fresh re-auth budget (see above)
+      actAs(await signIn(actor))
+      expect((await deleteUserAction({ userId: creator.id, reauth: { password: PASSWORD } })).ok).toBe(true)
       expect((await row(child.id)).createdById).toBe(creator.id)
     })
   })
@@ -486,13 +607,9 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       const sole = await createTestUser(P, "sole", { role: "admin" })
       const ss = await signIn(sole)
       actAs(ss)
-      const saved = await updateSettingsAction({
-        log_retention_months_mcp: 3,
-        log_retention_months_staff: 3,
-        require_2fa_admin: true,
-        require_2fa_all: false,
-        session_max_hours: 12,
-      })
+      const { getAllSettings } = await import("@/server/services/settings")
+      // tightening only (2FA for admins on) → no re-auth needed
+      const saved = await updateSettingsAction({ ...(await getAllSettings()), require_2fa_admin: true })
       expect(saved.ok).toBe(true)
       try {
         await expect(requireUserForAction({ role: "admin" })).rejects.toThrow(/xác thực 2 bước/)
@@ -580,7 +697,8 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       await db.update(user).set({ role: "admin" }).where(eq(user.id, a.id))
       await db.update(user).set({ role: "admin" }).where(eq(user.id, b.id))
       const [sa, sb] = [await signIn(a), await signIn(b)]
-      const ban = (s: Signed, target: TestUser) => runAs(s, () => setUserBannedAction({ userId: target.id, banned: true }))
+      const ban = (s: Signed, target: TestUser) =>
+        runAs(s, () => setUserBannedAction({ userId: target.id, banned: true, reauth: { password: s.user.password } }))
       const [first, second] = await Promise.all([ban(sa, b), ban(sb, a)])
       expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1)
       const active = await db.select().from(user).where(and(eq(user.role, "admin"), eq(user.banned, false)))

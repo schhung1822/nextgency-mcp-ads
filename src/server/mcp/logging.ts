@@ -154,7 +154,7 @@ export async function withCallLogging<T>(
     await log.finish({ status: "success" })
     return out
   } catch (e) {
-    await log.finish({ status: "error", errorCode: "internal_error", errorMessage: e instanceof Error ? e.message : String(e) })
+    await log.finish({ status: "error", errorCode: "internal_error", errorMessage: safeErrorForLog(e) })
     throw e
   }
 }

@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const session = await requireUserForAction()
     if (session.user.role !== "admin") return new Response(null, { status: 404, headers: NO_STORE })
-    return Response.json(await getUpdateStatus(), { headers: NO_STORE })
+    return Response.json(await getUpdateStatus(session.user), { headers: NO_STORE })
   } catch (e) {
     if (e instanceof AuthorizationError) return Response.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE })
     console.error("[api/updates/status]", safeErrorForLog(e))

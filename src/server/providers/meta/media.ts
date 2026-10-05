@@ -1,7 +1,7 @@
 // ads_upload_media for Meta.
-// Image: use the bytes mcp-core downloaded through the SSRF-guarded fetch (MediaUploadRequest.bytes); only
-//        without them (direct adapter use) download the URL with a size cap + timeout and no redirects. Upload
-//        base64 `bytes` to /act_{id}/adimages (meta.md §5 Media).
+// Image: ONLY the bytes mcp-core downloaded through the SSRF-guarded fetch (MediaUploadRequest.bytes) are
+//        uploaded (base64 `bytes` to /act_{id}/adimages, meta.md §5 Media). The adapter never fetches the
+//        URL itself: a request without bytes is refused (no unguarded download path).
 // Video: /act_{id}/advideos with file_url (Meta's servers download it - residual risk accepted: the fetch
 //        happens on Meta's network, not ours), then poll status until ready (bounded wait).
 import { ProviderError } from "../errors"
@@ -11,54 +11,9 @@ import { META_TIMINGS, actId, graph, type MetaCredentials } from "./client"
 import { callCtx, invalid } from "./shared"
 
 export const MAX_IMAGE_BYTES = 30 * 1024 * 1024
-const DOWNLOAD_TIMEOUT_MS = 60_000
 
 function mediaError(messageVi: string, message: string): ProviderError {
   return new ProviderError({ platform: "meta", code: "invalid_request", message, userMessageVi: messageVi })
-}
-
-export async function downloadCapped(
-  url: string,
-  maxBytes: number,
-  signal?: AbortSignal
-): Promise<{ bytes: Buffer; contentType: string | null }> {
-  const timeout = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
-  const sig = signal ? AbortSignal.any([signal, timeout]) : timeout
-  let res: Response
-  try {
-    res = await fetch(url, { method: "GET", redirect: "manual", signal: sig })
-  } catch (e) {
-    throw new ProviderError({
-      platform: "meta",
-      code: timeout.aborted ? "timeout" : "invalid_request",
-      message: `media download failed: ${(e as Error).message}`,
-      userMessageVi: timeout.aborted ? "Tải ảnh từ URL quá lâu (quá 60 giây)." : "Không tải được ảnh từ URL đã cho.",
-      cause: e,
-    })
-  }
-  if (res.status >= 300 && res.status < 400) {
-    throw mediaError("URL ảnh chuyển hướng sang địa chỉ khác - hãy dùng URL trực tiếp tới file ảnh.", `redirect ${res.status}`)
-  }
-  if (!res.ok) throw mediaError(`Không tải được ảnh (HTTP ${res.status}).`, `download HTTP ${res.status}`)
-  const len = Number(res.headers.get("content-length") ?? "0")
-  if (len > maxBytes) throw mediaError(`Ảnh quá lớn (tối đa ${Math.round(maxBytes / 1024 / 1024)} MB).`, `content-length ${len}`)
-  const contentType = res.headers.get("content-type")
-  if (!res.body) throw mediaError("URL không trả nội dung.", "empty body")
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    total += value.byteLength
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => undefined)
-      throw mediaError(`Ảnh quá lớn (tối đa ${Math.round(maxBytes / 1024 / 1024)} MB).`, `body exceeds ${maxBytes}`)
-    }
-    chunks.push(value)
-  }
-  if (total === 0) throw mediaError("URL không trả nội dung.", "empty body")
-  return { bytes: Buffer.concat(chunks), contentType }
 }
 
 function looksLikeImage(buf: Buffer): boolean {
@@ -84,10 +39,17 @@ export async function uploadMetaMedia(ctx: ProviderContext<MetaCredentials>, r: 
   const call = callCtx(ctx)
 
   if (r.type === "image") {
-    // bytes pre-fetched by mcp-core through the SSRF guard: never re-fetch the URL (DNS rebinding)
-    const { bytes, contentType } = r.bytes
-      ? { bytes: Buffer.from(r.bytes), contentType: r.contentType ?? null }
-      : await downloadCapped(r.url, MAX_IMAGE_BYTES, ctx.signal)
+    // bytes pre-fetched by mcp-core through the SSRF guard: never fetch the URL here (DNS rebinding, internal targets)
+    if (!r.bytes) {
+      throw new ProviderError({
+        platform: "meta",
+        code: "invalid_request",
+        message: "meta image upload requires pre-fetched bytes (SSRF-guarded)",
+        userMessageVi: "Lỗi nội bộ: ảnh chưa được tải qua bộ lọc an toàn.",
+      })
+    }
+    const bytes = Buffer.from(r.bytes)
+    const contentType = r.contentType ?? null
     if (bytes.length > MAX_IMAGE_BYTES) throw mediaError(`Ảnh quá lớn (tối đa ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)} MB).`, `bytes ${bytes.length}`)
     if (contentType && !contentType.toLowerCase().startsWith("image/") && !looksLikeImage(bytes)) {
       throw mediaError("URL không phải file ảnh.", `content-type ${contentType}`)

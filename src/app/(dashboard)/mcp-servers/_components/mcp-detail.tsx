@@ -162,13 +162,17 @@ export function McpDetailView({
   const [revealedUrl, setRevealedUrl] = React.useState<string | null>(null)
   // the config tab shows its own contextual save bar (with the page’s only brand button) while dirty
   const [configDirty, setConfigDirty] = React.useState(false)
+  // bumped by the "set caps" action of the overview banner: the config tab scrolls to the caps section
+  const [capsFocus, setCapsFocus] = React.useState(0)
 
-  const changeTab = (v: string) => {
+  const changeTab = (v: string, focus?: "caps") => {
     const next = parseDetailTab(v)
     setTab(next)
     const url = new URL(window.location.href)
     if (next === "overview") url.searchParams.delete("tab")
     else url.searchParams.set("tab", next)
+    if (next === "config" && focus) url.searchParams.set("focus", focus)
+    else url.searchParams.delete("focus")
     window.history.replaceState(window.history.state, "", url)
   }
 
@@ -218,7 +222,14 @@ export function McpDetailView({
           </TabsList>
         </div>
         <TabsContent value="overview">
-          <OverviewTab mcp={mcp} connections={connections} />
+          <OverviewTab
+            mcp={mcp}
+            connections={connections}
+            onOpenConfig={() => {
+              changeTab("config", "caps")
+              setCapsFocus((n) => n + 1)
+            }}
+          />
         </TabsContent>
         {/* kept mounted (just hidden) so unsaved edits survive a switch to another tab */}
         <TabsContent
@@ -233,6 +244,7 @@ export function McpDetailView({
             accountNames={accountNames}
             updateAction={actions.update}
             onDirtyChange={setConfigDirty}
+            capsFocusSignal={capsFocus}
           />
         </TabsContent>
         <TabsContent value="connect">

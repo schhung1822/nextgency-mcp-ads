@@ -7,6 +7,8 @@ import { SELF_UPDATE_HELPER, recreateUpdater, runUpdate, type RunDeps, type RunF
 import type { FinishInfo, UpdateRequest } from "./updater-store"
 
 const IMAGE = "ghcr.io/notivn/ads-mcp-simple"
+const SIGNER = "https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/"
+const ISSUER = "https://token.actions.githubusercontent.com"
 const DIR = "/opt/ads-mcp"
 const ENV0 = [
   "APP_DOMAIN=ads.example.com",
@@ -17,13 +19,14 @@ const ENV0 = [
 ].join("\n")
 
 interface Call {
+  cmd: string
   args: string[]
   opts: ExecOptions
   /** .env content at the time of the call */
   env: string
 }
 
-type Handler = (args: string[], opts: ExecOptions, ctx: Ctx) => Partial<ExecResult & { lines: string[] }> | undefined
+type Handler = (args: string[], opts: ExecOptions, ctx: Ctx, cmd: string) => Partial<ExecResult & { lines: string[] }> | undefined
 
 interface Ctx {
   calls: Call[]
@@ -38,21 +41,24 @@ function psJson(web: object, worker: object): string {
   return [web, worker].map((x) => JSON.stringify(x)).join("\n")
 }
 const svc = (service: string, tag: string, o: object = {}) => ({ Service: service, State: "running", Health: service === "web" ? "healthy" : "", Image: `${IMAGE}:${tag}`, ...o })
+const DIGEST = `sha256:${"d".repeat(64)}`
+const DIGEST2 = `sha256:${"e".repeat(64)}`
+const isDigestInspect = (a: string[]) => a[0] === "image" && a.includes("{{json .RepoDigests}}")
 
-function harness(opts: { env?: string; handler?: Handler; failEnvWrite?: boolean } = {}) {
+function harness(opts: { env?: string; handler?: Handler; failEnvWrite?: boolean; image?: string } = {}) {
   const ctx: Ctx = { calls: [], env: opts.env ?? ENV0, fs: new Map(), t: 1_790_000_000_000 }
   const writes: Array<{ content: string; keepBackup: boolean }> = []
   const progress: Array<{ step?: string | null; message?: string; log?: string }> = []
   const finished: FinishInfo[] = []
   const removed: string[] = []
 
-  /** default docker: everything succeeds, ps follows the tag found in .env */
+  /** default docker/cosign: everything succeeds (images signed), ps follows the tag found in .env */
   const exec: Exec = async (cmd, args, o) => {
-    expect(cmd).toBe("docker")
+    expect(["docker", "cosign"]).toContain(cmd)
     expect(Array.isArray(args) && args.every((a) => typeof a === "string")).toBe(true)
-    ctx.calls.push({ args, opts: o, env: ctx.env })
+    ctx.calls.push({ cmd, args, opts: o, env: ctx.env })
     ctx.t += 500
-    const custom = opts.handler?.(args, o, ctx)
+    const custom = opts.handler?.(args, o, ctx, cmd)
     const res: Partial<ExecResult & { lines: string[] }> = custom ?? {}
     for (const l of res.lines ?? []) o.onLine?.(l, "stderr")
     if (custom && (custom.code !== undefined || custom.timedOut || custom.error)) return { ...ok(), ...custom }
@@ -61,7 +67,12 @@ function harness(opts: { env?: string; handler?: Handler; failEnvWrite?: boolean
       return ok()
     }
     if (args.includes("pg_restore")) return ok({ stdout: custom?.stdout ?? "; Archive created at 2026-10-03\n; TOC Entries: 12\n" })
+    if (cmd === "cosign") return ok({ stdout: custom?.stdout ?? '[{"critical":{}}]\n' })
     if (args[0] === "pull") return ok()
+    if (isDigestInspect(args)) {
+      const repo = args[args.length - 1]!.replace(/:[^:/]+$/, "")
+      return ok({ stdout: custom?.stdout ?? `${JSON.stringify([`${repo}@${DIGEST}`])}\n` })
+    }
     if (args[0] === "image" && args[1] === "inspect") {
       const tag = args[args.length - 1]!.split(":").pop()
       return ok({ stdout: custom?.stdout ?? `PATH=/usr/bin\nAPP_BUILD_VERSION=${tag}\nNODE_ENV=production\n` })
@@ -90,7 +101,7 @@ function harness(opts: { env?: string; handler?: Handler; failEnvWrite?: boolean
   }
   const cfg: UpdaterConfig = {
     projectDir: DIR,
-    image: IMAGE,
+    image: opts.image ?? IMAGE,
     composeProject: "ads-mcp",
     dbService: "db",
     pgUser: "adsmcp",
@@ -126,10 +137,11 @@ describe("runUpdate: success path", () => {
 
     const order = h.ctx.calls.map((c) => {
       const a = c.args
-      return a.includes("pg_dump") ? "dump" : a.includes("pg_restore") ? "verify" : a[0] === "pull" ? "pull" : a[0] === "image" ? "inspect" : isMigrate(a) ? "migrate" : isUp(a) ? "up" : a.includes("ps") ? "ps" : "?"
+      if (c.cmd === "cosign") return "cosign"
+      return a.includes("pg_dump") ? "dump" : a.includes("pg_restore") ? "verify" : a[0] === "pull" ? "pull" : isDigestInspect(a) ? "digests" : a[0] === "image" ? "inspect" : isMigrate(a) ? "migrate" : isUp(a) ? "up" : a.includes("ps") ? "ps" : "?"
     })
-    expect(order.slice(0, 6)).toEqual(["dump", "verify", "pull", "inspect", "migrate", "up"])
-    expect(new Set(order.slice(6))).toEqual(new Set(["ps"]))
+    expect(order.slice(0, 8)).toEqual(["dump", "verify", "pull", "inspect", "digests", "cosign", "migrate", "up"])
+    expect(new Set(order.slice(8))).toEqual(new Set(["ps"]))
 
     // migrate ran with the NEW tag via process env while .env still held the old version
     const mig = find(h.ctx.calls, isMigrate)[0]!
@@ -396,6 +408,88 @@ describe("runUpdate: log hygiene", () => {
   })
 })
 
+describe("runUpdate: image signature (cosign)", () => {
+  const cosignCalls = (h: ReturnType<typeof harness>) => h.ctx.calls.filter((c) => c.cmd === "cosign")
+  const failedBeforeSwap = (h: ReturnType<typeof harness>) => {
+    expect(h.finished[0]!.status).toBe("failed")
+    expect(h.finished[0]!.step).toBe("pull")
+    expect(h.writes).toHaveLength(0)
+    expect(h.ctx.env).toBe(ENV0)
+    expect(h.ctx.calls.some((c) => isMigrate(c.args) || isUp(c.args))).toBe(false)
+  }
+
+  it("verifies the pulled digest against the exact tag identity, with a TUF cache in /tmp and no secrets", async () => {
+    const h = harness()
+    expect(await runUpdate(REQ, h.deps)).toBe("succeeded")
+    const [c, ...more] = cosignCalls(h)
+    expect(more).toHaveLength(0)
+    expect(c!.args).toEqual(["verify", "--certificate-identity", `${SIGNER}v1.2.0`, "--certificate-oidc-issuer", ISSUER, `${IMAGE}@${DIGEST}`])
+    expect(c!.opts.env).toEqual({ PATH: "/usr/bin", PWD: DIR, TUF_ROOT: "/tmp/sigstore-tuf" })
+    expect(c!.opts.timeoutMs).toBeGreaterThanOrEqual(60_000)
+    expect(h.finished[0]!.log).toContain("Đã xác minh chữ ký số")
+  })
+
+  it("an unsigned image (or one signed for another tag) is refused at the pull step; .env untouched, no migrate", async () => {
+    const h = harness({ handler: (_a, _o, _c, cmd) => (cmd === "cosign" ? { code: 1, lines: ["Error: no matching signatures: none of the expected identities matched"] } : undefined) })
+    expect(await runUpdate(REQ, h.deps)).toBe("failed")
+    failedBeforeSwap(h)
+    const msg = h.finished[0]!.message
+    expect(msg).toContain("chữ ký số")
+    expect(msg).toContain("v1.2.0")
+    expect(msg).toContain("UPDATER_VERIFY_SIGNATURE=0")
+    expect(msg).toMatch(/không bị ảnh hưởng/)
+    expect(msg.length).toBeLessThanOrEqual(500)
+    expect(h.finished[0]!.log).toContain("no matching signatures")
+  })
+
+  it("cosign missing / Sigstore unreachable fails closed", async () => {
+    for (const res of [{ code: null, error: "spawn cosign ENOENT" }, { code: null, timedOut: true }]) {
+      const h = harness({ handler: (_a, _o, _c, cmd) => (cmd === "cosign" ? res : undefined) })
+      expect(await runUpdate(REQ, h.deps)).toBe("failed")
+      failedBeforeSwap(h)
+    }
+  })
+
+  it("an image without a registry digest of this repository is refused without calling cosign", async () => {
+    for (const stdout of ["[]\n", `${JSON.stringify([`evil.example/ads@${DIGEST}`])}\n`]) {
+      const h = harness({ handler: (a) => (isDigestInspect(a) ? { stdout } : undefined) })
+      expect(await runUpdate(REQ, h.deps)).toBe("failed")
+      failedBeforeSwap(h)
+      expect(cosignCalls(h)).toHaveLength(0)
+    }
+  })
+
+  it("passes when one of several recorded digests is signed", async () => {
+    const h = harness({
+      handler: (a, _o, _c, cmd) => {
+        if (isDigestInspect(a)) return { stdout: JSON.stringify([`${IMAGE}@${DIGEST2}`, `${IMAGE}@${DIGEST}`]) }
+        if (cmd === "cosign" && a[a.length - 1]!.endsWith(DIGEST2)) return { code: 1 }
+        return undefined
+      },
+    })
+    expect(await runUpdate(REQ, h.deps)).toBe("succeeded")
+    expect(cosignCalls(h)).toHaveLength(2)
+  })
+
+  it("is skipped (with a log note) for a fork / local registry image", async () => {
+    const img = "localhost:5000/ads-mcp"
+    const h = harness({
+      image: img,
+      handler: (a, _o, ctx) => (a.includes("ps") ? { stdout: psJson({ ...svc("web", "x"), Image: `${img}:${readEnvVar(ctx.env, "APP_VERSION")}` }, { ...svc("worker", "x"), Image: `${img}:${readEnvVar(ctx.env, "APP_VERSION")}` }) } : undefined),
+    })
+    expect(await runUpdate(REQ, h.deps)).toBe("succeeded")
+    expect(cosignCalls(h)).toHaveLength(0)
+    expect(h.finished[0]!.log).toContain("Bỏ qua xác minh chữ ký số")
+  })
+
+  it("is skipped when the operator set UPDATER_VERIFY_SIGNATURE=0 in .env", async () => {
+    const h = harness({ env: `${ENV0}UPDATER_VERIFY_SIGNATURE=0\n` })
+    expect(await runUpdate(REQ, h.deps)).toBe("succeeded")
+    expect(cosignCalls(h)).toHaveLength(0)
+    expect(h.finished[0]!.log).toContain("UPDATER_VERIFY_SIGNATURE=0")
+  })
+})
+
 describe("recreateUpdater (self update)", () => {
   it("skips when the running updater already has the target version", async () => {
     const h = harness()
@@ -403,16 +497,42 @@ describe("recreateUpdater (self update)", () => {
     expect(h.ctx.calls).toHaveLength(0)
   })
 
-  it("pulls the new updater image, then starts a helper container that recreates it (args array, no shell)", async () => {
+  it("pulls the new updater image, verifies its signature, then starts a helper container that recreates it (args array, no shell)", async () => {
     const h = harness()
     expect(await recreateUpdater(h.deps, "1.2.0", () => {})).toBe("started")
-    const [pull, rm, run] = h.ctx.calls.map((c) => c.args)
+    const [pull, digests, cosign, rm, run] = h.ctx.calls.map((c) => c.args)
     expect(pull).toEqual(["compose", "--project-directory", DIR, "-f", `${DIR}/docker-compose.yml`, "pull", "updater"])
+    expect(digests).toEqual(["image", "inspect", "--format", "{{json .RepoDigests}}", `${IMAGE}-updater:1.2.0`])
+    expect(h.ctx.calls[2]!.cmd).toBe("cosign")
+    expect(cosign).toEqual(["verify", "--certificate-identity", `${SIGNER}v1.2.0`, "--certificate-oidc-issuer", ISSUER, `${IMAGE}-updater@${DIGEST}`])
     expect(rm).toEqual(["rm", "-f", SELF_UPDATE_HELPER])
     expect(run!.slice(0, 5)).toEqual(["run", "-d", "--rm", "--name", SELF_UPDATE_HELPER])
     expect(run).toContain(`${IMAGE}-updater:1.2.0`)
     expect(run!.slice(-7)).toEqual(["--project-directory", DIR, "up", "-d", "--no-deps", "--force-recreate", "updater"])
     expect(run).toContain(`${DIR}:${DIR}`)
+  })
+
+  it("keeps the current updater when the new updater image is not signed for the tag (no helper container)", async () => {
+    const h = harness({ handler: (_a, _o, _c, cmd) => (cmd === "cosign" ? { code: 1, lines: ["Error: no matching signatures"] } : undefined) })
+    const said: string[] = []
+    expect(await recreateUpdater(h.deps, "1.2.0", (l) => said.push(l))).toBe("failed")
+    expect(h.ctx.calls.some((c) => c.args[0] === "run" || c.args[0] === "rm")).toBe(false)
+    expect(said.join("\n")).toContain("giữ updater hiện tại")
+  })
+
+  it("self update skips the signature check for a fork image or UPDATER_VERIFY_SIGNATURE=0", async () => {
+    for (const h of [harness({ image: "localhost:5000/ads-mcp" }), harness({ env: `${ENV0}UPDATER_VERIFY_SIGNATURE=0\n` })]) {
+      expect(await recreateUpdater(h.deps, "1.2.0", () => {})).toBe("started")
+      expect(h.ctx.calls.some((c) => c.cmd === "cosign")).toBe(false)
+    }
+  })
+
+  it("self update verifies when .env cannot be read", async () => {
+    const h = harness({ handler: (_a, _o, _c, cmd) => (cmd === "cosign" ? { code: 1 } : undefined) })
+    h.deps.files.readEnv = () => {
+      throw new Error("ENOENT")
+    }
+    expect(await recreateUpdater(h.deps, "1.2.0", () => {})).toBe("failed")
   })
 
   it("keeps the current updater when the new image cannot be pulled", async () => {

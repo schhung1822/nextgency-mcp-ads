@@ -32,6 +32,7 @@ import type { SelectableConnection } from "@/server/services/mcp-servers"
 
 import { McpCreated } from "./mcp-created"
 import {
+  moneyScopeCurrencies,
   NameSection,
   PermissionsSection,
   PlatformsSection,
@@ -66,10 +67,17 @@ const STEP_CARD = [
   },
 ] as const
 
-function validateStep(step: number, v: McpFormValues): StepErrors {
+function validateStep(
+  step: number,
+  v: McpFormValues,
+  connections: SelectableConnection[]
+): StepErrors {
   if (step === 0) return validateNameStep(v)
   if (step === 1) return validatePlatformsStep(v)
-  if (step === 3) return validateProtectionStep(v)
+  if (step === 3)
+    return validateProtectionStep(v, {
+      requiredCapCurrencies: moneyScopeCurrencies(v, connections),
+    })
   return {}
 }
 
@@ -174,7 +182,7 @@ export function McpWizard({
   }
 
   const next = () => {
-    const e = validateStep(step, values)
+    const e = validateStep(step, values, connections)
     if (Object.keys(e).length > 0) {
       setErrors(e)
       toast.error(t.wizard.fixErrors)
@@ -185,7 +193,7 @@ export function McpWizard({
 
   const submit = () => {
     for (let s = 0; s < STEPS.length; s++) {
-      const e = validateStep(s, values)
+      const e = validateStep(s, values, connections)
       if (Object.keys(e).length > 0) {
         setStep(s)
         setErrors(e)

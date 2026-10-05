@@ -135,8 +135,9 @@ function toView(row: RequestRow, requestedByEmail: string | null): UpdateRequest
 // Reads
 // ---------------------------------------------------------------------------
 
-/** Aggregated state for /settings/updates and /api/updates/status (admin only - the caller authorizes). */
-export async function getUpdateStatus(now: Date = new Date()): Promise<UpdateStatus> {
+/** Aggregated state for /settings/updates and /api/updates/status (admin only - re-checked here too). */
+export async function getUpdateStatus(actor: Pick<UpdateActor, "role">, now: Date = new Date()): Promise<UpdateStatus> {
+  assertAdmin(actor)
   const current = getAppVersion()
   const currentIsRelease = parseSemver(current) !== null
   const [settings, rows] = await Promise.all([
@@ -228,7 +229,7 @@ export async function checkForUpdatesNow(actor: UpdateActor, now: Date = new Dat
       tx
     )
   })
-  return { error: result.ok ? null : result.message, status: await getUpdateStatus(now) }
+  return { error: result.ok ? null : result.message, status: await getUpdateStatus(actor, now) }
 }
 
 // ---------------------------------------------------------------------------

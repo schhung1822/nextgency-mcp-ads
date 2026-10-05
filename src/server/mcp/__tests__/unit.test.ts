@@ -1,10 +1,14 @@
+import { DrizzleQueryError } from "drizzle-orm/errors"
 import { describe, expect, it } from "vitest"
+import { ProviderError } from "../../providers/errors"
 import { emptyMetrics } from "../../providers/types"
 import { argsHash } from "../confirm"
 import { decodeCursor, encodeCursor, queryHash } from "../cursor"
-import { McpToolError } from "../errors"
+import { mapToolError, McpToolError } from "../errors"
 import { collectFanout, positionAfter } from "../fanout"
 import { assertGrant, assertPageGrant, dedupePages } from "../grant"
+import { SERVER_INSTRUCTIONS } from "../instructions"
+import { MAX_LOG_ARGS_DEPTH, stripMediaUrlQueries, stripUrlQueries } from "../log-args"
 import { buildIpMatcher, clientIpFromHeaders, ipAllowed, normalizeIp } from "../net"
 import { __resetRateLimits, consumeMcpRate, NOT_FOUND_LIMIT, notFoundBlocked, recordNotFound } from "../rate-limit"
 import { clientFromUserAgent, peekMessages } from "../request-state"
@@ -293,5 +297,149 @@ describe("request state", () => {
       "request",
       "notification",
     ])
+  })
+})
+
+describe("server instructions", () => {
+  it("never mention system notices or update reminders (MCP results carry none)", () => {
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/Thông báo hệ thống|có bản update/)
+    expect(SERVER_INSTRUCTIONS.slice(0, 512)).toContain("ads_list_accounts")
+    expect(SERVER_INSTRUCTIONS.endsWith(" ")).toBe(false)
+  })
+})
+
+describe("tool error mapping (text returned to the AI)", () => {
+  const secrets = `token EAA${"a".repeat(30)} key sk-proj-${"b".repeat(30)} url https://graph.facebook.com/v25.0/me?access_token=SECRETVALUE123&x=1`
+  const providerError = (userMessageVi: string, hint?: string) =>
+    new ProviderError({ platform: "meta", code: "invalid_request", message: "meta: raw", userMessageVi, hint })
+
+  it("redacts tokens / keys / signed query values inside ProviderError messages and hints", () => {
+    const m = mapToolError(providerError(`Lỗi: ${secrets}`, `Gợi ý ${secrets}`))
+    for (const text of [m.payload.message, String(m.payload.hint)]) {
+      expect(text).not.toMatch(/EAAa{20}/)
+      expect(text).not.toMatch(/sk-proj-b{20}/)
+      expect(text).not.toContain("SECRETVALUE123")
+      expect(text).toContain("access_token=[redacted]")
+    }
+  })
+
+  it("caps the message at 1000 characters and the hint at 500; a missing hint falls back to the default", () => {
+    const m = mapToolError(providerError("x".repeat(5_000), "y".repeat(2_000)))
+    expect(m.payload.message).toHaveLength(1000)
+    expect(m.payload.hint).toHaveLength(500)
+    const auth = mapToolError(new ProviderError({ platform: "meta", code: "auth_invalid", message: "m", userMessageVi: "Token hết hạn" }))
+    expect(auth.payload.hint).toMatch(/Token của kết nối/)
+    const plain = mapToolError(new ProviderError({ platform: "meta", code: "upstream_error", message: "m", userMessageVi: "Lỗi" }))
+    expect(plain.payload.hint).toBeNull()
+  })
+
+  it("redacts McpToolError messages and hints too", () => {
+    const m = mapToolError(new McpToolError({ code: "x", messageVi: `Sai ${secrets}`, hint: `Gợi ý ${secrets}` }))
+    expect(m.payload.message).not.toContain("SECRETVALUE123")
+    expect(m.payload.hint).not.toMatch(/EAAa{20}/)
+    expect(mapToolError(new McpToolError({ code: "x", messageVi: "Không có gợi ý" })).payload.hint).toBeNull()
+  })
+
+  it("internal errors: generic text for the AI, a params-free one-liner for the log", () => {
+    const cause = Object.assign(new Error("connection reset"), { code: "ECONNRESET" })
+    const e = new DrizzleQueryError('select "credentials_encrypted" from "connections" where "id" = $1', ["v1.secret-ciphertext.AAAA"], cause)
+    const m = mapToolError(e)
+    expect(m.payload.code).toBe("internal_error")
+    expect(JSON.stringify(m.payload)).not.toContain("connections")
+    expect(m.logMessage).not.toContain("secret-ciphertext")
+    expect(m.logMessage).not.toContain("params")
+    expect(m.logMessage).toContain("ECONNRESET")
+  })
+})
+
+describe("log args (signed URL query strings)", () => {
+  it("stripUrlQueries: every http(s) URL loses its query / fragment, deep copy, other strings untouched", () => {
+    const input = {
+      url: "https://bucket.s3.amazonaws.com/a/b.jpg?X-Amz-Signature=abc&X-Amz-Credential=def",
+      nested: {
+        list: ["http://cdn.example.com/v.mp4#t=1", "plain text ?a=1", 42, null],
+        deeper: [{ link: "https://shop.vn/sp?utm_source=fb" }],
+      },
+      creds: "https://user:pass@example.com/p?q=1",
+      clean: "https://example.com/p",
+      ftp: "ftp://example.com/f?x=1",
+    }
+    const out = stripUrlQueries(input)
+    expect(out).toEqual({
+      url: "https://bucket.s3.amazonaws.com/a/b.jpg?[redacted]",
+      nested: {
+        list: ["http://cdn.example.com/v.mp4?[redacted]", "plain text ?a=1", 42, null],
+        deeper: [{ link: "https://shop.vn/sp?[redacted]" }],
+      },
+      creds: "https://example.com/p?[redacted]",
+      clean: "https://example.com/p",
+      ftp: "ftp://example.com/f?x=1",
+    })
+    expect(input.url).toContain("X-Amz-Signature") // the input is not mutated
+    expect(stripUrlQueries(null)).toBeNull()
+    expect(stripUrlQueries("https://x.vn/?a=1")).toBe("https://x.vn/?[redacted]")
+  })
+
+  it(`caps the depth at ${MAX_LOG_ARGS_DEPTH} levels (deeper values are never logged as-is)`, () => {
+    let deep: unknown = { url: "https://x.vn/a?sig=1" }
+    for (let i = 0; i < MAX_LOG_ARGS_DEPTH + 2; i++) deep = { d: deep }
+    const json = JSON.stringify(stripUrlQueries(deep))
+    expect(json).toContain("[depth-limit]")
+    expect(json).not.toContain("sig=1")
+  })
+
+  it("stripMediaUrlQueries: only media URL fields, link / final_url UTMs stay readable", () => {
+    const out = stripMediaUrlQueries({
+      url: "https://cdn.vn/a.png?token=1",
+      creative: { image_url: "https://cdn.vn/i.jpg?sig=2", video_url: "https://cdn.vn/v.mp4?sig=3", link: "https://shop.vn/?utm_source=fb" },
+      thumbnail_url: "not a url?sig=4",
+      final_url: "https://shop.vn/?utm_campaign=x",
+      name: "https://example.com/?keep=1",
+    })
+    expect(out).toEqual({
+      url: "https://cdn.vn/a.png?[redacted]",
+      creative: { image_url: "https://cdn.vn/i.jpg?[redacted]", video_url: "https://cdn.vn/v.mp4?[redacted]", link: "https://shop.vn/?utm_source=fb" },
+      thumbnail_url: "not a url?[redacted]",
+      final_url: "https://shop.vn/?utm_campaign=x",
+      name: "https://example.com/?keep=1",
+    })
+  })
+})
+
+describe("mandatory daily caps (money_caps_required)", () => {
+  it("parses the flag: only an explicit true makes an MCP 'caps required'; rows without it are legacy", () => {
+    expect(parseMcpSettings({ money_caps_required: true }).moneyCapsRequired).toBe(true)
+    expect(parseMcpSettings({ moneyCapsRequired: true }).moneyCapsRequired).toBe(true)
+    expect(parseMcpSettings({ money_caps_required: "true" }).moneyCapsRequired).toBe(false)
+    expect(parseMcpSettings({ two_step_confirm: true, max_daily_budget: {} }).moneyCapsRequired).toBe(false)
+    expect(parseMcpSettings(null).moneyCapsRequired).toBe(false)
+    expect(DEFAULT_MCP_SETTINGS.moneyCapsRequired).toBe(false)
+  })
+
+  it("requireMoneyCaps: legacy passes, required + cap passes, required without a cap for the currency → budget_cap_missing", async () => {
+    const { requireMoneyCaps } = await import("../guardrails")
+    const legacy = { ...DEFAULT_MCP_SETTINGS }
+    const required = { ...DEFAULT_MCP_SETTINGS, moneyCapsRequired: true, maxDailyBudget: { VND: 1_000_000 } }
+    expect(() => requireMoneyCaps(legacy, "VND", "đổi ngân sách")).not.toThrow()
+    expect(() => requireMoneyCaps(required, "vnd", "đổi ngân sách")).not.toThrow()
+    let err: unknown
+    try {
+      requireMoneyCaps(required, "usd", "bật chạy quảng cáo")
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(McpToolError)
+    expect(err).toMatchObject({ code: "budget_cap_missing", logStatus: "denied" })
+    expect((err as McpToolError).messageVi).toMatch(/USD.*bật chạy quảng cáo/)
+    expect((err as McpToolError).hint).toMatch(/tab Cấu hình/)
+    // a lifetime or bid cap alone is not a daily cap
+    expect(() => requireMoneyCaps({ ...required, maxDailyBudget: {}, maxLifetimeBudget: { VND: 9 }, maxBid: { VND: 9 } }, "VND", "x")).toThrow(McpToolError)
+  })
+
+  it("legacyCapWarning: only legacy MCPs without a daily cap for the currency get the preview warning", async () => {
+    const { legacyCapWarning } = await import("../guardrails")
+    expect(legacyCapWarning(DEFAULT_MCP_SETTINGS, "vnd")).toEqual([expect.stringMatching(/chưa đặt trần ngân sách\/ngày cho VND/)])
+    expect(legacyCapWarning({ ...DEFAULT_MCP_SETTINGS, maxDailyBudget: { VND: 5 } }, "VND")).toEqual([])
+    expect(legacyCapWarning({ ...DEFAULT_MCP_SETTINGS, moneyCapsRequired: true }, "VND")).toEqual([])
   })
 })

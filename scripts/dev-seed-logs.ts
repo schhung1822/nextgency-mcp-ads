@@ -50,11 +50,15 @@ async function ensureUser(email: string, name: string, role: "admin" | "staff"):
 }
 
 async function clean(ids: string[]) {
-  await db.delete(mcpCallLogs).where(inArray(mcpCallLogs.ownerId, ids))
-  await db.delete(mcpCallStatsHourly).where(inArray(mcpCallStatsHourly.ownerId, ids))
-  await db.delete(activityLogs).where(inArray(activityLogs.actorId, ids))
-  await db.delete(mcpServers).where(inArray(mcpServers.ownerId, ids))
-  await db.delete(connections).where(inArray(connections.ownerId, ids))
+  // log tables are append-only (DB trigger, migration 0005): this dev-only cleanup opts in for its own transaction
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('ads_mcp.log_mutation', 'allow', true)`)
+    await tx.delete(mcpCallLogs).where(inArray(mcpCallLogs.ownerId, ids))
+    await tx.delete(mcpCallStatsHourly).where(inArray(mcpCallStatsHourly.ownerId, ids))
+    await tx.delete(activityLogs).where(inArray(activityLogs.actorId, ids))
+    await tx.delete(mcpServers).where(inArray(mcpServers.ownerId, ids))
+    await tx.delete(connections).where(inArray(connections.ownerId, ids))
+  })
 }
 
 function pick<T>(a: readonly T[], i: number): T {

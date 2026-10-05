@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  assertMcpKeyPepper,
   generateMcpKey,
   hashMcpKey,
   isWellFormedMcpKey,
@@ -9,6 +10,7 @@ import {
 import {
   __setKeyRing,
   aad,
+  assertKeyRing,
   decryptJson,
   decryptSecret,
   encryptJson,
@@ -19,7 +21,10 @@ import {
 const k1 = randomBytes(32).toString("base64")
 const k2 = randomBytes(32).toString("base64")
 
-afterEach(() => __setKeyRing(undefined))
+afterEach(() => {
+  __setKeyRing(undefined)
+  vi.unstubAllEnvs()
+})
 
 describe("secret-box", () => {
   it("round-trips with AAD", () => {
@@ -47,6 +52,23 @@ describe("secret-box", () => {
     expect(() => __setKeyRing("1:short")).toThrow()
     expect(() => __setKeyRing("")).toThrow()
   })
+  it("assertKeyRing validates ENCRYPTION_KEYS at startup without leaking key material", () => {
+    vi.stubEnv("ENCRYPTION_KEYS", `1:${k1}`)
+    expect(() => assertKeyRing()).not.toThrow()
+    for (const bad of ["1:", "1:c2hvcnQ=", "", "x:" + k1, `1:${k1},1:${k2}`]) {
+      __setKeyRing(undefined)
+      vi.stubEnv("ENCRYPTION_KEYS", bad)
+      let msg = ""
+      try {
+        assertKeyRing()
+      } catch (e) {
+        msg = (e as Error).message
+      }
+      expect(msg, bad).toMatch(/ENCRYPTION_KEYS/)
+      expect(msg).not.toContain(k1)
+      expect(msg).not.toContain("c2hvcnQ=")
+    }
+  })
   it("rejects truncated or oversized GCM tags (no short-tag forgery)", () => {
     __setKeyRing(`1:${k1}`)
     const c = encryptSecret("secret", "t")
@@ -73,6 +95,15 @@ describe("mcp key", () => {
     expect(mcpKeyPrefix(key)).toHaveLength(12)
     expect(hashMcpKey(key)).toBe(hashMcpKey(key))
     expect(hashMcpKey(key)).not.toBe(hashMcpKey(generateMcpKey()))
+  })
+  it("assertMcpKeyPepper requires a pepper of at least 32 bytes", () => {
+    vi.stubEnv("MCP_KEY_PEPPER", randomBytes(32).toString("base64"))
+    expect(() => assertMcpKeyPepper()).not.toThrow()
+    vi.stubEnv("MCP_KEY_PEPPER", "")
+    expect(() => assertMcpKeyPepper()).toThrow(/MCP_KEY_PEPPER/)
+    const short = randomBytes(24).toString("base64")
+    vi.stubEnv("MCP_KEY_PEPPER", short)
+    expect(() => assertMcpKeyPepper()).toThrow(/MCP_KEY_PEPPER/)
   })
   it("rejects malformed keys", () => {
     expect(isWellFormedMcpKey("amcp_short")).toBe(false)

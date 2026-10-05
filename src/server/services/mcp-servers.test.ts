@@ -93,7 +93,8 @@ const ids = {
 const settings = {
   twoStepConfirm: true,
   budgetChangeMaxPct: 50,
-  maxDailyBudget: {},
+  // mandatory for MCPs with write permissions (meta accounts are VND, openai_ads USD)
+  maxDailyBudget: { VND: 100_000_000, USD: 10_000 },
   rateLimitPerMin: 60,
   allowedIps: [],
 }
@@ -411,22 +412,35 @@ describe.skipIf(!hasDb)("mcp-servers service (DB)", () => {
         settings: {
           two_step_confirm: true,
           budget_change_max_pct: 50,
-          max_daily_budget: {},
+          max_daily_budget: { VND: 100_000_000, USD: 10_000 },
           rate_limit_per_min: 60,
           allowed_ips: [],
         },
       })
       .where(eq(mcpServers.id, r.id))
-    // same values (new fields at their defaults) → no change, no log
-    expect(
-      (
-        await updateMcpServer(staffA, {
-          ...input({ name: `${P} guard` }),
-          id: r.id,
-          settings: { ...settings, writeRateLimitPer10Min: 20 },
-        })
-      ).changed
-    ).toBe(false)
+    // same values (new fields at their defaults): the only change is the upgrade of the legacy row to
+    // "caps required" - a runtime change (writes without a daily cap are refused from now on) → saved + logged
+    const same = {
+      ...input({ name: `${P} guard` }),
+      id: r.id,
+      settings: { ...settings, writeRateLimitPer10Min: 20 },
+    }
+    expect((await updateMcpServer(staffA, same)).changed).toBe(true)
+    const [upgraded] = await db
+      .select({ settings: mcpServers.settings })
+      .from(mcpServers)
+      .where(eq(mcpServers.id, r.id))
+    expect(upgraded!.settings).toMatchObject({ money_caps_required: true })
+    const upgradeLogs = (await logsFor(r.id)).filter((l) => l.action === "mcp.update")
+    expect(upgradeLogs).toHaveLength(1)
+    expect(upgradeLogs[0]!.metadata).toEqual({
+      before: { moneyCapsRequired: false },
+      after: { moneyCapsRequired: true },
+      reason: "caps_required_upgrade",
+    })
+    // saving the same values again: nothing changes, nothing is logged
+    expect((await updateMcpServer(staffA, same)).changed).toBe(false)
+    expect((await logsFor(r.id)).filter((l) => l.action === "mcp.update")).toHaveLength(1)
 
     const guarded = {
       ...settings,
@@ -441,7 +455,11 @@ describe.skipIf(!hasDb)("mcp-servers service (DB)", () => {
     })
     expect(res.changed).toBe(true)
     const logs = await logsFor(r.id)
-    const upd = logs.filter((l) => l.action === "mcp.update")
+    const upd = logs.filter(
+      (l) =>
+        l.action === "mcp.update" &&
+        (l.metadata as { reason?: string }).reason !== "caps_required_upgrade"
+    )
     expect(upd).toHaveLength(1)
     const meta = upd[0]!.metadata as {
       before: Record<string, unknown>
@@ -780,6 +798,158 @@ describe.skipIf(!hasDb)("mcp-servers service (DB)", () => {
       10 - REVEAL_MAX_FAILURES
     )
     expect(verify).toHaveBeenCalledTimes(REVEAL_MAX_FAILURES)
+  })
+})
+
+describe.skipIf(!hasDb)("mcp-servers service: mandatory daily caps + scope privacy (DB)", () => {
+  const Q = `tmcpcap_${randomUUID().slice(0, 8)}`
+  const sa: McpActor = { id: `${Q}_staff_a`, email: `${Q}_staff_a@example.test`, role: "staff" }
+  const sb: McpActor = { id: `${Q}_staff_b`, email: `${Q}_staff_b@example.test`, role: "staff" }
+  const ad: McpActor = { id: `${Q}_admin`, email: `${Q}_admin@example.test`, role: "admin" }
+  const c = { a: randomUUID(), aOpenai: randomUUID(), b: randomUUID() }
+  const acc = { vnd: randomUUID(), usd: randomUUID(), openai: randomUUID(), b: randomUUID() }
+  const scope = (permissions: string[], extra: Record<string, unknown> = {}) => ({
+    name: `${Q} caps`,
+    description: null,
+    platforms: [{ platform: "meta", connections: [{ connectionId: c.a, accountIds: null }], permissions }],
+    settings: { ...settings, maxDailyBudget: {} },
+    expiresAt: null,
+    ...extra,
+  })
+
+  beforeAll(async () => {
+    await db.insert(user).values(
+      [sa, sb, ad].map((u) => ({ id: u.id, name: u.id, email: u.email, emailVerified: true, role: u.role }))
+    )
+    const conn = (id: string, ownerId: string, platform: "meta" | "openai_ads", name: string) => ({
+      id,
+      ownerId,
+      platform,
+      name,
+      status: "active",
+      credentialsEncrypted: encryptJson({ accessToken: "x" }, aad.connectionCredentials(id)),
+      credentialHint: "xxxx",
+    })
+    await db.insert(connections).values([
+      conn(c.a, sa.id, "meta", `${Q} A meta`),
+      conn(c.aOpenai, sa.id, "openai_ads", `${Q} A openai`),
+      conn(c.b, sb.id, "meta", `${Q} B meta (secret name)`),
+    ])
+    const account = (id: string, connectionId: string, platform: "meta" | "openai_ads", ext: string, currency: string) => ({
+      id,
+      connectionId,
+      platform,
+      externalId: ext,
+      name: ext,
+      currency,
+      timezone: "Asia/Ho_Chi_Minh",
+      status: "active",
+      isEnabled: true,
+    })
+    await db.insert(adAccounts).values([
+      account(acc.vnd, c.a, "meta", "act_11", "VND"),
+      account(acc.usd, c.a, "meta", "act_12", "USD"),
+      account(acc.openai, c.aOpenai, "openai_ads", "adacct_711", "USD"),
+      account(acc.b, c.b, "meta", "act_19", "VND"),
+    ])
+  })
+
+  afterAll(async () => {
+    if (!hasDb) return
+    const owners = [sa.id, sb.id, ad.id]
+    await db.delete(mcpServers).where(inArray(mcpServers.ownerId, owners))
+    await db.delete(connections).where(inArray(connections.ownerId, owners))
+    await db.delete(activityLogs).where(inArray(activityLogs.actorId, owners))
+    await db.delete(user).where(inArray(user.id, owners))
+  })
+
+  it("an MCP with a money-write permission needs a daily cap for every currency in that scope", async () => {
+    for (const perm of ["status", "update", "copy", "create"]) {
+      const err = await createMcpServer(sa, scope([perm])).catch((e: unknown) => e)
+      expect(err, perm).toBeInstanceOf(McpServiceError)
+      expect(err).toMatchObject({ code: "invalid" })
+      expect((err as McpServiceError).message).toMatch(/USD, VND/)
+      expect(Object.keys((err as McpServiceError).fieldErrors ?? {}).sort()).toEqual([
+        "settings.maxDailyBudget.USD",
+        "settings.maxDailyBudget.VND",
+      ])
+    }
+    // one currency is not enough
+    await expect(
+      createMcpServer(sa, scope(["status"], { settings: { ...settings, maxDailyBudget: { VND: 1_000_000 } } }))
+    ).rejects.toMatchObject({ fieldErrors: { "settings.maxDailyBudget.USD": expect.stringMatching(/USD/) } })
+    // picked accounts: only their currencies are required
+    const picked = await createMcpServer(sa, {
+      ...scope(["status"], { settings: { ...settings, maxDailyBudget: { VND: 1_000_000 } } }),
+      platforms: [{ platform: "meta", connections: [{ connectionId: c.a, accountIds: [acc.vnd] }], permissions: ["status"] }],
+    })
+    expect((await getMcpServer(sa, picked.id))!.capsMissing).toEqual([])
+    // nothing created by the refused attempts
+    const rows = await db.select().from(mcpServers).where(eq(mcpServers.ownerId, sa.id))
+    expect(rows).toHaveLength(1)
+  })
+
+  it("read-only and delete-only scopes need no cap; the permission of each platform counts on its own", async () => {
+    const ro = await createMcpServer(sa, scope(["read"], { name: `${Q} ro` }))
+    expect((await getMcpServer(sa, ro.id))!.capsMissing).toEqual([])
+    await createMcpServer(sa, scope(["delete"], { name: `${Q} del` }))
+    // meta read-only + openai write: only USD (openai) is required
+    const mixed = await createMcpServer(sa, {
+      ...scope([], { name: `${Q} mixed`, settings: { ...settings, maxDailyBudget: { USD: 50 } } }),
+      platforms: [
+        { platform: "meta", connections: [{ connectionId: c.a, accountIds: null }], permissions: ["read"] },
+        { platform: "openai_ads", connections: [{ connectionId: c.aOpenai, accountIds: null }], permissions: ["update"] },
+      ],
+    })
+    const [stored] = await db.select({ settings: mcpServers.settings }).from(mcpServers).where(eq(mcpServers.id, mixed.id))
+    expect(stored!.settings).toMatchObject({ money_caps_required: true, max_daily_budget: { USD: 50 } })
+  })
+
+  it("a legacy MCP keeps working, is flagged in list/detail, and cannot be saved again until its caps are set", async () => {
+    const r = await createMcpServer(sa, scope(["read", "status"], { name: `${Q} legacy`, settings }))
+    // written by v1.0.1: no money_caps_required, no caps
+    await db
+      .update(mcpServers)
+      .set({ settings: { two_step_confirm: true, budget_change_max_pct: 50, max_daily_budget: { VND: 5 }, rate_limit_per_min: 60, allowed_ips: [] } })
+      .where(eq(mcpServers.id, r.id))
+    const detail = await getMcpServer(sa, r.id)
+    expect(detail!.settings.moneyCapsRequired).toBe(false)
+    expect(detail!.capsMissing).toEqual(["USD"])
+    expect((await listMcpServers(sa)).find((m) => m.id === r.id)!.capsMissing).toEqual(["USD"])
+
+    const edit = { ...scope(["read", "status"], { name: `${Q} legacy renamed`, settings: { ...settings, maxDailyBudget: { VND: 5 } } }), id: r.id }
+    await expect(updateMcpServer(sa, edit)).rejects.toMatchObject({
+      code: "invalid",
+      fieldErrors: { "settings.maxDailyBudget.USD": expect.any(String) },
+    })
+    const [unchanged] = await db.select().from(mcpServers).where(eq(mcpServers.id, r.id))
+    expect(unchanged!.name).toBe(`${Q} legacy`)
+    expect(unchanged!.settings).not.toHaveProperty("money_caps_required")
+
+    const fixed = await updateMcpServer(sa, { ...edit, settings: { ...settings, maxDailyBudget: { VND: 5, USD: 3 } } })
+    expect(fixed.changed).toBe(true)
+    const after = await getMcpServer(sa, r.id)
+    expect(after!.settings.moneyCapsRequired).toBe(true)
+    expect(after!.capsMissing).toEqual([])
+    // the internal marker never shows up in the activity diff
+    const logs = await logsFor(r.id)
+    const upd = logs.find((l) => l.action === "mcp.update")!
+    expect(JSON.stringify(upd.metadata)).not.toMatch(/moneyCapsRequired|money_caps_required/)
+  })
+
+  it("the stored scope of an MCP never reveals the name of a connection the viewer may not access", async () => {
+    // created by an admin with staff B's connection (D4), the admin is later demoted to staff
+    const r = await createMcpServer(ad, {
+      ...scope(["read"], { name: `${Q} cross` }),
+      platforms: [{ platform: "meta", connections: [{ connectionId: c.b, accountIds: null }], permissions: ["read"] }],
+    })
+    const asAdmin = await getMcpServer(ad, r.id)
+    expect(asAdmin!.config[0]!.connections[0]!.connectionName).toBe(`${Q} B meta (secret name)`)
+    const demoted: McpActor = { ...ad, role: "staff" }
+    const asDemoted = await getMcpServer(demoted, r.id)
+    expect(asDemoted).not.toBeNull()
+    expect(asDemoted!.config[0]!.connections[0]!.connectionName).toBe("Kết nối của người dùng khác")
+    expect(JSON.stringify(asDemoted)).not.toContain("secret name")
   })
 })
 

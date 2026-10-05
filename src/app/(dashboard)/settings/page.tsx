@@ -19,6 +19,7 @@ import { updates as tu } from "@/lib/i18n/vi/updates"
 import { displayVersion } from "@/lib/version"
 import { requireAdmin } from "@/server/auth/session"
 import { env } from "@/server/env"
+import { getPublicLegalInfo } from "@/server/services/legal"
 import { getLogStorageInfo, type LogTableInfo } from "@/server/services/logs"
 import { getAllSettings } from "@/server/services/settings"
 import { getVersionBadge } from "@/server/services/updates"
@@ -71,11 +72,12 @@ function partitionLabel(name: string): string {
 }
 
 export default async function SettingsPage() {
-  await requireAdmin()
-  const [settings, storage, version] = await Promise.all([
+  const { user } = await requireAdmin()
+  const [settings, storage, version, legalInfo] = await Promise.all([
     getAllSettings(),
-    getLogStorageInfo(),
+    getLogStorageInfo(user),
     getVersionBadge("admin"),
+    getPublicLegalInfo(),
   ])
   const e = env()
   const now = new Date()
@@ -102,7 +104,11 @@ export default async function SettingsPage() {
           require_2fa_admin: settings.require_2fa_admin,
           require_2fa_all: settings.require_2fa_all,
           session_max_hours: settings.session_max_hours,
+          legal_org_name: settings.legal_org_name,
+          legal_contact_email: settings.legal_contact_email,
         }}
+        actorTwoFactor={user.twoFactorEnabled}
+        legalDomain={legalInfo.domain}
         after={
           <SystemCard
             storage={storage}

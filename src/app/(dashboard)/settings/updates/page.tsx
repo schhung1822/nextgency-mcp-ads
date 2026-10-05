@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: t.title }
  */
 export default async function UpdatesPage() {
   const { user } = await requireAdmin()
-  const status = await getUpdateStatus()
+  const status = await getUpdateStatus(user)
   return (
     <div className="flex w-full flex-col">
       <UpdatesView initial={status} twoFactorEnabled={user.twoFactorEnabled} />

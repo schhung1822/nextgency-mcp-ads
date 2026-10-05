@@ -42,14 +42,23 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { users as tUsers } from "@/lib/i18n/vi/users"
+import { REAUTH_REQUIRED_FIELD } from "@/lib/schemas/reauth"
 
 import { RoleBadge } from "./role-badge"
-import { ChangeRoleDialog, ResetPasswordDialog, SessionsSheet } from "./row-dialogs"
+import { ChangeRoleDialog, DeleteAdminDialog, ResetPasswordDialog, SessionsSheet } from "./row-dialogs"
 import type { UserActions, UserRow } from "./types"
 import { UserAvatar } from "./user-avatar"
 
 type DialogKind = "role" | "password" | "reset2fa" | "ban" | "unban" | "sessions" | "delete"
 type Tab = "all" | "admin" | "staff" | "banned"
+/**
+ * `fresh`: the acting admin's session was still fresh (signed in / re-authenticated ≤ 10 min ago) when the dialog
+ * opened - staff password/2FA resets and revoking an admin's sessions then skip the password prompt. UI hint only:
+ * the server decides and answers `fieldErrors._reauth` when it wants the password after all.
+ */
+type DialogState = { kind: DialogKind; user: UserRow; fresh: boolean }
+/** margin so a dialog opened just before the window ends does not submit into an expired one */
+const FRESH_MARGIN_MS = 30_000
 
 const col = createDataTableColumnHelper<UserRow>()
 
@@ -171,22 +180,29 @@ export function UsersTable({
   users,
   currentUserId,
   actorTwoFactor,
+  reauthFreshUntil,
   actions,
 }: {
   users: UserRow[]
   currentUserId: string
   /** acting admin has 2FA → re-auth asks for the TOTP code */
   actorTwoFactor: boolean
+  /** epoch ms until which the acting admin's session is fresh (null = not fresh) */
+  reauthFreshUntil: number | null
   actions: UserActions
 }) {
   const router = useRouter()
-  const [dialog, setDialog] = React.useState<{ kind: DialogKind; user: UserRow } | null>(null)
+  const [dialog, setDialog] = React.useState<DialogState | null>(null)
   const [tab, setTab] = React.useState<Tab>("all")
   const [search, setSearch] = React.useState("")
   const [filters, setFilters] = React.useState<FilterValues>({})
   const refresh = React.useCallback(() => router.refresh(), [router])
   const close = () => setDialog(null)
-  const openDialog = React.useCallback((kind: DialogKind, user: UserRow) => setDialog({ kind, user }), [])
+  const openDialog = React.useCallback(
+    (kind: DialogKind, user: UserRow) =>
+      setDialog({ kind, user, fresh: reauthFreshUntil !== null && Date.now() < reauthFreshUntil - FRESH_MARGIN_MS }),
+    [reauthFreshUntil]
+  )
 
   const counts = React.useMemo(
     () => ({
@@ -259,7 +275,7 @@ export function UsersTable({
     [currentUserId, openDialog]
   )
 
-  async function runConfirm(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
+  async function runConfirm(fn: () => Promise<{ ok: boolean; error?: string; message?: string } | null>) {
     const res = await fn().catch(() => null)
     if (!res) {
       toast.error(tUsers.errors.notFound)
@@ -276,6 +292,9 @@ export function UsersTable({
 
   const target = dialog?.user
   const label = target ? target.name || target.email : ""
+  const targetIsAdmin = target?.role === "admin"
+  // reset password / 2FA: always for an admin target, for staff once the session is no longer fresh
+  const resetNeedsReauth = !!dialog && (targetIsAdmin || !dialog.fresh)
 
   return (
     <>
@@ -375,6 +394,7 @@ export function UsersTable({
           onDone={refresh}
           action={actions.resetPassword}
           actorTwoFactor={actorTwoFactor}
+          needsReauth={resetNeedsReauth}
         />
       )}
       {target && dialog?.kind === "sessions" && (
@@ -386,16 +406,19 @@ export function UsersTable({
           onDone={refresh}
           list={actions.listSessions}
           revoke={actions.revokeSessions}
+          actorTwoFactor={actorTwoFactor}
+          needsReauth={targetIsAdmin && !dialog.fresh}
         />
       )}
-      {target && dialog?.kind === "reset2fa" && target.role === "admin" && (
-        // resetting ANOTHER ADMIN's 2FA: re-authenticate (password + TOTP)
+      {target && dialog?.kind === "reset2fa" && resetNeedsReauth && (
+        // another ADMIN's 2FA, or a staff member's once the session is no longer fresh: password (+ TOTP)
         <ReauthDialog
           open
           onOpenChange={(o) => !o && close()}
           destructive
           twoFactorEnabled={actorTwoFactor}
           idPrefix="reset2fa"
+          hint={targetIsAdmin ? undefined : tUsers.reauthFreshHint}
           texts={{
             title: tUsers.reset2fa.title(label),
             description: tUsers.reset2fa.description,
@@ -408,7 +431,7 @@ export function UsersTable({
           }}
         />
       )}
-      {target && dialog?.kind === "reset2fa" && target.role !== "admin" && (
+      {target && dialog?.kind === "reset2fa" && !resetNeedsReauth && (
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && close()}
@@ -416,10 +439,39 @@ export function UsersTable({
           title={tUsers.reset2fa.title(label)}
           description={tUsers.reset2fa.description}
           confirmLabel={tUsers.reset2fa.confirm}
-          onConfirm={() => runConfirm(() => actions.reset2fa({ userId: target.id }))}
+          onConfirm={async () => {
+            const res = await actions.reset2fa({ userId: target.id }).catch(() => null)
+            // the session stopped being fresh meanwhile: switch to the password dialog
+            if (res && !res.ok && res.fieldErrors?.[REAUTH_REQUIRED_FIELD]) {
+              setDialog({ ...dialog, fresh: false })
+              return false
+            }
+            return runConfirm(async () => res)
+          }}
         />
       )}
-      {target && (dialog?.kind === "ban" || dialog?.kind === "unban") && (
+      {target && (dialog?.kind === "ban" || dialog?.kind === "unban") && targetIsAdmin && (
+        // banning / unbanning ANOTHER ADMIN: re-authenticate (password + TOTP)
+        <ReauthDialog
+          open
+          onOpenChange={(o) => !o && close()}
+          destructive={dialog.kind === "ban"}
+          twoFactorEnabled={actorTwoFactor}
+          idPrefix="ban"
+          hint={tUsers.adminTargetReauthHint}
+          texts={{
+            title: dialog.kind === "ban" ? tUsers.ban.title(label) : tUsers.unban.title(label),
+            description: dialog.kind === "ban" ? tUsers.ban.description : tUsers.unban.description,
+            submit: dialog.kind === "ban" ? tUsers.ban.confirm : tUsers.unban.confirm,
+          }}
+          onSubmit={(reauth) => actions.setBanned({ userId: target.id, banned: dialog.kind === "ban", reauth })}
+          onSuccess={(_, message) => {
+            toast.success(message ?? (dialog.kind === "ban" ? tUsers.toast.banned : tUsers.toast.unbanned))
+            refresh()
+          }}
+        />
+      )}
+      {target && (dialog?.kind === "ban" || dialog?.kind === "unban") && !targetIsAdmin && (
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && close()}
@@ -430,7 +482,18 @@ export function UsersTable({
           onConfirm={() => runConfirm(() => actions.setBanned({ userId: target.id, banned: dialog.kind === "ban" }))}
         />
       )}
-      {target && dialog?.kind === "delete" && (
+      {target && dialog?.kind === "delete" && targetIsAdmin && (
+        <DeleteAdminDialog
+          key={target.id}
+          user={target}
+          open
+          onOpenChange={(o) => !o && close()}
+          onDone={refresh}
+          action={actions.remove}
+          actorTwoFactor={actorTwoFactor}
+        />
+      )}
+      {target && dialog?.kind === "delete" && !targetIsAdmin && (
         <ConfirmDialog
           open
           onOpenChange={(o) => !o && close()}

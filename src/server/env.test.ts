@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { isAcceptableAuthUrl, parseEnv } from "./env"
+import { hasSamplePostgresPassword, isAcceptableAuthUrl, parseEnv } from "./env"
 
 const BASE = {
   DATABASE_URL: "postgres://u:p@localhost:5433/db",
@@ -25,5 +25,12 @@ describe("env validation", () => {
     expect(parseEnv({ ...BASE }).success).toBe(true)
     expect(parseEnv({ ...BASE, SETUP_TOKEN: "short-token" }).success).toBe(false)
     expect(parseEnv({ ...BASE, SETUP_TOKEN: "a".repeat(24) }).success).toBe(true)
+  })
+
+  it("sample PostgreSQL password change-me is detected (warning only, never rejected)", () => {
+    const url = "postgres://adsmcp:change-me@db:5432/adsmcp"
+    expect(hasSamplePostgresPassword(url)).toBe(true)
+    expect(hasSamplePostgresPassword("postgres://adsmcp:Zx81kQ@db:5432/adsmcp")).toBe(false)
+    expect(parseEnv({ ...BASE, DATABASE_URL: url }).success).toBe(true)
   })
 })

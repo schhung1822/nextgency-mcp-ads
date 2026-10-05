@@ -2,6 +2,7 @@
 // Serves 2026-07-28 (modern, per-request envelope) traffic and, by default (legacy: 'stateless'),
 // 2025-era `initialize` clients statelessly.
 import { createMcpHandler, McpServer, type McpHttpHandler } from "@modelcontextprotocol/server"
+import { safeErrorForLog } from "../audit/safe-error"
 import { MCP_SERVER_NAME, MCP_SERVER_VERSION, SERVER_INSTRUCTIONS } from "./instructions"
 import { ensureProvidersRegistered } from "./providers"
 import { registerAllowedTools } from "./registry"
@@ -27,8 +28,8 @@ export function mcpHandler(): McpHttpHandler {
     responseMode: "json",
     maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
     onerror: (err) => {
-      // reporting only; never includes the key (URL path is not part of SDK errors)
-      console.warn("[mcp] sdk:", err.message.slice(0, 300))
+      // reporting only; never includes the key (URL path is not part of SDK errors); redacted, params stripped
+      console.warn("[mcp] sdk:", safeErrorForLog(err))
     },
   })
   return g.__adsMcpHandler

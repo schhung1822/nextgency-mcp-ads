@@ -32,11 +32,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { common } from "@/lib/i18n/vi/common"
+import { legal as tl } from "@/lib/i18n/vi/legal"
+import { LEGAL_PAGES } from "@/lib/legal"
 import type { SystemNotice } from "@/lib/system-notices"
 
 import { BottomNav } from "./bottom-nav"
 import { BrandLogo, BrandMark } from "./brand-logo"
 import { CommandPalette, type CommandPaletteGroup } from "./command-palette"
+import { LEGAL_ICONS, SidebarLegalLinks } from "./legal-links"
 import {
   buildBreadcrumbs,
   isNavActive,
@@ -75,6 +78,8 @@ export interface AppShellProps extends SignOutProps {
   defaultSidebarOpen?: boolean
   /** system notices (noti.vn webhook) scrolled in the top bar; a second strip under the bar on phones */
   notices?: readonly SystemNotice[]
+  /** public app URL (BETTER_AUTH_URL) for the "Liên kết cho ứng dụng" copy buttons; falls back to window.location */
+  appBaseUrl?: string
 }
 
 /**
@@ -89,6 +94,7 @@ export function AppShell({
   commandGroups,
   defaultSidebarOpen = true,
   notices = [],
+  appBaseUrl,
   signOutAction,
   onSignOut,
 }: AppShellProps) {
@@ -109,6 +115,15 @@ export function AppShell({
         })),
       },
       ...(commandGroups ?? []),
+      {
+        heading: tl.links.paletteGroup,
+        items: LEGAL_PAGES.map((pg) => ({
+          label: tl.metaTitle[pg.key],
+          href: pg.path,
+          icon: LEGAL_ICONS[pg.key],
+          keywords: ["privacy", "terms", "policy", "chinh sach", "dieu khoan", "xoa du lieu", "data deletion"],
+        })),
+      },
     ],
     [nav.main, nav.admin, commandGroups]
   )
@@ -171,6 +186,7 @@ export function AppShell({
               />
             </SidebarMenuItem>
           </SidebarMenu>
+          <SidebarLegalLinks appBaseUrl={appBaseUrl} />
         </SidebarFooter>
         <SidebarRail
           aria-label={common.nav.toggleSidebar}
@@ -268,6 +284,7 @@ export function AppShell({
       <GuideSheet />
       <BottomNav
         user={user}
+        appBaseUrl={appBaseUrl}
         signOutAction={signOutAction}
         onSignOut={onSignOut}
       />

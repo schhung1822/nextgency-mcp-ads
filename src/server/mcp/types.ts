@@ -26,6 +26,11 @@ export interface McpSettings {
   writeRateLimitPer10Min: number
   /** empty = any IP; supports single IPs and CIDR */
   allowedIps: string[]
+  /**
+   * true for MCPs created / saved since the security release (stored `money_caps_required: true`): money
+   * writes need a daily cap for the account currency. false = legacy row (no cap required, warnings only).
+   */
+  moneyCapsRequired: boolean
 }
 
 /** Lifetime budget without a known end date: at most maxDailyBudget × this many days. */
@@ -40,6 +45,7 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   rateLimitPerMin: 60,
   writeRateLimitPer10Min: 20,
   allowedIps: [],
+  moneyCapsRequired: false,
 }
 
 /** An ad account the MCP may act on (already filtered: enabled, connection active, owner rules applied). */

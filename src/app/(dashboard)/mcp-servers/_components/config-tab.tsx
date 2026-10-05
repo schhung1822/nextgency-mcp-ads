@@ -28,10 +28,12 @@ import type {
 } from "@/server/services/mcp-servers"
 
 import {
+  CAPS_SECTION_ID,
   NameSection,
   PermissionsSection,
   PlatformsSection,
   ProtectionSection,
+  moneyScopeCurrencies,
   SectionCard,
   type FormUpdater,
 } from "./mcp-form-sections"
@@ -39,6 +41,27 @@ import { mapServerErrors } from "./mcp-wizard"
 import { ScopeIssuesAlert } from "./scope-issues"
 
 const NO_NAMES: Record<string, string> = {}
+
+/**
+ * Scroll the per-currency caps section into view (smooth unless reduced motion) and focus the first
+ * required daily cap that is still empty (else the first required one, else the section heading).
+ */
+function focusCapsSection() {
+  const section = document.getElementById(CAPS_SECTION_ID)
+  if (!section) return
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  section.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })
+  const required = [
+    ...section.querySelectorAll<HTMLInputElement>(
+      'input[id^="mcp-maxDailyBudget-"][aria-required="true"]'
+    ),
+  ]
+  const target: HTMLElement | null =
+    required.find((i) => i.value.trim() === "") ??
+    required[0] ??
+    section.querySelector<HTMLElement>("h3")
+  target?.focus({ preventScroll: true })
+}
 
 export type UpdateMcpActionFn = (
   input: unknown
@@ -62,6 +85,8 @@ export function initialConfigValues(
         connections: p.connections.map((c) => ({
           connectionId: c.connectionId,
           accountIds: c.accountIds,
+          // keep the Facebook Page scope (omitting it would drop every Page of the MCP on the next save)
+          ...(c.pageIds !== undefined ? { pageIds: c.pageIds } : {}),
         })),
       })),
       settings: mcp.settings,
@@ -78,6 +103,7 @@ export function ConfigTab({
   accountNames = NO_NAMES,
   updateAction,
   onDirtyChange,
+  capsFocusSignal = 0,
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
@@ -86,6 +112,8 @@ export function ConfigTab({
   updateAction: UpdateMcpActionFn
   /** lets the page demote its own brand button while this form shows the save bar */
   onDirtyChange?: (dirty: boolean) => void
+  /** > 0: the user asked to set the caps (overview banner) - land on the caps section */
+  capsFocusSignal?: number
 }) {
   const router = useRouter()
   const initial = React.useMemo(
@@ -122,6 +150,17 @@ export function ConfigTab({
     return () => onDirtyChange?.(false)
   }, [dirty, onDirtyChange])
 
+  // ?tab=config&focus=caps (link / reload) or the banner action: land on the caps section once
+  React.useEffect(() => {
+    const url = new URL(window.location.href)
+    if (capsFocusSignal === 0 && url.searchParams.get("focus") !== "caps") return
+    // the tab content was hidden until this render: wait for layout before scrolling
+    const raf = requestAnimationFrame(focusCapsSection)
+    url.searchParams.delete("focus")
+    window.history.replaceState(window.history.state, "", url)
+    return () => cancelAnimationFrame(raf)
+  }, [capsFocusSignal])
+
   const save = (e: React.FormEvent) => {
     e.preventDefault()
     const errs = {
@@ -129,6 +168,7 @@ export function ConfigTab({
       ...validatePlatformsStep(values),
       ...validateProtectionStep(values, {
         requireFutureExpiry: values.expiresOn !== initial.expiresOn,
+        requiredCapCurrencies: moneyScopeCurrencies(values, connections),
       }),
     }
     setErrors(errs)

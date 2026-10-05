@@ -1,13 +1,14 @@
 // Entry point for /mcp/<key> (framework-agnostic: Request in, Response out - no next/* imports).
-// Order: Host/Origin → key (unknown key: per-client 404 limiter) → IP allowlist → browser page →
+// Order: Host/Origin → key (unknown key: per-client 404 limiter; blocked client: active-key set) → IP allowlist → browser page →
 // per-MCP rate limit (per JSON-RPC message) → body bound → SDK handler. Unknown/disabled/expired/deleted keys → 404 {"error":"not_found"}, never 401.
 import { hostHeaderValidationResponse, originValidationResponse, readRequestBody } from "@modelcontextprotocol/server"
 import { sql } from "drizzle-orm"
 import { safeErrorForLog } from "../audit/safe-error"
 import { db } from "../db/client"
 import { env, isProduction } from "../env"
-import { loadGrantByKey } from "./grant"
+import { isActiveMcpKey, loadGrantByKey } from "./grant"
 import { MAX_REQUEST_BODY_BYTES, mcpHandler } from "./handler"
+import { stripUrlQueries } from "./log-args"
 import { CallLog, type ActionKind } from "./logging"
 import { clientIpFromHeaders, ipAllowed } from "./net"
 import { consumeMcpRate, notFoundBlocked, recordNotFound } from "./rate-limit"
@@ -183,7 +184,8 @@ function logMessages(grant: McpGrant, req: RequestState, messages: PeekedMessage
       jsonrpcId: m.id,
       actionKind: isToolCall ? actionKindForTool(params?.name) : "protocol",
       meta: (params?._meta as Record<string, unknown> | undefined) ?? null,
-      request: isToolCall ? (params?.arguments ?? null) : params,
+      // the SDK rejected these args before any tool ran (no logArgs): signed URL query strings are dropped
+      request: isToolCall ? stripUrlQueries(params?.arguments ?? null) : params,
     })
     void log.finish({
       status: st.status,
@@ -235,17 +237,22 @@ export async function serveMcp(request: Request, rawKey: string): Promise<Respon
 
   const ip = clientIpFromHeaders(request.headers)
 
-  // Look the key up first: the per-client 404 limiter only applies to keys that do not resolve, so a
-  // client sharing an IP / NAT / proxy with a key-guesser never loses access with a valid key.
+  // The per-client 404 limiter only answers 429 for keys that do not resolve, so a client sharing an IP / NAT /
+  // proxy (or a connector cloud egress IP) with a key-guesser keeps access with a valid key. While a client is
+  // blocked, its key is checked against the in-memory set of usable MCP keys first: a valid key goes on to the normal
+  // lookup, anything else gets 429 without a per-request database query.
+  const blocked = notFoundBlocked(ip)
   let grant: McpGrant | null
   try {
+    if (!blocked.ok && !(await isActiveMcpKey(rawKey))) {
+      return json(429, { error: "rate_limited" }, { "Retry-After": String(blocked.retryAfterSec) })
+    }
     grant = await loadGrantByKey(rawKey)
   } catch (e) {
     console.error("[mcp] grant lookup failed", safeErrorForLog(e))
     return json(503, { error: "unavailable" }, { "Retry-After": "5" })
   }
   if (!grant) {
-    const blocked = notFoundBlocked(ip)
     if (!blocked.ok) return json(429, { error: "rate_limited" }, { "Retry-After": String(blocked.retryAfterSec) })
     recordNotFound(ip)
     return notFoundResponse()

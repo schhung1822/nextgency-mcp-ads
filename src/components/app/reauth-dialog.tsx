@@ -47,6 +47,7 @@ export function ReauthDialog<T>({
   passwordLabel,
   hint,
   destructive,
+  canSubmit = true,
   children,
 }: {
   open: boolean
@@ -61,6 +62,8 @@ export function ReauthDialog<T>({
   passwordLabel?: string
   hint?: string | null
   destructive?: boolean
+  /** extra condition for the submit button (e.g. a typed confirmation in `children`) */
+  canSubmit?: boolean
   children?: React.ReactNode
 }) {
   const [values, setValues] = React.useState<ReauthValues>(EMPTY_REAUTH)
@@ -76,7 +79,7 @@ export function ReauthDialog<T>({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (pending || !reauthComplete(values, twoFactorEnabled)) return
+    if (pending || !canSubmit || !reauthComplete(values, twoFactorEnabled)) return
     startTransition(async () => {
       let r: ActionResult<T>
       try {
@@ -147,7 +150,7 @@ export function ReauthDialog<T>({
             <Button
               type="submit"
               variant={destructive ? "destructive" : "brand"}
-              disabled={pending || !reauthComplete(values, twoFactorEnabled)}
+              disabled={pending || !canSubmit || !reauthComplete(values, twoFactorEnabled)}
             >
               {pending && <Spinner aria-hidden />}
               {pending ? (texts.submitting ?? t.submitting) : texts.submit}

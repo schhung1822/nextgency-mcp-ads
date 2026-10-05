@@ -52,6 +52,20 @@ const PERM_SHORT: Record<PermissionPreset, string> = {
   fullNoDelete: t.list.permSummary.full,
 }
 
+/** Write permissions without a daily cap for some currencies (legacy MCP): outline warning badge. */
+function CapsMissingBadge({ currencies }: { currencies: string[] }) {
+  if (currencies.length === 0) return null
+  return (
+    <Badge
+      variant="outline"
+      className="rounded-full border-warning/40 bg-warning/10 font-medium text-warning-strong"
+      title={t.list.capsMissingHint(currencies.join(", "))}
+    >
+      {t.list.capsMissingBadge}
+    </Badge>
+  )
+}
+
 /** One short badge for the usual presets (+ a red one when deleting is allowed); other sets list a few. */
 function PermissionSummary({
   permissions,
@@ -167,7 +181,12 @@ function buildColumns(isAdmin: boolean) {
     }),
     col.accessor("status", {
       header: c.status,
-      cell: ({ getValue }) => <StatusBadge kind="mcp" status={getValue()} />,
+      cell: ({ row }) => (
+        <div className="flex flex-wrap items-center gap-1">
+          <StatusBadge kind="mcp" status={row.original.status} />
+          <CapsMissingBadge currencies={row.original.capsMissing} />
+        </div>
+      ),
     }),
     col.accessor("lastUsedAt", {
       header: c.lastUsed,
@@ -233,6 +252,7 @@ function MobileCard({
             <PlatformBadge key={p} platform={p} iconOnly />
           ))}
           <PermissionSummary permissions={item.allPermissions} />
+          <CapsMissingBadge currencies={item.capsMissing} />
         </div>
         <div className="flex justify-between gap-2 text-[13px] text-muted-foreground">
           {item.lastUsedAt ? (

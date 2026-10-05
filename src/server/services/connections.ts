@@ -258,7 +258,7 @@ export async function getConnectionUsage(actor: Actor, connectionId: string): Pr
     .where(and(eq(mcpAccountScopes.connectionId, connectionId), isNull(mcpServers.deletedAt)))
   return rows.map((r) => {
     const visible = canAccessOwned(actor, r.ownerId)
-    return { id: r.id, name: visible ? r.name : null, ownedByViewer: r.ownerId === actor.id }
+    return { id: visible ? r.id : null, name: visible ? r.name : null, ownedByViewer: r.ownerId === actor.id }
   })
 }
 
@@ -565,9 +565,14 @@ export async function syncConnectionAccounts(actor: Actor, connectionId: string)
 // Delete (soft) - wipes the stored credentials
 // ---------------------------------------------------------------------------
 
-export async function deleteConnection(actor: Actor, connectionId: string): Promise<{ affectedMcpIds: string[] }> {
+export async function deleteConnection(
+  actor: Actor,
+  connectionId: string
+): Promise<{ affectedMcpIds: string[]; affectedMcpCount: number }> {
   const row = await getOwnedRow(actor, connectionId)
   const usage = await getConnectionUsage(actor, row.id)
+  // staff never learn the ids of other people's MCPs (not even through their own activity log); the count is complete
+  const visibleIds = usage.flatMap((u) => (u.id ? [u.id] : []))
   const now = new Date()
   await db.transaction(async (tx) => {
     await tx
@@ -584,7 +589,7 @@ export async function deleteConnection(actor: Actor, connectionId: string): Prom
         actor: actorOf(actor),
         action: "connection.delete",
         target: { type: "connection", id: row.id, label: row.name },
-        metadata: { platform: row.platform, name: row.name, affectedMcpIds: usage.map((u) => u.id) },
+        metadata: { platform: row.platform, name: row.name, affectedMcpIds: visibleIds, affectedMcpCount: usage.length },
       },
       tx
     )
@@ -592,7 +597,7 @@ export async function deleteConnection(actor: Actor, connectionId: string): Prom
   // MCPs that reference this connection lose it at once (the grant cache would serve it for a few more seconds)
   invalidateGrantCache()
   forgetPageTokens(row.id)
-  return { affectedMcpIds: usage.map((u) => u.id) }
+  return { affectedMcpIds: visibleIds, affectedMcpCount: usage.length }
 }
 
 // ---------------------------------------------------------------------------

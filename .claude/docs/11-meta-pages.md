@@ -26,7 +26,7 @@ Bên cạnh các scope quảng cáo hiện có, thêm: `pages_show_list`, `pages
 
 ## 3. Page access token (bảo mật)
 
-- **Không lưu DB.** Khi tool cần: `GET /{page_id}?fields=access_token` bằng user token của connection → cache **trong bộ nhớ process** theo khoá `(connection_id, page_external_id, hash(user token))`, TTL 30 phút, tối đa 1.000 mục (LRU). Xoá cache của connection khi cập nhật token, xoá hoặc vô hiệu hoá connection.
+- **Không lưu DB.** Khi tool cần: `GET /{page_id}?fields=access_token` bằng user token của connection → cache **trong bộ nhớ process** theo khoá `(connection_id, page_external_id, hash(user token))`, TTL 5 phút (`PAGE_TOKEN_TTL_MS`), tối đa 1.000 mục (LRU). Xoá cache của connection khi cập nhật token, xoá hoặc vô hiệu hoá connection.
 - Client Meta (`src/server/providers/meta/client.ts`) thêm chế độ `pageToken`: gửi `access_token=<page token>` và tính `appsecret_proof` theo **page token** khi connection có app secret. Không dùng lại `accessTokenOverride` (vì nó bỏ qua proof).
 - Page token không bao giờ nằm trong output tool, lỗi, `warnings`, log hay UI. `redact` đã che key `access_token`; bổ sung test redact cho URL có page token.
 - Lỗi 190 khi dùng page token → bỏ khỏi cache, thử lấy lại 1 lần. Vẫn lỗi thì báo "via không còn quyền trên Trang" (không đánh connection `invalid`, trừ khi user token cũng lỗi 190).
@@ -61,6 +61,7 @@ Giống `mcp_account_scopes`: `id`, `mcp_id → mcp_servers CASCADE`, `connectio
 
 - Không thêm quyền mới vào `mcp_platform_permissions`. Tool Trang đăng ký khi MCP có quyền `read` cho `meta` **và** có ít nhất 1 dòng `mcp_page_scopes`.
 - Nạp grant (`src/server/mcp/grant.ts`): chỉ lấy Trang `is_enabled`, connection `status <> 'disabled'` và chưa xoá. Một Trang xuất hiện qua nhiều kết nối thì giữ 1 dòng: ưu tiên kết nối có task ANALYZE, rồi theo độ khoẻ (active > expiring > invalid), rồi cũ nhất. Staff chỉ tham chiếu connection của chính mình (kiểm tra khi lưu **và** khi nạp grant).
+- **Phạm vi Trang chỉ dành cho các tool Trang chỉ đọc**, không liên quan việc chạy quảng cáo: `page_id` khi tạo quảng cáo / nhóm quảng cáo (`meta_create_ad`, `meta_create_adset`) phải thuộc Trang của **tài khoản quảng cáo** (`act_x/promote_pages` + Trang `me/accounts` có task ADVERTISE, như `ads_lookup kind=pages`), kiểm tra lại ở cả preview và lúc thực thi (`04-mcp-design.md` §3).
 
 ### `activity_logs.action` mới
 

@@ -26,6 +26,9 @@ export const GITHUB_TIMEOUT_MS = 10_000
 const REPO_RE = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/
 /** GitHub answers are small JSON documents; anything bigger is not what we asked for */
 const MAX_RESPONSE_CHARS = 1_000_000
+/** Redirects are followed by hand (the Authorization header must never leave api.github.com) */
+const GITHUB_API_ORIGIN = "https://api.github.com"
+const MAX_REDIRECTS = 2
 
 /** owner/name where neither part is only dots ("." / "..": they would collapse the URL path) */
 export function isValidRepo(repo: string): boolean {
@@ -156,13 +159,30 @@ export async function fetchLatestRelease(opts: FetchLatestOptions = {}): Promise
   const get = async (path: string): Promise<{ status: number; res: Response }> => {
     const timeout = AbortSignal.timeout(opts.timeoutMs ?? GITHUB_TIMEOUT_MS)
     const signal = opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout
-    try {
-      const res = await doFetch(`${base}${path}`, { headers, signal, cache: "no-store" })
-      return { status: res.status, res }
-    } catch (e) {
-      const name = (e as { name?: string } | null)?.name
-      if (name === "TimeoutError" || (name === "AbortError" && timeout.aborted)) throw new UpdateCheckError("timeout", t.github.timeout)
-      throw new UpdateCheckError("network", t.github.network)
+    let url = `${base}${path}`
+    // a renamed/transferred repository answers 301 -> api.github.com/repositories/<id>/...: follow only that
+    for (let hop = 0; ; hop++) {
+      let res: Response
+      try {
+        res = await doFetch(url, { headers, signal, cache: "no-store", redirect: "manual" })
+      } catch (e) {
+        const name = (e as { name?: string } | null)?.name
+        if (name === "TimeoutError" || (name === "AbortError" && timeout.aborted)) throw new UpdateCheckError("timeout", t.github.timeout)
+        throw new UpdateCheckError("network", t.github.network)
+      }
+      if (res.status < 300 || res.status >= 400) return { status: res.status, res }
+      await res.body?.cancel().catch(() => {})
+      const location = res.headers.get("location")
+      let next: URL | null = null
+      try {
+        next = location ? new URL(location, url) : null
+      } catch {
+        // malformed Location header
+      }
+      if (hop >= MAX_REDIRECTS || next?.origin !== GITHUB_API_ORIGIN) {
+        throw new UpdateCheckError("unavailable", t.github.unavailable)
+      }
+      url = next.toString()
     }
   }
   const readJson = async (res: Response): Promise<unknown> => {

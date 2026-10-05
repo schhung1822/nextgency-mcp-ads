@@ -14,6 +14,43 @@ function filterByName(items: LookupItem[], q: string | undefined, limit: number)
   return out.slice(0, limit)
 }
 
+export interface AdvertisablePage {
+  id: string
+  name: string
+  category: unknown
+  isPublished: unknown
+  source: "promote_pages" | "me_accounts"
+}
+
+/**
+ * Pages this ad account may run ads for: every Page of `act_x/promote_pages`, plus the Pages of `me/accounts` on
+ * which the token's user has the ADVERTISE task (Pages it only moderates / analyses are left out). De-duplicated,
+ * promote_pages first. A token that cannot read me/accounts (System User, missing pages_show_list) gets
+ * promote_pages only. NOT related to the MCP Page scope (mcp_page_scopes), which only gates the read-only Pages tools.
+ */
+export async function advertisablePages(ctx: ProviderContext<MetaCredentials>): Promise<AdvertisablePage[]> {
+  const call = callCtx(ctx)
+  const account = actId(ctx.account.externalId)
+  const out: AdvertisablePage[] = []
+  const seen = new Set<string>()
+  const push = (p: Raw, source: AdvertisablePage["source"]) => {
+    const id = s(p.id)
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    out.push({ id, name: s(p.name), category: p.category ?? null, isPublished: p.is_published ?? null, source })
+  }
+  const promote = await graphAll<Raw>(call, `${account}/promote_pages`, { fields: "id,name,category,is_published", limit: 100 }, 500)
+  for (const p of promote.data) push(p, "promote_pages")
+  try {
+    const mine = await graphAll<Raw>(call, "me/accounts", { fields: "id,name,category,is_published,tasks", limit: 100 }, 500)
+    for (const p of mine.data) if (Array.isArray(p.tasks) && p.tasks.includes("ADVERTISE")) push(p, "me_accounts")
+  } catch (e) {
+    // System User tokens / missing pages_show_list: promote_pages is enough
+    if (!isProviderError(e) || !["permission_denied", "invalid_request"].includes(e.code)) throw e
+  }
+  return out
+}
+
 export async function metaLookup(
   ctx: ProviderContext<MetaCredentials>,
   kind: LookupKind,
@@ -32,26 +69,16 @@ export async function metaLookup(
 
   switch (kind) {
     case "pages": {
-      // Pages promotable by this ad account + Pages the token's user (via) manages (personal user token).
-      const items: { id: string; name: string; extra: Record<string, unknown> }[] = []
-      const seen = new Set<string>()
-      const push = (p: Raw, source: string) => {
-        const id = s(p.id)
-        if (!id || seen.has(id)) return
-        seen.add(id)
-        items.push({ id, name: s(p.name), extra: { category: p.category ?? null, isPublished: p.is_published ?? null, source } })
-      }
-      const promote = await graphAll<Raw>(call, `${account}/promote_pages`, { fields: "id,name,category,is_published", limit: 100 }, 500)
-      for (const p of promote.data) push(p, "promote_pages")
-      try {
-        const mine = await graphAll<Raw>(call, "me/accounts", { fields: "id,name,category,is_published", limit: 100 }, 500)
-        for (const p of mine.data) push(p, "me_accounts")
-      } catch (e) {
-        // System User tokens / missing pages_show_list: promote_pages is enough
-        if (!isProviderError(e) || !["permission_denied", "invalid_request"].includes(e.code)) throw e
-      }
+      // Pages promotable by this ad account + Pages the token's user (via) may advertise for (task ADVERTISE)
+      const items = (await advertisablePages(ctx)).map((p) => ({
+        id: p.id,
+        name: p.name,
+        extra: { category: p.category, isPublished: p.isPublished, source: p.source },
+      }))
       if (items.length === 0) {
-        warnings.push("Không thấy Trang nào - kiểm tra token có quyền pages_show_list và via/System User được phân quyền Trang.")
+        warnings.push(
+          "Không thấy Trang nào dùng được để chạy quảng cáo - kiểm tra token có quyền pages_show_list và via/System User có quyền quảng cáo (ADVERTISE) trên Trang."
+        )
       }
       return { items: filterByName(items, q, limit), warnings }
     }

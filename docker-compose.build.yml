@@ -2,9 +2,11 @@
 # docker-compose.yml chỉ kéo image dựng sẵn từ GHCR; file này thêm `build:` cho các service dùng image của dự án:
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml build
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-# Image build ra mang tag ${APP_IMAGE}:${APP_VERSION:-latest} giống image phát hành. Muốn số phiên bản hiển thị
-# trong web đúng (thay vì "dev"), truyền build-arg: APP_BUILD_VERSION=1.2.3 qua `--build-arg` hoặc biến bên dưới.
-# Updater (cập nhật tự động) KHÔNG dùng file này: nó chỉ kéo image phát hành có APP_BUILD_VERSION khớp tag.
+# Image build ra mang tag ${APP_IMAGE}:${APP_VERSION} (APP_VERSION bắt buộc trong .env, kể cả máy dev:
+# `node scripts/gen-env.mjs --dev` ghi APP_VERSION=dev). Muốn số phiên bản hiển thị trong web đúng (thay vì "dev"),
+# truyền build-arg: APP_BUILD_VERSION=1.2.3 qua `--build-arg` hoặc biến bên dưới.
+# Updater (cập nhật tự động) KHÔNG dùng file này: nó chỉ kéo image phát hành có APP_BUILD_VERSION khớp tag và
+# chữ ký số của GitHub Actions noti.vn (image tự build không có chữ ký: chỉ dùng để kiểm thử, không phát hành).
 x-build-app: &build-app
   context: .
   args:

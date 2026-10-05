@@ -20,6 +20,13 @@ export interface FakeObject {
   status: "active" | "paused"
   parentId: string | null
   budget?: { type: "daily" | "lifetime"; amount: number; level: "campaign" | "ad_group" } | null
+  /** ISO flight (campaign: start/stop time, ad group: start/end time) */
+  startTime?: string | null
+  endTime?: string | null
+  /** parent campaign (ad groups / ads); defaults to parentId for ad groups */
+  campaignId?: string | null
+  /** owner's switch (Meta configured_status), e.g. "ACTIVE" while the campaign is paused; defaults to status */
+  configuredStatus?: string | null
 }
 
 export interface FakeState {
@@ -47,6 +54,23 @@ const CAPS: Record<Capability, CapabilityMode> = {
   create: "native",
   update_targeting: "native",
   conversions: "unsupported",
+}
+
+/** Fields every fake object exposes in listObjects / getObject. */
+function summaryOf(o: FakeObject, currency: string) {
+  return {
+    id: o.id,
+    level: o.level,
+    name: o.name,
+    status: o.status,
+    statusRaw: o.status.toUpperCase(),
+    parentId: o.parentId,
+    campaignId: o.campaignId ?? (o.level === "ad_group" ? o.parentId : o.level === "campaign" ? o.id : null),
+    budget: o.budget ? { ...o.budget, currency } : null,
+    startTime: o.startTime ?? null,
+    endTime: o.endTime ?? null,
+    extra: { configuredStatus: o.configuredStatus ?? o.status.toUpperCase() },
+  }
 }
 
 export function createFakeProvider(platform: Platform, state: FakeState): AdsProvider {
@@ -184,15 +208,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
     async listObjects(ctx, q) {
       const items = objectsOf(ctx)
         .filter((o) => o.level === q.level && (!q.parentId || o.parentId === q.parentId))
-        .map((o) => ({
-          id: o.id,
-          level: o.level,
-          name: o.name,
-          status: o.status,
-          statusRaw: o.status.toUpperCase(),
-          parentId: o.parentId,
-          budget: o.budget ? { ...o.budget, currency: ctx.account.currency } : null,
-        }))
+        .map((o) => summaryOf(o, ctx.account.currency))
       const offset = q.cursor ? Number(q.cursor) : 0
       return {
         items: items.slice(offset, offset + q.limit),
@@ -212,13 +228,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       }
       const o = find(ctx, id)
       const toDetail = (x: FakeObject): AdObjectDetail => ({
-        id: x.id,
-        level: x.level,
-        name: x.name,
-        status: x.status,
-        statusRaw: x.status.toUpperCase(),
-        parentId: x.parentId,
-        budget: x.budget ? { ...x.budget, currency: ctx.account.currency } : null,
+        ...summaryOf(x, ctx.account.currency),
         config: { targeting: { geo: ["VN"] } },
         children: opts?.includeChildren ? objectsOf(ctx).filter((c) => c.parentId === x.id).map(toDetail) : undefined,
       })
@@ -231,7 +241,11 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       })
       if (!opts?.dryRun) {
         record("set_status", ctx, { ids, status }, opts?.idempotencyKey)
-        for (const id of ids) find(ctx, id).status = status
+        for (const id of ids) {
+          const o = find(ctx, id)
+          o.status = status
+          o.configuredStatus = status.toUpperCase()
+        }
       }
       return { preview: Boolean(opts?.dryRun), changes, warnings: [] }
     },
@@ -254,6 +268,8 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       if (!opts?.dryRun) {
         record("update_object", ctx, u, opts?.idempotencyKey)
         if (u.changes.name) o.name = u.changes.name
+        if (u.changes.startTime !== undefined) o.startTime = u.changes.startTime
+        if (u.changes.endTime !== undefined) o.endTime = u.changes.endTime
       }
       return {
         preview: Boolean(opts?.dryRun),

@@ -2,6 +2,7 @@
 // then drop partitions older than the retention settings, and prune the hourly stats rollup (13 months).
 // Runs in the worker bundle: no `next/*`, no `server-only` (reads app_settings directly).
 import { inArray, sql } from "drizzle-orm"
+import { safeErrorForLog } from "@/server/audit/safe-error"
 import { db } from "@/server/db/client"
 import { appSettings } from "@/server/db/schema"
 import type { JobDefinition } from "./types"
@@ -60,7 +61,7 @@ export async function runLogsMaintenance(opts: LogsMaintainOptions = {}): Promis
     try {
       await db.execute(sql`select app_ensure_monthly_partitions(${parent}, ${ahead}::int)`)
     } catch (e) {
-      errors.push(`${parent}: ensure partitions failed: ${(e as Error).message}`)
+      errors.push(`${parent}: ensure partitions failed: ${safeErrorForLog(e)}`)
     }
     const keep = parent === "mcp_call_logs" ? retention.mcp : retention.staff
     try {
@@ -73,7 +74,7 @@ export async function runLogsMaintenance(opts: LogsMaintainOptions = {}): Promis
         return Number(r.rows[0]?.n ?? 0)
       })
     } catch (e) {
-      errors.push(`${parent}: drop expired partitions failed (retry tomorrow): ${(e as Error).message}`)
+      errors.push(`${parent}: drop expired partitions failed (retry tomorrow): ${safeErrorForLog(e)}`)
     }
   }
 
@@ -84,7 +85,7 @@ export async function runLogsMaintenance(opts: LogsMaintainOptions = {}): Promis
     )
     statsRowsDeleted = r.rowCount ?? 0
   } catch (e) {
-    errors.push(`mcp_call_stats_hourly: prune failed: ${(e as Error).message}`)
+    errors.push(`mcp_call_stats_hourly: prune failed: ${safeErrorForLog(e)}`)
   }
 
   return { retention, dropped, statsRowsDeleted, errors }

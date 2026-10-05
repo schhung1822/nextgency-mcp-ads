@@ -26,9 +26,10 @@ import { TwoFactorCard } from "./two-factor-card"
 export const metadata: Metadata = { title: tAccount.metaTitle }
 
 export default async function AccountPage() {
-  const { user, sessionId } = await requireUser()
+  const s = await requireUser()
+  const { user } = s
   const [sessions, activityPage, policy] = await Promise.all([
-    listSessionsOf(user.id, sessionId),
+    listSessionsOf(s, user.id),
     listMyActivity({ id: user.id, role: user.role }, { limit: 20 }),
     readTwoFactorPolicy(),
   ])

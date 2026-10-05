@@ -12,6 +12,9 @@ export const fmtMoney = (n: number, cur: string) => `${new Intl.NumberFormat("vi
 
 const CAP_HINT = "Chọn mức thấp hơn, hoặc nhờ chủ MCP nâng trần trong cấu hình MCP."
 
+/** Vietnamese name of an object level (messages). */
+export const LEVEL_VI: Record<string, string> = { campaign: "chiến dịch", ad_group: "nhóm quảng cáo", ad: "quảng cáo" }
+
 export interface Flight {
   startTime?: string | null
   endTime?: string | null
@@ -41,6 +44,29 @@ export function flightDays(f: Flight, now = Date.now()): number | null {
 function capOf(map: Record<string, number> | undefined, cur: string): number | undefined {
   const v = map?.[cur]
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined
+}
+
+/**
+ * MCPs created/saved since the security release (moneyCapsRequired) must have a daily cap for the account
+ * currency before any write that can start or raise spend. Legacy MCPs are not blocked (see legacyCapWarning).
+ */
+export function requireMoneyCaps(s: McpSettings, currency: string, action: string): void {
+  if (!s.moneyCapsRequired) return
+  const cur = currency.toUpperCase()
+  if (capOf(s.maxDailyBudget, cur) !== undefined) return
+  throw denied(
+    "budget_cap_missing",
+    `MCP này chưa đặt trần ngân sách/ngày cho tiền tệ ${cur} nên không được ${action}.`,
+    `Nhờ chủ MCP vào trang quản trị Ads MCP → MCP → mở MCP này → tab Cấu hình → mục "Trần chi tiêu theo tiền tệ", nhập Ngân sách/ngày cho ${cur} rồi lưu; sau đó thử lại.`
+  )
+}
+
+/** Preview warning for a legacy MCP (created before caps became mandatory) without a daily cap for this currency. */
+export function legacyCapWarning(s: McpSettings, currency: string): string[] {
+  const cur = currency.toUpperCase()
+  return !s.moneyCapsRequired && capOf(s.maxDailyBudget, cur) === undefined
+    ? [`MCP này chưa đặt trần ngân sách/ngày cho ${cur} - AI có thể đặt/bật ngân sách không giới hạn. Nên đặt trần trong cấu hình MCP.`]
+    : []
 }
 
 export function checkDailyCap(settings: McpSettings, amount: number, currency: string, field = "Ngân sách ngày"): void {

@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Controller, useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 
-import { ContextualSaveBar, PageGuide, PageHeader } from "@/components/app"
+import { ContextualSaveBar, PageGuide, PageHeader, ReauthDialog } from "@/components/app"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Card,
@@ -24,9 +24,14 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import type { ActionResult } from "@/lib/action-result"
 import { guides as tg } from "@/lib/i18n/vi/guides"
+import { legal as tl } from "@/lib/i18n/vi/legal"
 import { settings as ts } from "@/lib/i18n/vi/settings"
+import { LEGAL_CONTACT_EMAIL_MAX, LEGAL_ORG_NAME_MAX, LEGAL_PAGES } from "@/lib/legal"
+import { REAUTH_REQUIRED_FIELD } from "@/lib/schemas/reauth"
 import {
+  isRelaxingSettingsChange,
   settingsFormSchema,
   type SettingsFormInput,
   type SettingsFormValues,
@@ -43,12 +48,20 @@ function validMonths(value: unknown, fallback: number): number {
     : fallback
 }
 
+type SaveResult = ActionResult<{ changed: string[]; values: SettingsFormValues }>
+
 export function SettingsForm({
   initial,
+  actorTwoFactor,
+  legalDomain,
   children,
   after,
 }: {
   initial: SettingsFormValues
+  /** the admin has 2FA → the re-auth dialog also asks for the TOTP code */
+  actorTwoFactor: boolean
+  /** public domain: fallback operator name shown in the "Thông tin pháp lý" help text */
+  legalDomain: string
   /** read-only card rendered on the server next to the form (API versions) */
   children?: React.ReactNode
   /** read-only full-width section under the form row (system info) */
@@ -75,12 +88,38 @@ export function SettingsForm({
     mcpValid < Number(saved.log_retention_months_mcp) ||
     staffValid < Number(saved.log_retention_months_staff)
 
+  /** values waiting for the re-auth dialog (the change relaxes security or shortens log retention) */
+  const [pendingValues, setPendingValues] =
+    React.useState<SettingsFormValues | null>(null)
+
+  /** form-field errors of a failed save, applied to the form; returns whether there were any */
+  const applyFieldErrors = (r: Extract<SaveResult, { ok: false }>) => {
+    const own = Object.entries(r.fieldErrors ?? {}).filter(
+      ([k]) => k in initial
+    )
+    for (const [k, msg] of own) {
+      form.setError(k as keyof SettingsFormInput, { message: msg })
+    }
+    return own.length > 0
+  }
+
   const onSubmit = form.handleSubmit(async (values) => {
+    const savedNow = settingsFormSchema.safeParse(
+      form.formState.defaultValues ?? initial
+    )
+    const before = savedNow.success ? savedNow.data : initial
+    if (isRelaxingSettingsChange(before, values)) {
+      setPendingValues(values)
+      return
+    }
     const r = await updateSettingsAction(values)
     if (!r.ok) {
-      for (const [k, msg] of Object.entries(r.fieldErrors ?? {})) {
-        form.setError(k as keyof SettingsFormInput, { message: msg })
+      // the server saw a relaxing change (e.g. another admin saved meanwhile): ask for the password
+      if (r.fieldErrors?.[REAUTH_REQUIRED_FIELD]) {
+        setPendingValues(values)
+        return
       }
+      applyFieldErrors(r)
       toast.error(r.error)
       return
     }
@@ -128,6 +167,35 @@ export function SettingsForm({
               }
             />
           </div>
+          <FieldDescription>{help}</FieldDescription>
+          {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+        </Field>
+      )}
+    />
+  )
+
+  const textField = (
+    name: "legal_org_name" | "legal_contact_email",
+    label: string,
+    help: React.ReactNode,
+    input: React.ComponentProps<typeof Input>
+  ) => (
+    <Controller
+      name={name}
+      control={form.control}
+      render={({ field, fieldState }) => (
+        <Field data-invalid={fieldState.invalid}>
+          <FieldLabel htmlFor={`settings-${name}`}>{label}</FieldLabel>
+          <Input
+            id={`settings-${name}`}
+            aria-invalid={fieldState.invalid}
+            name={field.name}
+            ref={field.ref}
+            onBlur={field.onBlur}
+            value={typeof field.value === "string" ? field.value : ""}
+            onChange={(e) => field.onChange(e.target.value)}
+            {...input}
+          />
           <FieldDescription>{help}</FieldDescription>
           {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
         </Field>
@@ -246,11 +314,81 @@ export function SettingsForm({
                 </FieldGroup>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{ts.legal.title}</CardTitle>
+                <CardDescription>{ts.legal.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FieldGroup>
+                  {textField(
+                    "legal_org_name",
+                    ts.legal.orgName,
+                    ts.legal.orgNameHelp(legalDomain),
+                    {
+                      maxLength: LEGAL_ORG_NAME_MAX,
+                      autoComplete: "organization",
+                      placeholder: ts.legal.orgNamePlaceholder,
+                    }
+                  )}
+                  {textField(
+                    "legal_contact_email",
+                    ts.legal.contactEmail,
+                    ts.legal.contactEmailHelp,
+                    {
+                      type: "email",
+                      inputMode: "email",
+                      maxLength: LEGAL_CONTACT_EMAIL_MAX,
+                      autoComplete: "email",
+                      spellCheck: false,
+                      placeholder: ts.legal.contactEmailPlaceholder,
+                    }
+                  )}
+                </FieldGroup>
+                <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
+                  <span>{ts.legal.pages}</span>
+                  {LEGAL_PAGES.map((pg) => (
+                    <a
+                      key={pg.path}
+                      href={pg.path}
+                      target="_blank"
+                      rel="noopener"
+                      className="inline-flex min-h-11 items-center rounded-sm font-medium text-brand-ink underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-0"
+                    >
+                      {tl.nav[pg.key]}
+                    </a>
+                  ))}
+                </p>
+              </CardContent>
+            </Card>
           </form>
           <div className="flex min-w-0 flex-col gap-4 sm:gap-6">{children}</div>
         </div>
         {after}
       </div>
+      {pendingValues && (
+        <ReauthDialog
+          open
+          onOpenChange={(o) => !o && setPendingValues(null)}
+          twoFactorEnabled={actorTwoFactor}
+          idPrefix="settings-reauth"
+          texts={ts.reauth}
+          onSubmit={(reauth) =>
+            updateSettingsAction({ ...pendingValues, reauth })
+          }
+          onSuccess={(data, message) => {
+            form.reset(data.values)
+            toast.success(message ?? ts.saved)
+          }}
+          onFailure={(r) => {
+            // invalid form values: close the dialog and show them on the form
+            if (!applyFieldErrors(r)) return false
+            toast.error(r.error)
+            return true
+          }}
+        />
+      )}
     </>
   )
 }

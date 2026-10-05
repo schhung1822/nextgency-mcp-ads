@@ -8,14 +8,17 @@
 // - every change writes activity_logs in the SAME transaction.
 import "server-only"
 import { randomUUID } from "node:crypto"
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import {
   createMcpSchema,
+  hasMoneyWritePermission,
   MCP_PERMISSIONS,
   MCP_PLATFORMS,
   MCP_SCHEMA_MESSAGES,
+  missingDailyCapCurrencies,
+  MONEY_WRITE_PERMISSIONS,
   normalizePermissions,
   scopeHasPages,
   toStoredMcpSettings,
@@ -24,6 +27,7 @@ import {
   type McpSettingsInput,
 } from "@/lib/schemas/mcp-servers"
 import { connections as connectionsVi } from "@/lib/i18n/vi/connections"
+import { mcp as mcpVi } from "@/lib/i18n/vi/mcp"
 import { actorOf, logActivity } from "@/server/audit/activity-log"
 import {
   REAUTH_MAX_FAILURES,
@@ -42,6 +46,7 @@ import {
 import { aad, decryptSecret, encryptSecret } from "@/server/crypto/secret-box"
 import { db, type Tx } from "@/server/db/client"
 import {
+  adAccounts,
   connections,
   mcpAccountScopes,
   mcpCallStatsHourly,
@@ -98,6 +103,8 @@ export const MCP_ERRORS = {
   pageUnavailable:
     "Trang Facebook không thuộc kết nối đã chọn hoặc đang bị tắt.",
   nameMismatch: "Tên xác nhận chưa khớp với tên MCP.",
+  dailyCapRequired: (curs: readonly string[]) =>
+    `MCP có quyền ghi phải đặt trần ngân sách/ngày cho: ${curs.join(", ")}.`,
 } as const
 
 export interface McpListItem {
@@ -121,6 +128,11 @@ export interface McpListItem {
   calls7d: number
   errors7d: number
   createdAt: string
+  /**
+   * Currencies of the ad accounts reachable with money-write permissions (status/update/copy/create) that
+   * have no daily cap - always [] right after a save (enforced); legacy MCPs or accounts synced later may show some.
+   */
+  capsMissing: string[]
 }
 
 export interface McpScopeConnection {
@@ -153,7 +165,8 @@ export interface McpStats {
 export interface McpDetail extends McpListItem {
   ownerRole: "admin" | "staff"
   maskedUrl: string
-  settings: McpSettingsInput
+  /** + moneyCapsRequired: false = legacy MCP (created before daily caps became mandatory) */
+  settings: McpSettingsInput & Pick<McpSettings, "moneyCapsRequired">
   config: McpPlatformConfig[]
   keyRotatedAt: string | null
   updatedAt: string
@@ -288,6 +301,133 @@ async function ownerRoleOf(
 }
 
 type PlatformScopes = CreateMcpData["platforms"]
+
+/**
+ * Currencies (upper case, sorted) of the ad accounts an MCP config can spend on: accounts of every platform
+ * whose permissions include a money-write permission (picked accounts, or every enabled account of the
+ * connection when accountIds is null).
+ */
+async function requiredCapCurrencies(
+  tx: Tx | typeof db,
+  platforms: PlatformScopes
+): Promise<string[]> {
+  const conds = []
+  for (const p of platforms) {
+    if (!hasMoneyWritePermission(p.permissions)) continue
+    for (const c of p.connections) {
+      if (c.accountIds === null)
+        conds.push(
+          and(
+            eq(adAccounts.connectionId, c.connectionId),
+            eq(adAccounts.isEnabled, true)
+          )
+        )
+      else if (c.accountIds.length)
+        conds.push(
+          and(
+            eq(adAccounts.connectionId, c.connectionId),
+            inArray(adAccounts.id, c.accountIds)
+          )
+        )
+    }
+  }
+  if (conds.length === 0) return []
+  const rows = await tx
+    .selectDistinct({ currency: adAccounts.currency })
+    .from(adAccounts)
+    .where(or(...conds))
+  return [...new Set(rows.map((r) => r.currency.toUpperCase()))].sort()
+}
+
+/** Save-time rule: an MCP with money-write permissions needs a daily cap for every currency in that scope. */
+async function assertDailyCaps(
+  tx: Tx | typeof db,
+  platforms: PlatformScopes,
+  settings: McpSettingsInput
+): Promise<void> {
+  const missing = missingDailyCapCurrencies(
+    settings.maxDailyBudget,
+    await requiredCapCurrencies(tx, platforms)
+  )
+  if (missing.length === 0) return
+  throw invalid(
+    MCP_ERRORS.dailyCapRequired(missing),
+    Object.fromEntries(
+      missing.map((cur) => [
+        `settings.maxDailyBudget.${cur}`,
+        MCP_SCHEMA_MESSAGES.dailyCapRequired(cur),
+      ])
+    )
+  )
+}
+
+/**
+ * Per MCP: currencies of the ENABLED ad accounts in a money-write scope that have no daily cap in `settings`
+ * (one query for all ids). Feeds the "no spending cap" warning of legacy MCPs.
+ */
+async function capsMissingFor(
+  rows: { id: string; settings: unknown }[]
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  if (rows.length === 0) return out
+  const found = await db
+    .selectDistinct({
+      mcpId: mcpAccountScopes.mcpId,
+      currency: adAccounts.currency,
+    })
+    .from(mcpAccountScopes)
+    .innerJoin(
+      adAccounts,
+      and(
+        eq(adAccounts.isEnabled, true),
+        or(
+          eq(mcpAccountScopes.adAccountId, adAccounts.id),
+          and(
+            isNull(mcpAccountScopes.adAccountId),
+            eq(adAccounts.connectionId, mcpAccountScopes.connectionId)
+          )
+        )
+      )
+    )
+    .innerJoin(
+      mcpPlatformPermissions,
+      and(
+        eq(mcpPlatformPermissions.mcpId, mcpAccountScopes.mcpId),
+        eq(mcpPlatformPermissions.platform, adAccounts.platform)
+      )
+    )
+    .where(
+      and(
+        inArray(
+          mcpAccountScopes.mcpId,
+          rows.map((r) => r.id)
+        ),
+        sql`${mcpPlatformPermissions.permissions} && array[${sql.join(
+          MONEY_WRITE_PERMISSIONS.map((p) => sql`${p}`),
+          sql`, `
+        )}]::text[]`
+      )
+    )
+  const byMcp = new Map<string, string[]>()
+  for (const f of found) {
+    const list = byMcp.get(f.mcpId) ?? []
+    list.push(f.currency)
+    byMcp.set(f.mcpId, list)
+  }
+  for (const r of rows) {
+    const required = byMcp.get(r.id)
+    out.set(
+      r.id,
+      required
+        ? missingDailyCapCurrencies(
+            parseMcpSettings(r.settings).maxDailyBudget,
+            required
+          )
+        : []
+    )
+  }
+  return out
+}
 
 /**
  * Scope rules come from the connections feature (`assertScopesUsableForMcp`, evaluated for the MCP
@@ -430,9 +570,12 @@ interface ConfigSummary {
       pages?: Record<string, "all" | string[]>
     }
   >
-  settings: McpSettings
+  settings: DiffSettings
   expiresAt: string | null
 }
+
+/** Settings as compared/logged in activity diffs (the internal `moneyCapsRequired` marker is left out). */
+type DiffSettings = Omit<McpSettings, "moneyCapsRequired">
 
 function sortCaps(r: Record<string, number>): Record<string, number> {
   return Object.fromEntries(
@@ -445,8 +588,8 @@ function sortCaps(r: Record<string, number>): Record<string, number> {
  * stored jsonb and a freshly validated input compare equal when nothing changed - including fields
  * added later (defaults) and keys in a different order.
  */
-export function normalizeSettingsForDiff(stored: unknown): McpSettings {
-  const parsed = parseMcpSettings(stored)
+export function normalizeSettingsForDiff(stored: unknown): DiffSettings {
+  const { moneyCapsRequired: _flag, ...parsed } = parseMcpSettings(stored)
   return {
     ...parsed,
     maxDailyBudget: sortCaps(parsed.maxDailyBudget),
@@ -468,7 +611,7 @@ function summarize(data: {
     }[]
   }[]
   /** already normalized with normalizeSettingsForDiff */
-  settings: McpSettings
+  settings: DiffSettings
   expiresAt: Date | null
 }): ConfigSummary {
   const platforms: ConfigSummary["platforms"] = {}
@@ -519,9 +662,14 @@ export function diffSummaries<T extends object>(
   return { before: b, after: a }
 }
 
+/**
+ * Stored scope of an MCP. With a `viewer`, the names of connections the viewer may not access (another
+ * user's connection, e.g. after the viewer was demoted to staff) are masked.
+ */
 async function loadConfig(
   tx: Tx | typeof db,
-  mcpId: string
+  mcpId: string,
+  viewer?: McpActor
 ): Promise<McpPlatformConfig[]> {
   const perms = await tx
     .select()
@@ -532,6 +680,7 @@ async function loadConfig(
       connectionId: mcpAccountScopes.connectionId,
       adAccountId: mcpAccountScopes.adAccountId,
       connectionName: connections.name,
+      connectionOwnerId: connections.ownerId,
       connectionStatus: connections.status,
       connectionPlatform: connections.platform,
       connectionDeletedAt: connections.deletedAt,
@@ -556,7 +705,10 @@ async function loadConfig(
       if (!entry) {
         entry = {
           connectionId: s.connectionId,
-          connectionName: s.connectionName,
+          connectionName:
+            viewer && !canAccess(viewer, s.connectionOwnerId)
+              ? mcpVi.config.otherOwnerConnection
+              : s.connectionName,
           connectionStatus: s.connectionStatus,
           connectionDeleted: !!s.connectionDeletedAt,
           accountIds: [],
@@ -652,6 +804,7 @@ export async function listMcpServers(actor: McpActor): Promise<McpListItem[]> {
       lastUsedAt: mcpServers.lastUsedAt,
       lastClient: mcpServers.lastClient,
       createdAt: mcpServers.createdAt,
+      settings: mcpServers.settings,
     })
     .from(mcpServers)
     .innerJoin(user, eq(user.id, mcpServers.ownerId))
@@ -670,6 +823,7 @@ export async function listMcpServers(actor: McpActor): Promise<McpListItem[]> {
         .where(inArray(mcpPlatformPermissions.mcpId, ids))
     : []
   const counts = await callCounts7d(ids)
+  const missing = await capsMissingFor(rows)
   const now = new Date()
   return rows.map((r) => {
     const permissions: Partial<Record<Platform, Permission[]>> = {}
@@ -697,6 +851,7 @@ export async function listMcpServers(actor: McpActor): Promise<McpListItem[]> {
       calls7d: c?.calls ?? 0,
       errors7d: c?.errors ?? 0,
       createdAt: r.createdAt.toISOString(),
+      capsMissing: missing.get(r.id) ?? [],
     }
   })
 }
@@ -807,10 +962,11 @@ export async function getMcpServer(
     .where(and(eq(mcpServers.id, id), isNull(mcpServers.deletedAt)))
     .limit(1)
   if (!r || !canAccess(actor, r.ownerId)) return null
-  const config = await loadConfig(db, r.id)
+  const config = await loadConfig(db, r.id, actor)
   const permissions: Partial<Record<Platform, Permission[]>> = {}
   for (const p of config) permissions[p.platform] = p.permissions
   const stats = await loadStats(r.id)
+  const missing = await capsMissingFor([r])
   return {
     id: r.id,
     name: r.name,
@@ -837,6 +993,7 @@ export async function getMcpServer(
     settings: parseMcpSettings(r.settings),
     config,
     stats,
+    capsMissing: missing.get(r.id) ?? [],
   }
 }
 
@@ -911,6 +1068,7 @@ export async function createMcpServer(
   const reauthLog = { action: "mcp.create" as const, target: { type: "mcp", id: null, label: data.name } }
   await withReauth(actor, reauthLog, verify, async (tx) => {
     await assertScopesAllowed(tx, actor, data.platforms)
+    await assertDailyCaps(tx, data.platforms, data.settings)
     await tx.insert(mcpServers).values({
       id,
       ownerId: actor.id,
@@ -940,6 +1098,8 @@ export async function createMcpServer(
       tx
     )
   })
+  // the new key must work at once, also for a client blocked by the unknown-key limiter (active-key set)
+  invalidateGrantCache(id)
   return { id, name: data.name, url: buildMcpUrl(appBaseUrl(), key) }
 }
 
@@ -968,6 +1128,8 @@ export async function updateMcpServer(
       { id: row.ownerId, email: "", role: ownerRole },
       data.platforms
     )
+    // every save makes the MCP a "caps required" one: a legacy MCP with write permissions must get its caps now
+    await assertDailyCaps(tx, data.platforms, data.settings)
 
     const beforeConfig = await loadConfig(tx, row.id)
     const before = summarize({
@@ -982,7 +1144,30 @@ export async function updateMcpServer(
       settings: normalizeSettingsForDiff(toStoredMcpSettings(data.settings)),
     })
     const diff = diffSummaries(before, after)
-    if (Object.keys(diff.after).length === 0) return { changed: false }
+    if (Object.keys(diff.after).length === 0) {
+      if (parseMcpSettings(row.settings).moneyCapsRequired) return { changed: false }
+      // no field the user edited changed, but saving upgrades a legacy row to "caps required": from now on money
+      // writes without a daily cap are refused - a runtime change, so it is saved and logged like any update
+      await tx
+        .update(mcpServers)
+        .set({ settings: toStoredMcpSettings(data.settings), updatedAt: new Date() })
+        .where(eq(mcpServers.id, row.id))
+      await logActivity(
+        {
+          actor: actorOf(actor),
+          action: "mcp.update",
+          target: { type: "mcp", id: row.id, label: data.name },
+          metadata: {
+            before: { moneyCapsRequired: false },
+            after: { moneyCapsRequired: true },
+            reason: "caps_required_upgrade",
+            ...(row.ownerId !== actor.id ? { ownerId: row.ownerId } : {}),
+          },
+        },
+        tx
+      )
+      return { changed: true }
+    }
 
     await tx
       .update(mcpServers)

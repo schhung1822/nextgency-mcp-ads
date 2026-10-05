@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { AppShell, AppVersionProvider } from "@/components/app"
 import { signOutAction } from "@/server/actions/auth"
 import { requireUser } from "@/server/auth/session"
+import { appBaseUrl } from "@/server/env"
 import { getActiveNotices } from "@/server/jobs/lib/system-notices"
 import { getVersionBadge } from "@/server/services/updates"
 
@@ -18,6 +19,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         signOutAction={signOutAction}
         defaultSidebarOpen={sidebarState !== "false"}
         notices={notices}
+        appBaseUrl={appBaseUrl()}
       >
         {children}
       </AppShell>

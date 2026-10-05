@@ -476,11 +476,17 @@ export async function getLogFilterOptions(viewer: LogViewer, now: Date = new Dat
 
 export const CSV_BOM = "﻿"
 
-/** RFC 4180 field + spreadsheet formula-injection guard (=, +, -, @, tab, CR prefixed with '). */
+/**
+ * Cells a spreadsheet may read as a formula: =, +, -, @, tab, CR, LF - also their full-width forms (＝ ＋ － ＠, which
+ * some spreadsheet apps normalise) and after leading spaces (" =1+1").
+ */
+const FORMULA_START = /^[=+\-@\t\r\n＝＋－＠]/
+
+/** RFC 4180 field + spreadsheet formula-injection guard (a risky first character is prefixed with '). */
 export function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return ""
   let s = Array.isArray(value) ? value.join(" ") : String(value)
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  if (FORMULA_START.test(s) || FORMULA_START.test(s.trimStart())) s = `'${s}`
   if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`
   return s
 }
@@ -581,7 +587,9 @@ export interface LogStorageInfo {
 
 const LOG_PARENTS = ["mcp_call_logs", "activity_logs"] as const
 
-export async function getLogStorageInfo(): Promise<LogStorageInfo> {
+/** Sizes of the log tables / partitions (settings page) - admins only. */
+export async function getLogStorageInfo(viewer: LogViewer): Promise<LogStorageInfo> {
+  assertAdmin(viewer)
   const tables: LogTableInfo[] = []
   for (const parent of LOG_PARENTS) {
     const res = await db.execute<{ name: string; bytes: string; rows: string; bound: string | null }>(sql`

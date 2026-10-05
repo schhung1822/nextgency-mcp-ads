@@ -39,7 +39,8 @@ function topRename(r: CopyRequest): RenameOpts | undefined {
 const NO_RENAME: RenameOpts = { rename_strategy: "NO_RENAME" }
 
 function errMsg(e: unknown): string {
-  return isProviderError(e) ? e.userMessageVi : (e as Error)?.message ?? String(e)
+  // only curated Vietnamese messages reach the AI (a raw Error message may carry internals)
+  return isProviderError(e) ? e.userMessageVi : "lỗi không xác định"
 }
 
 interface AdsetPlan {

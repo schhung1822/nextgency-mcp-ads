@@ -130,9 +130,21 @@ describe("deterministic write idempotency keys", () => {
     expect(writeIdempotencyKey({ ...base, args: { ...base.args, confirm_token: "x", reason: "r" }, pendingActionId: null }, t)).toBe(a)
     expect(writeIdempotencyKey({ ...base, pendingActionId: "pa-1" }, t)).toBe(writeIdempotencyKey({ ...base, pendingActionId: "pa-1" }, t + 9e9))
     expect(writeIdempotencyKey({ ...base, pendingActionId: "pa-1" })).not.toBe(writeIdempotencyKey({ ...base, pendingActionId: "pa-2" }))
+  })
+
+  it("a client idempotency_key is bound to the args; a confirmed action always uses its pending-action id", () => {
     const user = { ...base, args: { ...base.args, idempotency_key: "k" } }
-    expect(writeIdempotencyKey({ ...user, pendingActionId: "pa-1" })).toBe(writeIdempotencyKey({ ...user, pendingActionId: "pa-9" }))
-    expect(writeIdempotencyKey({ ...user, mcpId: "m2", pendingActionId: null })).not.toBe(writeIdempotencyKey({ ...user, pendingActionId: null }))
+    const k = writeIdempotencyKey({ ...user, pendingActionId: null })
+    // same args + same key → same adapter key, whatever the time
+    expect(writeIdempotencyKey({ ...user, pendingActionId: null }, Date.now() + 9e9)).toBe(k)
+    // same key with other args → another write
+    expect(writeIdempotencyKey({ ...user, args: { ...user.args, status: "active" }, pendingActionId: null })).not.toBe(k)
+    // other MCP / other key → different
+    expect(writeIdempotencyKey({ ...user, mcpId: "m2", pendingActionId: null })).not.toBe(k)
+    expect(writeIdempotencyKey({ ...user, args: { ...user.args, idempotency_key: "k2" }, pendingActionId: null })).not.toBe(k)
+    // with a pending action the client key is ignored
+    expect(writeIdempotencyKey({ ...user, pendingActionId: "pa-1" })).toBe(writeIdempotencyKey({ ...base, pendingActionId: "pa-1" }))
+    expect(writeIdempotencyKey({ ...user, pendingActionId: "pa-1" })).not.toBe(writeIdempotencyKey({ ...user, pendingActionId: "pa-9" }))
   })
 })
 

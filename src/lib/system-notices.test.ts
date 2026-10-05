@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  buildMcpNoticeText,
   MAX_NOTICE_CHARS,
   MAX_NOTICES,
-  MCP_UPDATE_NOTICE,
   parseNoticesPayload,
   sanitizeNoticeText,
 } from "./system-notices"
@@ -86,33 +84,5 @@ describe("sanitizeNoticeText", () => {
     const s = sanitizeNoticeText("a".repeat(MAX_NOTICE_CHARS + 50))
     expect(s.length).toBe(MAX_NOTICE_CHARS)
     expect(s.endsWith("…")).toBe(true)
-  })
-})
-
-describe("buildMcpNoticeText (block appended to MCP results)", () => {
-  it("update line first, then one line per notice in the requested format", () => {
-    expect(
-      buildMcpNoticeText({
-        updateAvailable: true,
-        notices: [
-          { id: "1", content: "Bảo trì 22h" },
-          { id: "2", content: "Ưu đãi" },
-        ],
-      })
-    ).toBe(
-      `${MCP_UPDATE_NOTICE}\nThông báo hệ thống Ads MCP Simple: "Bảo trì 22h"\nThông báo hệ thống Ads MCP Simple: "Ưu đãi"`
-    )
-  })
-
-  it("the exact update sentence asked by the owner", () => {
-    expect(MCP_UPDATE_NOTICE).toBe(
-      "Ads MCP Simple có bản update, vui lòng update để sử dụng tính năng mới nhất nhé"
-    )
-  })
-
-  it("nothing to say → null", () => {
-    expect(
-      buildMcpNoticeText({ updateAvailable: false, notices: [] })
-    ).toBeNull()
   })
 })

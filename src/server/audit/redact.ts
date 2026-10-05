@@ -52,9 +52,9 @@ export function isSecretKeyName(k: string): boolean {
   return SECRET_LAST_WORD.has(w[w.length - 1]!)
 }
 
-/** query parameters whose values are secrets (signed URLs, OAuth codes, tokens) */
+/** query parameters whose values are secrets (signed URLs, OAuth codes, tokens); also a bare form body "client_secret=…&…" */
 const SECRET_QUERY_PARAM =
-  /([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|[a-z_-]*_token|appsecret_proof|client_secret|secret|key|api[_-]?key|code|sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)=)[^&#\s"']+/gi
+  /((?:^|[?&])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|[a-z_-]*_token|appsecret_proof|client_secret|secret|key|api[_-]?key|code|sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)=)[^&#\s"']+/gi
 
 const VALUE_PATTERNS: [RegExp, string][] = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted-private-key]"],
@@ -68,6 +68,13 @@ const VALUE_PATTERNS: [RegExp, string][] = [
   [/\bamcp_[A-Za-z0-9_-]{20,}/g, "amcp_…[redacted]"], // our MCP keys
   [/\bct_[A-Za-z0-9_-]{24,}/g, "ct_…[redacted]"], // confirm tokens
   [/\b[a-f0-9]{40}\b/g, "[redacted-hex40]"], // 40-hex tokens (heuristic)
+  // NOTE: no bare 32-hex pattern - Meta image_hash values are 32-hex and must stay readable
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/@]+@/gi, "$1[redacted]@"], // URL userinfo password (postgres://user:pass@host)
+  [/\b(\d{6,20})\|[A-Za-z0-9_-]{16,}/g, "$1|[redacted]"], // Meta app access token "<app_id>|<app_secret>"
+  [
+    /("(?:client_secret|app_secret|access_token|refresh_token|appsecret_proof|api_key|password)"\s*:\s*")(?:[^"\\]|\\.)*"/gi,
+    '$1[redacted]"',
+  ], // secrets inside JSON text (error bodies, serialized requests)
   [SECRET_QUERY_PARAM, "$1[redacted]"],
 ]
 

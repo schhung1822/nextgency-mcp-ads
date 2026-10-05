@@ -469,6 +469,11 @@ export const guides = {
           "Bắt buộc 2FA cho quản trị viên hoặc cho mọi người, và thời lượng phiên đăng nhập tối đa.",
       },
       {
+        title: "Thông tin pháp lý",
+        detail:
+          "Tên đơn vị vận hành và email liên hệ quyền riêng tư, hiển thị trên các trang công khai /privacy, /terms, /data-deletion (dán vào Meta App Dashboard / OpenAI). Để trống sẽ dùng tên miền.",
+      },
+      {
         title: "Lưu thay đổi",
         detail: "Thanh Có thay đổi chưa lưu hiện ra khi bạn sửa; bấm Lưu để áp dụng.",
       },
@@ -544,7 +549,7 @@ export const guides = {
     ],
     warnings: [
       "Luôn giữ ít nhất 1 quản trị viên đang hoạt động.",
-      "Đổi vai trò, tạo quản trị viên và đặt lại 2FA cần nhập lại mật khẩu của bạn.",
+      "Đổi vai trò, tạo quản trị viên, đặt lại mật khẩu/2FA của quản trị viên, khoá hoặc xoá một quản trị viên đều cần nhập lại mật khẩu của bạn. Đặt lại mật khẩu/2FA của nhân viên hỏi lại mật khẩu khi phiên đăng nhập đã quá 10 phút.",
     ],
   },
 

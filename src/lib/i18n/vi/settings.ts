@@ -2,11 +2,19 @@
 export const settings = {
   title: "Cài đặt",
   metaTitle: "Cài đặt · Ads MCP",
-  description: "Cấu hình lưu trữ nhật ký, bảo mật và xem thông tin hệ thống.",
+  description: "Cấu hình lưu trữ nhật ký, bảo mật, thông tin pháp lý và xem thông tin hệ thống.",
   save: "Lưu thay đổi",
   saved: "Đã lưu cài đặt.",
   noChanges: "Không có thay đổi nào để lưu.",
   saveFailed: "Không lưu được cài đặt. Vui lòng thử lại.",
+
+  /** relaxing security (2FA requirement off, longer sessions) or shortening log retention needs re-auth */
+  reauth: {
+    title: "Xác nhận thay đổi bảo mật",
+    description:
+      "Thay đổi này nới lỏng bảo mật (tắt bắt buộc 2FA, kéo dài phiên đăng nhập) hoặc rút ngắn thời gian lưu nhật ký. Nhập lại mật khẩu (và mã 2FA) để xác nhận.",
+    submit: "Lưu thay đổi",
+  },
 
   retention: {
     title: "Lưu trữ nhật ký",
@@ -32,6 +40,21 @@ export const settings = {
       "Bật mục này để mọi tài khoản (cả nhân viên) chưa bật 2FA phải thiết lập ở lần vào trang tiếp theo.",
     sessionHours: "Thời lượng phiên đăng nhập tối đa (giờ)",
     sessionHoursHelp: "Từ 1 đến 168 giờ. Hết thời gian này, người dùng phải đăng nhập lại.",
+  },
+
+  legal: {
+    title: "Thông tin pháp lý",
+    description:
+      "Hiển thị trên các trang công khai Chính sách quyền riêng tư, Điều khoản dịch vụ và Hướng dẫn xoá dữ liệu - liên kết dán vào Meta App Dashboard / OpenAI. Không bắt buộc.",
+    orgName: "Tên đơn vị vận hành",
+    orgNameHelp: (domain: string) =>
+      `Công ty hoặc tổ chức chịu trách nhiệm về dữ liệu trong hệ thống này. Để trống: dùng tên miền (${domain}).`,
+    orgNamePlaceholder: "Công ty TNHH ABC",
+    contactEmail: "Email liên hệ quyền riêng tư",
+    contactEmailHelp:
+      "Người dùng và người duyệt app của Meta gửi yêu cầu xoá dữ liệu tới email này. Để trống: trang chỉ ghi “quản trị viên hệ thống”.",
+    contactEmailPlaceholder: "privacy@congty.vn",
+    pages: "Xem trang:",
   },
 
   apiVersions: {

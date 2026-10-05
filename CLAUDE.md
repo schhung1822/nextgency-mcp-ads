@@ -23,7 +23,7 @@ Next.js 16 khác dữ liệu huấn luyện — trước khi dùng API Next, đ�
 | `.claude/docs/providers/{meta,openai-ads}.md` | API từng nền tảng: version, credential, endpoint, đơn vị tiền, copy, rate limit, lỗi |
 | `.claude/docs/providers/openai-ads.openapi.json` | OpenAPI chính thức OpenAI Ads — grep để lấy schema chính xác |
 | `.claude/docs/12-platform-rollout.md` | Bật/tắt nền tảng (`src/lib/platforms.ts`) + checklist phát hành Google Ads / TikTok Ads |
-| `.claude/docs/13-system-notices.md` | Thông báo hệ thống (webhook noti.vn 1 giờ/lần → chạy chữ top bar + kèm kết quả MCP) và nhắc cập nhật trong chat AI |
+| `.claude/docs/13-system-notices.md` | Thông báo hệ thống (webhook noti.vn 1 giờ/lần → chạy chữ top bar web); kết quả MCP không kèm thông báo |
 
 ## Stack (chi tiết + version: 02-architecture.md)
 Next.js 16.3.8 App Router · React 19 · TypeScript strict · Tailwind v4 · shadcn/ui (Radix, style `radix-maia`, icon Hugeicons) · Better Auth 1.7.7 (email/password, 2FA TOTP, admin) · Drizzle 0.45 + PostgreSQL 18 · pg-boss (worker) · MCP TS SDK v2 `@modelcontextprotocol/server` · Caddy · pnpm · Node 24 · Vitest + Playwright.
@@ -36,7 +36,7 @@ pnpm lint && pnpm typecheck && pnpm test     # bắt buộc xanh trước khi b�
 pnpm test:e2e       # Playwright
 pnpm db:generate    # drizzle-kit generate (không dùng push cho production)
 pnpm db:migrate
-pnpm cli <cmd>      # create-admin | reset-password | reset-2fa | unlock | reencrypt
+pnpm cli <cmd>      # create-admin | reset-password | reset-2fa | unlock | unban | reencrypt
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build   # build từ mã nguồn + chạy full stack (VPS chỉ pull: docker compose pull && docker compose up -d --no-build)
 ```
 

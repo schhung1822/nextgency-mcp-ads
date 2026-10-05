@@ -17,6 +17,39 @@ export const MCP_PERMISSIONS = [
   "delete",
 ] as const satisfies readonly Permission[]
 
+/**
+ * Permissions that can make an MCP spend money (switch on, change budgets/bids/schedules, copy, create).
+ * An MCP with any of them must set a daily cap for every currency in its scope (delete only stops spend).
+ */
+export const MONEY_WRITE_PERMISSIONS = [
+  "status",
+  "update",
+  "copy",
+  "create",
+] as const satisfies readonly Permission[]
+
+/** true when the permission list contains a money-write permission */
+export function hasMoneyWritePermission(perms: readonly string[]): boolean {
+  return perms.some((p) =>
+    (MONEY_WRITE_PERMISSIONS as readonly string[]).includes(p)
+  )
+}
+
+/** Required currencies (upper case) that have no daily cap, sorted. */
+export function missingDailyCapCurrencies(
+  caps: Record<string, number>,
+  required: readonly string[]
+): string[] {
+  const missing = new Set<string>()
+  for (const c of required) {
+    const cur = c.toUpperCase()
+    const v = caps[cur]
+    if (!(typeof v === "number" && Number.isFinite(v) && v > 0))
+      missing.add(cur)
+  }
+  return [...missing].sort()
+}
+
 export const MCP_LIMITS = {
   nameMax: 80,
   descriptionMax: 500,
@@ -48,6 +81,8 @@ const msg = {
   currency: "Mã tiền tệ phải gồm 3 chữ cái in hoa (vd VND, USD).",
   maxBudget: "Trần ngân sách phải là số dương hợp lệ.",
   maxBid: "Trần giá thầu phải là số dương hợp lệ.",
+  dailyCapRequired: (cur: string) =>
+    `Nhập trần ngân sách/ngày cho ${cur} (bắt buộc khi MCP có quyền ghi).`,
   tooManyCurrencies: `Tối đa ${MCP_LIMITS.currenciesMax} loại tiền tệ.`,
   ip: (v: string) => `"${v}" không phải địa chỉ IP hoặc dải CIDR hợp lệ.`,
   tooManyIps: `Tối đa ${MCP_LIMITS.allowedIpsMax} địa chỉ IP.`,
@@ -160,6 +195,8 @@ export interface StoredMcpSettings {
   rate_limit_per_min: number
   write_rate_limit_per_10min: number
   allowed_ips: string[]
+  /** written on every create/save since the security release; rows without it are legacy (caps optional) */
+  money_caps_required: true
 }
 
 function sortedCaps(r: Record<string, number>): Record<string, number> {
@@ -179,6 +216,7 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     rate_limit_per_min: s.rateLimitPerMin,
     write_rate_limit_per_10min: s.writeRateLimitPer10Min,
     allowed_ips: [...s.allowedIps],
+    money_caps_required: true,
   }
 }
 
@@ -594,7 +632,11 @@ export function validatePlatformsStep(v: McpFormValues): StepErrors {
 
 export function validateProtectionStep(
   v: McpFormValues,
-  opts: { requireFutureExpiry?: boolean } = {}
+  opts: {
+    requireFutureExpiry?: boolean
+    /** currencies that must have a daily cap (money-write scope, see moneyScopeCurrencies) */
+    requiredCapCurrencies?: readonly string[]
+  } = {}
 ): StepErrors {
   const e: StepErrors = {}
   const pct = Number(v.budgetChangeMaxPct)
@@ -624,6 +666,14 @@ export function validateProtectionStep(
         e[`${field}.${cur}`] = field === "maxBid" ? msg.maxBid : msg.maxBudget
     }
   }
+  const daily: Record<string, number> = {}
+  for (const [cur, text] of Object.entries(v.maxDailyBudget ?? {}))
+    if (text.trim() !== "") daily[cur] = parseAmountText(text)
+  for (const cur of missingDailyCapCurrencies(
+    daily,
+    opts.requiredCapCurrencies ?? []
+  ))
+    e[`maxDailyBudget.${cur}`] ??= msg.dailyCapRequired(cur)
   const ips = parseIpList(v.allowedIpsText)
   const bad = ips.find((ip) => !isValidIpOrCidr(ip))
   if (bad) e.allowedIps = msg.ip(bad)

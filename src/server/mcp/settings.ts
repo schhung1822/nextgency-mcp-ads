@@ -1,6 +1,6 @@
 // Parse mcp_servers.settings (jsonb) into McpSettings. Accepts the documented snake_case shape
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
-//    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips })
+//    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields.
 import { z } from "zod"
@@ -23,6 +23,7 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   rate_limit_per_min: "rateLimitPerMin",
   write_rate_limit_per_10min: "writeRateLimitPer10Min",
   allowed_ips: "allowedIps",
+  money_caps_required: "moneyCapsRequired",
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -66,5 +67,7 @@ export function parseMcpSettings(raw: unknown): McpSettings {
       n.allowedIps === undefined || n.allowedIps === null
         ? [...d.allowedIps]
         : pick(fields.allowedIps, n.allowedIps, ["invalid-allowlist"]),
+    // only an explicit true: rows written before the flag existed are legacy (caps optional)
+    moneyCapsRequired: n.moneyCapsRequired === true,
   }
 }

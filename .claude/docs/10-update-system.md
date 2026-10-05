@@ -8,19 +8,20 @@
 2. `updater` chỉ chấp nhận `target_version` đúng regex `^\d+\.\d+\.\d+$`, **lớn hơn** phiên bản đang chạy, và image luôn là `ghcr.io/notivn/ads-mcp-simple:<version>` (repo cố định, không nhận chuỗi tự do từ DB; bản fork đổi bằng biến môi trường `APP_IMAGE` của chính updater/compose, được kiểm tra định dạng, không bao giờ từ DB).
 3. Server action cập nhật: `requireAdmin()` + **re-auth** (cổng `src/server/auth/reauth.ts`) + `target_version` phải **bằng** `update_latest.version` do server tự kiểm tra (không tin chuỗi từ client) + ghi `activity_logs` cùng transaction.
 4. Luôn **sao lưu DB trước khi cập nhật** và **migrate bằng image mới trước khi thay `web`/`worker`**; lỗi ở bất kỳ bước nào → không đụng vào bản đang chạy hoặc rollback về bản cũ. Migration phải tương thích ngược 1 phiên bản (expand/contract) vì rollback không đảo migration (ghi vào 08-roadmap/07-deployment).
-5. Repo GitHub có thể **private**: kiểm tra phiên bản dùng `UPDATE_GITHUB_TOKEN` (tuỳ chọn, fine-grained read-only), kéo image GHCR dùng `docker login ghcr.io` đã làm sẵn trên VPS (credentials nằm ở máy chủ, không vào DB/log).
+5. Repo GitHub có thể **private**: kiểm tra phiên bản dùng `UPDATE_GITHUB_TOKEN` (tuỳ chọn; repo private: Token B = PAT classic `repo` của tài khoản outside collaborator chỉ có quyền Read - PAT fine-grained không dùng được cho outside collaborator), kéo image GHCR dùng `docker login ghcr.io` đã làm sẵn trên VPS (Token A = PAT classic `read:packages`; credentials nằm ở máy chủ, không vào DB/log).
+6. **Chỉ chạy image có chữ ký số của noti.vn**: sau khi kéo image đích (và image updater mới khi tự thay), updater chạy `cosign verify` với danh tính chính xác `https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/v<target>` + issuer `https://token.actions.githubusercontent.com`. Không đạt (không có chữ ký, ký cho tag khác, không tới được Sigstore) → `failed` ở step `pull` (không thêm step mới để DB/UI/web cũ vẫn tương thích), bản đang chạy không bị đụng. Bỏ qua khi `APP_IMAGE` khác image mặc định (fork/registry riêng) hoặc `.env` có `UPDATER_VERIFY_SIGNATURE=0` (có ghi log). Chi tiết: `07-deployment.md` §0b.
 
 ## 2. Luồng
 
 ```
 git tag v1.2.0 && git push --tags
-  └─ GitHub Actions: build image ghcr.io/notivn/ads-mcp-simple:1.2.0 (+ updater image), tạo GitHub Release (ghi chú)
+  └─ GitHub Actions: build image ghcr.io/notivn/ads-mcp-simple:1.2.0 (+ updater image), ký cosign keyless, tạo GitHub Release (ghi chú)
 worker job `update-check` (6 giờ/lần + nút "Kiểm tra ngay")
   └─ GitHub API → app_settings.update_latest
 admin mở /settings/updates → thấy "Có bản mới v1.2.0" → bấm Cập nhật → re-auth
   └─ web: INSERT system_update_requests(status=pending)
 updater (poll 5s) nhận yêu cầu → running:
-  backup → pull → migrate (image mới, one-shot) → ghi APP_VERSION vào .env → up -d web worker → healthcheck
+  backup → pull (+ kiểm APP_BUILD_VERSION + cosign verify) → migrate (image mới, one-shot) → ghi APP_VERSION vào .env → up -d web worker → healthcheck
   ├─ ok  → succeeded (+ activity log)
   └─ lỗi → rollback về from_version → rolled_back / failed (+ activity log)
 UI poll /api/updates/status (chịu được lúc web khởi động lại) → tự tải lại khi version khớp
@@ -63,7 +64,7 @@ UI poll /api/updates/status (chịu được lúc web khởi động lại) → 
 **Activity log mới** (thêm vào danh mục ở 03-database-schema.md §4): `system.update_check`, `system.update_requested`, `system.update_succeeded`, `system.update_failed`, `system.update_rolled_back`. Hai action cuối/đầu do `updater` ghi trực tiếp trong cùng transaction với việc đổi trạng thái (actor = `requested_by`).
 
 **Hạ tầng (đã làm, chi tiết ở `07-deployment.md` §6)**: service `updater` (profile `updater`, bật bằng `COMPOSE_PROFILES=updater` trong `.env`), image `ghcr.io/notivn/ads-mcp-simple-updater:<ver>`, thư mục dự án mount đúng đường dẫn host (`HOST_PROJECT_DIR`). Web/worker nhận thêm `.env`: `UPDATE_REPO` (mặc định `notivn/Ads-MCP-simple`) và `UPDATE_GITHUB_TOKEN` (tuỳ chọn) - đã đặt sẵn dạng comment trong `.env.example`, **app tự đọc và dùng mặc định khi thiếu**. `APP_VERSION` trong `.env` do updater ghi; app chỉ đọc `APP_BUILD_VERSION`.
-Điều kiện để updater hoạt động: image được phát hành từ workflow `docker.yml` (có ENV `APP_BUILD_VERSION` đúng tag - updater từ chối image có `APP_BUILD_VERSION` khác tag).
+Điều kiện để updater hoạt động: image được phát hành từ workflow `docker.yml` (có ENV `APP_BUILD_VERSION` đúng tag - updater từ chối image có `APP_BUILD_VERSION` khác tag - và có chữ ký cosign của chính workflow đó cho đúng tag). Updater cần ra Internet tới ghcr.io và Sigstore; `TUF_ROOT=/tmp/sigstore-tuf`.
 
 ## 4. Giao diện
 
@@ -75,6 +76,6 @@ UI poll /api/updates/status (chịu được lúc web khởi động lại) → 
 
 ## 5. Phát hành (GitHub Actions)
 
-- Tag `v*` → `docker.yml`: build-arg `APP_BUILD_VERSION`, đẩy `ghcr.io/notivn/ads-mcp-simple:<ver>` + `...-updater:<ver>`; tạo GitHub Release (ghi chú tự sinh) khi tag khớp `^v\d+\.\d+\.\d+$` (tag có hậu tố `-rc` chỉ build, không tạo Release "latest").
-- Kiểm tra `package.json#version` khớp tag (fail sớm nếu lệch).
+- Tag `v*` → `docker.yml`: build-arg `APP_BUILD_VERSION`, đẩy `ghcr.io/notivn/ads-mcp-simple:<ver>` + `...-updater:<ver>` (SBOM + provenance, không tag `latest`), ký cosign keyless cả 2 digest; tạo GitHub Release (ghi chú `release-notes/<tag>.md`) khi tag khớp `^v\d+\.\d+\.\d+$` (tag có hậu tố `-rc` chỉ build, không tạo Release).
+- Kiểm tra `package.json#version` khớp tag, tag nằm trên nhánh mặc định, bản stable chưa có Release (fail sớm nếu lệch). Image phát hành **chỉ** do CI đẩy (image đẩy tay không có chữ ký, updater từ chối).
 - Quy trình phát hành ghi ở `07-deployment.md` (checklist: test xanh → bump version → tag → push tag → xem Release → admin bấm Cập nhật).

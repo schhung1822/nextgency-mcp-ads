@@ -8,6 +8,8 @@
 import { ThemeToggle } from "@/components/app"
 import { auth as tAuth } from "@/lib/i18n/vi/auth"
 
+import { LegalNav } from "../(legal)/_components/legal-nav"
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-svh flex-col max-sm:bg-card">
@@ -16,7 +18,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </header>
       {/* sm+: centred; phones: the card stretches over the full screen and the page scrolls with the keyboard */}
       <main className="flex flex-1 items-stretch justify-center sm:items-center sm:px-4 sm:pt-2 sm:pb-8">{children}</main>
-      <footer className="pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-xs text-muted-foreground">{tAuth.footer}</footer>
+      <footer className="flex flex-col items-center gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-xs text-muted-foreground">
+        {/* public policy pages (Meta app review often starts from the sign-in page) */}
+        <LegalNav variant="footer" />
+        <p>{tAuth.footer}</p>
+      </footer>
     </div>
   )
 }

@@ -179,12 +179,75 @@ describe.skipIf(!hasDb)("MCP endpoint /mcp/<key> (integration)", { timeout: 120_
         }
         const guess = await send(mcpRequest("amcp_" + "C".repeat(43), { jsonrpc: "2.0", id: 1, method: "tools/list" }, { headers: { "x-forwarded-for": ip } }))
         expect(guess.status).toBe(429)
-        // same client, valid key: served
+        // same client, valid key: served - also when its grant is not cached (restart / idle) and guessing goes on
+        invalidateGrantCache(m.id)
+        for (let i = 0; i < 10; i++) {
+          await send(mcpRequest(`amcp_${"G".repeat(41)}${String(i).padStart(2, "0")}`, { jsonrpc: "2.0", id: 1, method: "tools/list" }, { headers: { "x-forwarded-for": ip } }))
+        }
         expect((await rpc(m.key, "tools/list", {}, { headers: { "x-forwarded-for": ip } })).res.status).toBe(200)
       }
       // another address of the same IPv6 /64 is limited for unknown keys too
       const sibling = await send(mcpRequest("amcp_" + "C".repeat(43), { jsonrpc: "2.0", id: 1, method: "tools/list" }, { headers: { "x-forwarded-for": "2001:db8:77:1::ffff" } }))
       expect(sibling.status).toBe(429)
+    })
+
+    it("L5: a repeated unknown key is answered from the miss cache (one database lookup)", async () => {
+      const { __grantDbLookups } = await import("../grant")
+      const before = __grantDbLookups()
+      const key = "amcp_" + "D".repeat(43)
+      for (let i = 0; i < 4; i++) {
+        const res = await send(mcpRequest(key, { jsonrpc: "2.0", id: 1, method: "tools/list" }, { headers: { "x-forwarded-for": "203.0.113.90" } }))
+        expect(res.status).toBe(404)
+      }
+      expect(__grantDbLookups() - before).toBe(1)
+      // invalidating the grant cache (MCP re-enabled / edited) forgets the misses too
+      invalidateGrantCache("any-mcp-id")
+      expect((await send(mcpRequest(key, { jsonrpc: "2.0", id: 1, method: "tools/list" }))).status).toBe(404)
+      expect(__grantDbLookups() - before).toBe(2)
+    })
+
+    it("L5: a blocked client is answered from the in-memory active-key set: unknown keys cost no query, valid keys are always served", async () => {
+      const ip = "203.0.113.91"
+      const m = await readOnlyMcp()
+      const disabled = await createMcp(fx.f, { ownerId: fx.ids.staff, permissions: { meta: ["read"] }, scopes: [{ connectionId: fx.ids.connMeta }], status: "disabled" })
+      const call = (key: string) => send(mcpRequest(key, { jsonrpc: "2.0", id: 1, method: "tools/list" }, { headers: { "x-forwarded-for": ip } }))
+      for (let i = 0; i < 20; i++) expect((await call("amcp_" + "E".repeat(43))).status).toBe(404)
+      const { __grantDbLookups } = await import("../grant")
+      const before = __grantDbLookups()
+      // a guesser far above 1 request/s: distinct unknown keys → 429, one active-key set load in total
+      for (let i = 0; i < 30; i++) expect((await call(`amcp_${"F".repeat(41)}${String(i).padStart(2, "0")}`)).status).toBe(429)
+      expect(__grantDbLookups() - before).toBe(1)
+      // a disabled MCP's key is refused like an unknown key (no lookup)
+      expect((await call(disabled.key)).status).toBe(429)
+      expect(__grantDbLookups() - before).toBe(1)
+      // a never-used valid key (in no grant cache) from the same blocked client, right after the burst: served
+      expect((await rpc(m.key, "tools/list", {}, { headers: { "x-forwarded-for": ip } })).res.status).toBe(200)
+      // a key created after the set was loaded works at once (create / enable / rotate call invalidateGrantCache)
+      const fresh = await readOnlyMcp()
+      invalidateGrantCache(fresh.id)
+      expect((await rpc(fresh.key, "tools/list", {}, { headers: { "x-forwarded-for": ip } })).res.status).toBe(200)
+    })
+
+    it("L9: arguments of a tools/call rejected by the SDK are logged without URL query strings", async () => {
+      const m = await fullMcp()
+      const signed = "https://bucket.s3.amazonaws.com/ads/banner.jpg?X-Amz-Signature=deadbeef42&X-Amz-Credential=AKIAEXAMPLE"
+      const { res } = await rpc(m.key, "tools/call", {
+        name: "ads_upload_media",
+        arguments: { platform: "meta", account_id: fx.ext.vnd, type: "gif", url: signed, extra: { link: "https://shop.vn/?utm_source=fb" } },
+      })
+      expect(res.status).toBe(200)
+      let row: typeof schema.mcpCallLogs.$inferSelect | undefined
+      for (let i = 0; i < 60 && !row; i++) {
+        await flushMcpLogs()
+        row = (await db.select().from(schema.mcpCallLogs).where(eq(schema.mcpCallLogs.mcpId, m.id))).find(
+          (r) => r.toolName === "ads_upload_media"
+        )
+        if (!row) await new Promise((r) => setTimeout(r, 50))
+      }
+      expect(row?.status).toBe("invalid_request")
+      expect((row!.request as any).url).toBe("https://bucket.s3.amazonaws.com/ads/banner.jpg?[redacted]")
+      expect((row!.request as any).extra.link).toBe("https://shop.vn/?[redacted]")
+      expect(JSON.stringify(row!.request)).not.toContain("deadbeef42")
     })
 
     it("charges a JSON-RPC batch per message", async () => {

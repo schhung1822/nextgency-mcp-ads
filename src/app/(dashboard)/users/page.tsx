@@ -13,6 +13,7 @@ import {
   revokeUserSessionsAction,
   setUserBannedAction,
 } from "@/server/actions/users"
+import { sessionFreshUntil } from "@/server/auth/reauth"
 import { requireAdmin } from "@/server/auth/session"
 import { listUsers } from "@/server/services/users"
 
@@ -23,8 +24,10 @@ export const metadata: Metadata = { title: tUsers.metaTitle }
 
 /** Admin only (staff get 404 from requireAdmin). Every action re-checks the role server-side. */
 export default async function UsersPage() {
-  const { user } = await requireAdmin()
-  const users = await listUsers()
+  const s = await requireAdmin()
+  const { user } = s
+  // freshness only spares the password prompt in the UI; every action re-checks it server-side
+  const [users, reauthFreshUntil] = await Promise.all([listUsers(s), sessionFreshUntil(s)])
   return (
     <div className="flex w-full flex-col">
       <PageGuide guide={tg.users} />
@@ -37,6 +40,7 @@ export default async function UsersPage() {
         users={users}
         currentUserId={user.id}
         actorTwoFactor={user.twoFactorEnabled}
+        reauthFreshUntil={reauthFreshUntil}
         actions={{
           create: createUserAction,
           changeRole: changeUserRoleAction,

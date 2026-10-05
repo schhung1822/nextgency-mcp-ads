@@ -5,7 +5,8 @@ import { mcpCallLogs } from "../../../db/schema"
 import type { Budget } from "../../../providers/types"
 import { denied, invalid } from "../../errors"
 import { assertGrant } from "../../grant"
-import { checkDailyCap, checkLifetimeCap, fmtMoney as fmt, type Flight } from "../../guardrails"
+import { campaignFlightOrDeny } from "../../budget-flight"
+import { checkDailyCap, checkLifetimeCap, fmtMoney as fmt, legacyCapWarning, lifetimeLimit, requireMoneyCaps, type Flight } from "../../guardrails"
 import { accountIdSchema, objectIdSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext } from "../../tool"
 import { grantPlatformsWith, type McpSettings } from "../../types"
@@ -157,8 +158,15 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         )
       }
       const currency = (current?.currency || account.currency).toUpperCase()
+      requireMoneyCaps(env.grant.settings, currency, "đổi ngân sách")
       const next = { type: args.budget_type, amount: args.amount, currency }
-      const guard = checkBudgetGuardrails(env.grant.settings, current, next, { startTime: obj.startTime, endTime: obj.endTime })
+      // a campaign lifetime budget (CBO) is spent over the flights of its ad sets (budget-flight.ts)
+      const flight: Flight =
+        args.level === "campaign" && args.budget_type === "lifetime" && lifetimeLimit(env.grant.settings, currency, {})
+          ? await campaignFlightOrDeny(provider, ctx, obj)
+          : { startTime: obj.startTime, endTime: obj.endTime }
+      const guard = checkBudgetGuardrails(env.grant.settings, current, next, flight)
+      const warnings = [...legacyCapWarning(env.grant.settings, currency), ...guard.warnings]
       checkCumulativeBudget(
         env.grant.settings,
         await budgetBaseline24h({ platform: account.platform, accountExternalId: account.externalId, level: args.level, id: args.id, type: args.budget_type }),
@@ -171,7 +179,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         account,
         preview: async () => {
           const r = await provider.updateBudget(ctx, update, { dryRun: true })
-          return previewFromMutation(r, guard.warnings, {
+          return previewFromMutation(r, warnings, {
             current: current ? { type: current.type, amount: current.amount, currency } : null,
             requested: { type: args.budget_type, amount: args.amount, currency },
             change_pct: guard.changePct === null ? null : Math.round(guard.changePct * 10) / 10,

@@ -30,6 +30,7 @@ import {
   isNavActive,
   type NavItem,
 } from "./nav"
+import { MenuLegalLinks } from "./legal-links"
 import { NAV_ICONS } from "./nav-icons"
 import { THEME_OPTIONS } from "./theme-toggle"
 import { TransparencyToggle } from "./transparency-toggle"
@@ -115,9 +116,10 @@ function TabIcon({
  */
 export function BottomNav({
   user,
+  appBaseUrl,
   signOutAction,
   onSignOut,
-}: { user: AppUser } & SignOutProps) {
+}: { user: AppUser; appBaseUrl?: string } & SignOutProps) {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
   useKeyboardOpenFlag()
@@ -173,6 +175,7 @@ export function BottomNav({
         open={menuOpen}
         onOpenChange={setMenuOpen}
         user={user}
+        appBaseUrl={appBaseUrl}
         signOutAction={signOutAction}
         onSignOut={onSignOut}
         pathname={pathname}
@@ -209,12 +212,14 @@ function BottomMenuSheet({
   onOpenChange,
   user,
   pathname,
+  appBaseUrl,
   ...signOutProps
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   user: AppUser
   pathname: string | null
+  appBaseUrl?: string
 } & SignOutProps) {
   const signOut = useSignOut(signOutProps)
   const { theme, setTheme } = useTheme()
@@ -314,6 +319,8 @@ function BottomMenuSheet({
               </div>
               <TransparencyToggle />
             </div>
+
+            <MenuLegalLinks appBaseUrl={appBaseUrl} />
 
             {signOut.enabled && (
               <button

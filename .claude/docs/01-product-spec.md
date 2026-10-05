@@ -61,17 +61,17 @@ Wizard 4 bước (đúng thứ tự yêu cầu của chủ dự án):
 4. **Bảo vệ** (có giá trị mặc định an toàn, người mới có thể bấm Tiếp):
    - Xác nhận 2 bước cho thao tác ghi (mặc định **bật**) — xem `04-mcp-design.md` §6.
    - Giới hạn thay đổi ngân sách mỗi lần (mặc định ±50%; cũng áp dụng **cộng dồn trong 24 giờ**).
-   - Theo từng loại tiền của các tài khoản đã chọn ở bước 2 (đều tuỳ chọn, để trống = không đặt):
-     - **Trần ngân sách/ngày**.
+   - Theo từng loại tiền của các tài khoản đã chọn ở bước 2:
+     - **Trần ngân sách/ngày** — **bắt buộc** cho mỗi loại tiền khi MCP có quyền Bật/Tắt, Sửa, Sao chép hoặc Tạo mới (ô có nhãn "Bắt buộc"; thiếu thì không tạo/lưu được). MCP tạo trước bản cập nhật bảo mật mà chưa có trần vẫn chạy nhưng hiện cảnh báo đỏ ở trang MCP và badge "Chưa đặt trần" ở danh sách; lần lưu cấu hình sau phải nhập trần. MCP chỉ có quyền Xem (hoặc Xoá) không cần trần.
      - **Trần ngân sách trọn đời** — khi đã có trần ngày, ngân sách trọn đời tự bị giới hạn ở trần ngày × số ngày chạy (× 30 nếu chưa có ngày kết thúc); ô này đặt thêm một mức tối đa cố định (lấy mức thấp hơn).
-     - **Trần giá thầu/CPA** — giá thầu, CPC tối đa, chi phí mục tiêu mà AI đặt.
+     - **Trần giá thầu/CPA** (tuỳ chọn) — giá thầu, CPC tối đa, chi phí mục tiêu mà AI đặt.
    - **Giới hạn thao tác ghi / 10 phút** (mặc định 20; 1–1000) — số lần AI thực sự thay đổi quảng cáo (bật/tắt, sửa, tạo, sao chép, xoá…) trong 10 phút.
    - Ngày hết hạn MCP (tuỳ chọn), giới hạn số lệnh/phút (mặc định 60), danh sách IP cho phép (tuỳ chọn — lưu ý sẽ chặn Claude Code/Gemini CLI chạy trên máy cá nhân).
    - Chi tiết cách server áp dụng: `04-mcp-design.md` §6; khoá lưu trong `mcp_servers.settings`: `03-database-schema.md`.
 → **Hoàn tất**: bấm "Tạo MCP" mở hộp **xác thực lại** (mật khẩu + mã TOTP nếu đã bật 2FA — vì link dùng được ngay) → hiện link `https://<domain>/mcp/<key>` (nút Sao chép) + tab hướng dẫn kết nối **Claude / ChatGPT / Gemini / Claude Code / Gemini CLI** (copy-paste được).
 
 Sau khi tạo: trang chi tiết MCP gồm Tổng quan (lượt gọi, lỗi, lần dùng cuối, tóm tắt cấu hình bảo vệ), Cấu hình (sửa bước 2–4, thanh "Có thay đổi chưa lưu"), Bảo mật (xoay key → link cũ chết ngay; tắt/bật; xoá — gõ tên để xác nhận), Nhật ký (log của MCP này), Hướng dẫn kết nối.
-- **Tạo MCP**, **Xem lại link** và **Xoay key** đều yêu cầu **xác thực lại** mỗi lần: nhập mật khẩu + mã TOTP 6 số (khi tài khoản bật 2FA; khi hệ thống bật "bắt buộc 2FA cho mọi người" mà user chưa bật 2FA thì bị từ chối). Sai quá **5 lần trong 15 phút** (tính chung cho MỌI thao tác nhạy cảm: tạo/xem lại/xoay MCP, thay token, đổi vai trò, tạo admin, đặt lại mật khẩu/2FA của admin, đổi mật khẩu, mã dự phòng, xuất log — theo người thực hiện) → khoá tạm, báo thử lại sau. Mỗi lần thành công/thất bại đều ghi `activity_logs` (`mcp.create` / `mcp.key.reveal` / `mcp.key.rotate`…, lần sai có `metadata.reauth=true`; không bao giờ ghi key).
+- **Tạo MCP**, **Xem lại link** và **Xoay key** đều yêu cầu **xác thực lại** mỗi lần: nhập mật khẩu + mã TOTP 6 số (khi tài khoản bật 2FA; khi hệ thống bật "bắt buộc 2FA cho mọi người" mà user chưa bật 2FA thì bị từ chối). Sai quá **5 lần trong 15 phút** (tính chung cho MỌI thao tác nhạy cảm: tạo/xem lại/xoay MCP, thay token, đổi vai trò, tạo admin, đặt lại mật khẩu/2FA của admin, khoá/mở khoá/xoá một admin, nới lỏng cài đặt bảo mật, đổi mật khẩu, mã dự phòng — và khi phiên không còn mới (> 10 phút từ lúc đăng nhập/xác thực lại): xuất log, thu hồi phiên của một admin, đặt lại mật khẩu/2FA của nhân viên — theo người thực hiện) → khoá tạm, báo thử lại sau. Mỗi lần thành công/thất bại đều ghi `activity_logs` (`mcp.create` / `mcp.key.reveal` / `mcp.key.rotate`…, lần sai có `metadata.reauth=true`; không bao giờ ghi key).
 - Danh sách MCP: Tên, **Người tạo** (Admin thấy tất cả), Nền tảng (icon), Quyền (badge), Trạng thái, Lần dùng cuối, Lượt gọi 7 ngày.
 - Đổi cấu hình MCP có hiệu lực ngay ở request kế tiếp (tool list dựng theo từng request). Lưu ý ChatGPT Business/Enterprise "đóng băng" tool list → hướng dẫn admin workspace refresh.
 
@@ -103,6 +103,7 @@ Sidebar trái (kiểu Shopify admin): **Tổng quan · Kết nối quảng cáo 
 - `/mcp-servers`, `/mcp-servers/new`, `/mcp-servers/[id]` (KHÔNG dùng `/mcp/*` — đó là endpoint MCP)
 - `/logs?tab=mcp|staff`
 - `/users` (Admin), `/settings` (Admin)
+- **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; noti.vn chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
 Yêu cầu UX: dễ hiểu cho người không rành kỹ thuật — mỗi trang có tiêu đề + 1 câu mô tả, trạng thái trống có hướng dẫn + nút hành động chính, form có helper text, xác nhận trước thao tác nguy hiểm, toast phản hồi bằng tiếng Việt.
 
 ## 8. Ngoài phạm vi v1 (ghi nhận để làm sau)

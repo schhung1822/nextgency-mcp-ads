@@ -122,11 +122,16 @@ Phần **ứng dụng** (web + worker + DB):
 - [ ] Chưa test thật: Trang **chỉ** thấy qua BM, bài khách đăng / hẹn giờ / bài quảng cáo có dữ liệu, `end_time` mùa đông (PST) - xem `providers/meta.md` §10.7
 **Đạt khi**: từ Claude hỏi được "liệt kê Trang", "bài tuần này của Trang X", "chỉ số bài Y", "lượt xem Trang 30 ngày" trên Trang thật; staff không đọc được Trang ngoài phạm vi.
 
-## Thông báo hệ thống & nhắc cập nhật trong chat AI (2026-10-04), thiết kế `13-system-notices.md`
+## Thông báo hệ thống trên top bar web (2026-10-04), thiết kế `13-system-notices.md`
 - [x] Job `notices.fetch` (1 giờ/lần + khi worker khởi động) GET webhook noti.vn → `app_settings.system_notices` (làm sạch, tối đa 10 × 300 ký tự, giữ 24 h khi webhook lỗi, `SYSTEM_NOTICES_URL` tắt được)
 - [x] Chạy chữ ở top bar (desktop/tablet giữa breadcrumb và ô tìm kiếm; phone dải dưới top bar), reduced-motion đứng yên, sáng/tối - đã chụp 1440/820/390
-- [x] MCP: mọi kết quả tool kèm dòng nhắc update (bản mới > bản đang chạy) + `Thông báo hệ thống Ads MCP Simple: "…"` mỗi dòng; server instructions cấm làm theo nội dung thông báo
-- [ ] Kiểm tra thực tế trên Claude / ChatGPT xem AI có chuyển nguyên văn thông báo cho người dùng không (phụ thuộc client)
+- [x] MCP **không** kèm thông báo hệ thống hay dòng nhắc cập nhật (quyết định chủ dự án 2026-10-05, chống prompt injection; bản 1.0.1 từng kèm, đã gỡ cùng câu dặn trong server instructions)
+
+## Trang chính sách công khai cho app Meta/OpenAI (2026-10-05)
+- [x] `/privacy`, `/terms`, `/data-deletion` (route group `(legal)`, không cần phiên; `proxy.ts` loại trừ), tiếng Việt + tiếng Anh, nội dung khớp hệ thống (đơn vị vận hành = bên kiểm soát dữ liệu, số tháng lưu nhật ký thật)
+- [x] Cài đặt → Thông tin pháp lý (`legal_org_name`, `legal_contact_email`; không cần xác thực lại; ghi `settings.update`)
+- [x] Khối "Liên kết cho ứng dụng" dưới sidebar (mở tab mới + sao chép URL tuyệt đối), menu điện thoại, ⌘K
+- [ ] Chụp màn hình sáng/tối × 390/1440px; Meta App Dashboard chấp nhận URL trên máy chủ thật (crawler của Meta)
 
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.

@@ -1,8 +1,10 @@
 import { z } from "zod"
-import type { AdObjectDetail, AdsProvider, ObjectLevel } from "../../../providers/types"
+import { safeErrorForLog } from "../../../audit/safe-error"
+import type { AdObjectDetail, AdObjectSummary, AdsProvider, ObjectLevel } from "../../../providers/types"
+import { adGroupFlightsMatter, campaignFlightOrDeny, isConfiguredOn, listChildAdGroups } from "../../budget-flight"
 import { denied, invalid } from "../../errors"
 import { assertGrant } from "../../grant"
-import { checkDailyCap, checkLifetimeCap } from "../../guardrails"
+import { checkDailyCap, checkLifetimeCap, LEVEL_VI, legacyCapWarning, requireMoneyCaps, type Flight } from "../../guardrails"
 import { accountIdSchema, objectIdSchema, objectLevelSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext, type ToolEnv } from "../../tool"
 import { grantPlatformsWith, type GrantAccount } from "../../types"
@@ -12,11 +14,13 @@ export const NAME = "ads_set_status"
 export const MAX_STATUS_IDS = 50
 const LOOKUP_CONCURRENCY = 5
 
-const LEVEL_VI: Record<string, string> = { campaign: "chiến dịch", ad_group: "nhóm quảng cáo", ad: "quảng cáo" }
-
 /**
  * Before activating: read every object (and its parent ad group / campaign - CBO budgets live on the
  * campaign) and refuse when a governing budget exceeds the MCP's daily / lifetime cap.
+ * - a campaign-level LIFETIME budget is checked against the flight of the ad sets that will deliver
+ *   (budget-flight.ts), not the campaign dates alone;
+ * - switching on a campaign without a campaign budget (Meta ABO) also checks every ad set that is
+ *   configured on (they start spending with the campaign).
  * No cap configured for the account currency → nothing to read.
  */
 export async function assertActivationWithinCaps(
@@ -41,25 +45,54 @@ export async function assertActivationWithinCaps(
     }
     return p
   }
-  const check = (o: AdObjectDetail) => {
+  // child ad groups of a campaign, listed once per call (null = too many to verify)
+  const kids = new Map<string, Promise<AdObjectSummary[] | null>>()
+  const kidsOf = (campaignId: string) => {
+    let p = kids.get(campaignId)
+    if (!p) {
+      p = listChildAdGroups(provider, ctx, campaignId)
+      kids.set(campaignId, p)
+    }
+    return p.catch((e: unknown) => unverifiable(e, campaignId))
+  }
+  const activating = level === "ad_group" ? ids : []
+  const check = async (o: AdObjectSummary) => {
     const b = o.budget
     if (!b || !(b.amount > 0)) return
     const c = (b.currency || cur).toUpperCase()
     const label = `${LEVEL_VI[b.level ?? o.level] ?? o.level} "${String(o.name ?? o.id).slice(0, 80)}" (${o.id})`
-    if (b.type === "daily") checkDailyCap(s, b.amount, c, `Ngân sách ngày của ${label}`)
-    else checkLifetimeCap(s, b.amount, c, { startTime: o.startTime, endTime: o.endTime }, `Ngân sách trọn đời của ${label}`)
+    if (b.type === "daily") return checkDailyCap(s, b.amount, c, `Ngân sách ngày của ${label}`)
+    const flight: Flight =
+      o.level === "campaign"
+        ? await campaignFlightOrDeny(provider, ctx, o, { activating, children: () => kidsOf(o.id) })
+        : { startTime: o.startTime, endTime: o.endTime }
+    checkLifetimeCap(s, b.amount, c, flight, `Ngân sách trọn đời của ${label}`)
+  }
+  /** ABO campaign being switched on: its ad sets that are configured on start spending with it */
+  const checkChildren = async (campaign: AdObjectDetail) => {
+    if (campaign.budget || !adGroupFlightsMatter(provider.platform)) return
+    const list = await kidsOf(campaign.id)
+    if (list === null) {
+      throw denied(
+        "budget_unverifiable",
+        `Không đọc được danh sách nhóm quảng cáo của chiến dịch ${campaign.id} để kiểm tra trần ngân sách nên chưa bật chạy.`,
+        "Thử lại sau, hoặc bật từng nhóm quảng cáo (level ad_group); MCP có trần ngân sách nên không bật khi chưa kiểm tra được."
+      )
+    }
+    for (const k of list) if (isConfiguredOn(k)) await check(k)
   }
   const one = async (id: string) => {
     const o = await get(level, id)
-    check(o)
+    await check(o)
+    if (level === "campaign") await checkChildren(o)
     const adGroupId: string | null = level === "ad" ? (o.parentId ?? null) : null
     let campaignId: string | null = level === "campaign" ? null : (o.campaignId ?? (level === "ad_group" ? o.parentId : null) ?? null)
     if (adGroupId) {
       const g = await get("ad_group", adGroupId).catch((e: unknown) => unverifiable(e, id))
-      check(g)
+      await check(g)
       campaignId ??= g.campaignId ?? g.parentId ?? null
     }
-    if (campaignId) check(await get("campaign", campaignId).catch((e: unknown) => unverifiable(e, id)))
+    if (campaignId) await check(await get("campaign", campaignId).catch((e: unknown) => unverifiable(e, id)))
   }
   const queue = [...ids]
   await Promise.all(
@@ -70,7 +103,7 @@ export async function assertActivationWithinCaps(
 }
 
 function unverifiable(e: unknown, id: string): never {
-  console.warn("[mcp] activation budget check failed", (e as Error)?.message?.slice(0, 200))
+  console.warn("[mcp] activation budget check failed", safeErrorForLog(e))
   throw denied(
     "budget_unverifiable",
     `Không đọc được ngân sách cấp trên của ${id} để kiểm tra trần ngân sách nên chưa bật chạy.`,
@@ -106,14 +139,20 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       const level = args.level as ObjectLevel
       // activation starts spending: the budgets that govern these objects must respect the caps
       // (objects created/copied paused with a large budget must not be switched on past the guardrails)
-      if (args.status === "active") await assertActivationWithinCaps(env, account, provider, level, ids)
+      if (args.status === "active") {
+        requireMoneyCaps(env.grant.settings, account.currency, "bật chạy quảng cáo")
+        await assertActivationWithinCaps(env, account, provider, level, ids)
+      }
       return runWrite(env, {
         args,
         account,
         preview: async () => {
           const ctx = await env.providerCtx(account)
           const r = await provider.setStatus(ctx, level, ids, args.status, { dryRun: true })
-          const warn = args.status === "active" ? ["Bật chạy sẽ bắt đầu tiêu ngân sách."] : []
+          const warn =
+            args.status === "active"
+              ? [...legacyCapWarning(env.grant.settings, account.currency), "Bật chạy sẽ bắt đầu tiêu ngân sách."]
+              : []
           return previewFromMutation(r, warn)
         },
         execute: async (idempotencyKey) => {

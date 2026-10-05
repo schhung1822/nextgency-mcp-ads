@@ -25,6 +25,52 @@ export const STALE_PENDING_MINUTES = 10
 export const DEFAULT_IMAGE = "ghcr.io/notivn/ads-mcp-simple"
 
 // ---------------------------------------------------------------------------------------------
+// Image signature (cosign keyless, signed by the docker.yml workflow of the release tag)
+// ---------------------------------------------------------------------------------------------
+export const SIGNER_REPO = "notivn/Ads-MCP-simple"
+export const SIGNER_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+/** .env switch to skip signature verification ("0" = off, not recommended) */
+export const VERIFY_SIGNATURE_ENV = "UPDATER_VERIFY_SIGNATURE"
+
+/**
+ * verify = check the cosign signature before using an image; skip-image = APP_IMAGE is a fork / local registry
+ * (noti.vn's signature cannot apply); skip-env = the operator set UPDATER_VERIFY_SIGNATURE=0 in .env.
+ */
+export function signatureMode(image: string, envContent: string): "verify" | "skip-image" | "skip-env" {
+  if (image !== DEFAULT_IMAGE) return "skip-image"
+  return readEnvVar(envContent, VERIFY_SIGNATURE_ENV) === "0" ? "skip-env" : "verify"
+}
+
+/** Exact certificate identity (no regexp): the release workflow run for the tag v<version>. */
+export function signerIdentity(version: string): string {
+  if (!parseSemver(version)) throw new Error("signerIdentity: invalid version")
+  return `https://github.com/${SIGNER_REPO}/.github/workflows/docker.yml@refs/tags/v${version}`
+}
+
+/**
+ * stdout of `docker image inspect --format '{{json .RepoDigests}}' <ref>` -> distinct "sha256:<64 hex>" digests
+ * recorded for repository `image` (other repositories and malformed entries are ignored).
+ */
+export function repoDigestsFor(json: string, image: string): string[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json.trim() || "null")
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+  const out = new Set<string>()
+  for (const entry of parsed) {
+    if (typeof entry !== "string") continue
+    const at = entry.lastIndexOf("@")
+    if (at <= 0 || entry.slice(0, at) !== image) continue
+    const digest = entry.slice(at + 1)
+    if (/^sha256:[0-9a-f]{64}$/.test(digest)) out.add(digest)
+  }
+  return [...out]
+}
+
+// ---------------------------------------------------------------------------------------------
 // Versions
 // ---------------------------------------------------------------------------------------------
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/

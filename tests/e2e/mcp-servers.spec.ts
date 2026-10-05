@@ -88,6 +88,15 @@ test.describe("MCP servers", () => {
     await page.fill("#mcp-ips", "not-an-ip")
     await page.getByRole("button", { name: "Tạo MCP" }).click()
     await expect(page.getByText(/không phải địa chỉ IP/)).toBeVisible()
+    // "Vận hành" can switch on / change budgets: a daily cap per currency in scope is mandatory
+    await expect(
+      page.getByText(/\(bắt buộc khi MCP có quyền ghi\)/).first()
+    ).toBeVisible()
+    const dailyCaps = page.locator(
+      '[id^="mcp-maxDailyBudget-"][aria-required="true"]'
+    )
+    expect(await dailyCaps.count()).toBeGreaterThan(0)
+    for (const input of await dailyCaps.all()) await input.fill("5000000")
     await page.fill("#mcp-ips", "")
     await page.getByRole("button", { name: "Tạo MCP" }).click()
 

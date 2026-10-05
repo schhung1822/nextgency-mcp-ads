@@ -170,6 +170,9 @@ test("trang đăng nhập/2FA/đổi mật khẩu/bật 2FA/setup theo từng ng
   check("anon /login", await visit(anon, "/login"), { status: 200 })
   for (const a of [staff, admin, admin2fa, staffMustChange]) check(`${a.key} /login`, await visit(a, "/login"), { status: 307, to: "/" })
   for (const a of [banned, expired]) check(`${a.key} /login`, await visit(a, "/login"), { status: 200 })
+  // public legal pages (pasted into Meta/OpenAI developer apps): 200 for everyone, never a redirect to /login
+  for (const path of ["/privacy", "/terms", "/data-deletion"])
+    for (const a of [anon, staff, admin, banned, expired, staffMustChange]) check(`${a.key} ${path}`, await visit(a, path), { status: 200 })
   // /login/2fa: without a pending challenge → back to /login (valid session → dashboard)
   check("anon /login/2fa", await visit(anon, "/login/2fa"), { status: 307, to: "/login" })
   check("staff /login/2fa", await visit(staff, "/login/2fa"), { status: 307, to: "/" })

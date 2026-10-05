@@ -228,21 +228,43 @@ Từ đây, **mọi lệnh `docker`/`docker compose` chạy bằng user `deploy`
 
 ## 5. Quyền truy cập GitHub (mã nguồn + image riêng tư)
 
-Cần 3 loại thông tin, mỗi loại quyền tối thiểu cho một việc. Nên tạo chúng bằng **một tài khoản GitHub riêng cho máy chủ** (vd `congty-ads-bot`) được noti.vn cấp quyền **Read** vào repo `notivn/Ads-MCP-simple`, thay vì tài khoản cá nhân của nhân viên (nhân viên nghỉ việc thì token chết theo).
+noti.vn thêm **tài khoản GitHub do đơn vị chọn** vào repo `notivn/Ads-MCP-simple` với vai trò *outside collaborator*, quyền **Read**. Từ tài khoản đó tạo **2 PAT classic**, mỗi token đúng một việc:
 
-| Dùng cho | Loại | Quyền | Đặt ở đâu |
+| Dùng cho | Token | Quyền (scope) | Đặt ở đâu |
 |---|---|---|---|
-| `git clone` / `git pull` mã nguồn (docker-compose.yml, Caddyfile, script) | **Deploy key** SSH (khuyến nghị) | Chỉ đọc 1 repo | `~/.ssh` của `deploy` |
-| Kéo image riêng tư từ GHCR | **PAT classic** | **chỉ** `read:packages` | `docker login ghcr.io` |
-| Web kiểm tra bản mới (GitHub Releases của repo riêng tư) | **PAT fine-grained** | Repo `Ads-MCP-simple` · Contents: **Read-only** (Metadata: Read-only tự có) | `UPDATE_GITHUB_TOKEN` trong `.env` |
+| Kéo image riêng tư từ GHCR (lệnh tay và service `updater`) | **Token A** - PAT classic | **chỉ** `read:packages` | `docker login ghcr.io` (`~/.docker/config.json`) |
+| `git clone` / `git pull` qua HTTPS (docker-compose.yml, Caddyfile, script) + web/worker kiểm tra bản mới (GitHub Releases) | **Token B** - PAT classic | **chỉ** `repo` | `UPDATE_GITHUB_TOKEN` trong `.env`; dán khi git hỏi mật khẩu (**không** lưu bằng `credential.helper store`) |
 
-### 5.1 Deploy key (git clone chỉ đọc)
+Không dùng PAT fine-grained: GitHub không cho PAT fine-grained truy cập repo mà tài khoản chỉ là *outside collaborator*, và GHCR chỉ nhận PAT classic. Tài khoản chỉ có quyền Read trên repo của noti.vn, nên token bị lộ cũng **không** đẩy được mã hay tag lên repo phần mềm.
+
+> [!WARNING]
+> Scope `repo` của Token B cho quyền **đọc và ghi mọi repo mà chính tài khoản đó có quyền** (repo cá nhân, repo của tổ chức khác). Nếu tài khoản có repo quan trọng, nên tạo **tài khoản GitHub riêng cho máy chủ** (vd `congty-ads-server`, bật 2FA) và nhờ noti.vn thêm tài khoản này thay cho tài khoản cá nhân (không bắt buộc). Nhân viên giữ tài khoản nghỉ việc: chuyển sang tài khoản khác và xoá token cũ.
+
+### 5.1 Token A - PAT classic cho GHCR (`read:packages`)
+GHCR (GitHub Packages) **chỉ nhận PAT classic**, không nhận PAT fine-grained (docs.github.com, 2026-10-03).
+1. Đăng nhập tài khoản đã được cấp quyền → **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
+2. Note: `ads-mcp VPS mcp.congty.vn - pull image`.
+3. Expiration: chọn ngày cụ thể (vd 1 năm) và **đặt lịch nhắc gia hạn trước 2 tuần**. GitHub khuyến nghị luôn đặt hạn. PAT hết hạn = updater và `docker compose pull` báo `denied`/`unauthorized` (bản đang chạy không bị ảnh hưởng).
+4. Chỉ tick **`read:packages`**. Không tick `repo`, `write:packages`, `delete:packages`.
+5. Generate, sao chép token ngay (chỉ hiện 1 lần).
+
+Lưu ý: package riêng tư của tổ chức **kế thừa quyền của repo liên kết**, nên tài khoản phải có quyền Read trên repo. Nếu tổ chức bật SAML SSO phải bấm **Configure SSO → Authorize** cho token; nếu tổ chức chặn PAT classic thì liên hệ noti.vn.
+
+### 5.2 Token B - PAT classic `repo` (mã nguồn + kiểm tra bản mới)
+Repo riêng tư thì API Releases trả 404 khi không có token, web sẽ báo "Không tìm thấy bản phát hành nào".
+1. Như 5.1, Note: `ads-mcp VPS mcp.congty.vn - repo`, cùng cách đặt hạn và lịch nhắc.
+2. Chỉ tick **`repo`** (các ô con tự được tick). Không tick gì khác.
+3. Generate, sao chép token ngay.
+
+Dùng Token B ở 2 chỗ:
+- `UPDATE_GITHUB_TOKEN` trong `.env` (mục 6.3). Chỉ `web` và `worker` nhận biến này (updater không cần).
+- Mật khẩu khi `git clone` / `git pull` qua HTTPS hỏi (`Username` = tên tài khoản GitHub, `Password` = Token B). **Không** ghép token vào URL (bị lưu trong `.git/config`), **không** chạy `git config credential.helper store` (lưu token dạng chữ thường ở `~/.git-credentials`). Tuỳ chọn: `git config --global credential.helper 'cache --timeout=900'` (chỉ giữ trong RAM 15 phút).
+
+### 5.3 (Nâng cao, tuỳ chọn) Deploy key cho `git pull`
+Muốn `git pull` không phải dán Token B: tạo deploy key chỉ đọc và gửi phần `.pub` cho noti.vn thêm ở **repo → Settings → Deploy keys** ("Allow write access" **không** tick). Token B vẫn cần cho `UPDATE_GITHUB_TOKEN`.
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/ads-mcp-deploy -N "" -C "ads-mcp@$(hostname)"
 cat ~/.ssh/ads-mcp-deploy.pub
-```
-Gửi nội dung `.pub` cho quản trị repo (noti.vn) để thêm ở **repo → Settings → Deploy keys → Add deploy key**, **không** tick "Allow write access". Deploy key chỉ đọc đúng 1 repo, không hết hạn, không dùng được cho GHCR hay API.
-```bash
 cat >> ~/.ssh/config <<'EOF'
 Host github-ads-mcp
   HostName github.com
@@ -251,30 +273,19 @@ Host github-ads-mcp
   IdentitiesOnly yes
 EOF
 chmod 600 ~/.ssh/config
-ssh -T github-ads-mcp
+ssh -T github-ads-mcp                                               # sau khi noti.vn báo đã thêm khoá
+git -C /opt/ads-mcp remote set-url origin github-ads-mcp:notivn/Ads-MCP-simple.git
 ```
 Lần đầu SSH hỏi xác nhận khoá máy chủ GitHub: so dấu vân tay ED25519 với trang chính thức "GitHub's SSH key fingerprints" (`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`) rồi gõ `yes`. Kết quả đúng: `Hi notivn/Ads-MCP-simple! You've successfully authenticated, but GitHub does not provide shell access.`
 
-*Cách khác (không khuyến nghị):* clone qua HTTPS dùng PAT fine-grained (Contents: Read-only) làm mật khẩu. Đừng ghép token vào URL (nó bị lưu trong `.git/config`).
-
-### 5.2 PAT classic cho GHCR (`read:packages`)
-GHCR (GitHub Packages) **chỉ nhận PAT classic**, không nhận PAT fine-grained (docs.github.com, 2026-10-03).
-1. Đăng nhập tài khoản máy chủ → **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
-2. Note: `ads-mcp VPS mcp.congty.vn - pull image`.
-3. Expiration: chọn ngày cụ thể (vd 1 năm) và **đặt lịch nhắc gia hạn trước 2 tuần**. GitHub khuyến nghị luôn đặt hạn. PAT hết hạn = updater và `docker compose pull` báo `denied`/`unauthorized` (bản đang chạy không bị ảnh hưởng).
-4. Chỉ tick **`read:packages`**. Không tick `repo`, `write:packages`, `delete:packages`.
-5. Generate, sao chép token ngay (chỉ hiện 1 lần).
-
-Lưu ý: package riêng tư của tổ chức **kế thừa quyền của repo liên kết**, nên tài khoản phải có quyền Read trên repo. Nếu tổ chức bật SAML SSO phải bấm **Configure SSO → Authorize** cho token; nếu tổ chức chặn PAT classic thì liên hệ noti.vn.
-
-### 5.3 PAT fine-grained cho kiểm tra bản mới (`UPDATE_GITHUB_TOKEN`)
-Repo riêng tư thì API Releases trả 404 khi không có token, web sẽ báo "Không tìm thấy bản phát hành nào".
-1. **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-2. Resource owner: **notivn** (tổ chức sở hữu repo). Repository access: **Only select repositories** → `notivn/Ads-MCP-simple`.
-3. Repository permissions: **Contents: Read-only** (đủ cho `GET /repos/{owner}/{repo}/releases/latest`; `Metadata: Read-only` được thêm tự động và đủ cho danh sách tag dự phòng). Không cấp gì khác.
-4. Expiration: tối đa theo chính sách tổ chức (mặc định của GitHub cho tổ chức là 366 ngày). Mặc định tổ chức **yêu cầu chủ tổ chức duyệt** token fine-grained: token ở trạng thái `pending` cho đến khi noti.vn duyệt.
-
-Chưa kiểm chứng: tài khoản chỉ là *outside collaborator* (không phải thành viên tổ chức) có chọn được resource owner `notivn` hay không. Nếu không chọn được, liên hệ noti.vn để được thêm làm thành viên hoặc được cấp token.
+### 5.4 Đã cài theo hướng dẫn cũ (1 token cho mọi việc)
+Nếu VPS đang dùng 1 PAT tích cả `repo` và `read:packages`, lưu bằng `git config --global credential.helper store`, làm lần lượt (user `deploy`, thư mục `/opt/ads-mcp`):
+1. Tạo Token A (5.1) và Token B (5.2).
+2. `rm -f ~/.git-credentials && git config --global --unset credential.helper` (từ giờ `git pull` hỏi Username + Token B).
+3. `docker logout ghcr.io`, rồi đăng nhập lại bằng Token A (mục 6.2).
+4. `nano .env`, thay giá trị dòng `UPDATE_GITHUB_TOKEN=` bằng Token B, rồi `docker compose up -d --no-build`.
+5. Xoá token cũ ở <https://github.com/settings/tokens>.
+6. **Cài đặt → Cập nhật → Kiểm tra ngay**: phải thấy phiên bản mới nhất, không báo lỗi token.
 
 ---
 
@@ -283,7 +294,7 @@ Chưa kiểm chứng: tài khoản chỉ là *outside collaborator* (không ph�
 ### 6.1 Lấy mã nguồn
 ```bash
 sudo mkdir -p /opt/ads-mcp && sudo chown deploy:deploy /opt/ads-mcp
-git clone github-ads-mcp:notivn/Ads-MCP-simple.git /opt/ads-mcp
+git clone https://github.com/notivn/Ads-MCP-simple.git /opt/ads-mcp   # Username = tên GitHub, Password = Token B (5.2)
 cd /opt/ads-mcp
 git log --oneline -1          # xem đang ở commit nào
 mkdir -p backups && chmod 700 backups   # tạo trước để thư mục thuộc deploy (Docker tự tạo sẽ thuộc root)
@@ -292,7 +303,7 @@ mkdir -p backups && chmod 700 backups   # tạo trước để thư mục thuộ
 
 ### 6.2 Đăng nhập GHCR
 ```bash
-read -rs CR_PAT                                   # dán PAT classic rồi Enter (không hiện ra màn hình)
+read -rs CR_PAT                                   # dán Token A (5.1) rồi Enter (không hiện ra màn hình)
 printf '%s' "$CR_PAT" | docker login ghcr.io -u <tên-tài-khoản-github> --password-stdin
 unset CR_PAT
 ```
@@ -328,11 +339,11 @@ grep -c '^TUNNEL_TOKEN=eyJ' .env      # chỉ phương án D: 1 = đã dán toke
 | `APP_DOMAIN` | Tên miền của web (app chỉ nhận MCP với Host đúng tên này) | `mcp.congty.vn` |
 | `BETTER_AUTH_URL` | URL công khai, bắt buộc `https://` | `https://mcp.congty.vn` |
 | `ACME_EMAIL` | Email đăng ký với Let's Encrypt (phương án A). Phương án khác vẫn phải có giá trị (không dùng tới) | `it@congty.vn` |
-| `APP_VERSION` | Phiên bản image sẽ chạy, **không có `v`**, phải là bản đã có trên trang Releases. Script lấy từ `package.json`; updater tự ghi khi cập nhật | `1.0.0` |
+| `APP_VERSION` | Phiên bản image sẽ chạy, **không có `v`**, phải là bản đã có trên trang Releases. **Bắt buộc** (trống thì mọi lệnh `docker compose` báo lỗi). Script lấy từ `package.json` (hoặc `--app-version x.y.z`); updater tự ghi khi cập nhật | `1.0.2` |
 | `COMPOSE_PROFILES` | `updater` = bật cập nhật tự động | `updater` |
 | `HOST_PROJECT_DIR` | Đường dẫn tuyệt đối thư mục dự án (updater cần) | `/opt/ads-mcp` |
 | `UPDATER_DOCKER_CONFIG` | Thư mục chứa `docker login` cho updater | `/home/deploy/.docker` |
-| `UPDATE_GITHUB_TOKEN` | PAT fine-grained mục 5.3 (repo riêng tư: bắt buộc để web thấy bản mới) | `github_pat_...` |
+| `UPDATE_GITHUB_TOKEN` | Token B mục 5.2 (repo riêng tư: bắt buộc để web thấy bản mới) | `ghp_...` |
 | `CADDY_REPLICAS` | `1` chạy Caddy, `0` tắt (phương án C) | `1` |
 | `CADDY_CLIENT_IP` | `direct`, `cloudflare` hoặc `tunnel` (cách lấy IP thật) | `direct` |
 | `CADDY_TLS` | `auto`, `cloudflare-origin`, `cloudflare-origin-aop`, `tunnel` | `auto` |
@@ -342,11 +353,16 @@ grep -c '^TUNNEL_TOKEN=eyJ' .env      # chỉ phương án D: 1 = đã dán toke
 | `CLOUDFLARED_REPLICAS` | `1` chạy cloudflared (phương án D), `0` tắt | `0` |
 | `TUNNEL_TOKEN` | Token của Cloudflare Tunnel (phương án D, **secret**, dán từ dashboard - script không sinh) | trống |
 | `CLOUDFLARED_PROTOCOL` | Tuỳ chọn, phương án D: `auto` (mặc định) hoặc `http2` khi mạng chặn UDP | (không đặt) |
+| `UPDATER_VERIFY_SIGNATURE` | Tuỳ chọn. `0` = updater **bỏ qua** kiểm tra chữ ký số của image (không khuyến nghị; chỉ dùng tạm khi máy chủ bị chặn mạng tới Sigstore) | (không đặt) |
+| `WEB_MEM_LIMIT`, `WORKER_MEM_LIMIT`, `MIGRATE_MEM_LIMIT`, `UPDATER_MEM_LIMIT`, `CADDY_MEM_LIMIT`, `CLOUDFLARED_MEM_LIMIT`, `WEB_PIDS_LIMIT`, `WORKER_PIDS_LIMIT` | Tuỳ chọn. Trần RAM / số tiến trình của từng container (mặc định `1g`, `768m`, `768m`, `512m`, `256m`, `256m`, `512`, `256`). Là mức trần, không phải mức giữ trước; đặt quá thấp container bị tắt vì hết bộ nhớ | (không đặt) |
 
-Thêm token kiểm tra bản mới (sửa bằng `nano .env`, bỏ dấu `#` ở dòng `UPDATE_GITHUB_TOKEN=` và dán token):
+Thêm token kiểm tra bản mới (sửa bằng `nano .env`, bỏ dấu `#` ở dòng `UPDATE_GITHUB_TOKEN=` và dán Token B):
 ```ini
-UPDATE_GITHUB_TOKEN=github_pat_xxxxxxxxxxxxxxxx
+UPDATE_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxx
 ```
+
+> [!NOTE]
+> `docker-compose.yml` **chỉ truyền vào app các biến có trong danh sách** của nó (`x-env-runtime` cho web + worker, thêm `x-env-web` cho web; migrate chỉ nhận `DATABASE_URL`). Biến tự thêm vào `.env` mà không có trong danh sách sẽ không tới được app; worker không nhận `BETTER_AUTH_SECRET`, `MCP_KEY_PEPPER`, `SETUP_TOKEN`. Với các biến trong danh sách, giá trị `export` sẵn trong shell chạy `docker compose` được ưu tiên hơn `.env`: đừng `export` các biến của app trong `~/.bashrc` trên VPS.
 
 > [!WARNING]
 > **Sao lưu `.env` ngay** vào trình quản lý mật khẩu/két an toàn của công ty, **khác nơi** chứa file backup database. Mất `ENCRYPTION_KEYS` = mất toàn bộ token quảng cáo đã lưu (phải dán lại tất cả). Mất `MCP_KEY_PEPPER` = mọi link MCP ngừng hoạt động. Mất `BETTER_AUTH_SECRET` = mọi phiên đăng nhập và 2FA phải thiết lập lại. Không bao giờ chạy lại `gen-secrets.sh --force` trên máy đã có dữ liệu.
@@ -599,7 +615,9 @@ Nội dung chính của `deploy/nginx/ads-mcp.conf` (đã kiểm `nginx -t` trê
 - `location /mcp/`: `proxy_buffering off` (SSE), `client_max_body_size 1m`, `proxy_read_timeout 600s`, không gzip, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
 - HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY` (ẩn bản của app rồi đặt lại 1 lần, không nhân đôi header).
 - **Che key MCP trong access log** (`/var/log/nginx/ads-mcp.access.log`, định dạng JSON): đường dẫn và Referer thành `/mcp/[redacted]`. Log lỗi của `/mcp/` chỉ ghi mức `crit` vì error log của Nginx in cả dòng request (có key) và không che được.
-- Không bật `ssl_stapling` (Let's Encrypt đã ngừng OCSP từ 08/2025).
+- Không bật `ssl_stapling` (Let's Encrypt đã ngừng OCSP từ 08/2025). `ssl_ciphers` theo mức "intermediate" của Mozilla (TLS 1.2 chỉ AEAD + ECDHE).
+
+Tuỳ chọn: `deploy/nginx/default-deny.conf` từ chối mọi request không gửi tới đúng tên miền (quét theo IP, `Host` lạ; cổng 443 từ chối bắt tay TLS nên không lộ chứng chỉ). **Chỉ** bật khi không site nào khác trên máy chủ khai báo `default_server` (hai `default_server` cùng cổng làm `nginx -t` lỗi); cách cài ghi ở đầu file.
 
 Nếu Nginx đang có `log_format`/`upstream` khác tên trùng (`adsmcp_json`, `adsmcp_web`) thì đổi tên. Access log mặc định `/var/log/nginx/access.log` của các site khác không bị ảnh hưởng.
 
@@ -829,7 +847,7 @@ Tài liệu xử lý lỗi tunnel của Cloudflare: <https://developers.cloudfla
 ### 11.1 Trong web (khuyến nghị)
 Khi noti.vn phát hành bản mới (tag `vX.Y.Z` → GitHub Actions build image + tạo Release), admin thấy thông báo trong web. **Cài đặt → Cập nhật → Cập nhật lên vX.Y.Z** (xác thực lại mật khẩu/2FA). Service `updater`:
 1. sao lưu database → `backups/pre-update-<thời gian UTC>.dump` (giữ lại, không tự xoá);
-2. `docker pull` image mới (kiểm tra image mang đúng phiên bản);
+2. `docker pull` image mới, kiểm tra image mang đúng phiên bản và **xác minh chữ ký số** (cosign) do GitHub Actions của noti.vn ký cho đúng tag `vX.Y.Z` - image không có chữ ký (tự build, đẩy tay, bị tráo) bị từ chối, bản đang chạy không bị ảnh hưởng;
 3. chạy migration bằng image mới (bản cũ vẫn phục vụ; lỗi thì dừng, không đụng bản đang chạy);
 4. ghi `APP_VERSION=X.Y.Z` vào `.env` (bản cũ ở `.env.bak`) rồi thay `web` + `worker`;
 5. kiểm tra sức khoẻ tối đa 5 phút; lỗi thì **tự quay về bản cũ**;
@@ -840,10 +858,13 @@ Web gián đoạn khoảng 1-2 phút. Theo dõi trên trang Cập nhật hoặc 
 **Điều kiện để updater chạy được với image riêng tư**
 - Trang Cập nhật báo dịch vụ **Đang hoạt động** (`docker compose ps updater` = running). Nếu "Chưa bật": `docker compose logs updater` (thường do `HOST_PROJECT_DIR` sai, thiếu `COMPOSE_PROFILES=updater`, hoặc chưa `docker compose up -d --no-build` sau khi sửa `.env`).
 - `docker login ghcr.io` còn hiệu lực ở **đúng thư mục** `UPDATER_DOCKER_CONFIG` (mục 6.2). PAT hết hạn → bước "Tải image" báo lỗi, bản đang chạy không bị ảnh hưởng: đăng nhập lại rồi bấm Cập nhật lần nữa.
-- `UPDATE_GITHUB_TOKEN` còn hạn (repo riêng tư), nếu không web không thấy bản mới.
+- `UPDATE_GITHUB_TOKEN` (Token B) còn hạn (repo riêng tư), nếu không web không thấy bản mới.
+- Máy chủ đi ra Internet được tới `ghcr.io` và Sigstore (`*.sigstore.dev`) để xác minh chữ ký số. Bị chặn thì bước "Tải image" báo `không xác minh được chữ ký số`. Chỉ khi bắt buộc mới đặt tạm `UPDATER_VERIFY_SIGNATURE=0` trong `.env` (bỏ qua kiểm tra, không khuyến nghị), cập nhật xong thì xoá dòng đó.
 
 > [!IMPORTANT]
 > Updater **chỉ đổi image** (`APP_VERSION`). Nó **không** cập nhật `docker-compose.yml`, `Caddyfile`, `deploy/`, script trong thư mục dự án. Khi một bản phát hành đổi các file đó, ghi chú phát hành sẽ nói rõ: làm thêm `git pull` theo 11.2 (bước 2 và 5). Nên `git pull --ff-only` định kỳ kể cả khi dùng updater.
+>
+> **Sau mỗi lần `git pull` có đổi `docker-compose.yml`, chạy ngay `docker compose up -d --no-build`, rồi mới bấm Cập nhật trong web.** Updater dùng `docker-compose.yml` đang có trên đĩa: nếu file mới chưa được áp dụng, các container cũ và mới có thể nằm ở cấu hình mạng khác nhau.
 
 ### 11.2 Chạy tay
 Dùng khi tắt updater, updater lỗi, hoặc bản mới đổi file cấu hình:
@@ -851,7 +872,7 @@ Dùng khi tắt updater, updater lỗi, hoặc bản mới đổi file cấu hì
 cd /opt/ads-mcp
 # 1) sao lưu ngay
 docker compose exec -T db pg_dump -U adsmcp -d adsmcp -Fc -Z zstd:6 > backups/pre-update-manual-$(date +%F_%H%M%S).dump
-# 2) lấy file cấu hình mới (docker-compose.yml, Caddyfile, deploy/, script)
+# 2) lấy file cấu hình mới (docker-compose.yml, Caddyfile, deploy/, script) - git hỏi Username + Token B (5.2)
 git pull --ff-only
 # 3) chọn phiên bản (KHÔNG có "v"; phải có trên trang Releases)
 grep -q '^APP_VERSION=' .env && sed -i 's/^APP_VERSION=.*/APP_VERSION=1.1.0/' .env || echo 'APP_VERSION=1.1.0' >> .env
@@ -867,10 +888,19 @@ docker compose logs --tail=50 migrate web
 - `git pull` báo *"Your local changes would be overwritten"*: xem `git status`/`git diff`. Thường do `deploy/caddy/client-ip-cloudflare.caddy` hoặc `deploy/nginx/cloudflare-realip.conf` được script sinh lại: `git checkout -- <file>` rồi `git pull --ff-only` và chạy lại script. Không sửa tay các file đã commit; tuỳ biến đặt trong `.env`.
 - Phương án C: nếu `deploy/nginx/ads-mcp.conf` đổi, so sánh và áp dụng thay đổi vào `/etc/nginx/sites-available/ads-mcp.conf` (`diff`), rồi `sudo nginx -t && sudo systemctl reload nginx`.
 - Phương án D: bước 4 tự kéo và tạo lại `cloudflared` khi bản mới đổi phiên bản image ghim trong `docker-compose.yml` (tunnel ngắt vài giây). Bước 5 (`restart caddy`) áp dụng như A/B.
-- Biến mới trong `.env.example` luôn có giá trị mặc định an toàn trong `docker-compose.yml`, không cần chạy lại `gen-secrets.sh`.
+- Biến mới trong `.env.example` luôn có giá trị mặc định an toàn trong `docker-compose.yml`, không cần chạy lại `gen-secrets.sh`. Riêng `APP_VERSION` là bắt buộc: kiểm tra `grep -c '^APP_VERSION=[0-9]' .env` ra `1`.
 - Quay về bản cũ: đặt lại `APP_VERSION` cũ → `docker compose up -d --no-build`. Migration luôn tương thích ngược 1 phiên bản; chỉ khôi phục DB (mục 12.3) khi thật cần.
 
-### 11.3 Dọn image cũ
+### 11.3 Tự kiểm tra chữ ký số của image (tuỳ chọn)
+Updater đã tự làm việc này. Muốn kiểm tra tay (cần [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) bản 3 trở lên và đã `docker login ghcr.io` bằng Token A; thay `X.Y.Z` ở cả 2 chỗ):
+```bash
+cosign verify ghcr.io/notivn/ads-mcp-simple:X.Y.Z \
+  --certificate-identity https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/vX.Y.Z \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+Image updater: thay `ads-mcp-simple:` bằng `ads-mcp-simple-updater:`. Kết quả đúng có dòng `The cosign claims were validated` và `The code-signing certificate was verified`.
+
+### 11.4 Dọn image cũ
 Mỗi phiên bản ~vài trăm MB. Sau khi bản mới chạy ổn vài ngày:
 ```bash
 docker image ls 'ghcr.io/notivn/*'
@@ -886,6 +916,7 @@ docker system df
 - Service `backup`: `pg_dump` nén zstd **ngay khi khởi động và mỗi 24 giờ**, lưu `./backups/adsmcp_YYYY-MM-DD_HHMMSS.dump`, giữ **14 ngày** (`BACKUP_KEEP_DAYS`, `BACKUP_INTERVAL_SECONDS` trong `.env`; áp dụng: `docker compose up -d --no-build backup`). Xem: `docker compose logs backup` (dòng `[backup] ok`).
 - Updater tạo `backups/pre-update-*.dump` trước mỗi lần cập nhật; **không tự xoá**: dọn định kỳ, ví dụ giữ 5 file mới nhất: `ls -t backups/pre-update-* | tail -n +6 | xargs -r rm -f`.
 - File dump **không chứa** `ENCRYPTION_KEYS` (chủ ý). Sao lưu `.env` riêng (mục 6.3).
+- File dump **vẫn là dữ liệu bí mật**: chứa email người dùng, hash mật khẩu, token nền tảng đã mã hoá, nhật ký. Mã hoá trước khi đưa ra ngoài VPS (rclone `crypt`, restic, age...) và giữ khoá/mật khẩu mã hoá bản sao lưu **tách khỏi** `.env` lẫn nơi chứa dump.
 - Bớt dung lượng (bỏ dữ liệu nhật ký khỏi bản sao lưu): `BACKUP_PG_DUMP_ARGS=--exclude-table-data=mcp_call_logs_p* --exclude-table-data=activity_logs_p*`.
 
 Sao lưu ngay bằng tay:
@@ -950,10 +981,12 @@ df -h / && docker system df                         # đĩa
 ### 13.2 Lỗi khi kéo image từ GHCR
 | Thông báo | Nguyên nhân | Cách xử lý |
 |---|---|---|
-| `denied`, `unauthorized`, `error from registry: denied` | Chưa `docker login`, PAT hết hạn/bị thu hồi, thiếu `read:packages`, tài khoản mất quyền Read trên repo, chưa authorize SSO | Tạo lại PAT (5.2), đăng nhập lại (6.2) |
+| `denied`, `unauthorized`, `error from registry: denied` | Chưa `docker login`, Token A hết hạn/bị thu hồi, thiếu `read:packages`, tài khoản mất quyền Read trên repo, chưa authorize SSO | Tạo lại Token A (5.1), đăng nhập lại (6.2) |
 | Lệnh tay chạy được nhưng updater báo lỗi bước "Tải image" | Đăng nhập bằng user khác với `UPDATER_DOCKER_CONFIG`, hoặc dùng credential helper | 6.2; sửa `UPDATER_DOCKER_CONFIG` rồi `docker compose up -d --no-build` |
 | `manifest unknown`, `not found` | `APP_VERSION` sai (có chữ `v`, hoặc bản chưa phát hành/đang build) | Xem trang Releases; `APP_VERSION=1.0.0` |
 | `no matching manifest for linux/...` | Kiến trúc máy không được build (vd đã chỉ build amd64) | Dùng VPS amd64 hoặc build lại cả arm64 (mục 14) |
+| Updater: bước "Tải image" báo `không xác minh được chữ ký số` | Máy chủ không ra được Sigstore/ghcr.io, hoặc image không do GitHub Actions của noti.vn ký cho đúng tag | Mở chiều ra tới `ghcr.io`, `*.sigstore.dev`; xem `docker compose logs --tail=100 updater`; báo noti.vn nếu mạng ổn (11.1, 11.3) |
+| Mọi lệnh `docker compose` báo `Thiếu APP_VERSION trong .env` | `.env` không có hoặc để trống `APP_VERSION` | Đặt `APP_VERSION=<phiên bản đang chạy>` (không có `v`) trong `.env` |
 | `toomanyrequests` từ Docker Hub (postgres, caddy) | Giới hạn kéo ẩn danh của Docker Hub | Đợi, hoặc `docker login` Docker Hub |
 
 ### 13.3 Lỗi thường gặp khác
@@ -966,7 +999,7 @@ df -h / && docker system df                         # đĩa
 | Cloudflare 521/522/524/525/526 | | 9.9 |
 | Cloudflare Tunnel 1033/530/502, `ERR_TOO_MANY_REDIRECTS`, trang trắng | | 10b.10 |
 | Trang Cập nhật: "Chưa bật" | updater không chạy/không ghi heartbeat | `docker compose ps updater`, `docker compose logs updater`; kiểm tra `COMPOSE_PROFILES=updater`, `HOST_PROJECT_DIR=/opt/ads-mcp` (đúng đường dẫn thật, `pwd`) rồi `docker compose up -d --no-build` |
-| Trang Cập nhật: "Không tìm thấy bản phát hành nào" | Thiếu/sai `UPDATE_GITHUB_TOKEN` | 5.3; sửa `.env` → `docker compose up -d --no-build` |
+| Trang Cập nhật: "Không tìm thấy bản phát hành nào" | Thiếu/sai/hết hạn `UPDATE_GITHUB_TOKEN` (Token B) | 5.2; sửa `.env` → `docker compose up -d --no-build` |
 | Cập nhật kết thúc `failed` ở bước quay về | Bản mới lỗi và quay về cũng lỗi | `.claude/docs/07-deployment.md` §6.6 (khôi phục từ `pre-update-*.dump`) |
 | Mọi người bị khoá đăng nhập cùng lúc, nhật ký toàn một IP | Proxy cấu hình sai IP thật | Phương án B: `CADDY_CLIENT_IP=cloudflare`; C: file Nginx của dự án + realip; D: `CADDY_CLIENT_IP=tunnel` |
 | AI báo 404 khi gọi MCP | Link sai, MCP tắt/hết hạn/đã xoay key, hoặc Host khác `APP_DOMAIN` | Sao chép lại link trong trang MCP |
@@ -977,10 +1010,11 @@ cd /opt/ads-mcp
 docker compose run --rm web node dist/cli.mjs reset-password admin@congty.vn   # in mật khẩu tạm 1 lần
 docker compose run --rm web node dist/cli.mjs reset-2fa admin@congty.vn
 docker compose run --rm web node dist/cli.mjs unlock admin@congty.vn           # gỡ khoá do nhập sai nhiều lần
+docker compose run --rm web node dist/cli.mjs unban admin@congty.vn            # mở khoá tài khoản bị khoá
 docker compose run --rm web node dist/cli.mjs create-admin --email ban@congty.vn
 docker compose run --rm web node dist/cli.mjs help
 ```
-Không đặt mật khẩu trên dòng lệnh (lộ qua lịch sử shell); CLI tự sinh mật khẩu tạm hoặc đọc từ biến `ADMIN_PASSWORD`/stdin.
+Không đặt mật khẩu trên dòng lệnh (lộ qua lịch sử shell); CLI tự sinh mật khẩu tạm hoặc đọc từ biến `ADMIN_PASSWORD`/stdin. `ADMIN_PASSWORD` ghi trong `.env` **không** tới được CLI (compose chỉ truyền các biến trong danh sách, mục 6.3): truyền từ shell bằng `read -rsp "Mật khẩu tạm: " ADMIN_PASSWORD; export ADMIN_PASSWORD` rồi `docker compose run --rm -e ADMIN_PASSWORD web node dist/cli.mjs create-admin --email ban@congty.vn` (`-e TÊN` không kèm giá trị: lấy từ shell, không lộ trên dòng lệnh), xong `unset ADMIN_PASSWORD`.
 
 ---
 
@@ -1007,7 +1041,8 @@ Khuyến nghị (phòng khi GitHub bắt đầu tính phí, sẽ báo trước �
 - [ ] `.env` quyền 600, đã sao lưu ở nơi an toàn **khác** nơi chứa bản dump.
 - [ ] Bản sao lưu được đẩy ra ngoài VPS (12.2) và đã thử khôi phục.
 - [ ] Admin bật 2FA, bật "Bắt buộc 2FA cho quản trị viên".
-- [ ] PAT classic chỉ `read:packages`, có hạn, đã đặt lịch nhắc; PAT fine-grained chỉ 1 repo, Contents: Read-only; deploy key chỉ đọc.
+- [ ] Token A (PAT classic) chỉ `read:packages`; Token B (PAT classic) chỉ `repo`, của tài khoản chỉ có quyền Read trên repo noti.vn; cả hai có hạn và lịch nhắc; không còn `~/.git-credentials` / `credential.helper store` trên VPS (5.4); deploy key (nếu dùng) chỉ đọc.
+- [ ] Bản sao lưu được mã hoá trước khi ra khỏi VPS; khoá mã hoá bản sao lưu cất riêng (12.1).
 - [ ] Không dùng credential helper cho `docker login`; `UPDATER_DOCKER_CONFIG` đúng user.
 - [ ] Kiểm tra IP thật: nhật ký nhân sự ghi đúng IP của bạn (9.4).
 - [ ] Phương án B: Full (strict), Bot Fight Mode tắt, WAF skip `/mcp/`, AOP bật (9.5).
@@ -1021,7 +1056,7 @@ Khuyến nghị (phòng khi GitHub bắt đầu tính phí, sẽ báo trước �
 Quy tắc dự án: **build Docker image ở máy local thành công và chạy thử trước, rồi mới push**.
 1. `pnpm lint && pnpm typecheck && pnpm test` xanh; migration mới tương thích ngược 1 phiên bản (07-deployment §6.7).
 2. Sửa `package.json#version` = `X.Y.Z`, commit `chore(release): vX.Y.Z`.
-3. Build local đúng target phát hành:
+3. Build local đúng target phát hành **chỉ để chạy thử** (image này không có chữ ký, **không bao giờ** `docker push` image/tag phát hành bằng tay: updater của khách sẽ từ chối):
    ```bash
    docker build --build-arg APP_BUILD_VERSION=X.Y.Z -t ghcr.io/notivn/ads-mcp-simple:X.Y.Z .
    docker build --target updater --build-arg APP_BUILD_VERSION=X.Y.Z -t ghcr.io/notivn/ads-mcp-simple-updater:X.Y.Z .
@@ -1029,9 +1064,24 @@ Quy tắc dự án: **build Docker image ở máy local thành công và chạy 
    (hoặc `APP_BUILD_VERSION=X.Y.Z APP_VERSION=X.Y.Z docker compose -f docker-compose.yml -f docker-compose.build.yml build`)
 4. Smoke test stack production local với chính image đó: `APP_VERSION=X.Y.Z docker compose up -d --no-build`, `migrate` exit 0, `web` healthy, đăng nhập, gọi thử 1 tool MCP.
 5. Ghi chú phát hành: nêu rõ nếu đổi `docker-compose.yml`, `Caddyfile`, `deploy/`, `.env.example` (người vận hành phải làm 11.2).
-6. `git tag vX.Y.Z && git push origin main vX.Y.Z`.
-7. GitHub Actions `docker.yml`: kiểm tra version khớp tag → build + push 2 image (amd64 + arm64) → tạo GitHub Release. Theo dõi tab Actions đến khi xanh.
-8. Kiểm tra Release và package trên GHCR có tag `X.Y.Z`; trên một máy thử, admin bấm **Cập nhật** và xác nhận thành công trước khi thông báo cho khách.
+5b. **Thử ký + xác minh bằng tag rc trước** (bắt buộc khi workflow ký/updater thay đổi, nên làm mỗi lần): đặt `package.json#version` = `X.Y.Z-rc.1`, commit lên `main`, `git tag vX.Y.Z-rc.1 && git push origin main vX.Y.Z-rc.1`. CI build + ký 2 image `X.Y.Z-rc.1` (không tạo Release). Rồi xác minh bằng cosign **trong image updater vừa build** (đúng bản cosign khách sẽ chạy):
+   ```bash
+   # digest index (multi-arch) của 2 image rc, rồi xác minh bằng chính cosign trong image updater rc
+   W=$(docker buildx imagetools inspect ghcr.io/notivn/ads-mcp-simple:X.Y.Z-rc.1 --format '{{.Manifest.Digest}}')
+   U=$(docker buildx imagetools inspect ghcr.io/notivn/ads-mcp-simple-updater:X.Y.Z-rc.1 --format '{{.Manifest.Digest}}')
+   for ref in "ghcr.io/notivn/ads-mcp-simple@$W" "ghcr.io/notivn/ads-mcp-simple-updater@$U"; do
+     docker run --rm -v "$HOME/.docker:/root/.docker:ro" -e TUF_ROOT=/tmp/sigstore-tuf --entrypoint cosign \
+       ghcr.io/notivn/ads-mcp-simple-updater:X.Y.Z-rc.1 verify \
+       --certificate-identity https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/vX.Y.Z-rc.1 \
+       --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" || echo "KHÔNG ĐẠT: $ref"
+   done
+   ```
+   Cả 2 phải đạt (`The cosign claims were validated`). Máy dùng Docker Desktop (`credsStore` trong `~/.docker/config.json`): container không đọc được credential helper, hãy đăng nhập vào thư mục riêng `docker --config "$PWD/cfg-tmp" login ghcr.io -u <user> --password-stdin` rồi mount `cfg-tmp` thay cho `$HOME/.docker` (xoá thư mục sau khi xong).
+   Tag rc không bao giờ tới tay khách: job `release` chỉ chạy với `vX.Y.Z` (rc không có GitHub Release), kiểm tra bản mới của web chỉ nhận Release/tag dạng `vX.Y.Z` (bỏ qua prerelease), updater từ chối phiên bản đích không phải `x.y.z`, và rc không được gắn `latest`/`X.Y`.
+   Đạt thì sửa `package.json#version` về `X.Y.Z`, commit, rồi mới tạo tag thật. Không đạt: **không** phát hành, sửa workflow rồi thử `-rc.2`.
+6. `git push origin main`, rồi `git tag vX.Y.Z && git push origin vX.Y.Z` (tag phải trỏ vào commit đã có trên `main`). Bản phát hành **chỉ** được tạo bởi CI.
+7. GitHub Actions `docker.yml`: kiểm tra version khớp tag, tag nằm trên `main`, bản chưa từng phát hành → build + push 2 image (amd64 + arm64, kèm SBOM/provenance) → ký cả 2 bằng cosign keyless → tạo GitHub Release. Theo dõi tab Actions đến khi xanh. Lỗi giữa chừng thì chạy lại job (Release chỉ được tạo ở cuối); đã có Release thì **không** đẩy lại cùng phiên bản, tạo bản vá mới.
+8. Chạy lệnh `cosign verify` ở 11.3 cho **cả 2 image** `X.Y.Z`. Kiểm tra Release và package trên GHCR có tag `X.Y.Z`; trên một máy thử, admin bấm **Cập nhật** và xác nhận thành công trước khi thông báo cho khách.
 
 ### 15.3 Nguồn tham khảo (truy cập 2026-10-03)
 - Docker: <https://docs.docker.com/engine/install/ubuntu/>, <https://docs.docker.com/engine/install/debian/>, <https://docs.docker.com/engine/install/linux-postinstall/>, <https://docs.docker.com/engine/network/packet-filtering-firewalls/>, <https://docs.docker.com/engine/network/firewall-iptables/>, <https://docs.docker.com/engine/network/port-publishing/>, <https://docs.docker.com/reference/compose-file/build/>, <https://docs.docker.com/reference/compose-file/services/#pull_policy>, <https://docs.docker.com/reference/cli/docker/login/>, <https://docs.docker.com/engine/release-notes/28/> (sửa lỗi cổng loopback từ 28.0.0).
@@ -1044,4 +1094,4 @@ Quy tắc dự án: **build Docker image ở máy local thành công và chạy 
 ### 15.4 Đã kiểm chứng / chưa kiểm chứng (bản 1.0.0)
 - **Đã kiểm chứng trên máy dev (Docker 29.6, Compose 5.3):** `docker compose config` hợp lệ cho cả 3 phương án A/B/C (kể cả lệnh kiểu updater `-f docker-compose.yml`); `deploy.replicas: 0` gỡ đúng container Caddy; web publish chỉ ở `127.0.0.1`; Compose khi file có `build:` sẽ tự build lúc kéo image bị từ chối (lý do bỏ `build:` khỏi file chính); `caddy validate` cho 4 tổ hợp `CADDY_CLIENT_IP`/`CADDY_TLS`; Caddy thật: ghi đè `X-Forwarded-For` (direct và sau proxy tin cậy) + che key trong log; `nginx -t` trên Nginx 1.24 (Ubuntu 24.04) và 1.30; Nginx thật: ghi đè `X-Forwarded-For`, header bảo mật, che key trong access log; `gen-env.mjs` và `gen-secrets.sh` (busybox) cho 3 giá trị `--ssl`; script dải IP Cloudflare.
 - **Phương án D (đã kiểm chứng trên máy dev, 2026-10-03):** `docker compose config` hợp lệ cho cả 4 phương án, với `.env` kiểu cũ (không có biến mới) và `.env` sinh mới; A/B/C chỉ khác trước ở service `cloudflared` (`replicas: 0`) và biến rỗng `CADDY_SITE_SCHEME` của caddy (cổng không đổi; caddy được tạo lại 1 lần khi `up` sau `git pull`); lệnh kiểu updater (`-f docker-compose.yml up -d --no-deps web worker`, chạy thử `--dry-run`) không đụng `caddy`/`cloudflared`; `caddy validate` đạt cho A, B, B-aop, B 9.8 và D, kết quả `caddy adapt` của A/B giống hệt từng byte với Caddyfile trước khi sửa; Caddy thật ở chế độ tunnel: chỉ nghe `:80`, không xin chứng chỉ, `CF-Connecting-IP` (IPv4/IPv6) ghi đè `X-Forwarded-For` giả, `X-Forwarded-Proto: https` được giữ, `X-Forwarded-Proto: http` → 308 sang HTTPS, kết nối từ dải ngoài mạng riêng không được tin `CF-Connecting-IP`, key MCP bị che trong log; `cloudflare/cloudflared:2026.9.3` chạy với `read_only` + `cap_drop: ALL` + `no-new-privileges` và token giả: kiểm tra mạng lúc khởi động đạt, tới bước đăng ký thì bị từ chối (`Failed to get tunnel`), healthcheck `cloudflared tunnel ready` trả mã 1 khi chưa có kết nối, token không xuất hiện trong log; `gen-env.mjs` và `gen-secrets.sh` (busybox) cho kết quả giống nhau với `--ssl tunnel`.
-- **Chưa kiểm chứng (không có VPS/Cloudflare/GHCR thật):** cài đặt trọn vẹn trên VPS Ubuntu/Debian thật; kéo image riêng tư từ GHCR (cả bằng updater); Cloudflare thật (Origin CA, AOP, cache/WAF/bot rule, 524, biến thể 9.8); **Cloudflare Tunnel với tunnel và token thật** (route Published application, chuyển hướng, giới hạn 125 giây qua tunnel, SSE qua tunnel, Cloudflare Access với AI client thật, tên menu dashboard); Certbot thật; luật `DOCKER-USER` (9.6); PAT fine-grained với tài khoản outside collaborator.
+- **Chưa kiểm chứng (không có VPS/Cloudflare/GHCR thật):** cài đặt trọn vẹn trên VPS Ubuntu/Debian thật; kéo image riêng tư từ GHCR (cả bằng updater); Cloudflare thật (Origin CA, AOP, cache/WAF/bot rule, 524, biến thể 9.8); **Cloudflare Tunnel với tunnel và token thật** (route Published application, chuyển hướng, giới hạn 125 giây qua tunnel, SSE qua tunnel, Cloudflare Access với AI client thật, tên menu dashboard); Certbot thật; luật `DOCKER-USER` (9.6).

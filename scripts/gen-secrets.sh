@@ -6,10 +6,11 @@
 #   3) chỉ có openssl → tự sinh bằng openssl (không hỗ trợ --dev)
 #
 # Dùng: sh scripts/gen-secrets.sh [--domain mcp.congty.vn] [--email it@congty.vn] [--ssl auto|cloudflare|nginx|tunnel]
-#                                 [--force] [--print] [--dev] [--no-updater]
+#                                 [--force] [--print] [--dev] [--no-updater] [--app-version 1.0.2]
 #   --print      : in nội dung .env ra màn hình thay vì ghi file
 #   --no-updater : không bật cập nhật tự động (COMPOSE_PROFILES để trống)
 #   --ssl        : phương án HTTPS (docs/deploy-vps.md), mặc định auto
+#   --app-version: phiên bản image sẽ chạy (x.y.z); mặc định = package.json#version. Luôn được ghi vào .env.
 # HOST_PROJECT_DIR (thư mục dự án trên máy chủ) = biến môi trường cùng tên hoặc thư mục hiện tại.
 set -eu
 
@@ -23,14 +24,16 @@ if [ "${GEN_SECRETS_FALLBACK:-}" != "1" ]; then
   fi
   if has docker && docker info >/dev/null 2>&1; then
     echo "Không thấy Node ≥ 20 — chạy gen-env.mjs trong Docker (node:24-slim)…" >&2
-    exec docker run --rm -e "HOST_PROJECT_DIR=${HOST_PROJECT_DIR:-$PWD}" --user "$(id -u):$(id -g)" -v "$PWD:/w" -w /w node:24-slim node scripts/gen-env.mjs "$@"
+    # image ghim theo digest (giống FROM của Dockerfile) - script này sinh secret
+    exec docker run --rm -e "HOST_PROJECT_DIR=${HOST_PROJECT_DIR:-$PWD}" --user "$(id -u):$(id -g)" -v "$PWD:/w" -w /w \
+      node:24-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 node scripts/gen-env.mjs "$@"
   fi
 fi
 
 # ---- Fallback thuần sh + openssl -------------------------------------------------------------
 has openssl || { echo "Cần Node, Docker hoặc openssl để sinh secret." >&2; exit 1; }
 
-domain="" email="" ssl=auto force=0 print=0 updater=1
+domain="" email="" ssl=auto force=0 print=0 updater=1 app_version=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) [ $# -ge 2 ] || { echo "Thiếu giá trị cho --domain" >&2; exit 1; }; domain=$2; shift 2 ;;
@@ -39,6 +42,8 @@ while [ $# -gt 0 ]; do
     --email=*) email=${1#*=}; shift ;;
     --ssl) [ $# -ge 2 ] || { echo "Thiếu giá trị cho --ssl" >&2; exit 1; }; ssl=$2; shift 2 ;;
     --ssl=*) ssl=${1#*=}; shift ;;
+    --app-version) [ $# -ge 2 ] || { echo "Thiếu giá trị cho --app-version" >&2; exit 1; }; app_version=${2#v}; shift 2 ;;
+    --app-version=*) app_version=${1#*=}; app_version=${app_version#v}; shift ;;
     --force) force=1; shift ;;
     --print) print=1; shift ;;
     --no-updater) updater=0; shift ;;
@@ -81,9 +86,15 @@ case "$ssl" in
 esac
 export G_CADDY_REPLICAS="$1" G_CADDY_CLIENT_IP="$2" G_CADDY_TLS="$3" G_WEB_HOST_PORT="$4"
 export G_CADDY_SITE_SCHEME="$5" G_CADDY_HTTP_PORT_BIND="$6" G_CADDY_HTTPS_PORT_BIND="$7" G_CLOUDFLARED_REPLICAS="$8"
-# Tag image phát hành = package.json#version (chỉ nhận x.y.z; khác -> để trống = latest)
-app_version=$(sed -n 's/^  "version": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)",*$/\1/p' package.json 2>/dev/null | head -n 1)
-if [ -n "$app_version" ]; then export G_APP_VERSION="$app_version"; fi
+# Tag image phát hành = --app-version hoặc package.json#version (chỉ nhận x.y.z). Không bao giờ để trống.
+if [ -z "$app_version" ]; then
+  app_version=$(sed -n 's/^  "version": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)",*$/\1/p' package.json 2>/dev/null | head -n 1)
+fi
+if ! printf '%s' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "Không xác định được phiên bản (APP_VERSION). Chạy lại với --app-version x.y.z (bản đã có trên trang Releases)." >&2
+  exit 1
+fi
+export G_APP_VERSION="$app_version"
 project_dir=${HOST_PROJECT_DIR:-$PWD}
 project_dir=${project_dir%/}
 export G_COMPOSE_PROFILES=""
@@ -109,6 +120,7 @@ if [ "$print" -eq 1 ]; then
 else
   umask 077
   render > .env
+  chmod 600 .env   # umask chỉ áp dụng khi tạo file mới (--force ghi đè file cũ)
   echo "Đã tạo .env. SETUP_TOKEN và các khoá nằm trong file này — hãy sao lưu ENCRYPTION_KEYS riêng." >&2
   [ -n "$domain" ] || echo "Nhớ sửa APP_DOMAIN, BETTER_AUTH_URL, ACME_EMAIL trong .env." >&2
   if [ "$ssl" = tunnel ]; then

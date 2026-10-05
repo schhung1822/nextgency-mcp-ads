@@ -6,8 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -18,10 +17,12 @@ jobs:
     name: Lint · Typecheck · Test · Build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
 
     services:
       postgres:
-        image: postgres:18.6-trixie
+        image: postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
         env:
           POSTGRES_USER: adsmcp
           POSTGRES_PASSWORD: adsmcp-ci
@@ -45,11 +46,13 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v4   # đọc version từ package.json#packageManager
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0 - đọc version từ package.json#packageManager
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -62,6 +65,17 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # Bắt lỗi cú pháp/nội suy của docker-compose*.yml (giá trị giả, không chạy container)
+      - name: Validate compose files
+        env:
+          APP_VERSION: 0.0.0
+          POSTGRES_PASSWORD: ci-only
+          ACME_EMAIL: ci@example.com
+        run: |
+          docker compose -f docker-compose.yml --profile updater config -q
+          docker compose -f docker-compose.yml -f docker-compose.build.yml --profile updater config -q
+          docker compose -f docker-compose.dev.yml config -q
 
       - name: Typecheck
         run: pnpm typecheck
