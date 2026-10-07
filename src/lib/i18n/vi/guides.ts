@@ -577,4 +577,37 @@ export const guides = {
       "Menu Giao diện cho phép đổi sáng/tối và giảm hiệu ứng trong suốt để dễ đọc hơn.",
     ],
   },
+
+  automationTips: {
+    title: "Mẹo chạy tự động",
+    summary:
+      "Ứng dụng AI tự chạy câu lệnh theo lịch và gọi MCP của bạn - app này không tự gửi lệnh cho AI.",
+    steps: [
+      {
+        title: "Tạo MCP riêng",
+        detail:
+          "Chế độ Chỉ báo cáo: quyền Chỉ xem. Chế độ Tự tắt: Xem + Bật/Tắt, tắt Xác nhận 2 bước, trần ngân sách thấp.",
+      },
+      {
+        title: "Soạn quy tắc",
+        detail: "Nhập ngưỡng CPA, sao chép câu lệnh hoặc skill.",
+      },
+      {
+        title: "Đặt lịch",
+        detail:
+          "Thêm link MCP vào ứng dụng AI rồi tạo tác vụ hẹn giờ theo tab Claude / ChatGPT / Gemini. Cần 30 phút/lần: Claude Desktop (cục bộ) hoặc Gemini CLI.",
+      },
+      {
+        title: "Theo dõi",
+        detail: "Kiểm tra Nhật ký MCP sau vài lượt chạy đầu tiên.",
+      },
+    ],
+    tips: [
+      "Bắt đầu bằng chế độ Chỉ báo cáo, đối chiếu vài ngày rồi mới cho AI tự tắt.",
+      "Đặt Ngày hết hạn cho MCP chạy thử để link tự ngừng khi bạn quên.",
+    ],
+    warnings: [
+      "Tắt MCP (tab Bảo mật) là cách dừng nhanh nhất khi AI làm sai.",
+    ],
+  },
 } as const satisfies Record<string, unknown>

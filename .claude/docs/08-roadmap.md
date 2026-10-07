@@ -127,6 +127,14 @@ Phần **ứng dụng** (web + worker + DB):
 - [x] Chạy chữ ở top bar (desktop/tablet giữa breadcrumb và ô tìm kiếm; phone dải dưới top bar), reduced-motion đứng yên, sáng/tối - đã chụp 1440/820/390
 - [x] MCP **không** kèm thông báo hệ thống hay dòng nhắc cập nhật (quyết định chủ dự án 2026-10-05, chống prompt injection; bản 1.0.1 từng kèm, đã gỡ cùng câu dặn trong server instructions)
 
+## Trang "Mẹo chạy tự động" (2026-10-07)
+- [x] Mục menu dưới "Nhật ký" (`/automation-tips`, mọi vai trò; ⌘K; điện thoại: sheet Menu - `bottomMenuItemsForRole().main`), `PageGuide`, `loading.tsx`
+- [x] Bộ soạn quy tắc CPA (`src/lib/automation-prompt.ts` + test): câu lệnh đầy đủ, `SKILL.md` (frontmatter trong giới hạn Claude), câu lệnh ngắn gọi skill; tham số khớp `ads_get_report` / `ads_set_status`
+- [x] Hướng dẫn Claude (Scheduled tasks: giao diện mới + Cowork, Tool permissions "Always allow", tác vụ cục bộ Claude Desktop 30 phút), ChatGPT (MCP = plugin, không còn Developer mode; tác vụ hẹn giờ trong Work; quyền ghi theo help center chỉ Business/Enterprise/Edu), Gemini (Spark Schedules - chưa dùng được ở VN: custom apps chỉ ở Mỹ; ghi luôn cần xác nhận), Gemini CLI + Task Scheduler/cron (30 phút) - nghiên cứu lại kỹ từ nguồn chính thức 2026-10-07
+- [x] Sửa hướng dẫn kết nối Claude/ChatGPT đã cũ (tab Kết nối AI của MCP, `docs/ket-noi-ai.md`, 04 §9)
+- [x] Chụp sáng/tối 1440/820/390
+- [ ] Chưa chạy thử thật: tác vụ hẹn giờ của từng ứng dụng AI gọi MCP thật - ChatGPT (OpenAI chưa ghi rõ tác vụ hẹn giờ dùng được MCP tự thêm), Claude (tool `destructiveHint` có thể vẫn hỏi duyệt dù Always allow), lệnh Gemini CLI `--trust`/`--skip-trust`
+
 ## Trang chính sách công khai cho app Meta/OpenAI (2026-10-05)
 - [x] `/privacy`, `/terms`, `/data-deletion` (route group `(legal)`, không cần phiên; `proxy.ts` loại trừ), tiếng Việt + tiếng Anh, nội dung khớp hệ thống (đơn vị vận hành = bên kiểm soát dữ liệu, số tháng lưu nhật ký thật)
 - [x] Cài đặt → Thông tin pháp lý (`legal_org_name`, `legal_contact_email`; không cần xác thực lại; ghi `settings.update`)

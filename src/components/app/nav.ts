@@ -9,6 +9,7 @@ export type NavIconKey =
   | "connections"
   | "mcp"
   | "logs"
+  | "tips"
   | "users"
   | "settings"
   | "account"
@@ -55,6 +56,20 @@ export const NAV_MAIN: NavItem[] = [
     href: "/logs",
     icon: "logs",
     keywords: ["logs", "nhat ky", "lich su"],
+  },
+  {
+    title: common.nav.automationTips,
+    href: "/automation-tips",
+    icon: "tips",
+    keywords: [
+      "meo",
+      "tu dong",
+      "lich",
+      "schedule",
+      "scheduled task",
+      "skill",
+      "cpa",
+    ],
   },
 ]
 
@@ -111,15 +126,22 @@ export const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
   { label: common.bottomNav.logs, href: "/logs", icon: "logs" },
 ]
 
+/** Main pages that do not fit the four bottom tabs - reachable from the "Menu" sheet on phones. */
+const NAV_MAIN_OVERFLOW: NavItem[] = NAV_MAIN.filter(
+  (i) => !BOTTOM_NAV_ITEMS.some((b) => b.href === i.href)
+)
+
 /**
- * Entries of the bottom bar's "Menu" sheet: admin pages (admins only) + the account page.
- * Staff never receive admin items (the server still enforces the role on every route).
+ * Entries of the bottom bar's "Menu" sheet: main pages without a bottom tab, admin pages (admins only)
+ * + the account page. Staff never receive admin items (the server still enforces the role on every route).
  */
 export function bottomMenuItemsForRole(role: AppRole): {
+  main: NavItem[]
   admin: NavItem[]
   account: NavItem
 } {
   return {
+    main: NAV_MAIN_OVERFLOW,
     admin: role === "admin" ? NAV_ADMIN : NO_ITEMS,
     account: NAV_ACCOUNT,
   }
@@ -130,7 +152,9 @@ export function isBottomMenuActive(
   pathname: string | null | undefined
 ): boolean {
   if (!pathname) return false
-  return [...NAV_ADMIN, NAV_ACCOUNT].some((i) => isNavActive(pathname, i.href))
+  return [...NAV_MAIN_OVERFLOW, ...NAV_ADMIN, NAV_ACCOUNT].some((i) =>
+    isNavActive(pathname, i.href)
+  )
 }
 
 /** Active when the pathname equals the href or is nested under it ("/" only matches exactly). */

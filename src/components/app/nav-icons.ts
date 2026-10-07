@@ -5,6 +5,7 @@ import {
   Note01Icon,
   Plug01Icon,
   Settings01Icon,
+  TimeScheduleIcon,
   UserCircleIcon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons"
@@ -17,6 +18,7 @@ export const NAV_ICONS: Record<NavIconKey, IconSvgElement> = {
   connections: Plug01Icon,
   mcp: McpServerIcon,
   logs: Note01Icon,
+  tips: TimeScheduleIcon,
   users: UserGroupIcon,
   settings: Settings01Icon,
   account: UserCircleIcon,

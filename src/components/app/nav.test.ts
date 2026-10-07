@@ -21,6 +21,7 @@ describe("nav", () => {
       "/connections",
       "/mcp-servers",
       "/logs",
+      "/automation-tips",
     ])
   })
 
@@ -50,6 +51,9 @@ describe("nav", () => {
       "/settings",
     ])
     expect(bottomMenuItemsForRole("staff").admin).toEqual([])
+    expect(bottomMenuItemsForRole("staff").main.map((i) => i.href)).toEqual([
+      "/automation-tips",
+    ])
     expect(bottomMenuItemsForRole("staff").account.href).toBe("/account")
   })
 
@@ -57,6 +61,7 @@ describe("nav", () => {
     expect(isBottomMenuActive("/account")).toBe(true)
     expect(isBottomMenuActive("/settings")).toBe(true)
     expect(isBottomMenuActive("/users")).toBe(true)
+    expect(isBottomMenuActive("/automation-tips")).toBe(true)
     expect(isBottomMenuActive("/logs")).toBe(false)
     expect(isBottomMenuActive("/")).toBe(false)
     expect(isBottomMenuActive(null)).toBe(false)

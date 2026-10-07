@@ -55,6 +55,7 @@ export const common = {
     connections: "Kết nối quảng cáo",
     mcp: "MCP",
     logs: "Nhật ký",
+    automationTips: "Mẹo chạy tự động",
     users: "Người dùng",
     settings: "Cài đặt",
     account: "Tài khoản",

@@ -96,12 +96,13 @@ Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất b�
 - Log là append-only: không có UI sửa/xoá từng dòng.
 
 ## 7. Trang & điều hướng
-Sidebar trái (kiểu Shopify admin): **Tổng quan · Kết nối quảng cáo · MCP · Nhật ký · Người dùng (Admin) · Cài đặt (Admin)**; góc dưới: tài khoản của tôi, giao diện Sáng/Tối, đăng xuất.
+Sidebar trái (kiểu Shopify admin): **Tổng quan · Kết nối quảng cáo · MCP · Nhật ký · Mẹo chạy tự động · Người dùng (Admin) · Cài đặt (Admin)**; góc dưới: tài khoản của tôi, giao diện Sáng/Tối, đăng xuất.
 - `/login`, `/login/2fa`, `/setup`, `/account` (hồ sơ, đổi mật khẩu, 2FA, phiên đăng nhập, hoạt động của tôi)
 - `/` Tổng quan: thẻ số liệu (kết nối, tài khoản QC, MCP hoạt động, lượt gọi 24h, tỉ lệ lỗi), biểu đồ lượt gọi 7/30 ngày theo nền tảng, cảnh báo token, hoạt động gần đây.
 - `/connections`, `/connections/new`, `/connections/[id]`
 - `/mcp-servers`, `/mcp-servers/new`, `/mcp-servers/[id]` (KHÔNG dùng `/mcp/*` — đó là endpoint MCP)
 - `/logs?tab=mcp|staff`
+- `/automation-tips` Mẹo chạy tự động (mọi vai trò, chỉ nội dung tĩnh — 2026-10-07): cách cho Claude / ChatGPT / Gemini tự chạy theo lịch qua MCP (tác vụ hẹn giờ của chính ứng dụng AI; app **không** tự gửi lệnh cho AI). Bộ soạn quy tắc "tắt quảng cáo khi CPA vượt ngưỡng" (`src/lib/automation-prompt.ts`) xuất câu lệnh đầy đủ + `SKILL.md`; 2 chế độ Chỉ báo cáo / Tự tắt (MCP riêng: Xem + Bật/Tắt, tắt xác nhận 2 bước, trần thấp, giới hạn ghi nhỏ). Nội dung từng ứng dụng AI kiểm tra ngày 2026-10-07 — tính năng thay đổi nhanh, rà lại định kỳ. Điện thoại: mục nằm trong sheet Menu của thanh dưới.
 - `/users` (Admin), `/settings` (Admin)
 - **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; noti.vn chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
 Yêu cầu UX: dễ hiểu cho người không rành kỹ thuật — mỗi trang có tiêu đề + 1 câu mô tả, trạng thái trống có hướng dẫn + nút hành động chính, form có helper text, xác nhận trước thao tác nguy hiểm, toast phản hồi bằng tiếng Việt.

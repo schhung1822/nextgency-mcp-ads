@@ -16,12 +16,12 @@
 **Gói**: Free (giới hạn 1 connector tuỳ chỉnh), Pro, Max, Team, Enterprise.
 
 **Cá nhân (Free/Pro/Max)**:
-1. claude.ai → **Settings → Connectors** → **Add custom connector**.
-2. Name: `Ads MCP`; URL: dán link MCP.
-3. Phần xác thực (Advanced settings): **không điền** OAuth Client ID/Secret — chọn **No sign-in** nếu được hỏi.
-4. **Add**. Trong cuộc trò chuyện, bấm nút **+ / Search and tools** → bật **Ads MCP**.
+1. claude.ai → **Customize → Connectors** (claude.ai/customize/connectors) → **+ Add → Add custom connector** (một số tài khoản chỉ có nút **Add custom connector**).
+2. Name: `Ads MCP`; URL: dán link MCP → **Continue**.
+3. **Authentication**: chọn **No sign in** (có nơi ghi *No sign-in*) — **không điền** OAuth Client ID/Secret.
+4. **Add**. Trong cuộc trò chuyện, bấm nút **+ → Connectors** → bật **Ads MCP**.
 
-**Team / Enterprise**: chỉ **Owner/Primary owner** thêm được: **Organization settings → Connectors → Add custom connector** → dán link. Cả workspace dùng chung **1 link** (= 1 MCP, cùng phạm vi quyền) → nên tạo MCP riêng cho workspace với quyền phù hợp. Thành viên bật connector trong Settings → Connectors của mình.
+**Team / Enterprise**: chỉ **Owner/Primary owner** thêm được: **Organization settings → Connectors → Add → Custom → Web** → dán link. Cả workspace dùng chung **1 link** (= 1 MCP, cùng phạm vi quyền) → nên tạo MCP riêng cho workspace với quyền phù hợp. Thành viên bấm **Connect** ở **Customize → Connectors** của mình.
 
 **Lưu ý**:
 - Claude kết nối từ dải IP `160.79.104.0/21` — nếu MCP có **danh sách IP cho phép**, phải thêm dải này; nếu VPS có tường lửa, không chặn dải này.
@@ -38,13 +38,15 @@ claude mcp list          # kiểm tra trạng thái: ✓ Connected
 - Trong phiên: gõ `/mcp` để xem tool, kết nối lại.
 
 ## ChatGPT (chatgpt.com)
-**Gói**: Plus, Pro, Business, Enterprise, Edu (quyền ghi đầy đủ có thể khác nhau theo gói — kiểm tra thực tế; một số tài liệu của OpenAI nói gói Pro chỉ đọc).
-1. **Settings → Security and login** (hoặc *Apps & Connectors → Advanced settings*) → bật **Developer mode**.
-2. Mở <https://chatgpt.com/plugins> (hoặc Settings → Apps & Connectors) → **“+” / Create** → đặt tên `Ads MCP`, dán link MCP.
-3. **Authentication: No authentication** → tick xác nhận rủi ro → **Create**.
-4. Trong cuộc trò chuyện: **+ → Developer mode** → chọn **Ads MCP**.
+**Gói / quyền ghi**: trang trợ giúp của OpenAI ghi quyền ghi (bật/tắt, sửa…) dành cho Business, Enterprise, Edu và gói Pro chỉ đọc; tài liệu cho nhà phát triển không giới hạn theo gói — kiểm tra thực tế trên gói của bạn. Chỉ dùng trên **web**. Từ 10/2026 không còn bước bật **Developer mode**: MCP tự thêm được tạo thành **plugin**.
+1. Mở <https://chatgpt.com/plugins> → **“+” → Add custom MCP server** (có thể hiện *Create custom MCP server*).
+2. Đặt tên `Ads MCP`; mục **Connection** dán link MCP vào **Server URL**; **Authentication: No authentication**.
+3. **I understand and want to continue** → **Create as a plugin**.
+4. Cài plugin: <https://chatgpt.com/plugins?view=personal> → mở plugin → **“+”**. Trong cuộc trò chuyện gõ **@** và chọn **Ads MCP** (tác vụ hẹn giờ dùng plugin: tạo trong tab **Work**).
 
-**Business / Enterprise**: admin workspace tạo và **publish** app cho thành viên. ChatGPT **“đóng băng” danh sách tool** lúc publish → sau khi đổi quyền MCP trong Ads MCP, admin phải vào app → **Refresh** để ChatGPT thấy tool mới.
+**Business / Enterprise**: admin cấp quyền **Create custom MCP servers** (tên mới của *Developer mode*). ChatGPT **“đóng băng” danh sách tool** → sau khi đổi quyền MCP trong Ads MCP, vào chatgpt.com/plugins → mở plugin → **Refresh** để ChatGPT thấy tool mới.
+
+Muốn AI tự chạy theo lịch (vd tự tắt quảng cáo có CPA cao): xem trang **Mẹo chạy tự động** trong app.
 
 ## Gemini CLI
 Sửa file `~/.gemini/settings.json` (Windows: `%USERPROFILE%\.gemini\settings.json`):
