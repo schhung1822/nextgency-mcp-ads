@@ -35,19 +35,32 @@ export function UpdatesView({ initial, twoFactorEnabled }: { initial: UpdateStat
     return () => clearTimeout(id)
   }, [done])
 
-  const check = () =>
+  // auto = the check this page runs by itself when opened: the result shows in the Version card, no toasts
+  // (a throttled / failed auto check stays silent; the stored error, if any, is rendered by the card)
+  const runCheck = (auto: boolean) =>
     startCheck(async () => {
-      const r = await checkUpdatesAction()
+      const r = await checkUpdatesAction(auto ? { auto: true } : undefined)
       if (!r.ok) {
-        toast.error(r.error)
+        if (!auto) toast.error(r.error)
         return
       }
       apply(r.data.status)
+      if (auto) return
       if (r.data.error) toast.error(r.data.error)
       else if (r.data.status.hasUpdate && r.data.status.latest)
         toast.success(t.toast.checkedNew(displayVersion(r.data.status.latest.version)))
       else toast.success(t.toast.checkedLatest)
     })
+  const check = () => runCheck(false)
+
+  // check GitHub as soon as the page opens (once per mount; the ref also absorbs Strict Mode's double effect)
+  const autoCheck = React.useEffectEvent(() => runCheck(true))
+  const autoChecked = React.useRef(false)
+  React.useEffect(() => {
+    if (autoChecked.current) return
+    autoChecked.current = true
+    autoCheck()
+  }, [])
 
   const canUpdate = status.hasUpdate && !!latest && status.blockReason === null
   const checkButton = (variant: "brand" | "outline") => (
@@ -92,7 +105,7 @@ export function UpdatesView({ initial, twoFactorEnabled }: { initial: UpdateStat
         {progress && watching && <ProgressCard req={progress} link={link} onReload={() => window.location.reload()} />}
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-start">
           <div className="flex min-w-0 flex-col gap-4 sm:gap-6 lg:col-span-2">
-            <VersionCard status={status} />
+            <VersionCard status={status} checking={checking} />
             {latest && <ReleaseNotesCard latest={latest} />}
             <HistoryCard history={status.history} />
           </div>

@@ -19,3 +19,6 @@ export const startUpdateSchema = z.object({
 })
 
 export type StartUpdateInput = z.input<typeof startUpdateSchema>
+
+/** "Kiểm tra ngay" (manual) or the check the update page runs by itself when opened (auto). */
+export const checkUpdatesSchema = z.object({ auto: z.boolean().optional() }).strict().optional()

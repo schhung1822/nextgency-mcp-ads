@@ -69,4 +69,6 @@ export interface VersionBadge {
   current: string
   /** set only for admins when a newer release is known */
   latestVersion: string | null
+  /** admins only: the latest release seen on GitHub (newer or not); null when never checked */
+  latestKnown: string | null
 }

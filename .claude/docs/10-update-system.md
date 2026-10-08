@@ -16,7 +16,7 @@
 ```
 git tag v1.2.0 && git push --tags
   └─ GitHub Actions: build image ghcr.io/notivn/ads-mcp-simple:1.2.0 (+ updater image), ký cosign keyless, tạo GitHub Release (ghi chú)
-worker job `update-check` (6 giờ/lần + nút "Kiểm tra ngay")
+worker job `update-check` (6 giờ/lần + nút "Kiểm tra ngay" + tự kiểm tra mỗi lần admin mở `/settings/updates`)
   └─ GitHub API → app_settings.update_latest
 admin mở /settings/updates → thấy "Có bản mới v1.2.0" → bấm Cập nhật → re-auth
   └─ web: INSERT system_update_requests(status=pending)
@@ -69,7 +69,8 @@ UI poll /api/updates/status (chịu được lúc web khởi động lại) → 
 ## 4. Giao diện
 
 - **Menu người dùng** (sidebar footer trên máy tính, tab "Menu" trên di động): dòng `Phiên bản v1.2.0`. Admin + có bản mới: chấm cảnh báo trên avatar/nút Menu + mục "Có bản mới v1.3.0".
-- **Trang `/settings/updates`** (chỉ admin; link từ Cài đặt + menu): phiên bản hiện tại, phiên bản mới nhất, ghi chú phát hành (escape, không render HTML), "Kiểm tra ngay", "Cập nhật lên vX" (nút `brand` duy nhất; dialog xác nhận nêu: gián đoạn ~1-2 phút, đã tự sao lưu; re-auth), tiến trình theo bước (poll), lịch sử 10 lần gần nhất, trạng thái updater.
+- **Khối "Phiên bản" ở sidebar** (máy tính, ngay trên nút tài khoản, ẩn khi sidebar thu về icon - `SidebarVersion` trong `components/app/app-version.tsx`, 2026-10-08): mọi người thấy "Hiện tại vX"; admin thấy thêm "Mới nhất vY" (`VersionBadge.latestKnown` = bản mới nhất đã biết từ GitHub, kể cả khi không mới hơn; "Chưa kiểm tra" khi chưa có), huy hiệu "Có bản mới" / "Đã cập nhật", cả khối là link tới `/settings/updates`. Nhân viên: khối chỉ là chữ, không link (`latestKnown` luôn null).
+- **Trang `/settings/updates`** (chỉ admin; link từ Cài đặt + menu): phiên bản hiện tại, phiên bản mới nhất, ghi chú phát hành (escape, không render HTML), **tự kiểm tra GitHub ngay khi mở trang** (1 lần mỗi lần vào trang, client gọi `checkUpdatesAction({ auto: true })`; thẻ Phiên bản hiện "Đang kiểm tra…", không toast; bị giới hạn tần suất hay lỗi thì im lặng, lỗi đã lưu hiện trong thẻ; nhật ký `system.update_check` có `metadata.trigger = "auto" | "manual"`), "Kiểm tra ngay" (kiểm tra lại), "Cập nhật lên vX" (nút `brand` duy nhất; dialog xác nhận nêu: gián đoạn ~1-2 phút, đã tự sao lưu; re-auth), tiến trình theo bước (poll), lịch sử 10 lần gần nhất, trạng thái updater.
 - **Tổng quan**: admin có bản mới → thêm 1 cảnh báo vào khung "Cảnh báo".
 - Nhân viên: chỉ thấy số phiên bản; route/action/API cập nhật trả 404/forbidden.
 - Có `PageGuide` riêng cho trang cập nhật (xem guides.ts); toàn bộ chuỗi trong `src/lib/i18n/vi/`.

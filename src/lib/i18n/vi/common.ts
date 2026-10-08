@@ -71,6 +71,12 @@ export const common = {
     crumbDevUi: "Thư viện giao diện",
   },
 
+  /** nút nổi góc dưới bên phải: mở form báo lỗi / yêu cầu tính năng của noti.vn (tab mới) */
+  feedback: {
+    label: "Báo bug, yêu cầu tính năng",
+    aria: "Báo bug, yêu cầu tính năng (mở tab mới)",
+  },
+
   /** thanh điều hướng cố định ở đáy màn hình điện thoại (< 768px) */
   bottomNav: {
     label: "Điều hướng nhanh",

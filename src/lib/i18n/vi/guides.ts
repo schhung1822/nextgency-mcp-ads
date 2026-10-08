@@ -495,7 +495,7 @@ export const guides = {
       {
         title: "Kiểm tra bản mới",
         detail:
-          "Hệ thống tự hỏi GitHub mỗi 6 giờ. Muốn biết ngay, bấm Kiểm tra ngay.",
+          "Hệ thống tự hỏi GitHub mỗi 6 giờ và kiểm tra ngay mỗi khi bạn mở trang này. Muốn kiểm tra lại, bấm Kiểm tra ngay.",
       },
       {
         title: "Đọc ghi chú phát hành",

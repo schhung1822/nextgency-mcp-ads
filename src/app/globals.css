@@ -586,3 +586,17 @@
     animation: none;
   }
 }
+
+/* Floating "Báo bug, yêu cầu tính năng" button (components/app/feedback-button.tsx): lift it above a bottom action
+ * bar (wizard navigation, bulk-action bar - marked data-bottom-action-bar) and hide it while the phone keyboard is open. */
+:root:has([data-bottom-action-bar]) {
+  --feedback-lift: 4.25rem;
+}
+html[data-kb-open] [data-slot="feedback-button"] {
+  display: none;
+}
+@media print {
+  [data-slot="feedback-button"] {
+    display: none;
+  }
+}

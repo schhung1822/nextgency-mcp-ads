@@ -663,6 +663,7 @@ export function DataTable<TData extends RowData>({
         <div
           role="toolbar"
           aria-label={common.table.bulkActions}
+          data-bottom-action-bar=""
           className="glass-strong fixed inset-x-4 bottom-[calc(var(--app-bottom-offset,0px)+0.75rem)] z-40 md:bottom-[max(1rem,env(safe-area-inset-bottom))] mx-auto flex max-w-fit animate-in flex-wrap items-center gap-2 rounded-2xl px-3 py-2 fade-in-0 slide-in-from-bottom-4 sm:gap-3"
         >
           <span

@@ -39,7 +39,7 @@ export function RequestStatusBadge({ status }: { status: UpdateRequestStatus }) 
 
 // ---------------------------------------------------------------------------
 
-export function VersionCard({ status }: { status: UpdateStatus }) {
+export function VersionCard({ status, checking = false }: { status: UpdateStatus; checking?: boolean }) {
   const { latest, current } = status
   return (
     <Card>
@@ -80,6 +80,19 @@ export function VersionCard({ status }: { status: UpdateStatus }) {
             </>
           )}
         </dl>
+
+        <p
+          aria-live="polite"
+          className={cn("flex items-center gap-2 text-[13px] text-muted-foreground", !checking && "sr-only")}
+          data-slot="update-checking"
+        >
+          {checking && (
+            <>
+              <Spinner className="size-3.5" aria-hidden />
+              {t.versionCard.checking}
+            </>
+          )}
+        </p>
 
         {!status.currentIsRelease && (
           <Alert className="border-info/40 bg-info/10">

@@ -186,12 +186,13 @@ export async function getUpdateStatus(actor: Pick<UpdateActor, "role">, now: Dat
  */
 export const getVersionBadge = cache(async (role: "admin" | "staff"): Promise<VersionBadge> => {
   const current = getAppVersion()
-  if (role !== "admin" || !parseSemver(current)) return { current, latestVersion: null }
+  if (role !== "admin") return { current, latestVersion: null, latestKnown: null }
   try {
     const latest = await readLatestRelease()
-    return { current, latestVersion: latest && isNewerVersion(latest.version, current) ? latest.version : null }
+    const newer = !!latest && !!parseSemver(current) && isNewerVersion(latest.version, current)
+    return { current, latestVersion: newer ? latest.version : null, latestKnown: latest?.version ?? null }
   } catch {
-    return { current, latestVersion: null }
+    return { current, latestVersion: null, latestKnown: null }
   }
 })
 
@@ -207,9 +208,14 @@ export interface CheckNowResult {
 
 /**
  * Admin-triggered check: asks GitHub, stores the result and writes ONE `system.update_check` activity log (the
- * scheduled job does not log). Rate limited per user so the button cannot exhaust GitHub's quota.
+ * scheduled job does not log). Rate limited per user so the button cannot exhaust GitHub's quota. `trigger` is
+ * "auto" when the update page checks by itself on open (recorded in the log metadata).
  */
-export async function checkForUpdatesNow(actor: UpdateActor, now: Date = new Date()): Promise<CheckNowResult> {
+export async function checkForUpdatesNow(
+  actor: UpdateActor,
+  now: Date = new Date(),
+  trigger: "manual" | "auto" = "manual"
+): Promise<CheckNowResult> {
   assertAdmin(actor)
   const quota = await consumeQuota("update-check", actor.id, CHECK_QUOTA_MAX, CHECK_QUOTA_WINDOW_MS, now.getTime())
   if (!quota.allowed) throw new UpdateServiceError("throttled", t.errors.checkThrottled(quota.retryAfterSec))
@@ -223,8 +229,8 @@ export async function checkForUpdatesNow(actor: UpdateActor, now: Date = new Dat
         target: { type: "system", id: null, label: result.ok ? result.release.tag : null },
         status: result.ok ? "success" : "failure",
         metadata: result.ok
-          ? { version: result.release.version, current: getAppVersion() }
-          : { code: result.code, current: getAppVersion() },
+          ? { version: result.release.version, current: getAppVersion(), trigger }
+          : { code: result.code, current: getAppVersion(), trigger },
       },
       tx
     )

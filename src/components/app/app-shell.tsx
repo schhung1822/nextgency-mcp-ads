@@ -36,9 +36,11 @@ import { legal as tl } from "@/lib/i18n/vi/legal"
 import { LEGAL_PAGES } from "@/lib/legal"
 import type { SystemNotice } from "@/lib/system-notices"
 
+import { SidebarVersion } from "./app-version"
 import { BottomNav } from "./bottom-nav"
 import { BrandLogo, BrandMark } from "./brand-logo"
 import { CommandPalette, type CommandPaletteGroup } from "./command-palette"
+import { FeedbackButton } from "./feedback-button"
 import { LEGAL_ICONS, SidebarLegalLinks } from "./legal-links"
 import {
   buildBreadcrumbs,
@@ -177,6 +179,7 @@ export function AppShell({
           )}
         </SidebarContent>
         <SidebarFooter>
+          <SidebarVersion isAdmin={user.role === "admin"} />
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarUserMenuWithContext
@@ -282,6 +285,7 @@ export function AppShell({
         </div>
       </div>
       <GuideSheet />
+      <FeedbackButton />
       <BottomNav
         user={user}
         appBaseUrl={appBaseUrl}

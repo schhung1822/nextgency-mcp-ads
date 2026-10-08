@@ -742,7 +742,7 @@ function VerifyStep({
       </Card>
       {/* floating action bar: Save stays reachable while scrolling a long account list */}
       {/* phones: flush bar stacked right above the fixed bottom nav (full width, square) */}
-      <div className="glass-strong sticky bottom-(--app-bottom-offset,0px) z-20 -mx-4 flex items-center justify-between gap-2 rounded-none border-x-0 p-2 px-4 md:bottom-3 md:mx-0 md:rounded-2xl md:border-x md:p-2">
+      <div data-bottom-action-bar="" className="glass-strong sticky bottom-(--app-bottom-offset,0px) z-20 -mx-4 flex items-center justify-between gap-2 rounded-none border-x-0 p-2 px-4 md:bottom-3 md:mx-0 md:rounded-2xl md:border-x md:p-2">
         <Button variant="ghost" size="lg" onClick={onBack} disabled={saving}>
           <HugeiconsIcon
             icon={ArrowLeft01Icon}

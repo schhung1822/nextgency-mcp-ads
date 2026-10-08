@@ -158,7 +158,7 @@ export function GuidePanel() {
       aria-label={ui.panelLabel}
       className="hidden shrink-0 pr-2 pb-2 lg:block lg:w-80 2xl:w-[22.5rem]"
     >
-      <div className="sticky top-(--app-topbar-offset,0px) flex max-h-[calc(100dvh-var(--app-topbar-offset,0px)-0.5rem)] animate-in flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10 duration-200 fade-in-0">
+      <div className="sticky top-(--app-topbar-offset,0px) flex max-h-[calc(100dvh-var(--app-topbar-offset,0px)-4.75rem)] animate-in flex-col overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10 duration-200 fade-in-0">
         <div className="flex items-center gap-2.5 border-b px-4 py-3">
           {entry ? (
             <>

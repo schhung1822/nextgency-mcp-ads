@@ -18,6 +18,16 @@ export const updates = {
     version: (v: string) => `Phiên bản ${v}`,
     newVersion: (v: string) => `Có bản mới ${v}`,
     dotLabel: "Có bản cập nhật mới",
+    sidebarLabel: "Phiên bản",
+    current: "Hiện tại",
+    latest: "Mới nhất",
+    notChecked: "Chưa kiểm tra",
+    badgeNew: "Có bản mới",
+    badgeUpToDate: "Đã cập nhật",
+    openDetails: (current: string, latest: string | null) =>
+      latest
+        ? `Phiên bản hiện tại ${current}, mới nhất ${latest}. Mở trang Cập nhật hệ thống`
+        : `Phiên bản hiện tại ${current}. Mở trang Cập nhật hệ thống`,
   },
 
   versionCard: {
@@ -33,6 +43,7 @@ export const updates = {
       "Đây là bản phát triển (không gắn với một bản phát hành), nên không cập nhật tự động được. Hãy dùng ảnh Docker của một bản phát hành để bật tính năng này.",
     upToDate: "Bạn đang dùng bản mới nhất.",
     noLatest: "Chưa biết bản mới nhất. Bấm Kiểm tra ngay để hỏi GitHub.",
+    checking: "Đang kiểm tra bản mới trên GitHub…",
     checkFailed: "Lần kiểm tra gần nhất không thành công",
     checkFailedAt: (when: string) => `lúc ${when}`,
   },

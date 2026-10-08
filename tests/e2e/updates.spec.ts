@@ -183,7 +183,8 @@ test("cập nhật: gửi yêu cầu, tiến trình theo dõi các dòng của u
   await shot(page, "updates-succeeded-light-1440")
   await expect.poll(() => page.evaluate(() => (window as unknown as { __marker?: number }).__marker), { timeout: 20_000 }).toBeUndefined()
   await expect(page.getByRole("heading", { name: "Lịch sử cập nhật" })).toBeVisible()
-  await expect(page.getByText("Thành công")).toBeVisible()
+  // exact: the page also auto-checks GitHub on open (a repo that does not exist in e2e -> "...không thành công" alert)
+  await expect(page.getByText("Thành công", { exact: true })).toBeVisible()
 })
 
 test("cập nhật thất bại / quay về bản cũ: hiện lý do; updater offline: khoá nút và hướng dẫn chạy tay", async ({ page }) => {

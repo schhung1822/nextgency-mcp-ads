@@ -127,6 +127,12 @@ Phần **ứng dụng** (web + worker + DB):
 - [x] Chạy chữ ở top bar (desktop/tablet giữa breadcrumb và ô tìm kiếm; phone dải dưới top bar), reduced-motion đứng yên, sáng/tối - đã chụp 1440/820/390
 - [x] MCP **không** kèm thông báo hệ thống hay dòng nhắc cập nhật (quyết định chủ dự án 2026-10-05, chống prompt injection; bản 1.0.1 từng kèm, đã gỡ cùng câu dặn trong server instructions)
 
+## Báo lỗi / yêu cầu tính năng, khối Phiên bản, tự kiểm tra cập nhật (2026-10-08)
+- [x] Nút nổi "Báo bug, yêu cầu tính năng" (góc dưới phải, máy tính icon + chữ / điện thoại chỉ icon) mở form n8n của noti.vn ở tab mới; tự nâng khi có thanh hành động dính đáy - 06 §13
+- [x] Khối "Phiên bản" ở sidebar: hiện tại + mới nhất (admin), link tới `/settings/updates`; `VersionBadge.latestKnown` - 10-update-system
+- [x] `/settings/updates` tự kiểm tra GitHub khi mở (không toast, nhật ký `trigger: auto`); e2e trỏ `UPDATE_REPO` tới repo không tồn tại để không ghi đè dữ liệu test
+- [x] Chụp sáng/tối 1440 + 390; test dịch vụ cập nhật cập nhật theo `latestKnown` / `trigger`
+
 ## Trang "Mẹo chạy tự động" (2026-10-07)
 - [x] Mục menu dưới "Nhật ký" (`/automation-tips`, mọi vai trò; ⌘K; điện thoại: sheet Menu - `bottomMenuItemsForRole().main`), `PageGuide`, `loading.tsx`
 - [x] Bộ soạn quy tắc CPA (`src/lib/automation-prompt.ts` + test): câu lệnh đầy đủ, `SKILL.md` (frontmatter trong giới hạn Claude), câu lệnh ngắn gọi skill; tham số khớp `ads_get_report` / `ads_set_status`

@@ -7,7 +7,7 @@ import type { z } from "zod"
 
 import { fail, ok, type ActionResult } from "@/lib/action-result"
 import { updates as t } from "@/lib/i18n/vi/updates"
-import { startUpdateSchema } from "@/lib/schemas/updates"
+import { checkUpdatesSchema, startUpdateSchema } from "@/lib/schemas/updates"
 import type { UpdateStatus } from "@/lib/update-types"
 import { safeErrorForLog } from "@/server/audit/safe-error"
 import { ReauthError, requestReauthVerifier } from "@/server/auth/reauth"
@@ -29,10 +29,18 @@ function toFail(e: unknown, generic: string): ActionResult<never> {
 }
 
 /** "Kiểm tra ngay": ask GitHub for the newest release (admin). Returns the refreshed status + the check error, if any. */
-export async function checkUpdatesAction(): Promise<ActionResult<{ status: UpdateStatus; error: string | null }>> {
+export async function checkUpdatesAction(
+  input?: unknown
+): Promise<ActionResult<{ status: UpdateStatus; error: string | null }>> {
   try {
     const session = await requireUserForAction({ role: "admin" })
-    const r = await checkForUpdatesNow({ id: session.user.id, email: session.user.email, role: session.user.role })
+    const parsed = checkUpdatesSchema.safeParse(input)
+    if (!parsed.success) return zodFail(parsed.error)
+    const r = await checkForUpdatesNow(
+      { id: session.user.id, email: session.user.email, role: session.user.role },
+      new Date(),
+      parsed.data?.auto ? "auto" : "manual"
+    )
     revalidatePath("/settings/updates")
     return ok(r)
   } catch (e) {

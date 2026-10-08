@@ -449,19 +449,19 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
 
     it("getVersionBadge: nhân viên chỉ thấy số phiên bản, admin thấy bản mới khi có", async () => {
       await setLatest("1.3.0")
-      expect(await getVersionBadge("staff")).toEqual({ current: "1.2.0", latestVersion: null })
-      expect(await getVersionBadge("admin")).toEqual({ current: "1.2.0", latestVersion: "1.3.0" })
+      expect(await getVersionBadge("staff")).toEqual({ current: "1.2.0", latestVersion: null, latestKnown: null })
+      expect(await getVersionBadge("admin")).toEqual({ current: "1.2.0", latestVersion: "1.3.0", latestKnown: "1.3.0" })
       await setLatest("1.2.0")
-      expect(await getVersionBadge("admin")).toEqual({ current: "1.2.0", latestVersion: null })
+      expect(await getVersionBadge("admin")).toEqual({ current: "1.2.0", latestVersion: null, latestKnown: "1.2.0" })
       await setLatest("1.1.0")
-      expect(await getVersionBadge("admin")).toEqual({ current: "1.2.0", latestVersion: null })
+      expect(await getVersionBadge("admin")).toEqual({ current: "1.2.0", latestVersion: null, latestKnown: "1.1.0" })
     })
 
     it("getVersionBadge không bao giờ ném lỗi và không gọi GitHub", async () => {
       const f = vi.fn()
       vi.stubGlobal("fetch", f)
       await db.delete(appSettings).where(eq(appSettings.key, UPDATE_LATEST_KEY))
-      expect(await getVersionBadge("admin")).toEqual({ current: getAppVersion(), latestVersion: null })
+      expect(await getVersionBadge("admin")).toEqual({ current: getAppVersion(), latestVersion: null, latestKnown: null })
       expect(f).not.toHaveBeenCalled()
     })
   })
@@ -512,7 +512,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
       const logs = await logsOf("system.update_check")
       expect(logs).toHaveLength(1)
       expect(logs[0]).toMatchObject({ status: "success", targetType: "system", targetLabel: "v1.3.0" })
-      expect(logs[0]!.metadata).toEqual({ version: "1.3.0", current: "1.2.0" })
+      expect(logs[0]!.metadata).toEqual({ version: "1.3.0", current: "1.2.0", trigger: "manual" })
     })
 
     it("GitHub lỗi: trả thông báo thân thiện, lưu update_check_error, giữ update_latest cũ, log status failure", async () => {
@@ -526,6 +526,13 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
       expect(logs).toHaveLength(1)
       expect(logs[0]!.status).toBe("failure")
       expect(logs[0]!.metadata).toMatchObject({ code: "rate_limited" })
+    })
+
+    it("trang Cập nhật tự kiểm tra khi mở: nhật ký ghi trigger auto", async () => {
+      vi.stubGlobal("fetch", githubOk())
+      await checkForUpdatesNow(admin2, new Date(), "auto")
+      const logs = await logsOf("system.update_check", admin2.id)
+      expect(logs.at(-1)!.metadata).toMatchObject({ trigger: "auto" })
     })
 
     it("giới hạn tần suất theo người dùng (6 lần / phút)", async () => {
