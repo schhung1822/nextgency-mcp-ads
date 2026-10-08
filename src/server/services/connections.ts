@@ -28,6 +28,7 @@ import { adAccounts, connections, mcpAccountScopes, mcpServers, metaPages, user 
 import {
   applyRefresh,
   countAccounts,
+  effectiveStatusAfter,
   encryptCredentials,
   loadConnection,
   META_WARNINGS_KEY,
@@ -43,9 +44,11 @@ import {
 } from "@/server/jobs/lib/connection-ops"
 import { appBaseUrl } from "@/server/env"
 import { invalidateGrantCache } from "@/server/mcp/grant"
+import { notifyConnectionHealth } from "@/server/notifications/events"
 import { allProviders, ensureProvidersRegistered, getProvider } from "@/server/providers"
 import { isProviderError } from "@/server/providers/errors"
 import { forgetPageTokens, pageCapabilities } from "@/server/providers/meta/pages"
+import { exchangeAuthCode } from "@/server/providers/tiktok"
 import { PLATFORMS, type AdAccountInfo, type ConnectionGuide, type Platform } from "@/server/providers/types"
 
 export type Actor = Pick<AppUser, "id" | "email" | "role">
@@ -144,6 +147,7 @@ export function getPlatformFormSpecs(): PlatformFormSpec[] {
       fields: provider.credentialFields.map((f) => ({ ...f })),
       // {APP_URL} in a guide = the address this Ads MCP runs at (e.g. the exact redirect URL to declare)
       guide: withAppUrl(provider.guide),
+      supportsAuthCode: p === "tiktok",
     }
   })
 }
@@ -349,7 +353,7 @@ async function insertVerifiedConnection(
     out: VerifyOutcome & { accounts: AdAccountInfo[] }
     disabledExternalIds: string[]
     enabledExternalIds?: string[]
-    via?: "token"
+    via?: "token" | "auth_code"
   }
 ): Promise<{ id: string }> {
   const provider = getProvider(args.platform)
@@ -423,6 +427,38 @@ export async function createConnection(
   })
 }
 
+/** TikTok "Đổi auth_code": exchange server-side and save directly - the token never reaches the browser. */
+async function exchangeTikTok(input: { appId: string; secret: string; authCode: string }) {
+  ensureProvidersRegistered()
+  try {
+    // only what the exchange needs (the caller's input also carries the connection name / re-auth fields)
+    const res = await exchangeAuthCode({ appId: input.appId, secret: input.secret, authCode: input.authCode })
+    const creds = parseCredentialsOrThrow("tiktok", { accessToken: res.accessToken, appId: input.appId, secret: input.secret })
+    // granted scope ids (digit strings, non-secret) are kept for the scope warnings
+    return { creds, meta: { scope: res.scope } as Record<string, unknown> }
+  } catch (e) {
+    if (e instanceof ConnectionServiceError) throw e
+    if (!isProviderError(e)) console.error("[connections] tiktok exchange failed:", safeErrorForLog(e))
+    throw new ConnectionServiceError(providerErrorMessage(e))
+  }
+}
+
+export async function createTikTokConnectionFromAuthCode(
+  actor: Actor,
+  input: { name: string; appId: string; secret: string; authCode: string }
+): Promise<{ id: string }> {
+  const { creds, meta } = await exchangeTikTok(input)
+  const out = await verifyOrThrow("tiktok", creds, { connectionMeta: meta })
+  return insertVerifiedConnection(actor, {
+    platform: "tiktok",
+    name: input.name,
+    credentials: creds,
+    out,
+    disabledExternalIds: [],
+    via: "auth_code",
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
@@ -449,7 +485,7 @@ async function applyNewCredentials(
   row: ConnectionRow,
   creds: unknown,
   out: VerifyOutcome & { accounts: AdAccountInfo[] },
-  via: "token"
+  via: "token" | "auth_code"
 ): Promise<ConnectionCheckResult> {
   const provider = getProvider(row.platform)
   const now = new Date()
@@ -510,6 +546,18 @@ export async function replaceCredentials(
   return applyNewCredentials(actor, row, creds, out, "token")
 }
 
+/** "Thay token" by a new TikTok auth_code. The caller must have re-verified the user's password. */
+export async function replaceTikTokCredentialsFromAuthCode(
+  actor: Actor,
+  input: { connectionId: string; appId: string; secret: string; authCode: string }
+): Promise<ConnectionCheckResult> {
+  const row = await getOwnedRow(actor, input.connectionId)
+  if (row.platform !== "tiktok") throw new ConnectionServiceError(m.errors.tiktokOnly)
+  const { creds, meta } = await exchangeTikTok(input)
+  const out = await verifyOrThrow("tiktok", creds, { connectionId: row.id, connectionMeta: meta })
+  return applyNewCredentials(actor, row, creds, out, "auth_code")
+}
+
 // ---------------------------------------------------------------------------
 // Test / sync / health
 // ---------------------------------------------------------------------------
@@ -542,6 +590,8 @@ async function refreshForUser(actor: Actor, connectionId: string, syncAccounts: 
   })
   // account list / names may have changed (grants embed them)
   invalidateGrantCache()
+  // Telegram (after commit, never throws): only a real status transition, once per connection/status/day
+  await notifyConnectionHealth({ connectionId: row.id, before: row.status, after: effectiveStatusAfter(row, plan), statusMessage: plan.statusMessage, now })
   return {
     status: (plan.status ?? row.status) as ConnectionStatusValue,
     statusMessage: plan.statusMessage,

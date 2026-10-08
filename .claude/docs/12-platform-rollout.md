@@ -1,8 +1,10 @@
-# Phát hành thêm nền tảng quảng cáo (Google Ads, TikTok Ads)
+# Phát hành thêm nền tảng quảng cáo
 
-> Bản hiện tại hỗ trợ **Meta** và **OpenAI Ads**. **Google Ads** và **TikTok Ads** là nền tảng _sắp ra mắt_: chỉ hiện thẻ mờ "Sắp ra mắt" ở `/connections/new` (bấm vào → popup "Kết nối … chưa sẵn sàng"); **không có mã nguồn adapter, tool MCP, hướng dẫn token hay biến môi trường nào của hai nền tảng này trong repo và Docker image**. Mỗi nền tảng sẽ được phát hành ở một phiên bản cập nhật riêng để thu hút người dùng nâng cấp (cơ chế cập nhật 1 chạm: `10-update-system.md`).
+> **Trạng thái 2026-10-08**: cả 4 nền tảng đã phát hành — **Meta**, **OpenAI Ads**, **Google Ads** (gồm quảng cáo YouTube: chiến dịch Video / Demand Gen trong Google Ads, không có API riêng) và **TikTok Ads**. `UPCOMING_PLATFORMS` rỗng nên không còn thẻ "Sắp ra mắt" ở `/connections/new` (code vẽ thẻ/popup "chưa sẵn sàng" vẫn giữ cho nền tảng tương lai). Google Ads + TikTok Ads được đưa vào repo từ nhánh lưu trữ `archive/full-platforms` theo checklist dưới đây (tiến độ: `08-roadmap.md` mục "Phát hành Google Ads (YouTube), TikTok Ads, kênh Telegram").
 >
-> Mã nguồn adapter + tài liệu API của hai nền tảng được phát triển **ngoài repo chính** (chủ dự án giữ). Khi phát hành, đưa vào repo theo checklist dưới đây.
+> Kênh thông báo **Telegram** không phải nền tảng quảng cáo (không dùng enum `platform` / `RELEASED_PLATFORMS`) — xem `14-telegram-notifications.md`.
+>
+> Checklist §2 giữ lại cho nền tảng quảng cáo tương lai: mỗi nền tảng mới phát hành ở một phiên bản cập nhật riêng (cơ chế cập nhật 1 chạm: `10-update-system.md`).
 
 ## 1. Một chỗ cấu hình duy nhất
 
@@ -16,7 +18,7 @@
 
 Kết nối cũ của nền tảng không nằm trong `RELEASED_PLATFORMS` (nếu DB còn) được **ẩn và bỏ qua**: không liệt kê, không mở được chi tiết, job không kiểm tra, grant MCP không nạp (`services/connections.ts`, `services/ad-accounts.ts`, `services/dashboard.ts`, `jobs/lib/connection-ops.ts`, `mcp/grant.ts`). Dữ liệu vẫn giữ nguyên trong DB → khi phát hành nền tảng, chúng hiện lại.
 
-## 2. Checklist phát hành một nền tảng (ví dụ Google Ads)
+## 2. Checklist phát hành một nền tảng (đã áp dụng cho Google Ads + TikTok Ads, 2026-10-08)
 
 1. **Adapter**: thêm `src/server/providers/<platform>/` (implement `AdsProvider`, không import `next/*`), đăng ký trong `src/server/providers/index.ts` (`allProviders`).
 2. **Cấu hình**: chuyển nền tảng từ `UPCOMING_PLATFORMS` sang `RELEASED_PLATFORMS` trong `src/lib/platforms.ts`.

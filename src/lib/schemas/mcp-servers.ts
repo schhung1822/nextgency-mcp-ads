@@ -3,6 +3,11 @@
 import { z } from "zod"
 
 import { isReleasedPlatform, RELEASED_PLATFORMS, type ReleasedPlatform } from "@/lib/platforms"
+import { notifications as notificationsVi } from "@/lib/i18n/vi/notifications"
+import {
+  MULTILINE_FORBIDDEN_CHARS,
+  NAME_FORBIDDEN_CHARS,
+} from "@/lib/text-safety"
 import type { Permission } from "@/server/mcp/types"
 import type { Platform } from "@/server/providers/types"
 
@@ -59,6 +64,10 @@ export const MCP_LIMITS = {
   allowedIpsMax: 50,
   maxDailyBudgetMax: 1_000_000_000_000,
   currenciesMax: 20,
+  /** Telegram messages / hour the AI may send (telegram_send_message), per MCP */
+  telegramMessagesPerHour: { min: 1, max: 200 },
+  /** Telegram channels per MCP (same bound as mcpChannelIdsSchema) */
+  telegramChannelsMax: 20,
 } as const
 
 const msg = {
@@ -78,6 +87,7 @@ const msg = {
   budgetPct: `Giới hạn đổi ngân sách phải từ ${MCP_LIMITS.budgetChangeMaxPct.min} đến ${MCP_LIMITS.budgetChangeMaxPct.max}%.`,
   rateLimit: `Giới hạn lệnh/phút phải từ ${MCP_LIMITS.rateLimitPerMin.min} đến ${MCP_LIMITS.rateLimitPerMin.max}.`,
   writeRateLimit: `Giới hạn thao tác ghi / 10 phút phải từ ${MCP_LIMITS.writeRateLimitPer10Min.min} đến ${MCP_LIMITS.writeRateLimitPer10Min.max}.`,
+  telegramPerHour: `Giới hạn tin Telegram / giờ phải từ ${MCP_LIMITS.telegramMessagesPerHour.min} đến ${MCP_LIMITS.telegramMessagesPerHour.max}.`,
   currency: "Mã tiền tệ phải gồm 3 chữ cái in hoa (vd VND, USD).",
   maxBudget: "Trần ngân sách phải là số dương hợp lệ.",
   maxBid: "Trần giá thầu phải là số dương hợp lệ.",
@@ -171,6 +181,15 @@ export const mcpSettingsSchema = z.object({
         .refine(isValidIpOrCidr, { error: (iss) => msg.ip(String(iss.input)) })
     )
     .max(MCP_LIMITS.allowedIpsMax, msg.tooManyIps),
+  /** Telegram (14-telegram-notifications.md §6) - optional on input, safe defaults (off / 20 per hour) */
+  telegramTool: z.boolean().default(false),
+  telegramNotifyWrites: z.boolean().default(false),
+  telegramMessagesPerHour: z
+    .number({ error: msg.telegramPerHour })
+    .int(msg.telegramPerHour)
+    .min(MCP_LIMITS.telegramMessagesPerHour.min, msg.telegramPerHour)
+    .max(MCP_LIMITS.telegramMessagesPerHour.max, msg.telegramPerHour)
+    .default(20),
 })
 export type McpSettingsInput = z.infer<typeof mcpSettingsSchema>
 
@@ -183,6 +202,9 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
   rateLimitPerMin: 60,
   writeRateLimitPer10Min: 20,
   allowedIps: [],
+  telegramTool: false,
+  telegramNotifyWrites: false,
+  telegramMessagesPerHour: 20,
 }
 
 /** Shape stored in `mcp_servers.settings` (snake_case, as documented in 03-database-schema.md). */
@@ -197,6 +219,9 @@ export interface StoredMcpSettings {
   allowed_ips: string[]
   /** written on every create/save since the security release; rows without it are legacy (caps optional) */
   money_caps_required: true
+  telegram_tool: boolean
+  telegram_notify_writes: boolean
+  telegram_messages_per_hour: number
 }
 
 function sortedCaps(r: Record<string, number>): Record<string, number> {
@@ -217,6 +242,9 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     write_rate_limit_per_10min: s.writeRateLimitPer10Min,
     allowed_ips: [...s.allowedIps],
     money_caps_required: true,
+    telegram_tool: s.telegramTool,
+    telegram_notify_writes: s.telegramNotifyWrites,
+    telegram_messages_per_hour: s.telegramMessagesPerHour,
   }
 }
 
@@ -288,12 +316,19 @@ export const mcpConfigSchema = z.object({
     }),
   settings: mcpSettingsSchema,
   expiresAt: nullableExpiry,
+  /**
+   * Telegram channels the MCP may use (telegram_* tools + notifications after writes). Omitted = keep the stored
+   * scope on update (none on create); [] = no channel.
+   */
+  notificationChannelIds: z
+    .array(z.uuid(msg.id))
+    .max(MCP_LIMITS.telegramChannelsMax, notificationsVi.errors.tooManyChannels)
+    .optional(),
 })
 
 /** control characters (except newline/tab in descriptions) and bidi overrides - spoofing in UI/logs */
-const NAME_FORBIDDEN = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u
-const DESC_FORBIDDEN =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/u
+const NAME_FORBIDDEN = NAME_FORBIDDEN_CHARS
+const DESC_FORBIDDEN = MULTILINE_FORBIDDEN_CHARS
 
 const nameSchema = z
   .string()
@@ -390,6 +425,11 @@ export type McpFormValues = {
   rateLimitPerMin: string
   writeRateLimitPer10Min: string
   allowedIpsText: string
+  /** Telegram channels in scope (notification_channels ids) */
+  notificationChannelIds: string[]
+  telegramTool: boolean
+  telegramNotifyWrites: boolean
+  telegramMessagesPerHour: string
 }
 
 export const PERMISSION_PRESETS = {
@@ -422,6 +462,8 @@ export function defaultMcpFormValues(): McpFormValues {
     description: "",
     platforms: {
       meta: emptyPlatformDraft(),
+      tiktok: emptyPlatformDraft(),
+      google_ads: emptyPlatformDraft(),
       openai_ads: emptyPlatformDraft(),
     },
     twoStepConfirm: DEFAULT_SETTINGS_INPUT.twoStepConfirm,
@@ -435,6 +477,10 @@ export function defaultMcpFormValues(): McpFormValues {
       DEFAULT_SETTINGS_INPUT.writeRateLimitPer10Min
     ),
     allowedIpsText: "",
+    notificationChannelIds: [],
+    telegramTool: DEFAULT_SETTINGS_INPUT.telegramTool,
+    telegramNotifyWrites: DEFAULT_SETTINGS_INPUT.telegramNotifyWrites,
+    telegramMessagesPerHour: String(DEFAULT_SETTINGS_INPUT.telegramMessagesPerHour),
   }
 }
 
@@ -529,8 +575,12 @@ export function formValuesToConfig(
       rateLimitPerMin: Number(v.rateLimitPerMin),
       writeRateLimitPer10Min: Number(v.writeRateLimitPer10Min),
       allowedIps: parseIpList(v.allowedIpsText),
+      telegramTool: v.telegramTool,
+      telegramNotifyWrites: v.telegramNotifyWrites,
+      telegramMessagesPerHour: Number(v.telegramMessagesPerHour),
     },
     expiresAt: v.expiresOn ? expiryDateToIso(v.expiresOn) : null,
+    notificationChannelIds: [...new Set(v.notificationChannelIds)],
   }
 }
 
@@ -553,6 +603,7 @@ export function configToFormValues(config: {
   }[]
   settings: z.input<typeof mcpSettingsSchema>
   expiresAt: Date | string | null
+  notificationChannelIds?: string[]
 }): McpFormValues {
   const v = defaultMcpFormValues()
   v.name = config.name
@@ -593,7 +644,27 @@ export function configToFormValues(config: {
   )
   v.allowedIpsText = config.settings.allowedIps.join("\n")
   v.expiresOn = isoToExpiryDate(config.expiresAt)
+  v.notificationChannelIds = [...(config.notificationChannelIds ?? [])]
+  v.telegramTool = config.settings.telegramTool ?? DEFAULT_SETTINGS_INPUT.telegramTool
+  v.telegramNotifyWrites =
+    config.settings.telegramNotifyWrites ?? DEFAULT_SETTINGS_INPUT.telegramNotifyWrites
+  v.telegramMessagesPerHour = String(
+    config.settings.telegramMessagesPerHour ??
+      DEFAULT_SETTINGS_INPUT.telegramMessagesPerHour
+  )
   return v
+}
+
+/** Keep only Telegram channels the owner can still pick (deleted channels / other owners are dropped on save). */
+export function pruneChannelsToSelectable(
+  values: McpFormValues,
+  options: readonly { id: string }[]
+): McpFormValues {
+  const ids = new Set(options.map((o) => o.id))
+  const kept = values.notificationChannelIds.filter((id) => ids.has(id))
+  return kept.length === values.notificationChannelIds.length
+    ? values
+    : { ...values, notificationChannelIds: kept }
 }
 
 /** Field-level problems of a wizard step, keyed by a stable path (Vietnamese messages). */
@@ -658,6 +729,13 @@ export function validateProtectionStep(
     v.writeRateLimitPer10Min.trim() === ""
   )
     e.writeRateLimitPer10Min = msg.writeRateLimit
+  const tgRate = Number(v.telegramMessagesPerHour)
+  if (
+    !mcpSettingsSchema.shape.telegramMessagesPerHour.safeParse(tgRate)
+      .success ||
+    (v.telegramMessagesPerHour ?? "").trim() === ""
+  )
+    e.telegramMessagesPerHour = msg.telegramPerHour
   for (const field of MCP_CAP_FIELDS) {
     for (const [cur, text] of Object.entries(v[field] ?? {})) {
       if (text.trim() === "") continue

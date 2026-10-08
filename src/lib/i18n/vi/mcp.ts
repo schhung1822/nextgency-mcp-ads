@@ -73,7 +73,7 @@ export const mcp = {
     fixErrors: "Vui lòng sửa các mục được đánh dấu.",
     noConnectionsTitle: "Bạn chưa có kết nối quảng cáo nào",
     noConnectionsDescription:
-      "MCP cần ít nhất 1 kết nối (Meta hoặc OpenAI Ads). Thêm kết nối trước, rồi quay lại tạo MCP.",
+      "MCP cần ít nhất 1 kết nối (Meta, TikTok, Google Ads hoặc OpenAI Ads). Thêm kết nối trước, rồi quay lại tạo MCP.",
     addConnection: "Thêm kết nối",
   },
 
@@ -219,6 +219,52 @@ export const mcp = {
     expiryPresetsLabel: "Chọn nhanh thời hạn",
     expiryPickLabel: "Chọn ngày hết hạn",
     ipCount: (n: number) => `${n} IP/dải đã nhập`,
+  },
+
+  /** Telegram notification channels in the MCP form (14-telegram-notifications.md §6) */
+  telegram: {
+    /** step 2/3 subheading separating the Telegram block from the ad platforms */
+    optionalGroup: "Thông báo (không bắt buộc)",
+    title: "Kết nối Telegram",
+    description:
+      "Chọn kết nối Telegram mà MCP này được dùng: AI gửi báo cáo khi bạn yêu cầu và (tuỳ chọn) tự báo mỗi khi AI thay đổi quảng cáo. Không chọn = không dùng Telegram.",
+    channelsLabel: "Kết nối Telegram",
+    selectedCount: (n: number) => `Đã chọn ${n} kết nối`,
+    thread: "gửi vào chủ đề riêng",
+    ownerSuffix: (email: string) => `của ${email}`,
+    statusError: "Đang lỗi",
+    statusDisabled: "Đang tắt",
+    statusHint:
+      "Kết nối Telegram đang lỗi hoặc đang tắt sẽ không nhận tin cho tới khi hoạt động lại (kiểm tra ở trang Kết nối → Telegram).",
+    emptyTitle: "Chưa có kết nối Telegram",
+    emptyDescription:
+      "Tạo bot Telegram và thêm kết nối Telegram ở trang Kết nối, rồi quay lại đây để chọn.",
+    addChannel: "Thêm kết nối Telegram",
+    ownerOnlyNote: (email: string) =>
+      `MCP của ${email} chỉ dùng được kết nối Telegram của người này.`,
+    permissionsTitle: "Telegram",
+    permissionsDescription: (n: number) =>
+      `Áp dụng cho ${n} kết nối Telegram đã chọn ở bước Nền tảng.`,
+    noChannelsSelected:
+      "Chưa chọn kết nối Telegram nào - chọn ở bước Nền tảng nếu muốn AI gửi thông báo.",
+    toolLabel: "AI được gửi tin",
+    toolHelp:
+      "AI gửi báo cáo hoặc thông báo vào Telegram khi bạn yêu cầu. Tin luôn có tiêu đề \"Tin từ AI\" và có giới hạn số tin mỗi giờ.",
+    notifyLabel: "Tự báo khi AI thay đổi quảng cáo",
+    notifyHelp:
+      "Sau mỗi lần AI bật/tắt, đổi ngân sách, sửa, tạo, sao chép hoặc xoá thành công, hệ thống tự gửi 1 tin tóm tắt (trước → sau) vào các kết nối Telegram đã chọn.",
+    groupTitle: "Telegram",
+    groupDescription: "Giới hạn số tin AI được gửi vào Telegram.",
+    perHourLabel: "Giới hạn tin Telegram / giờ",
+    perHourHelp:
+      "Số tin AI được chủ động gửi vào Telegram trong 1 giờ (1-200). Mặc định 20. Tin tự báo khi AI thay đổi quảng cáo không tính vào giới hạn này.",
+    perHourSuffix: "tin/giờ",
+    summaryChannels: "Kết nối Telegram",
+    summaryTool: "AI được gửi tin Telegram",
+    summaryNotify: "Tự báo khi AI thay đổi quảng cáo",
+    summaryPerHour: "Giới hạn tin Telegram / giờ",
+    summaryNone: "Không dùng",
+    deletedChannel: "(kết nối đã xoá)",
   },
 
   success: {

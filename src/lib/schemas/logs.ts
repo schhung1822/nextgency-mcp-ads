@@ -18,7 +18,17 @@ export const MCP_LOG_STATUSES = [
 export type McpLogStatus = (typeof MCP_LOG_STATUSES)[number]
 export const ACTIVITY_STATUSES = ["success", "failure"] as const
 /** action prefixes (activity_logs.action = "<group>.<…>") */
-export const ACTIVITY_GROUPS = ["auth", "setup", "user", "connection", "mcp", "settings", "logs", "system"] as const
+export const ACTIVITY_GROUPS = [
+  "auth",
+  "setup",
+  "user",
+  "connection",
+  "notification_channel",
+  "mcp",
+  "settings",
+  "logs",
+  "system",
+] as const
 export type ActivityGroup = (typeof ACTIVITY_GROUPS)[number]
 
 export const LOG_PAGE_SIZE = 50

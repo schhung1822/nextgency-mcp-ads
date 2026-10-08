@@ -31,7 +31,16 @@ export interface McpSettings {
    * writes need a daily cap for the account currency. false = legacy row (no cap required, warnings only).
    */
   moneyCapsRequired: boolean
+  /** Telegram: the AI may call telegram_send_message (needs ≥ 1 channel in scope) */
+  telegramTool: boolean
+  /** Telegram: after every successful write execution, send a summary to the channels in scope */
+  telegramNotifyWrites: boolean
+  /** Telegram: messages per hour (sliding window) telegram_send_message may send for this MCP, 1–200 */
+  telegramMessagesPerHour: number
 }
+
+/** Bounds of McpSettings.telegramMessagesPerHour */
+export const TELEGRAM_MESSAGES_PER_HOUR = { min: 1, max: 200, default: 20 } as const
 
 /** Lifetime budget without a known end date: at most maxDailyBudget × this many days. */
 export const LIFETIME_DEFAULT_DAYS = 30
@@ -46,6 +55,9 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   writeRateLimitPer10Min: 20,
   allowedIps: [],
   moneyCapsRequired: false,
+  telegramTool: false,
+  telegramNotifyWrites: false,
+  telegramMessagesPerHour: TELEGRAM_MESSAGES_PER_HOUR.default,
 }
 
 /** An ad account the MCP may act on (already filtered: enabled, connection active, owner rules applied). */
@@ -76,6 +88,18 @@ export interface GrantPage {
   businessName: string | null
 }
 
+/**
+ * A Telegram channel the MCP may send to (mcp_notification_scopes; status active|error, not deleted, owner rules
+ * applied). Never carries the bot token or the raw chat id.
+ */
+export interface GrantChannel {
+  /** notification_channels.id */
+  id: string
+  name: string
+  chatTitle: string | null
+  hasThread: boolean
+}
+
 /** Everything a request to /mcp/<key> is allowed to do. Loaded once per request. */
 export interface McpGrant {
   mcpId: string
@@ -89,6 +113,8 @@ export interface McpGrant {
   accounts: GrantAccount[]
   /** Facebook Pages in scope - only when the MCP may read Meta (empty otherwise) */
   pages: GrantPage[]
+  /** Telegram channels in scope (telegram_* tools + notifications after writes); independent of ad platforms */
+  notificationChannels: GrantChannel[]
 }
 
 export function grantAllows(grant: McpGrant, platform: Platform, permission: Permission): boolean {

@@ -18,14 +18,13 @@ export type Platform = (typeof ALL_PLATFORMS)[number]
 
 export const RELEASED_PLATFORMS = [
   "meta",
+  "tiktok",
+  "google_ads",
   "openai_ads",
 ] as const satisfies readonly Platform[]
 export type ReleasedPlatform = (typeof RELEASED_PLATFORMS)[number]
 
-export const UPCOMING_PLATFORMS = [
-  "google_ads",
-  "tiktok",
-] as const satisfies readonly Platform[]
+export const UPCOMING_PLATFORMS = [] as const satisfies readonly Platform[]
 
 export function isReleasedPlatform(p: string): p is ReleasedPlatform {
   return (RELEASED_PLATFORMS as readonly string[]).includes(p)

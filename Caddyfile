@@ -12,18 +12,20 @@
 {
 	email {$ACME_EMAIL}
 	# Log mặc định (gồm http.log.error khi upstream lỗi/timeout): cũng che key MCP trong path, Referer
-	# và nội dung lỗi — access log bên dưới đã có bộ lọc riêng.
+	# và nội dung lỗi — access log bên dưới đã có bộ lọc riêng. Cũng che auth_code (mã uỷ quyền TikTok dùng
+	# 1 lần, TikTok chuyển hướng về /connections/new?auth_code=…): mỗi trường chỉ có 1 bộ lọc nên gộp 2 mẫu
+	# trong 1 regexp (nhóm không khớp thay bằng chuỗi rỗng).
 	log default {
 		output stderr
 		format filter {
 			wrap json
 			fields {
-				request>uri regexp "^/mcp/[^/?#]+" "/mcp/[redacted]"
-				request>headers>Referer regexp "/mcp/[^/?#\s\"]+" "/mcp/[redacted]"
+				request>uri regexp "^(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
+				request>headers>Referer regexp "(/mcp/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
 				request>headers>Authorization delete
 				request>headers>Cookie delete
-				error regexp "/mcp/[^/?#\s\"]+" "/mcp/[redacted]"
-				msg regexp "/mcp/[^/?#\s\"]+" "/mcp/[redacted]"
+				error regexp "(/mcp/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
+				msg regexp "(/mcp/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
 			}
 		}
 	}
@@ -39,12 +41,12 @@
 {$CADDY_SITE_SCHEME}{$APP_DOMAIN} {
 	import /etc/caddy/deploy/tls-{$CADDY_TLS:auto}.caddy
 
-	# Access log: che key MCP trong path, xoá header nhạy cảm.
+	# Access log: che key MCP trong path và auth_code TikTok trong query (cả trong Referer), xoá header nhạy cảm.
 	log {
 		output stdout
 		format filter {
-			request>uri regexp "^/mcp/[^/?#]+" "/mcp/[redacted]"
-			request>headers>Referer regexp "/mcp/[^/?#]+" "/mcp/[redacted]"
+			request>uri regexp "^(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
+			request>headers>Referer regexp "(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
 			request>headers>Authorization delete
 			request>headers>Cookie delete
 			resp_headers>Set-Cookie delete

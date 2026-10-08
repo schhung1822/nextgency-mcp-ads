@@ -33,7 +33,16 @@ vi.mock("@/server/audit/activity-log", async (importOriginal) => {
 import { and, desc, eq } from "drizzle-orm"
 
 import { db } from "@/server/db/client"
-import { activityLogs, connections, session as sessionTable, twoFactor, user, verification } from "@/server/db/schema"
+import {
+  activityLogs,
+  connections,
+  notificationChannels,
+  notificationDeliveries,
+  session as sessionTable,
+  twoFactor,
+  user,
+  verification,
+} from "@/server/db/schema"
 import { encryptSecret } from "@/server/crypto/secret-box"
 
 import {
@@ -509,6 +518,55 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
       expect(await deleteUserAction({ userId: staff2.id })).toMatchObject({ ok: false, error: "Bạn không có quyền thực hiện thao tác này." })
       expect(await row(staff2.id)).toBeTruthy()
       await db.delete(connections).where(eq(connections.ownerId, owner.id))
+    })
+
+    it("kênh Telegram còn hoạt động → từ chối (nêu kênh Telegram); kênh đã xoá mềm → xoá hẳn kèm nhật ký rồi xoá người dùng", async () => {
+      const { deleteUserAction } = await actions()
+      const owner = await createTestUser(P, "deltg", { role: "staff" })
+      const channelId = crypto.randomUUID()
+      await db.insert(notificationChannels).values({
+        id: channelId,
+        ownerId: owner.id,
+        type: "telegram",
+        name: `${P} tg`,
+        credentialsEncrypted: encryptSecret("x", `notification_channel:${channelId}:credentials`),
+        credentialHint: "abcd",
+        config: {
+          chatId: "-100123",
+          chatTitle: "Nhóm",
+          chatType: "supergroup",
+          messageThreadId: null,
+          botId: "1",
+          botUsername: "b",
+        },
+      })
+      await db.insert(notificationDeliveries).values({
+        channelId,
+        source: "test",
+        eventType: "test",
+        status: "sent",
+        attempts: 1,
+        preview: "x",
+      })
+      actAs(sA)
+      const blocked = await deleteUserAction({ userId: owner.id })
+      expect(blocked.ok).toBe(false)
+      if (!blocked.ok) expect(blocked.error).toMatch(/1 kết nối Telegram/)
+      expect(await row(owner.id)).toBeTruthy()
+
+      // the owner deleted the channel (soft delete): it no longer blocks; it is purged with the user
+      await db.update(notificationChannels).set({ deletedAt: new Date() }).where(eq(notificationChannels.id, channelId))
+      expect((await deleteUserAction({ userId: owner.id })).ok).toBe(true)
+      expect(await db.select().from(user).where(eq(user.id, owner.id))).toHaveLength(0)
+      expect(await db.select().from(notificationChannels).where(eq(notificationChannels.id, channelId))).toHaveLength(0)
+      expect(
+        await db.select().from(notificationDeliveries).where(eq(notificationDeliveries.channelId, channelId))
+      ).toHaveLength(0)
+      expect((await lastLog("notification_channel.delete", channelId))!.metadata).toMatchObject({
+        purged: true,
+        reason: "user.delete",
+        ownerId: owner.id,
+      })
     })
 
     it("xoá ADMIN cần xác thực lại: thiếu → _reauth, sai → nhật ký reauth, đúng → xoá", async () => {

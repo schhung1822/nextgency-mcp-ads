@@ -1,0 +1,33 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "2026100207100001ABCDEF0123456789AB",
+  "data": {
+    "page_info": { "page": 1, "page_size": 10, "total_number": 1, "total_page": 1 },
+    "list": [
+      {
+        "advertiser_id": "7100000000000000001",
+        "campaign_id": "1810000000000000001",
+        "campaign_name": "Sale thang 10",
+        "campaign_type": "REGULAR_CAMPAIGN",
+        "campaign_automation_type": "MANUAL",
+        "is_smart_performance_campaign": false,
+        "is_search_campaign": false,
+        "objective_type": "WEB_CONVERSIONS",
+        "objective": "LANDING_PAGE",
+        "budget_mode": "BUDGET_MODE_INFINITE",
+        "budget": 0.0,
+        "operation_status": "ENABLE",
+        "secondary_status": "CAMPAIGN_STATUS_ENABLE",
+        "create_time": "2026-09-20 03:10:00",
+        "modify_time": "2026-09-20 03:10:00",
+        "is_new_structure": true,
+        "catalog_enabled": false,
+        "special_industries": [],
+        "rta_bid_enabled": false,
+        "rta_product_selection_enabled": false,
+        "campaign_app_profile_page_state": "INVALID"
+      }
+    ]
+  }
+}

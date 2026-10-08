@@ -3,7 +3,7 @@
 #   web     : node server.js            (Next.js standalone, mặc định)
 #   worker  : node dist/worker.mjs      (pg-boss)
 #   migrate : node dist/migrate.mjs     (chạy 1 lần trước web/worker)
-#   cli     : node dist/cli.mjs <lệnh>  (create-admin, reset-password, reset-2fa, unlock, reencrypt)
+#   cli     : node dist/cli.mjs <lệnh>  (create-admin, reset-password, reset-2fa, unlock, unban, reencrypt, google:refresh-token)
 #   updater : target riêng `updater` (node dist/updater.mjs) - dịch vụ cập nhật tự động, KHÔNG phải image web.
 #             Là service duy nhất được mount docker.sock (xem docker-compose.yml, .claude/docs/07-deployment.md §6).
 # Target mặc định (cuối file) là `runner` (web) nên `docker build .` / `build: .` không đổi hành vi.

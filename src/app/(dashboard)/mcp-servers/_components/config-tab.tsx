@@ -14,6 +14,7 @@ import {
   analyzeScope,
   configToFormValues,
   formValuesToCreateInput,
+  pruneChannelsToSelectable,
   pruneToSelectable,
   summarizeScopeIssues,
   validateNameStep,
@@ -22,6 +23,7 @@ import {
   type McpFormValues,
   type StepErrors,
 } from "@/lib/schemas/mcp-servers"
+import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type {
   McpDetail,
   SelectableConnection,
@@ -39,8 +41,13 @@ import {
 } from "./mcp-form-sections"
 import { mapServerErrors } from "./mcp-wizard"
 import { ScopeIssuesAlert } from "./scope-issues"
+import {
+  TelegramChannelsSection,
+  TelegramPermissionsSection,
+} from "./telegram-sections"
 
 const NO_NAMES: Record<string, string> = {}
+const NO_CHANNELS: McpChannelOption[] = []
 
 /**
  * Scroll the per-currency caps section into view (smooth unless reduced motion) and focus the first
@@ -73,9 +80,11 @@ export type UpdateMcpActionFn = (
  */
 export function initialConfigValues(
   mcp: McpDetail,
-  connections: SelectableConnection[]
+  connections: SelectableConnection[],
+  /** Telegram channels the MCP owner can pick; omitted = keep the stored ids as they are */
+  channels?: readonly { id: string }[]
 ): McpFormValues {
-  return pruneToSelectable(
+  const values = pruneToSelectable(
     configToFormValues({
       name: mcp.name,
       description: mcp.description,
@@ -91,15 +100,19 @@ export function initialConfigValues(
       })),
       settings: mcp.settings,
       expiresAt: mcp.expiresAt,
+      notificationChannelIds: (mcp.notificationChannels ?? []).map((c) => c.id),
     }),
     connections
   )
+  // deleted channels (no longer offered) leave the scope on the next save
+  return channels ? pruneChannelsToSelectable(values, channels) : values
 }
 
 /** Edit name + steps 2–4 with a contextual save bar. Keyed by the parent on mcp.updatedAt so it resets after save. */
 export function ConfigTab({
   mcp,
   connections,
+  channels = NO_CHANNELS,
   accountNames = NO_NAMES,
   updateAction,
   onDirtyChange,
@@ -107,6 +120,8 @@ export function ConfigTab({
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
+  /** Telegram channels of the MCP owner (staff MCP: the owner's; admin MCP: all) */
+  channels?: McpChannelOption[]
   /** names of the ad accounts picked in this MCP that are switched off now (id → name), for the warning */
   accountNames?: Record<string, string>
   updateAction: UpdateMcpActionFn
@@ -117,8 +132,8 @@ export function ConfigTab({
 }) {
   const router = useRouter()
   const initial = React.useMemo(
-    () => initialConfigValues(mcp, connections),
-    [mcp, connections]
+    () => initialConfigValues(mcp, connections, channels),
+    [mcp, connections, channels]
   )
   const analysis = React.useMemo(
     () => analyzeScope(mcp.config, connections, accountNames),
@@ -239,6 +254,17 @@ export function ConfigTab({
             connections={connections}
             layout="grid"
           />
+          <TelegramChannelsSection
+            values={values}
+            update={update}
+            errors={errors}
+            channels={channels}
+            ownerNote={
+              !mcp.isMine
+                ? t.telegram.ownerOnlyNote(mcp.ownerEmail)
+                : undefined
+            }
+          />
         </div>
       </SectionCard>
       <SectionCard
@@ -247,6 +273,7 @@ export function ConfigTab({
       >
         <div className="flex flex-col gap-4">
           <PermissionsSection values={values} update={update} />
+          <TelegramPermissionsSection values={values} update={update} />
           <Alert>
             <HugeiconsIcon
               icon={InformationCircleIcon}

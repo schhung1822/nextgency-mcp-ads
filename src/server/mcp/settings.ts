@@ -1,10 +1,11 @@
 // Parse mcp_servers.settings (jsonb) into McpSettings. Accepts the documented snake_case shape
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
-//    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required })
+//    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required,
+//    telegram_tool, telegram_notify_writes, telegram_messages_per_hour })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields.
 import { z } from "zod"
-import { DEFAULT_MCP_SETTINGS, type McpSettings } from "./types"
+import { DEFAULT_MCP_SETTINGS, TELEGRAM_MESSAGES_PER_HOUR, type McpSettings } from "./types"
 
 const fields = {
   twoStepConfirm: z.boolean(),
@@ -12,6 +13,7 @@ const fields = {
   rateLimitPerMin: z.number().int().min(1).max(10_000),
   writeRateLimitPer10Min: z.number().int().min(1).max(10_000),
   allowedIps: z.array(z.string().max(64)).max(200),
+  telegramMessagesPerHour: z.number().int().min(TELEGRAM_MESSAGES_PER_HOUR.min).max(TELEGRAM_MESSAGES_PER_HOUR.max),
 }
 
 const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
@@ -24,6 +26,9 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   write_rate_limit_per_10min: "writeRateLimitPer10Min",
   allowed_ips: "allowedIps",
   money_caps_required: "moneyCapsRequired",
+  telegram_tool: "telegramTool",
+  telegram_notify_writes: "telegramNotifyWrites",
+  telegram_messages_per_hour: "telegramMessagesPerHour",
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -69,5 +74,9 @@ export function parseMcpSettings(raw: unknown): McpSettings {
         : pick(fields.allowedIps, n.allowedIps, ["invalid-allowlist"]),
     // only an explicit true: rows written before the flag existed are legacy (caps optional)
     moneyCapsRequired: n.moneyCapsRequired === true,
+    // Telegram: off unless explicitly true (safe default), quota falls back to the default when invalid
+    telegramTool: n.telegramTool === true,
+    telegramNotifyWrites: n.telegramNotifyWrites === true,
+    telegramMessagesPerHour: pick(fields.telegramMessagesPerHour, n.telegramMessagesPerHour, d.telegramMessagesPerHour),
   }
 }

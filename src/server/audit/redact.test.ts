@@ -126,3 +126,18 @@ describe("capJson", () => {
     expect((big.json as any)._truncated).toBe(true)
   })
 })
+
+describe("redact Telegram bot token", () => {
+  const token = "123456789:AAEhBP0av28dfjdk3rn4kbhfh2-8sdjfskdjfh"
+  it("redacts a bare token and a Bot API URL path", () => {
+    const s = redactString(`token ${token} url https://api.telegram.org/bot${token}/sendMessage`)
+    expect(s).not.toContain("AAEhBP0av28")
+    expect(s).toContain("https://api.telegram.org/bot[redacted]/sendMessage")
+    expect(redactString(`bot${token}`)).toBe("bot[redacted]")
+    expect(redact({ botToken: token })).toEqual({ botToken: "[redacted]" })
+  })
+  it("does not touch times, ids, chat ids or short id:value pairs", () => {
+    const keep = "Lúc 12:30, 2026-10-08T12:30:00Z, chat -1001234567890, act_123:456, robot12345:abc, 123456:short_value"
+    expect(redactString(keep)).toBe(keep)
+  })
+})

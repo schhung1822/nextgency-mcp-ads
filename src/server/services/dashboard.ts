@@ -30,6 +30,8 @@ export interface ChartPoint {
   /** YYYY-MM-DD in LOG_TIMEZONE */
   date: string
   meta: number
+  tiktok: number
+  google_ads: number
   openai_ads: number
   other: number
 }
@@ -152,7 +154,7 @@ export async function getCallsChart(viewer: LogViewer, days = 30, now: Date = ne
     )
     .groupBy(sql`1`, mcpCallStatsHourly.platform)
   const byDay = new Map<string, ChartPoint>(
-    labels.map((d) => [d, { date: d, meta: 0, openai_ads: 0, other: 0 }])
+    labels.map((d) => [d, { date: d, meta: 0, tiktok: 0, google_ads: 0, openai_ads: 0, other: 0 }])
   )
   for (const r of rows) {
     const p = byDay.get(r.day)

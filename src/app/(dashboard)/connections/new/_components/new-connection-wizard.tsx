@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import {
   Alert02Icon,
@@ -14,6 +15,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import {
+  BrandIcon,
   createDataTableColumnHelper,
   DataTable,
   PageGuide,
@@ -21,6 +23,7 @@ import {
   StatusBadge,
   Stepper,
 } from "@/components/app"
+import { SegmentedControl } from "@/components/mcp/segmented-control"
 import { StatusHint } from "@/components/mcp/status-hint"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -68,19 +71,24 @@ import {
 } from "@/lib/schemas/connections"
 import {
   createConnectionAction,
+  createTikTokFromAuthCodeAction,
   previewConnectionAction,
 } from "@/server/actions/connections"
 import type { Platform } from "@/server/providers/types"
 
 import {
+  AUTH_CODE_FIELDS,
   CredentialFields,
   initialCredentialValues,
 } from "../../_components/credential-fields"
 import { TokenSummary } from "../../_components/token-summary"
 
+type Mode = "token" | "auth_code"
+
 interface FormValues {
   name: string
   credentials: Record<string, string>
+  authCode: Record<string, string>
 }
 
 interface Submission {
@@ -110,12 +118,23 @@ function StepOverline({ step }: { step: number }) {
   )
 }
 
+/** Card label in step 1 / the form title: Google Ads also covers YouTube. */
+function platformCardLabel(p: Platform): string {
+  return p === "google_ads" ? m.new.googleWithYoutube : PLATFORM_LABELS[p]
+}
+
 export function NewConnectionWizard({
   specs,
   initialPlatform,
+  initialYoutube = false,
+  authCodeRedirect = false,
 }: {
   specs: PlatformFormSpec[]
   initialPlatform: Platform | null
+  /** ?platform=youtube: open the Google Ads form with the YouTube explanation */
+  initialYoutube?: boolean
+  /** TikTok redirected back with ?auth_code=…: open "Đổi auth_code", prefilled from the address bar */
+  authCodeRedirect?: boolean
 }) {
   const router = useRouter()
   // ?platform=<released platform> (e.g. the MCP wizard's "add connection" link) preselects
@@ -126,6 +145,18 @@ export function NewConnectionWizard({
       : null
   const [step, setStep] = React.useState(preselected ? 1 : 0)
   const [platform, setPlatform] = React.useState<Platform | null>(preselected)
+  // "YouTube Ads" card: same Google Ads form + an explanation (YouTube ads live in a Google Ads account)
+  const [youtube, setYoutube] = React.useState(
+    preselected === "google_ads" && initialYoutube
+  )
+  const startWithAuthCode =
+    authCodeRedirect &&
+    specs.some(
+      (s) => s.platform === preselected && s.supportsAuthCode
+    )
+  const [mode, setMode] = React.useState<Mode>(
+    startWithAuthCode ? "auth_code" : "token"
+  )
   // upcoming platform whose "not ready yet" dialog is open
   const [notReady, setNotReady] = React.useState<Platform | null>(null)
   const [verify, setVerify] = React.useState<Verify>({ state: "idle" })
@@ -134,37 +165,79 @@ export function NewConnectionWizard({
   const [saving, setSaving] = React.useState(false)
   // credentials pasted in step 2, kept in memory only until saved / the page is left
   const [submitted, setSubmitted] = React.useState<Submission | null>(null)
+  // TikTok "Đổi auth_code" failure: stays on screen (next to the form) until an input changes
+  const [authCodeError, setAuthCodeError] = React.useState<{
+    message: string
+    /** the inputs it was about: editing any of them hides it */
+    key: string
+  } | null>(null)
 
   const spec = specs.find((s) => s.platform === platform) ?? null
   // step 2 shows the provider's own "how to get the token" guide in the right-hand Guide panel
   const credentialsGuide = React.useMemo<GuideDef | null>(
     () =>
       spec
-        ? {
-            title: m.new.guideTitle(PLATFORM_LABELS[spec.platform]),
-            ...spec.guide,
-          }
+        ? youtube && spec.platform === "google_ads"
+          ? {
+              ...spec.guide,
+              title: m.new.youtube.guideTitle,
+              summary: `${m.new.youtube.guideSummary} ${spec.guide.summary}`,
+              warnings: [m.new.youtube.guideWarning, ...(spec.guide.warnings ?? [])],
+            }
+          : {
+              title: m.new.guideTitle(PLATFORM_LABELS[spec.platform]),
+              ...spec.guide,
+            }
         : null,
-    [spec]
+    [spec, youtube]
   )
   const form = useForm<FormValues>({
     defaultValues: {
       name: "",
       credentials: spec ? initialCredentialValues(spec.fields) : {},
+      authCode: initialCredentialValues(AUTH_CODE_FIELDS),
     },
     mode: "onTouched",
   })
 
-  const choosePlatform = (p: Platform) => {
+  // TikTok redirect: take the one-time auth_code (and its state) out of the address bar at once - it must not stay
+  // in the history, bookmarks or the Referer of later requests; the code lives only in the form until submitted
+  React.useEffect(() => {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("auth_code")) return
+    const code = (url.searchParams.get("auth_code") ?? "").trim()
+    url.searchParams.delete("auth_code")
+    url.searchParams.delete("state")
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
+    if (startWithAuthCode && code && code.length <= 512)
+      form.setValue("authCode.authCode", code, { shouldDirty: true })
+    // once, on mount: the URL is read before anything else can change it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // editing any input hides the auth_code error (it described the previous attempt)
+  const authInputsKey = JSON.stringify(
+    useWatch({ control: form.control, name: ["name", "authCode"] })
+  )
+  const visibleAuthCodeError =
+    authCodeError && authCodeError.key === authInputsKey
+      ? authCodeError.message
+      : null
+
+  const choosePlatform = (p: Platform, opts: { youtube?: boolean } = {}) => {
     if (p !== platform) {
       const next = specs.find((s) => s.platform === p)
       // never carry secrets across platforms
       form.reset({
         name: form.getValues("name"),
         credentials: next ? initialCredentialValues(next.fields) : {},
+        authCode: initialCredentialValues(AUTH_CODE_FIELDS),
       })
+      setMode("token")
+      setAuthCodeError(null)
       setPlatform(p)
     }
+    setYoutube(p === "google_ads" && opts.youtube === true)
     setStep(1)
   }
 
@@ -184,6 +257,25 @@ export function NewConnectionWizard({
 
   const onSubmitCredentials = form.handleSubmit(async (values) => {
     if (!spec) return
+    if (mode === "auth_code" && spec.supportsAuthCode) {
+      // exchanged and saved server-side in one go: the access token never reaches the browser
+      setAuthCodeError(null)
+      const res = await createTikTokFromAuthCodeAction({
+        name: values.name,
+        ...values.authCode,
+      })
+      if (!res.ok) {
+        setAuthCodeError({
+          message: res.error,
+          key: JSON.stringify(form.getValues(["name", "authCode"])),
+        })
+        return
+      }
+      toast.success(res.message ?? m.new.authCodeSuccess)
+      form.reset()
+      router.push(`/connections/${res.data.id}`)
+      return
+    }
     const s: Submission = {
       platform: spec.platform,
       name: values.name,
@@ -242,44 +334,53 @@ export function NewConnectionWizard({
               {m.new.choosePlatformHint}
             </p>
           </div>
-          {/* released platforms on the first row, upcoming ones (disabled, "Sắp ra mắt") on the second */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {specs.map((s) => (
-              <button
-                key={s.platform}
-                type="button"
-                aria-label={m.new.selectPlatform(PLATFORM_LABELS[s.platform])}
-                aria-pressed={platform === s.platform}
-                onClick={() => choosePlatform(s.platform)}
-                className="group rounded-2xl text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              >
-                <Card className="h-full transition-colors group-hover:border-brand-red/40 group-aria-pressed:border-brand-red/60">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-3 text-base">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
-                        <PlatformIcon
-                          platform={s.platform}
-                          colored
-                          className="size-5"
-                        />
-                      </span>
-                      <span className="flex-1">
-                        {PLATFORM_LABELS[s.platform]}
-                      </span>
-                      <HugeiconsIcon
-                        icon={ArrowRight01Icon}
-                        strokeWidth={2}
-                        className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-                        aria-hidden
-                      />
-                    </CardTitle>
-                    <CardDescription className="text-pretty">
-                      {s.guide.summary}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              </button>
-            ))}
+          <div
+            role="group"
+            aria-labelledby="choose-group-ads"
+            className="flex flex-col gap-3"
+          >
+            <div>
+              <h3 id="choose-group-ads" className="text-sm font-semibold">
+                {m.new.groupAds}
+              </h3>
+              <p className="text-[13px] text-muted-foreground">
+                {m.new.groupAdsHint}
+              </p>
+            </div>
+            {/* released platforms first (YouTube Ads right after Google Ads), upcoming ones (disabled, "Sắp ra mắt") last */}
+            <div className="grid gap-4 sm:grid-cols-2">
+            {specs.flatMap((s) => {
+              const card = (
+                <ChoiceCard
+                  key={s.platform}
+                  label={platformCardLabel(s.platform)}
+                  pressed={platform === s.platform && !youtube}
+                  onClick={() => choosePlatform(s.platform)}
+                  icon={
+                    <PlatformIcon
+                      platform={s.platform}
+                      colored
+                      className="size-5"
+                    />
+                  }
+                  description={s.guide.summary}
+                />
+              )
+              if (s.platform !== "google_ads") return [card]
+              return [
+                card,
+                <ChoiceCard
+                  key="youtube"
+                  label={m.new.youtube.label}
+                  pressed={platform === "google_ads" && youtube}
+                  onClick={() =>
+                    choosePlatform("google_ads", { youtube: true })
+                  }
+                  icon={<BrandIcon brand="youtube" className="size-5" />}
+                  description={m.new.youtube.card}
+                />,
+              ]
+            })}
             {UPCOMING_PLATFORMS.map((p) => (
               <button
                 key={p}
@@ -307,6 +408,29 @@ export function NewConnectionWizard({
                 </Card>
               </button>
             ))}
+            </div>
+          </div>
+          <div
+            role="group"
+            aria-labelledby="choose-group-notify"
+            className="flex flex-col gap-3"
+          >
+            <div>
+              <h3 id="choose-group-notify" className="text-sm font-semibold">
+                {m.new.groupNotify}
+              </h3>
+              <p className="text-[13px] text-muted-foreground">
+                {m.new.groupNotifyHint}
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ChoiceCard
+                label={m.new.telegram.label}
+                href="/connections/telegram/new"
+                icon={<BrandIcon brand="telegram" className="size-5" />}
+                description={m.new.telegram.card}
+              />
+            </div>
           </div>
           <Dialog
             open={notReady !== null}
@@ -341,12 +465,31 @@ export function NewConnectionWizard({
               <CardHeader>
                 <StepOverline step={1} />
                 <CardTitle className="flex items-center gap-2">
-                  <PlatformIcon platform={spec.platform} colored />
-                  {m.new.formTitle(PLATFORM_LABELS[spec.platform])}
+                  {youtube ? (
+                    <BrandIcon brand="youtube" />
+                  ) : (
+                    <PlatformIcon platform={spec.platform} colored />
+                  )}
+                  {m.new.formTitle(
+                    youtube
+                      ? m.new.youtube.label
+                      : PLATFORM_LABELS[spec.platform]
+                  )}
                 </CardTitle>
                 <CardDescription>{m.new.formDescription}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-5">
+                {youtube && (
+                  <Alert>
+                    <HugeiconsIcon
+                      icon={InformationCircleIcon}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <AlertTitle>{m.new.youtube.noteTitle}</AlertTitle>
+                    <AlertDescription>{m.new.youtube.note}</AlertDescription>
+                  </Alert>
+                )}
                 <FieldGroup>
                   <Field
                     data-invalid={!!form.formState.errors.name || undefined}
@@ -373,11 +516,51 @@ export function NewConnectionWizard({
                   </Field>
                 </FieldGroup>
 
-                <CredentialFields
-                  fields={spec.fields}
-                  control={form.control}
-                  prefix="credentials"
-                />
+                {spec.supportsAuthCode && (
+                  <Field>
+                    <FieldLabel id="connection-mode-label">
+                      {m.new.modeLabel}
+                    </FieldLabel>
+                    <SegmentedControl
+                      fill="mobile"
+                      ariaLabel={m.new.modeLabel}
+                      value={mode}
+                      onValueChange={(v) => {
+                        setAuthCodeError(null)
+                        setMode(v)
+                      }}
+                      options={[
+                        { value: "token", label: m.new.modeToken },
+                        { value: "auth_code", label: m.new.modeAuthCode },
+                      ]}
+                    />
+                    {mode === "auth_code" && (
+                      <FieldDescription>
+                        {m.new.authCodeModeHint}
+                      </FieldDescription>
+                    )}
+                  </Field>
+                )}
+
+                {mode === "auth_code" && spec.supportsAuthCode ? (
+                  <CredentialFields
+                    fields={AUTH_CODE_FIELDS}
+                    control={form.control}
+                    prefix="authCode"
+                    idPrefix="code"
+                  />
+                ) : (
+                  <CredentialFields
+                    fields={spec.fields}
+                    control={form.control}
+                    prefix="credentials"
+                  />
+                )}
+                {mode === "auth_code" &&
+                  spec.supportsAuthCode &&
+                  visibleAuthCodeError && (
+                    <AuthCodeError message={visibleAuthCodeError} />
+                  )}
               </CardContent>
               <CardFooter className="flex flex-col-reverse gap-2 border-t sm:flex-row sm:justify-between">
                 <Button
@@ -403,13 +586,17 @@ export function NewConnectionWizard({
                   disabled={form.formState.isSubmitting}
                 >
                   {form.formState.isSubmitting && <Spinner aria-hidden />}
-                  {m.new.verifyNow}
-                  <HugeiconsIcon
-                    icon={ArrowRight01Icon}
-                    strokeWidth={2}
-                    data-icon="inline-end"
-                    aria-hidden
-                  />
+                  {mode === "auth_code" && spec.supportsAuthCode
+                    ? m.new.authCodeSubmit
+                    : m.new.verifyNow}
+                  {!(mode === "auth_code" && spec.supportsAuthCode) && (
+                    <HugeiconsIcon
+                      icon={ArrowRight01Icon}
+                      strokeWidth={2}
+                      data-icon="inline-end"
+                      aria-hidden
+                    />
+                  )}
                 </Button>
               </CardFooter>
             </form>
@@ -433,6 +620,101 @@ export function NewConnectionWizard({
 }
 
 // ---------------------------------------------------------------------------
+
+/** TikTok "Đổi auth_code" failed: what happened + the next step, kept above the footer until an input changes. */
+function AuthCodeError({ message }: { message: string }) {
+  // the server sends one string "<what happened> <next step>" - show the next step as its own muted line
+  const failure = splitTrailingHint(message)
+  return (
+    <Alert variant="destructive">
+      <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
+      <AlertTitle>{m.new.authCodeFailedTitle}</AlertTitle>
+      <AlertDescription>
+        {failure.message}
+        <StatusHint
+          message={failure.message}
+          hint={failure.hint}
+          className="mt-1.5"
+        />
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+/**
+ * Step 1 card: a big button (or a link, for cards that open another page) wrapping a solid card
+ * (logo + label + one-line description). Named by its label, described by its description.
+ */
+function ChoiceCard({
+  label,
+  description,
+  icon,
+  pressed,
+  onClick,
+  href,
+}: {
+  label: string
+  description: string
+  icon: React.ReactNode
+  /** omitted for cards that navigate away (no selected state) */
+  pressed?: boolean
+  onClick?: () => void
+  /** navigates instead of selecting (rendered as a link) */
+  href?: string
+}) {
+  const id = React.useId()
+  const labelId = `${id}-label`
+  const descId = `${id}-desc`
+  const className =
+    "group block rounded-2xl text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+  const card = (
+      <Card className="h-full transition-colors group-hover:border-brand-red/40 group-aria-pressed:border-brand-red/60">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
+              {icon}
+            </span>
+            <span id={labelId} className="flex-1">
+              {label}
+            </span>
+            <HugeiconsIcon
+              icon={ArrowRight01Icon}
+              strokeWidth={2}
+              className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+              aria-hidden
+            />
+          </CardTitle>
+          <CardDescription id={descId} className="text-pretty">
+            {description}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+  )
+  if (href) {
+    return (
+      <Link
+        href={href}
+        aria-labelledby={labelId}
+        aria-describedby={descId}
+        className={className}
+      >
+        {card}
+      </Link>
+    )
+  }
+  return (
+    <button
+      type="button"
+      aria-labelledby={labelId}
+      aria-describedby={descId}
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={className}
+    >
+      {card}
+    </button>
+  )
+}
 
 const accCol = createDataTableColumnHelper<PreviewAccount>()
 

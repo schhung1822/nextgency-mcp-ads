@@ -85,7 +85,7 @@ export const guides = {
         {
           title: "Bấm vào một nền tảng",
           detail:
-            "Meta hoặc OpenAI Ads. Hướng dẫn lấy token đúng nền tảng sẽ hiện ở bước tiếp theo.",
+            "Meta, TikTok, Google Ads (gồm YouTube) hoặc OpenAI Ads. Hướng dẫn lấy token đúng nền tảng sẽ hiện ở bước tiếp theo.",
         },
         {
           title: "Chuẩn bị app developer",
@@ -218,9 +218,15 @@ export const guides = {
             detail:
               "Tất cả tài khoản: gồm cả TKQC đồng bộ thêm sau này. Chọn từng tài khoản: AI chỉ thấy đúng các tài khoản bạn tick.",
           },
+          {
+            title: "Telegram (tuỳ chọn)",
+            detail:
+              "Tick kết nối Telegram mà MCP được dùng để gửi thông báo. Chỉ hiện kết nối do chính chủ MCP tạo (kể cả quản trị viên) - MCP không dùng được kết nối Telegram của người khác. Chưa có? Bấm Thêm kết nối Telegram rồi quay lại.",
+          },
         ],
         tips: [
           "Nên bắt đầu hẹp (ít tài khoản) rồi mở rộng sau trong tab Cấu hình.",
+          "Quảng cáo YouTube nằm trong kết nối Google Ads (chiến dịch Video / Demand Gen).",
         ],
         warnings: [
           "Kết nối đang lỗi hoặc bị tắt sẽ khiến MCP không dùng được cho tới khi sửa xong.",
@@ -239,6 +245,11 @@ export const guides = {
             title: "Tinh chỉnh từng quyền",
             detail:
               "Mở Chi tiết từng quyền nếu cần khác mức có sẵn. Nút Áp dụng cho mọi nền tảng sao chép mức quyền sang các nền tảng khác.",
+          },
+          {
+            title: "Telegram (khi đã chọn kết nối)",
+            detail:
+              "AI được gửi tin: AI gửi báo cáo vào Telegram khi bạn yêu cầu.\nTự báo khi AI thay đổi quảng cáo: mỗi thao tác ghi thành công gửi 1 tin tóm tắt trước → sau.",
           },
         ],
         tips: [
@@ -267,6 +278,11 @@ export const guides = {
             title: "Giới hạn tốc độ",
             detail:
               "Số lệnh mỗi phút và số thao tác ghi mỗi 10 phút, để AI không gọi dồn dập.",
+          },
+          {
+            title: "Giới hạn tin Telegram / giờ",
+            detail:
+              "Chỉ hiện khi MCP dùng kết nối Telegram: số tin AI được gửi mỗi giờ (mặc định 20).",
           },
           {
             title: "Thời hạn & IP",
@@ -343,6 +359,11 @@ export const guides = {
         {
           title: "Có hiệu lực ở lệnh tiếp theo",
           detail: "Link MCP giữ nguyên, AI không cần kết nối lại.",
+        },
+        {
+          title: "Telegram",
+          detail:
+            "Chọn kết nối Telegram ở khung Nền tảng, bật AI được gửi tin / Tự báo khi AI thay đổi quảng cáo ở khung Quyền, giới hạn tin/giờ ở khung Bảo vệ.",
         },
       ],
       warnings: [
@@ -471,7 +492,7 @@ export const guides = {
       {
         title: "Thông tin pháp lý",
         detail:
-          "Tên đơn vị vận hành và email liên hệ quyền riêng tư, hiển thị trên các trang công khai /privacy, /terms, /data-deletion (dán vào Meta App Dashboard / OpenAI). Để trống sẽ dùng tên miền.",
+          "Tên đơn vị vận hành và email liên hệ quyền riêng tư, hiển thị trên các trang công khai /privacy, /terms, /data-deletion (dán vào Meta App Dashboard, TikTok for Developers, màn hình đồng ý OAuth của Google Cloud / OpenAI). Để trống sẽ dùng tên miền.",
       },
       {
         title: "Lưu thay đổi",
@@ -575,6 +596,119 @@ export const guides = {
     ],
     tips: [
       "Menu Giao diện cho phép đổi sáng/tối và giảm hiệu ứng trong suốt để dễ đọc hơn.",
+    ],
+  },
+
+  telegramList: {
+    title: "Về kết nối Telegram",
+    summary:
+      "Kết nối Telegram là một bot gửi tin vào nhóm, kênh hoặc chat riêng: cảnh báo kết nối quảng cáo, thay đổi do AI thực hiện và tin nhắn từ AI.",
+    steps: [
+      {
+        title: "Thêm kết nối Telegram",
+        detail:
+          "Bấm Thêm kết nối → nhóm Kênh thông báo → Telegram. Dán bot token và Chat ID rồi bấm Kiểm tra & lưu.",
+      },
+      {
+        title: "Chọn kết nối Telegram trong MCP",
+        detail:
+          "Ở bước Nền tảng của MCP, chọn kết nối Telegram để AI báo mỗi lần sửa quảng cáo hoặc gửi tin tóm tắt.",
+      },
+      {
+        title: "Theo dõi trạng thái",
+        detail:
+          "Hoạt động: gửi tin bình thường.\nLỗi: bot bị gỡ khỏi nhóm, mất quyền hoặc token bị thu hồi - mở kết nối để xem cách sửa.\nĐã tắt: không gửi gì cho tới khi bật lại.",
+      },
+    ],
+    tips: [
+      "Một bot có thể dùng cho nhiều kết nối (mỗi kết nối một nhóm hoặc một chủ đề).",
+      "Nhân viên chỉ thấy kết nối Telegram của mình; quản trị viên thấy tất cả.",
+    ],
+  },
+
+  telegramNew: {
+    title: "Cách kết nối Telegram",
+    summary:
+      "Tạo bot với @BotFather, thêm bot vào nơi nhận tin, rồi dán bot token và Chat ID vào đây.",
+    steps: [
+      {
+        title: "Tạo bot với @BotFather",
+        detail:
+          "Trong Telegram, mở chat với @BotFather (bot chính thức, có dấu tích xanh), gửi /newbot, đặt tên hiển thị và username kết thúc bằng \"bot\". BotFather trả về bot token dạng 123456789:AA… - dán vào ô Bot token.",
+        link: { label: "Mở @BotFather", url: "https://t.me/BotFather" },
+      },
+      {
+        title: "Thêm bot vào nhóm hoặc kênh",
+        detail:
+          "Nhóm: Thêm thành viên → tìm username của bot.\nKênh: Quản trị viên → Thêm quản trị viên → chọn bot.\nChat riêng: mở chat với bot và bấm Start.",
+      },
+      {
+        title: "Cấp quyền gửi tin",
+        detail:
+          "Kênh: bật quyền Đăng tin cho bot. Nhóm: thành viên phải được gửi tin, hoặc đặt bot làm quản trị viên nếu nhóm hạn chế quyền. Nhóm bật Chủ đề: bot cần được gửi tin trong chủ đề bạn chọn.",
+      },
+      {
+        title: "Lấy Chat ID (cách chính thức)",
+        detail:
+          "Cách 1 (Telegram Web): mở nhóm/kênh trên Telegram Web (web.telegram.org/a/), số sau dấu # trên thanh địa chỉ (dạng -100…) là Chat ID.\nCách 2 (getUpdates): lưu ý đường link dưới đây chứa bot token - không gửi hay chụp màn hình nó cho ai. Gửi một tin vào nhóm (nhắc @tên_bot), rồi mở trình duyệt vào https://api.telegram.org/bot<token>/getUpdates (thay <token> bằng bot token). Tìm \"chat\":{\"id\":-100…} - đó là Chat ID. Nếu bot đã đặt webhook, getUpdates sẽ báo lỗi - dùng cách 1.",
+      },
+      {
+        title: "Lấy Chủ đề (Thread ID) - nếu nhóm bật Chủ đề",
+        detail:
+          "Trong nhóm bật Chủ đề, nhấn giữ (hoặc chuột phải) một tin trong chủ đề → Sao chép liên kết. Liên kết dạng https://t.me/c/1234567890/42/100: số ở giữa (42) là Thread ID. Để trống để gửi vào chủ đề General.",
+      },
+      {
+        title: "Kiểm tra & lưu",
+        detail:
+          "Kiểm tra cho xem bot, chat và quyền gửi tin mà chưa lưu gì. Kiểm tra & lưu sẽ lưu kết nối; sau đó bấm Gửi tin thử.",
+      },
+    ],
+    warnings: [
+      "Các bot bên thứ ba như @userinfobot, @getidsbot không phải của Telegram và đọc được tin bạn chuyển tiếp cho chúng. Hãy ưu tiên cách chính thức (Telegram Web hoặc getUpdates).",
+      "Ai có bot token đều điều khiển được bot. Không gửi token qua chat hay ảnh chụp màn hình (kể cả đường link getUpdates). Nếu lộ, gửi /revoke cho @BotFather rồi bấm Thay token.",
+    ],
+    tips: [
+      "Bot vẫn gửi được tin khi bật Privacy mode - chế độ này chỉ giới hạn tin bot đọc được.",
+      "Muốn gửi vào nhiều nhóm, thêm nhiều kết nối dùng chung một bot.",
+    ],
+    links: [
+      { label: "Telegram Bot API (chính thức)", url: "https://core.telegram.org/bots/api" },
+      { label: "Giới thiệu bot và BotFather", url: "https://core.telegram.org/bots/features#botfather" },
+    ],
+  },
+
+  telegramDetail: {
+    title: "Quản lý kết nối Telegram",
+    summary: "Kiểm tra bot còn gửi được tin, chỉnh nơi nhận và xem lịch sử gửi.",
+    steps: [
+      {
+        title: "Gửi tin thử",
+        detail:
+          "Gửi một tin ngay vào chat/chủ đề đã chọn - cách chắc chắn nhất để biết bot đúng nơi, đủ quyền.",
+      },
+      {
+        title: "Kiểm tra lại",
+        detail:
+          "Gọi Telegram để xác nhận token, chat và quyền của bot; kết nối lỗi sẽ hoạt động lại khi kiểm tra đạt.",
+      },
+      {
+        title: "Sửa cài đặt",
+        detail:
+          "Đổi tên, Chat ID, Thread ID hoặc sự kiện hệ thống rồi bấm Lưu trên thanh Có thay đổi chưa lưu.",
+      },
+      {
+        title: "Thay token",
+        detail:
+          "Khi thu hồi token ở @BotFather (/revoke), dán token mới tại đây (cần nhập lại mật khẩu).",
+      },
+      {
+        title: "Xem lần gửi gần đây",
+        detail:
+          "50 tin gần nhất kèm trạng thái và lỗi (nếu có) giúp tìm nguyên nhân khi không nhận được thông báo.",
+      },
+    ],
+    warnings: [
+      "Xoá kết nối sẽ gỡ kết nối Telegram khỏi mọi MCP đang dùng và không thể hoàn tác.",
     ],
   },
 

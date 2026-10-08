@@ -86,4 +86,5 @@ export function lastChars(s: string, n = 4): string {
 export const aad = {
   connectionCredentials: (connectionId: string) => `connection:${connectionId}:credentials`,
   mcpKey: (mcpId: string) => `mcp:${mcpId}:key`,
+  notificationChannelCredentials: (channelId: string) => `notification_channel:${channelId}:credentials`,
 }

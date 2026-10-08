@@ -10,9 +10,13 @@
 //   unlock <email>                    gỡ khoá đăng nhập (sai mật khẩu nhiều lần + khoá 2FA)
 //   unban <email>                     mở khoá tài khoản bị quản trị viên khoá (alias: user:unban)
 //   reencrypt [--dry-run]             mã hoá lại credential/key MCP bằng khoá ENCRYPTION_KEYS đang dùng
-// Secrets passed as argv (--password) still work but print a warning: argv is visible
+//   google:refresh-token --client-id <id> [--client-secret-stdin] [--port 8085] [--host 127.0.0.1]
+//                                     (secret: GOOGLE_ADS_CLIENT_SECRET env, stdin, or a hidden prompt)
+// Secrets passed as argv (--password / --client-secret) still work but print a warning: argv is visible
 // in `ps`, shell history and container inspect output.
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes, randomUUID } from "node:crypto"
+import http from "node:http"
+import { isIP } from "node:net"
 import { createInterface } from "node:readline"
 import { pathToFileURL } from "node:url"
 import { parseArgs } from "node:util"
@@ -25,7 +29,16 @@ import { CLI_ACTOR, insertActivity } from "@/server/auth/activity-core"
 import { clearLoginFailures } from "@/server/auth/lockout"
 import { aad, decryptSecret, encryptSecret, needsReencrypt } from "@/server/crypto/secret-box"
 import { db, pool } from "@/server/db/client"
-import { account, connections, mcpServers, session, twoFactor, user, verification } from "@/server/db/schema"
+import {
+  account,
+  connections,
+  mcpServers,
+  notificationChannels,
+  session,
+  twoFactor,
+  user,
+  verification,
+} from "@/server/db/schema"
 
 const PASSWORD_MIN = 8
 const PASSWORD_MAX = 128
@@ -57,6 +70,20 @@ Cách dùng: node dist/cli.mjs <lệnh> [tham số]   (dev: pnpm cli <lệnh>)
       Khác với "unlock" (gỡ khoá do nhập sai mật khẩu nhiều lần).
   reencrypt [--dry-run]
       Mã hoá lại credential kết nối và key MCP chưa dùng khoá ENCRYPTION_KEYS đang hoạt động.
+  google:refresh-token --client-id <id> [--client-secret-stdin] [--port 8085] [--host 127.0.0.1]
+      Lấy refresh token Google Ads (gồm quảng cáo YouTube) bằng OAuth client loại Desktop, redirect
+      http://127.0.0.1:<port>. Không cần developer token (Google bỏ yêu cầu từ 09/09/2026).
+      Client secret: biến môi trường GOOGLE_ADS_CLIENT_SECRET, --client-secret-stdin, hoặc nhập ẩn khi được hỏi.
+      Trước khi chạy: OAuth consent screen để "In production" và hoàn tất Verify Branding - nếu để "Testing",
+      refresh token hết hạn sau 7 ngày. Tài khoản Google bị Google Ads bắt buộc passkey phải đăng nhập bằng
+      passkey (không nhận TOTP/SMS; passkey mới có thể cần tới 7 ngày mới được chấp nhận).
+      Cách khuyên dùng thay cho lệnh này: service account (thêm email service account làm người dùng ở tài khoản
+      quản lý MCC, dán file JSON vào form kết nối) - không cần refresh token.
+      Máy chủ chờ mã chỉ nghe 127.0.0.1 (mặc định). Trong Docker cần --host 0.0.0.0 VÀ chỉ publish cổng
+      ra loopback của VPS, rồi mở SSH tunnel từ máy bạn:
+        ssh -L 8085:127.0.0.1:8085 user@vps
+        docker compose run --rm -p 127.0.0.1:8085:8085 -e GOOGLE_ADS_CLIENT_SECRET web \\
+          node dist/cli.mjs google:refresh-token --client-id <id> --host 0.0.0.0
 `
 
 // ---------------------------------------------------------------------------
@@ -338,7 +365,7 @@ async function unban(args: string[]) {
   out(`✔ Đã mở khoá tài khoản ${email}. Người dùng đăng nhập lại bằng mật khẩu hiện tại.`)
 }
 
-type ReencryptFailure = { kind: "connection" | "mcp"; id: string; reason: string }
+type ReencryptFailure = { kind: "connection" | "mcp" | "notification_channel"; id: string; reason: string }
 
 /**
  * Re-encrypt every row of one table that is not under the active key. Row by row: a row that cannot be decrypted
@@ -412,7 +439,33 @@ async function reencrypt(args: string[]) {
     dry,
     failures
   )
+  // Telegram bot tokens of notification channels (AAD notification_channel:<id>:credentials)
+  const channelRows = await db
+    .select({ id: notificationChannels.id, enc: notificationChannels.credentialsEncrypted })
+    .from(notificationChannels)
+  const channels = await reencryptRows(
+    "notification_channel",
+    channelRows,
+    aad.notificationChannelCredentials,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(notificationChannels)
+          .set({ credentialsEncrypted: next })
+          .where(and(eq(notificationChannels.id, id), eq(notificationChannels.credentialsEncrypted, prev)))
+          .returning({ id: notificationChannels.id })
+      ).length === 1,
+    dry,
+    failures
+  )
   if (!dry) {
+    if (channels.count > 0 || channels.failed > 0)
+      await insertActivity({
+        actor: CLI_ACTOR,
+        action: "notification_channel.update",
+        target: { type: "notification_channel", id: null, label: "reencrypt" },
+        metadata: { via: "cli", op: "reencrypt", count: channels.count, failed: channels.failed },
+      })
     if (conn.count > 0 || conn.failed > 0)
       await insertActivity({
         actor: CLI_ACTOR,
@@ -430,12 +483,13 @@ async function reencrypt(args: string[]) {
   }
   out(
     dry
-      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP (chạy lại không có --dry-run để thực hiện).`
-      : `✔ Đã mã hoá lại ${conn.count} kết nối và ${mcp.count} key MCP bằng khoá đang hoạt động.`
+      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram (chạy lại không có --dry-run để thực hiện).`
+      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP và ${channels.count} kết nối Telegram bằng khoá đang hoạt động.`
   )
   // ids + a redacted error message only - never ciphertext or plaintext
-  for (const f of failures) process.stderr.write(`✖ ${f.kind === "connection" ? "kết nối" : "MCP"} ${f.id}: ${f.reason}\n`)
-  const raced = conn.raced + mcp.raced
+  const kindLabel = { connection: "kết nối", mcp: "MCP", notification_channel: "kết nối Telegram" } as const
+  for (const f of failures) process.stderr.write(`✖ ${kindLabel[f.kind]} ${f.id}: ${f.reason}\n`)
+  const raced = conn.raced + mcp.raced + channels.raced
   if (raced > 0) out(`  ${raced} bản ghi vừa được thay đổi trong lúc chạy - chạy lại lệnh để mã hoá nốt.`)
   if (failures.length > 0) {
     throw new CliError(
@@ -445,10 +499,164 @@ async function reencrypt(args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// google:refresh-token (OAuth 2.0 loopback + PKCE, Desktop client)
+// ---------------------------------------------------------------------------
+
+export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+
+export function buildGoogleAuthUrl(p: {
+  clientId: string
+  redirectUri: string
+  state: string
+  codeChallenge: string
+}): string {
+  const u = new URL("https://accounts.google.com/o/oauth2/v2/auth")
+  u.searchParams.set("client_id", p.clientId)
+  u.searchParams.set("redirect_uri", p.redirectUri)
+  u.searchParams.set("response_type", "code")
+  u.searchParams.set("scope", GOOGLE_ADS_SCOPE)
+  u.searchParams.set("access_type", "offline")
+  u.searchParams.set("prompt", "consent")
+  u.searchParams.set("state", p.state)
+  u.searchParams.set("code_challenge", p.codeChallenge)
+  u.searchParams.set("code_challenge_method", "S256")
+  return u.toString()
+}
+
+const page = (title: string, body: string) =>
+  `<!doctype html><html lang="vi"><meta charset="utf-8"><title>${title}</title>` +
+  `<body style="font-family:system-ui;max-width:520px;margin:15vh auto;padding:0 16px">` +
+  `<h1 style="font-size:20px">${title}</h1><p>${body}</p></body></html>`
+
+async function googleRefreshToken(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      "client-id": { type: "string" },
+      "client-secret": { type: "string" },
+      "client-secret-stdin": { type: "boolean" },
+      port: { type: "string" },
+      host: { type: "string" },
+    },
+    strict: true,
+  })
+  const clientId = values["client-id"]?.trim()
+  if (!clientId) throw new CliError("Thiếu --client-id (OAuth client loại Desktop).")
+  const clientSecret = (
+    await resolveSecret({
+      argv: values["client-secret"],
+      argvFlag: "--client-secret",
+      env: "GOOGLE_ADS_CLIENT_SECRET",
+      fromStdin: !!values["client-secret-stdin"],
+      promptIfMissing: true,
+      prompt: "Client secret (ẩn khi gõ): ",
+    })
+  )?.trim()
+  if (!clientSecret) {
+    throw new CliError("Thiếu client secret: đặt biến môi trường GOOGLE_ADS_CLIENT_SECRET hoặc dùng --client-secret-stdin.")
+  }
+  const port = Number(values.port ?? 8085)
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new CliError("--port phải là số từ 1024 đến 65535.")
+  // Loopback only by default: the callback carries the authorization code. 0.0.0.0 is opt-in (Docker, with
+  // the port published to the VPS loopback + an SSH tunnel).
+  const host = values.host?.trim() || "127.0.0.1"
+  if (isIP(host) === 0) throw new CliError("--host phải là địa chỉ IP (mặc định 127.0.0.1; trong Docker: 0.0.0.0).")
+  if (host !== "127.0.0.1" && host !== "::1") {
+    process.stderr.write(
+      `⚠ Máy chủ chờ mã đang nghe ${host}:${port}. Chỉ publish cổng ra 127.0.0.1 của máy chủ (-p 127.0.0.1:${port}:${port}) và dùng SSH tunnel.\n`
+    )
+  }
+
+  const redirectUri = `http://127.0.0.1:${port}`
+  const state = randomUUID()
+  const verifier = randomBytes(48).toString("base64url")
+  const challenge = createHash("sha256").update(verifier).digest("base64url")
+  const authUrl = buildGoogleAuthUrl({ clientId, redirectUri, state, codeChallenge: challenge })
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      server.close()
+      reject(new CliError("Hết 10 phút chờ mà chưa nhận được mã từ Google. Chạy lại lệnh."))
+    }, 10 * 60_000)
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? "/", redirectUri)
+      if (url.pathname !== "/") {
+        res.writeHead(404).end()
+        return
+      }
+      const err = url.searchParams.get("error")
+      const got = url.searchParams.get("code")
+      if (url.searchParams.get("state") !== state || (!got && !err)) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8" })
+        res.end(page("Yêu cầu không hợp lệ", "Tham số state không khớp. Hãy mở lại đúng link mà lệnh CLI in ra."))
+        return
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" })
+      if (err) {
+        res.end(page("Google từ chối cấp quyền", "Quay lại terminal để xem chi tiết."))
+        clearTimeout(timer)
+        server.close()
+        reject(new CliError(`Google trả lỗi: ${err}`))
+        return
+      }
+      res.end(page("Đã nhận mã xác thực", "Bạn có thể đóng tab này và quay lại terminal."))
+      clearTimeout(timer)
+      server.close()
+      resolve(got!)
+    })
+    server.on("error", (e) => {
+      clearTimeout(timer)
+      reject(new CliError(`Không mở được cổng ${port}: ${e.message}`))
+    })
+    server.listen(port, host, () => {
+      out("1. Mở link sau trong trình duyệt (cùng máy, hoặc máy có cổng " + port + " được chuyển tới):")
+      out()
+      out(authUrl)
+      out()
+      out("2. Đăng nhập tài khoản Google có quyền Google Ads và bấm Cho phép.")
+      out("   Nếu Google yêu cầu passkey (bắt buộc với một số người dùng Google Ads API), hãy đăng nhập bằng passkey -")
+      out("   mã TOTP/SMS không được chấp nhận.")
+      out(`   Đang chờ Google chuyển hướng về ${redirectUri} …`)
+    })
+  })
+
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+      code_verifier: verifier,
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  const json = (await tokenRes.json().catch(() => ({}))) as { refresh_token?: string; error?: string; error_description?: string }
+  if (!tokenRes.ok || !json.refresh_token) {
+    throw new CliError(
+      `Đổi mã lấy token thất bại (${json.error ?? tokenRes.status}${json.error_description ? `: ${json.error_description}` : ""}).` +
+        (tokenRes.ok ? " Google không trả refresh_token — thu hồi quyền ứng dụng tại myaccount.google.com/permissions rồi chạy lại." : "")
+    )
+  }
+  out()
+  out("✔ Refresh token (dán vào form kết nối Google Ads, KHÔNG chia sẻ):")
+  out()
+  out(json.refresh_token)
+  out()
+  out("Lưu ý:")
+  out("- OAuth consent screen ở trạng thái Testing → refresh token hết hạn sau 7 ngày. Chuyển sang In production")
+  out("  và hoàn tất Verify Branding để token không bị hết hạn.")
+  out("- Không cần developer token. Cấp truy cập API (Explorer/Basic/Standard) gắn với Google Cloud project của OAuth client.")
+  out("- Muốn khỏi phải lấy lại refresh token: dùng service account (thêm email service account làm người dùng ở MCC).")
+}
+
+// ---------------------------------------------------------------------------
 
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv
-  const usesDb = cmd !== undefined && cmd !== "help" && cmd !== "--help" && cmd !== "-h"
+  const usesDb = cmd !== "google:refresh-token" && cmd !== undefined && cmd !== "help" && cmd !== "--help" && cmd !== "-h"
   try {
     switch (cmd) {
       case "create-admin":
@@ -472,6 +680,9 @@ export async function main(argv: string[]): Promise<number> {
         break
       case "reencrypt":
         await reencrypt(rest)
+        break
+      case "google:refresh-token":
+        await googleRefreshToken(rest)
         break
       case undefined:
       case "help":

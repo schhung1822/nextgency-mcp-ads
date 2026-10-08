@@ -60,7 +60,7 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
                        ┌──────▼───────────────────────────▼──┐
                        │      PostgreSQL 18 (volume pgdata)   │
                        └──────────────────────────────────────┘
-        web/worker ──HTTPS──► Meta Graph · OpenAI Ads
+        web/worker ──HTTPS──► Meta Graph · TikTok Business · Google Ads REST (gồm YouTube) · OpenAI Ads · Telegram Bot API
 ```
 - 1 image Docker, nhiều entrypoint: `web` (`node server.js`), `worker` (`node dist/worker.mjs`), `migrate` (`node dist/migrate.mjs`, chạy 1 lần), CLI (`node dist/cli.mjs`).
 - Khi tải MCP lớn: thêm service `mcp` chạy **cùng image** như `web`, Caddy route `/mcp/*` sang đó. Code `src/server/mcp/**` không import `next/*` nên có thể chuyển sang Hono (`@modelcontextprotocol/hono`) nếu cần.
@@ -97,14 +97,17 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
 │  │  ├─ crypto/ secret-box.ts (AES-GCM keyring)  mcp-key.ts (sinh/HMAC/prefix)
 │  │  ├─ audit/ activity-log.ts  mcp-log-writer.ts (batch)  redact.ts  cap-json.ts
 │  │  ├─ services/ users.ts connections.ts ad-accounts.ts mcp-servers.ts logs.ts settings.ts dashboard.ts
+│  │  │            notification-channels.ts (kênh Telegram: CRUD + owner check + enqueueNotification)
+│  │  ├─ notifications/                 KHÔNG import next/*: telegram.ts (Bot API: sendMessage/getMe/getChat/getChatMember,
+│  │  │                                 escapeHtml, map lỗi, không log URL chứa token) + nội dung tin theo sự kiện (14-telegram-notifications.md)
 │  │  ├─ actions/  *.ts                 server actions mỏng: requireUser → zod parse → service → activity log → revalidate
 │  │  ├─ providers/                     KHÔNG import next/*
 │  │  │   ├─ types.ts registry.ts errors.ts http.ts (fetch + retry + timeout) rate-limit.ts money.ts dates.ts
-│  │  │   └─ meta/ openai-ads/   (client.ts, credentials.ts, report.ts, objects.ts, mutate.ts, copy.ts, mapping.ts)
+│  │  │   └─ meta/ tiktok/ google-ads/ openai-ads/   (client.ts, credentials.ts, report.ts, objects.ts, mutate.ts, copy.ts, mapping.ts)
 │  │  └─ mcp/                           KHÔNG import next/* (xem 04-mcp-design.md §2)
 │  ├─ proxy.ts                          redirect lạc quan khi thiếu cookie (Next 16: thay middleware.ts)
 │  └─ instrumentation.ts                flush log khi SIGTERM
-├─ scripts/ migrate.ts worker.ts cli.ts (create-admin, reset-password, reset-2fa, unlock, reencrypt)
+├─ scripts/ migrate.ts worker.ts cli.ts (create-admin, reset-password, reset-2fa, unlock, unban, reencrypt, google:refresh-token)
 ├─ drizzle/                             migration SQL (có file custom cho partition)
 ├─ tests/ e2e/                          Playwright
 ├─ Dockerfile  docker-compose.yml  Caddyfile  .env.example
@@ -114,7 +117,7 @@ Quy tắc phụ thuộc: `app → server/actions → server/services → server/
 ## 4. Provider adapter (giao diện chung)
 ```ts
 export type Platform = 'meta' | 'tiktok' | 'google_ads' | 'openai_ads'; // = enum DB; bản build chỉ có RELEASED_PLATFORMS (src/lib/platforms.ts, 12-platform-rollout.md)
-export type Level = 'account' | 'campaign' | 'ad_group' | 'ad';
+export type Level = 'account' | 'campaign' | 'ad_group' | 'ad' | 'keyword'; // keyword: chỉ Google Ads
 export type Permission = 'read' | 'status' | 'update' | 'copy' | 'create' | 'delete';
 
 export interface ProviderContext {
@@ -143,14 +146,17 @@ export interface AdsProvider {
 - `MutationResult` luôn có `changes: [{objectId, field, before, after}]` để ghi log và trả AI.
 - Lỗi chuẩn hoá: `ProviderError { platform, code, httpStatus, retryable, userMessageVi, hint, upstream: {code, subcode, message, requestId} }`.
 - `http.ts`: `fetch` + `AbortSignal.timeout(60s)` + retry có jitter chỉ cho lỗi retryable (theo bảng lỗi từng nền tảng) + token bucket theo `(platform, connection|account|app)` + đọc header usage (Meta BUC) để giảm tốc.
-- `money.ts`: `toMinor/fromMinor` (Meta offset 1|100 theo currency), `toMicros/fromMicros` (OpenAI). Dùng số nguyên/BigInt cho micros — **không dùng float cho tiền gửi lên API**.
-- `dates.ts`: preset → khoảng ngày theo múi giờ tài khoản; chia cửa sổ theo giới hạn từng nền tảng.
-- Phiên bản API mỗi nền tảng là hằng số override được bằng env: `META_API_VERSION=v26.0`, `OPENAI_ADS_API_VERSION=v1`.
+- `money.ts`: `toMinor/fromMinor` (Meta offset 1|100 theo currency), `toMicros/fromMicros` (Google/OpenAI). Dùng số nguyên/BigInt cho micros — **không dùng float cho tiền gửi lên API**.
+- `dates.ts`: preset → khoảng ngày theo múi giờ tài khoản; chia cửa sổ theo giới hạn từng nền tảng (TikTok ≤30 ngày/lần).
+- Phiên bản API mỗi nền tảng là hằng số override được bằng env: `META_API_VERSION=v26.0`, `GOOGLE_ADS_API_VERSION=v25`, `TIKTOK_API_VERSION=v1.3` (+ `TIKTOK_BASE_URL` tuỳ chọn, trỏ sandbox), `OPENAI_ADS_API_VERSION=v1`.
+- YouTube không có API quảng cáo riêng: chiến dịch Video / Demand Gen đọc qua adapter `google-ads` (`advertising_channel_type`, bộ chỉ số video); chiến dịch VIDEO chỉ đọc (adapter từ chối thao tác ghi).
 
 ## 5. Luồng dữ liệu chính
 **Tạo kết nối**: form (client) → server action `createConnection` → `requireUser` → zod → `provider.validateCredentials` → `listAccounts` → transaction: insert `connections` (credential mã hoá với AAD `connection:<id>:credentials`) + upsert `ad_accounts` → `activity_logs` → revalidate.
 
 **Gọi MCP**: AI → Caddy → `/mcp/[key]` → `serveMcp` (host/origin, key → grant, IP, rate limit) → SDK handler → factory đăng ký tool theo grant → tool: kiểm tra platform/account/quyền → (xác nhận 2 bước nếu là ghi) → giải mã credential → adapter → chuẩn hoá → `withCallLogging` đẩy log vào batch writer → trả kết quả.
+
+**Thông báo Telegram** (`14-telegram-notifications.md`): nguồn sự kiện (thao tác ghi MCP thành công, tool `telegram_send_message`, `connection-ops.ts` khi trạng thái kết nối chuyển, job cập nhật) → `enqueueNotification()` (insert `notification_deliveries` pending, bỏ qua trùng `dedupe_key`, **không bao giờ ném lỗi ra luồng gọi**) → pg-boss `notify.telegram` → `notifications/telegram.ts` giải mã bot token (AAD `notification_channel:<id>:credentials`) → Bot API → cập nhật delivery/kênh. Tool `telegram_send_message` gửi đồng bộ (≤10 s, không thử lại).
 
 **Job nền (worker)**: `logs.maintain` 03:15 hằng ngày (tạo trước partition 3 tháng, drop partition quá hạn theo setting) · `logs.rollup` mỗi 5 phút (`mcp_call_stats_hourly` cho biểu đồ) · `tokens.health` mỗi 6 giờ (validate credential, cập nhật trạng thái/hạn) · `accounts.sync` hằng ngày (đồng bộ danh sách tài khoản QC) · `pending_actions.cleanup` hằng giờ · `auth.cleanup` 03:45 hằng ngày (xoá hàng đã hết hạn của `verification` — bộ đếm khoá đăng nhập/quota/đánh dấu phiên tươi/thử thách 2FA —, `session`, `rate_limit`; nếu không chúng phình mãi vì mỗi lần đăng nhập sai tạo hàng mới).
 

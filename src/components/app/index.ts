@@ -99,9 +99,12 @@ export {
 } from "./permission-badges"
 export { PlatformBadge, type PlatformBadgeProps } from "./platform-badge"
 export {
+  BrandIcon,
   PLATFORM_COLOR_CLASS,
   PlatformIcon,
   platformLabel,
+  type BrandIconProps,
+  type BrandMarkName,
   type PlatformIconProps,
 } from "./platform-icon"
 export { RelativeTime, type RelativeTimeProps } from "./relative-time"

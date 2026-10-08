@@ -50,7 +50,34 @@ export const createConnectionSchema = z.object({
 })
 export type CreateConnectionInput = z.input<typeof createConnectionSchema>
 
+/** TikTok "Đổi auth_code": app id + secret + one-time auth_code (exchanged server-side, never echoed back). */
+const authCodeFields = {
+  appId: z
+    .string({ error: m.errors.appIdRequired })
+    .trim()
+    .min(1, { error: m.errors.appIdRequired })
+    .max(64, { error: m.errors.appIdFormat })
+    .regex(/^\d+$/, { error: m.errors.appIdFormat }),
+  secret: z.string({ error: m.errors.appSecretRequired }).trim().min(1, { error: m.errors.appSecretRequired }).max(256),
+  authCode: z.string({ error: m.errors.authCodeRequired }).trim().min(1, { error: m.errors.authCodeRequired }).max(512),
+}
+
+export const tiktokAuthCodeCreateSchema = z.object({
+  name: connectionNameSchema,
+  ...authCodeFields,
+})
+export type TikTokAuthCodeCreateInput = z.input<typeof tiktokAuthCodeCreateSchema>
+
 const password = z.string({ error: m.errors.passwordRequired }).min(1, { error: m.errors.passwordRequired }).max(256)
+
+export const tiktokAuthCodeReplaceSchema = z.object({
+  connectionId: uuid,
+  password,
+  /** TOTP code - required by the server when the user has 2FA enabled */
+  code: reauthCodeSchema,
+  ...authCodeFields,
+})
+export type TikTokAuthCodeReplaceInput = z.input<typeof tiktokAuthCodeReplaceSchema>
 
 export const connectionIdSchema = z.object({ connectionId: uuid })
 
@@ -222,6 +249,8 @@ export interface PlatformFormSpec {
     requiredScopes?: string[]
     warnings?: string[]
   }
+  /** TikTok only: offer the auth_code → access token exchange ("Đổi auth_code") */
+  supportsAuthCode: boolean
 }
 
 /** Show a field given the current form values (CredentialFieldSpec.showWhen). */

@@ -12,6 +12,8 @@
 
 Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm lần lượt từng bước, mỗi lệnh chỉ cần **sao chép và dán**. Toàn bộ mất khoảng 30-45 phút.
 
+Sau khi cài, đội của bạn dán token để kết nối **Meta, TikTok Ads, Google Ads (gồm quảng cáo YouTube) và OpenAI Ads**, rồi tạo link MCP cho Claude, ChatGPT, Gemini. Có thể thêm **bot Telegram** để nhận cảnh báo kết nối, thông báo thay đổi do AI thực hiện và tin nhắn từ AI ngay trong nhóm chat.
+
 > [!TIP]
 > Bạn kết nối tài khoản GitHub chứa repo này với ChatGPT, Claude hoặc Gemini → cho AI đọc repo và hướng dẫn bạn deploy chi tiết nhé. Bạn cung cấp chi tiết cho AI biết là sẽ deploy trên đâu (VPS hay mini PC chạy Ubuntu Server), dùng bằng cách trỏ IP về VPS hay là Cloudflare Tunnel, trỏ IP về VPS thì có dùng Cloudflare và bật DNS only hay không. Bạn cung cấp đầy đủ ngữ cảnh để AI hướng dẫn chi tiết, gặp phần nào khó thì chụp ảnh màn hình xong gửi vào AI để nó hướng dẫn tiếp nhé.
 
@@ -27,7 +29,7 @@ Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm l�
 - [Bước 7. Khởi chạy](#bước-7-khởi-chạy)
 - [Bước 8. Tạo tài khoản Admin](#bước-8-tạo-tài-khoản-admin)
 - [Bước 9. Sao lưu file cấu hình](#bước-9-sao-lưu-file-cấu-hình)
-- [Liên kết chính sách cho Meta/OpenAI app](#liên-kết-chính-sách-cho-metaopenai-app)
+- [Liên kết chính sách cho ứng dụng nền tảng quảng cáo](#liên-kết-chính-sách-cho-ứng-dụng-nền-tảng-quảng-cáo)
 - [Cập nhật phiên bản mới](#cập-nhật-phiên-bản-mới)
 - [Sao lưu và khôi phục dữ liệu](#sao-lưu-và-khôi-phục-dữ-liệu)
 - [Các lệnh hay dùng](#các-lệnh-hay-dùng)
@@ -489,9 +491,9 @@ Bôi đen toàn bộ nội dung, sao chép, lưu vào **trình quản lý mật 
 
 ---
 
-## Liên kết chính sách cho Meta/OpenAI app
+## Liên kết chính sách cho ứng dụng nền tảng quảng cáo
 
-Ứng dụng nhà phát triển (Meta App Dashboard → **App settings → Basic** / *Cài đặt ứng dụng → Thông tin cơ bản*: *URL chính sách quyền riêng tư*, *URL điều khoản dịch vụ*, *Xoá dữ liệu người dùng → URL hướng dẫn xoá dữ liệu*; OpenAI tương tự) cần các trang công khai. Mỗi bản cài đặt đã có sẵn 3 trang, **không cần đăng nhập**, tiếng Việt + bản tiếng Anh:
+Ứng dụng nhà phát triển (Meta App Dashboard → **App settings → Basic** / *Cài đặt ứng dụng → Thông tin cơ bản*: *URL chính sách quyền riêng tư*, *URL điều khoản dịch vụ*, *Xoá dữ liệu người dùng → URL hướng dẫn xoá dữ liệu*; TikTok for Developers → thông tin app: *Terms of Service URL*, *Privacy Policy URL*; Google Cloud → **màn hình đồng ý OAuth (Branding)** cho Google Ads/YouTube: liên kết chính sách quyền riêng tư và điều khoản; OpenAI tương tự) cần các trang công khai. Mỗi bản cài đặt đã có sẵn 3 trang, **không cần đăng nhập**, tiếng Việt + bản tiếng Anh:
 
 | Trang | Địa chỉ |
 |---|---|
@@ -501,7 +503,7 @@ Bôi đen toàn bộ nội dung, sao chép, lưu vào **trình quản lý mật 
 
 1. Đăng nhập bằng Admin → **Cài đặt → Thông tin pháp lý**: nhập **Tên đơn vị vận hành** (công ty của bạn - bên chịu trách nhiệm về dữ liệu) và **Email liên hệ quyền riêng tư** → Lưu. Để trống thì trang dùng tên miền và ghi "quản trị viên hệ thống".
 2. Lấy liên kết: thanh bên trái, dưới tên tài khoản, khối **Liên kết cho ứng dụng** - bấm tên trang để mở, bấm biểu tượng sao chép để lấy địa chỉ đầy đủ (điện thoại: tab **Menu**).
-3. Dán 3 địa chỉ vào ứng dụng Meta/OpenAI.
+3. Dán các địa chỉ vào ứng dụng Meta, TikTok, Google Cloud (màn hình đồng ý OAuth) hoặc OpenAI.
 
 ---
 

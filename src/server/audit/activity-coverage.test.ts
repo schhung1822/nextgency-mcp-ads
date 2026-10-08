@@ -29,8 +29,8 @@ function sourceFiles(dir: string): string[] {
 const actions = declaredActions()
 
 describe("danh mục activity_logs.action", () => {
-  it("đọc được đủ danh mục (37 hành động của 03-database-schema.md §4)", () => {
-    expect(actions.length).toBe(37)
+  it("đọc được đủ danh mục (44 hành động của 03-database-schema.md §4)", () => {
+    expect(actions.length).toBe(44)
     expect(new Set(actions).size).toBe(actions.length)
   })
 

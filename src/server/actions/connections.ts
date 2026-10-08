@@ -12,6 +12,8 @@ import {
   previewConnectionSchema,
   renameConnectionSchema,
   replaceCredentialsSchema,
+  tiktokAuthCodeCreateSchema,
+  tiktokAuthCodeReplaceSchema,
   toggleAccountsSchema,
   togglePagesSchema,
   type AdAccountDto,
@@ -28,11 +30,13 @@ import { setAdAccountsEnabled, setMetaPagesEnabled } from "@/server/services/ad-
 import {
   ConnectionServiceError,
   createConnection,
+  createTikTokConnectionFromAuthCode,
   deleteConnection,
   getConnectionUsage,
   previewConnection,
   renameConnection,
   replaceCredentials,
+  replaceTikTokCredentialsFromAuthCode,
   syncConnectionAccounts,
   testConnection,
 } from "@/server/services/connections"
@@ -121,6 +125,22 @@ export async function createConnectionAction(input: unknown): Promise<ActionResu
   }
 }
 
+/** TikTok: exchange auth_code → token and create the connection server-side (the token is never sent back). */
+export async function createTikTokFromAuthCodeAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const session = await requireUserForAction()
+    const parsed = tiktokAuthCodeCreateSchema.safeParse(input)
+    if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
+    const res = await createTikTokConnectionFromAuthCode(session.user, parsed.data)
+    revalidateConnection(res.id)
+    return ok({ id: res.id }, m.new.authCodeSuccess)
+  } catch (e) {
+    return toFail(e)
+  }
+}
+
 export async function renameConnectionAction(input: unknown): Promise<ActionResult> {
   try {
     const session = await requireUserForAction()
@@ -143,6 +163,23 @@ export async function replaceCredentialsAction(input: unknown): Promise<ActionRe
     if (throttled) return throttled
     await reauthForConnection(session, parsed.data.connectionId, parsed.data)
     const res = await replaceCredentials(session.user, parsed.data)
+    revalidateConnection(parsed.data.connectionId)
+    return ok(res, m.replace.done)
+  } catch (e) {
+    return toFail(e)
+  }
+}
+
+/** "Thay token" for TikTok by a new auth_code (re-auth first, exchange server-side). */
+export async function replaceTikTokFromAuthCodeAction(input: unknown): Promise<ActionResult<ConnectionCheckResult>> {
+  try {
+    const session = await requireUserForAction()
+    const parsed = tiktokAuthCodeReplaceSchema.safeParse(input)
+    if (!parsed.success) return zodFail(parsed.error)
+    const throttled = await throttleProvider(session)
+    if (throttled) return throttled
+    await reauthForConnection(session, parsed.data.connectionId, parsed.data)
+    const res = await replaceTikTokCredentialsFromAuthCode(session.user, parsed.data)
     revalidateConnection(parsed.data.connectionId)
     return ok(res, m.replace.done)
   } catch (e) {

@@ -2,8 +2,9 @@ import { z } from "zod"
 import type { ObjectLevel } from "../../../providers/types"
 import { decodeCursor, encodeCursor, type CursorBinding } from "../../cursor"
 import { collectFanout, positionAfter } from "../../fanout"
+import { invalid } from "../../errors"
 import { assertGrant } from "../../grant"
-import { accountIdSchema, objectIdSchema, objectLevelSchema, platformEnum, statusFilterSchema } from "../../schemas"
+import { accountIdSchema, googleChannelTypesSchema, objectIdSchema, objectLevelSchema, platformEnum, statusFilterSchema } from "../../schemas"
 import { jsonLength, MAX_STRUCTURED_CHARS, providerFor, READ_ANNOTATIONS, registerToolSpec, type ToolContext } from "../../tool"
 import { grantPlatformsWith } from "../../types"
 import { objectSummaryOut } from "./shape"
@@ -30,16 +31,17 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Liệt kê chiến dịch / nhóm / quảng cáo",
     description:
-      "Dùng khi cần danh sách chiến dịch, nhóm quảng cáo (ad set/ad group), hoặc quảng cáo của một tài khoản: id, tên, trạng thái, ngân sách (đơn vị chính + tiền tệ), lịch chạy, mục tiêu. Gọi ads_list_accounts trước để lấy account_id. Lọc theo parent_id (campaign của nhóm, nhóm của quảng cáo), trạng thái, tên chứa chuỗi; phân trang bằng next_cursor. Dùng kết quả để lấy đúng id trước khi gọi ads_get_object, ads_set_status, ads_update_budget…",
+      "Dùng khi cần danh sách chiến dịch, nhóm quảng cáo (ad set/ad group), quảng cáo hoặc keyword (Google) của một tài khoản: id, tên, trạng thái, ngân sách (đơn vị chính + tiền tệ), lịch chạy, mục tiêu. Gọi ads_list_accounts trước để lấy account_id. Lọc theo parent_id (campaign của nhóm, nhóm của quảng cáo), trạng thái, tên chứa chuỗi, Google: channel_types (youtube = chiến dịch Video + Demand Gen của Google Ads); phân trang bằng next_cursor. Dùng kết quả để lấy đúng id trước khi gọi ads_get_object, ads_set_status, ads_update_budget…",
     kind: "read",
     annotations: READ_ANNOTATIONS,
     input: z.object({
       platform: platformEnum(platforms),
       account_id: accountIdSchema,
       level: objectLevelSchema,
-      parent_id: objectIdSchema.optional().describe("campaign id (khi level=ad_group) hoặc ad_group id (khi level=ad)"),
+      parent_id: objectIdSchema.optional().describe("campaign id (khi level=ad_group) hoặc ad_group id (khi level=ad/keyword)"),
       statuses: z.array(statusFilterSchema).max(9).optional(),
       name_contains: z.string().max(200).optional(),
+      channel_types: googleChannelTypesSchema.optional(),
       limit: z.number().int().min(1).max(200).default(50),
       cursor: z.string().max(4_000).optional(),
     }),
@@ -47,13 +49,27 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     async handler(args, env) {
       const account = assertGrant(env.grant, { platform: args.platform, accountId: args.account_id, permission: "read" })
       env.log.setTarget({ platform: account.platform, accountId: account.externalId, objectIds: [args.parent_id] })
+      if (args.level === "keyword" && account.platform !== "google_ads") {
+        throw invalid("invalid_level", "level keyword chỉ dùng cho Google Ads.")
+      }
+      const channelTypes = args.channel_types?.length ? [...new Set(args.channel_types)] : undefined
+      if (channelTypes && account.platform !== "google_ads") {
+        throw invalid("invalid_filter", "channel_types chỉ dùng cho Google Ads (gồm quảng cáo YouTube).", "Bỏ channel_types với nền tảng này.")
+      }
       const provider = providerFor(account.platform, "list_objects")
       // signed cursor bound to this MCP + tool + account + query (H2)
       const bind: CursorBinding = {
         mcpId: env.grant.mcpId,
         tool: NAME,
         accountIds: [account.id],
-        query: { a: account.id, l: args.level, p: args.parent_id ?? null, s: args.statuses ?? null, n: args.name_contains ?? null },
+        query: {
+          a: account.id,
+          l: args.level,
+          p: args.parent_id ?? null,
+          s: args.statuses ?? null,
+          n: args.name_contains ?? null,
+          ...(channelTypes ? { ch: channelTypes } : {}),
+        },
       }
       let start = { i: 0, c: null as string | null, s: 0, p: args.limit }
       if (args.cursor) {
@@ -75,6 +91,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
             parentId: args.parent_id ?? null,
             statuses: args.statuses,
             nameContains: args.name_contains,
+            ...(channelTypes ? { channelTypes } : {}),
             cursor,
             limit: pageSize,
           })

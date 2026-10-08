@@ -66,6 +66,8 @@ const VALUE_PATTERNS: [RegExp, string][] = [
   [/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}/g, "gh…[redacted]"], // GitHub tokens (UPDATE_GITHUB_TOKEN)
   [/\bGOCSPX-[0-9A-Za-z_-]{10,}/g, "GOCSPX-…[redacted]"], // OAuth client secret
   [/\bamcp_[A-Za-z0-9_-]{20,}/g, "amcp_…[redacted]"], // our MCP keys
+  [/\bbot\d{5,16}:[A-Za-z0-9_-]+/g, "bot[redacted]"], // Telegram token in a Bot API URL path (/bot<token>/sendMessage)
+  [/\b\d{5,16}:[A-Za-z0-9_-]{30,}\b/g, "[redacted-telegram-token]"], // Telegram bot token "<bot id>:<secret>"
   [/\bct_[A-Za-z0-9_-]{24,}/g, "ct_…[redacted]"], // confirm tokens
   [/\b[a-f0-9]{40}\b/g, "[redacted-hex40]"], // 40-hex tokens (heuristic)
   // NOTE: no bare 32-hex pattern - Meta image_hash values are 32-hex and must stay readable

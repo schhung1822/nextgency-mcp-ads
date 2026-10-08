@@ -1,9 +1,11 @@
 // The real adapters' extensions must be registrable as MCP tools (names, inputs, JSON Schema).
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
+import { googleAdsProvider } from "../../providers/google-ads"
 import { metaProvider } from "../../providers/meta"
 import { openaiAdsProvider } from "../../providers/openai-ads"
 import { registerProvider } from "../../providers/registry"
+import { tiktokProvider } from "../../providers/tiktok"
 import type { AdsProvider } from "../../providers/types"
 import { MONEY_KEY } from "../guardrails"
 import { buildMcpServer } from "../handler"
@@ -12,7 +14,7 @@ import type { RequestState } from "../request-state"
 import { extensionProblem } from "../tools/extensions"
 import { DEFAULT_MCP_SETTINGS, PERMISSIONS, type McpGrant } from "../types"
 
-const providers = [metaProvider, openaiAdsProvider] as unknown as AdsProvider[]
+const providers = [metaProvider, tiktokProvider, googleAdsProvider, openaiAdsProvider] as unknown as AdsProvider[]
 
 describe("real adapter extensions", () => {
   it("have valid, unique tool names and z.object inputs", () => {
@@ -53,6 +55,10 @@ describe("real adapter extensions", () => {
       expect.arrayContaining([
         "meta_create_campaign",
         "meta_create_adset",
+        "tiktok_create_campaign",
+        "tiktok_create_adgroup",
+        "google_ads_create_search_campaign",
+        "google_ads_add_keywords",
         "openai_ads_create_campaign",
         "openai_ads_create_ad_group",
         "openai_ads_update_ad_group",
@@ -84,6 +90,23 @@ describe("real adapter extensions", () => {
     expect(oa.moneyOf!({ ad_group_id: "x", bidding: { max_bid: 0.5, audience_bid_multipliers: [{ custom_audience_id: "a", multiplier: 3 }] } })).toEqual([
       { kind: "bid", amount: 1.5, field: "bidding.max_bid × audience_bid_multipliers" },
     ])
+    const tt = find("tiktok_create_adgroup")
+    const items = tt.moneyOf!({ budget_type: "daily", budget: 100, bid_amount: 2, advanced: { deep_cpa_bid: 9, budget_mode: "X" } })
+    expect(items.map((i) => [i.kind, i.field, i.amount])).toEqual([
+      ["daily_budget", "budget", 100],
+      ["bid", "bid_amount", 2],
+      ["bid", "advanced.deep_cpa_bid", 9],
+    ])
+  })
+
+  it("google_ads_add_youtube_video: create permission, write, no money", () => {
+    const ext = googleAdsProvider.extensions.find((e) => e.name === "google_ads_add_youtube_video")
+    expect(ext, "google_ads_add_youtube_video").toBeDefined()
+    expect(ext!.permission).toBe("create")
+    expect(ext!.write).toBe(true)
+    expect(ext!.moneyOf).toBeUndefined()
+    const shape = (ext!.input as z.ZodObject).shape as Record<string, unknown>
+    expect(Object.keys(shape).sort()).toEqual(["name", "video"])
   })
 
   it("register on a full grant and produce JSON Schemas", () => {
@@ -95,9 +118,10 @@ describe("real adapter extensions", () => {
       ownerEmail: "u@example.test",
       ownerRole: "admin",
       settings: DEFAULT_MCP_SETTINGS,
-      permissions: { meta: [...PERMISSIONS], openai_ads: [...PERMISSIONS] },
+      permissions: { meta: [...PERMISSIONS], tiktok: [...PERMISSIONS], google_ads: [...PERMISSIONS], openai_ads: [...PERMISSIONS] },
       accounts: [],
       pages: [],
+      notificationChannels: [],
     }
     const req: RequestState = {
       startedAt: Date.now(),

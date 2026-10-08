@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateTime } from "@/lib/format"
 import { guides as tg } from "@/lib/i18n/vi/guides"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type {
   McpDetail,
   SelectableConnection,
@@ -144,6 +145,7 @@ function LogsTab({ mcp }: { mcp: McpDetail }) {
 export function McpDetailView({
   mcp,
   connections,
+  channels,
   accountNames,
   twoFactorEnabled,
   initialTab,
@@ -151,6 +153,8 @@ export function McpDetailView({
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
+  /** Telegram channels the MCP owner can pick (config tab) */
+  channels?: McpChannelOption[]
   /** names of picked ad accounts that are switched off now (ad account id → name), for the config warning */
   accountNames?: Record<string, string>
   twoFactorEnabled: boolean
@@ -241,6 +245,7 @@ export function McpDetailView({
             key={mcp.updatedAt}
             mcp={mcp}
             connections={connections}
+            channels={channels}
             accountNames={accountNames}
             updateAction={actions.update}
             onDirtyChange={setConfigDirty}

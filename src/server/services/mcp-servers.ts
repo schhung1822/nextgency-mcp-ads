@@ -50,9 +50,11 @@ import {
   connections,
   mcpAccountScopes,
   mcpCallStatsHourly,
+  mcpNotificationScopes,
   mcpPageScopes,
   mcpPlatformPermissions,
   mcpServers,
+  notificationChannels,
   user,
 } from "@/server/db/schema"
 import { appBaseUrl } from "@/server/env"
@@ -61,6 +63,11 @@ import {
   listUsableConnectionsForMcp,
 } from "@/server/services/ad-accounts"
 import { ConnectionServiceError } from "@/server/services/connections"
+import {
+  assertChannelsUsableForMcp,
+  channelsUsableForMcp,
+  NotificationServiceError,
+} from "@/server/services/notification-channels"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import { parseMcpSettings } from "@/server/mcp/settings"
 import type { McpSettings, Permission } from "@/server/mcp/types"
@@ -162,8 +169,20 @@ export interface McpStats {
   byPlatform: { platform: string; calls: number }[]
 }
 
+/** A Telegram channel in the MCP scope (mcp_notification_scopes) as the admin UI shows it - never the token / chat id. */
+export interface McpChannelRef {
+  id: string
+  name: string
+  chatTitle: string | null
+  status: string
+  /** soft-deleted since: dropped from the grant, removed from the scope on the next save */
+  deleted: boolean
+}
+
 export interface McpDetail extends McpListItem {
   ownerRole: "admin" | "staff"
+  /** Telegram channels in scope (incl. disabled / deleted ones, flagged) */
+  notificationChannels: McpChannelRef[]
   maskedUrl: string
   /** + moneyCapsRequired: false = legacy MCP (created before daily caps became mandatory) */
   settings: McpSettingsInput & Pick<McpSettings, "moneyCapsRequired">
@@ -301,6 +320,99 @@ async function ownerRoleOf(
 }
 
 type PlatformScopes = CreateMcpData["platforms"]
+
+/**
+ * Telegram channel ids an MCP owned by `owner` may use (not deleted, owned by the MCP owner - admins included) -
+ * undefined passes through ("keep the stored scope"). An unusable id → McpServiceError invalid on
+ * `notificationChannelIds`.
+ */
+async function usableChannelIds(
+  owner: { id: string },
+  ids: string[] | undefined
+): Promise<string[] | undefined> {
+  if (ids === undefined) return undefined
+  try {
+    return (await assertChannelsUsableForMcp(owner, ids)).sort()
+  } catch (e) {
+    if (e instanceof NotificationServiceError)
+      throw invalid(e.message, { notificationChannelIds: e.message })
+    throw e
+  }
+}
+
+/**
+ * Channel scope to store on update. requested undefined = keep the stored scope. Stored ids the MCP may no longer use
+ * (another person's channel - legacy rows from when an admin MCP could use any channel - or a deleted one) are
+ * pruned silently; a NEWLY added unusable id is refused.
+ */
+async function channelIdsForUpdate(
+  ownerId: string,
+  requested: string[] | undefined,
+  stored: string[]
+): Promise<string[]> {
+  const wanted = [...new Set(requested ?? stored)]
+  const storedSet = new Set(stored)
+  await usableChannelIds(
+    { id: ownerId },
+    wanted.filter((id) => !storedSet.has(id))
+  )
+  return (await channelsUsableForMcp({ id: ownerId }, wanted)).sort()
+}
+
+async function loadChannelIds(
+  tx: Tx | typeof db,
+  mcpId: string
+): Promise<string[]> {
+  const rows = await tx
+    .select({ channelId: mcpNotificationScopes.channelId })
+    .from(mcpNotificationScopes)
+    .where(eq(mcpNotificationScopes.mcpId, mcpId))
+  return rows.map((r) => r.channelId).sort()
+}
+
+async function writeChannelScopes(tx: Tx, mcpId: string, channelIds: string[]) {
+  await tx
+    .delete(mcpNotificationScopes)
+    .where(eq(mcpNotificationScopes.mcpId, mcpId))
+  if (channelIds.length)
+    await tx
+      .insert(mcpNotificationScopes)
+      .values(channelIds.map((channelId) => ({ mcpId, channelId })))
+}
+
+/** Channels in scope that belong to the MCP owner (another person's channel is ignored by the grant and pruned on save). */
+async function loadChannelRefs(
+  mcpId: string,
+  ownerId: string
+): Promise<McpChannelRef[]> {
+  const rows = await db
+    .select({
+      id: notificationChannels.id,
+      name: notificationChannels.name,
+      config: notificationChannels.config,
+      status: notificationChannels.status,
+      deletedAt: notificationChannels.deletedAt,
+    })
+    .from(mcpNotificationScopes)
+    .innerJoin(
+      notificationChannels,
+      eq(notificationChannels.id, mcpNotificationScopes.channelId)
+    )
+    .where(
+      and(
+        eq(mcpNotificationScopes.mcpId, mcpId),
+        eq(notificationChannels.ownerId, ownerId)
+      )
+    )
+    .orderBy(asc(notificationChannels.name))
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    chatTitle: r.config?.chatTitle ?? null,
+    status: r.status,
+    deleted: !!r.deletedAt,
+  }))
+}
 
 /**
  * Currencies (upper case, sorted) of the ad accounts an MCP config can spend on: accounts of every platform
@@ -572,6 +684,8 @@ interface ConfigSummary {
   >
   settings: DiffSettings
   expiresAt: string | null
+  /** Telegram channel ids in scope (sorted) */
+  channels: string[]
 }
 
 /** Settings as compared/logged in activity diffs (the internal `moneyCapsRequired` marker is left out). */
@@ -613,6 +727,7 @@ function summarize(data: {
   /** already normalized with normalizeSettingsForDiff */
   settings: DiffSettings
   expiresAt: Date | null
+  channels: string[]
 }): ConfigSummary {
   const platforms: ConfigSummary["platforms"] = {}
   for (const p of [...data.platforms].sort((a, b) =>
@@ -643,6 +758,7 @@ function summarize(data: {
     platforms,
     settings: data.settings,
     expiresAt: iso(data.expiresAt),
+    channels: [...new Set(data.channels)].sort(),
   }
 }
 
@@ -967,6 +1083,7 @@ export async function getMcpServer(
   for (const p of config) permissions[p.platform] = p.permissions
   const stats = await loadStats(r.id)
   const missing = await capsMissingFor([r])
+  const notificationChannelRefs = await loadChannelRefs(r.id, r.ownerId)
   return {
     id: r.id,
     name: r.name,
@@ -994,6 +1111,7 @@ export async function getMcpServer(
     config,
     stats,
     capsMissing: missing.get(r.id) ?? [],
+    notificationChannels: notificationChannelRefs,
   }
 }
 
@@ -1063,6 +1181,10 @@ export async function createMcpServer(
       expiresAt: MCP_SCHEMA_MESSAGES.expiresFuture,
     })
   }
+  // Telegram channels: the creator owns the MCP → only the creator's own channels (admins too)
+  const channelIds =
+    (await usableChannelIds({ id: actor.id }, data.notificationChannelIds)) ??
+    []
   const id = randomUUID()
   const { key, columns } = newKeyColumns(id)
   const reauthLog = { action: "mcp.create" as const, target: { type: "mcp", id: null, label: data.name } }
@@ -1080,6 +1202,7 @@ export async function createMcpServer(
       settings: toStoredMcpSettings(data.settings),
     })
     await writeScopes(tx, id, data.platforms)
+    await writeChannelScopes(tx, id, channelIds)
     await logActivity(
       {
         actor: actorOf(actor),
@@ -1091,6 +1214,7 @@ export async function createMcpServer(
             settings: normalizeSettingsForDiff(
               toStoredMcpSettings(data.settings)
             ),
+            channels: channelIds,
           }),
           keyPrefix: columns.keyPrefix,
         },
@@ -1132,16 +1256,26 @@ export async function updateMcpServer(
     await assertDailyCaps(tx, data.platforms, data.settings)
 
     const beforeConfig = await loadConfig(tx, row.id)
+    const beforeChannels = await loadChannelIds(tx, row.id)
+    // Telegram channels of the MCP OWNER only (an admin editing a staff MCP cannot add the admin's channels, an
+    // admin MCP cannot use a staff channel); omitted = keep the stored scope; stored foreign rows are pruned
+    const channelIds = await channelIdsForUpdate(
+      row.ownerId,
+      data.notificationChannelIds,
+      beforeChannels
+    )
     const before = summarize({
       name: row.name,
       description: row.description,
       platforms: beforeConfig,
       settings: normalizeSettingsForDiff(row.settings),
       expiresAt: row.expiresAt,
+      channels: beforeChannels,
     })
     const after = summarize({
       ...data,
       settings: normalizeSettingsForDiff(toStoredMcpSettings(data.settings)),
+      channels: channelIds,
     })
     const diff = diffSummaries(before, after)
     if (Object.keys(diff.after).length === 0) {
@@ -1180,6 +1314,7 @@ export async function updateMcpServer(
       })
       .where(eq(mcpServers.id, row.id))
     if ("platforms" in diff.after) await writeScopes(tx, row.id, data.platforms)
+    if ("channels" in diff.after) await writeChannelScopes(tx, row.id, channelIds)
     await logActivity(
       {
         actor: actorOf(actor),

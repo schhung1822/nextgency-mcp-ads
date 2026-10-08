@@ -7,9 +7,9 @@ export const connections = {
     title: "Kết nối quảng cáo",
     metaTitle: "Kết nối quảng cáo",
     description:
-      "Dán token từ app developer của bạn để kết nối tài khoản quảng cáo.",
+      "Dán token từ app developer để kết nối tài khoản quảng cáo, và thêm bot Telegram để nhận thông báo.",
     add: "Thêm kết nối",
-    tabAll: "Tất cả",
+    tabAll: "Tất cả nền tảng",
     searchPlaceholder: "Tìm theo tên kết nối…",
     searchLabel: "Tìm kết nối",
     filterStatus: "Trạng thái",
@@ -27,6 +27,13 @@ export const connections = {
     emptyTitle: "Chưa có kết nối nào",
     emptyDescription:
       "Thêm kết nối đầu tiên để bắt đầu điều khiển quảng cáo từ AI.",
+    /** Telegram channels exist but no ad connection (or none on this platform tab) */
+    emptyAdsTitle: "Chưa có kết nối quảng cáo",
+    emptyAdsPlatformTitle: (platform: string) => `Chưa có kết nối ${platform}`,
+    emptyAdsDescription:
+      "Thêm kết nối quảng cáo để AI xem chỉ số và điều khiển chiến dịch.",
+    addAds: "Thêm kết nối quảng cáo",
+    addAdsPlatform: (platform: string) => `Thêm kết nối ${platform}`,
     emptyFilteredTitle: "Không có kết nối phù hợp",
     emptyFilteredDescription: "Thử đổi từ khoá tìm kiếm hoặc bỏ bớt bộ lọc.",
     openDetail: (name: string) => `Mở kết nối ${name}`,
@@ -40,23 +47,22 @@ export const connections = {
       "Chọn nền tảng, dán thông tin từ app developer rồi kiểm tra trước khi lưu.",
     steps: {
       platform: "Chọn nền tảng",
-      platformDesc: "Meta, OpenAI Ads",
+      platformDesc: "Quảng cáo hoặc kênh thông báo",
       credentials: "Nhập thông tin",
       credentialsDesc: "Token và thông tin app",
       verify: "Kiểm tra & chọn tài khoản",
       verifyDesc: "Xác thực và đồng bộ TKQC",
     },
-    choosePlatform: "Bạn muốn kết nối nền tảng nào?",
+    choosePlatform: "Bạn muốn thêm loại kết nối nào?",
     choosePlatformHint:
       "Mỗi nền tảng có thể thêm nhiều kết nối. Bạn có thể đổi lại ở bước sau.",
-    selectPlatform: (name: string) => `Chọn ${name}`,
     stepProgress: (n: number, total: number, title: string) =>
       `Bước ${n}/${total} · ${title}`,
     formTitle: (platform: string) => `Thông tin kết nối ${platform}`,
     formDescription:
       "Thông tin được mã hoá trước khi lưu và không bao giờ hiển thị lại.",
     nameLabel: "Tên kết nối",
-    namePlaceholder: "Ví dụ: BM chính, Via Shop VN…",
+    namePlaceholder: "Ví dụ: BM chính, TikTok Shop VN…",
     nameHelp: "Tên gợi nhớ để bạn và đồng nghiệp nhận ra kết nối này.",
     guideTitle: (platform: string) => `Cách lấy token ${platform}`,
     optional: "(tuỳ chọn)",
@@ -67,6 +73,44 @@ export const connections = {
     comingSoonBody: (name: string) =>
       `Kết nối ${name} đang được hoàn thiện và sẽ có trong phiên bản cập nhật tới. Khi có bản mới, quản trị viên sẽ thấy thông báo ở Cài đặt → Cập nhật hệ thống. Hiện bạn có thể dùng Meta và OpenAI Ads.`,
     comingSoonClose: "Đã hiểu",
+    /** step 1 groups */
+    groupAds: "Quảng cáo",
+    groupAdsHint: "Kết nối tài khoản quảng cáo để AI xem chỉ số và điều khiển chiến dịch.",
+    groupNotify: "Kênh thông báo",
+    groupNotifyHint: "Nhận cảnh báo kết nối, thay đổi do AI thực hiện và tin nhắn từ AI.",
+    /** Google Ads card label: YouTube ads run through a Google Ads connection */
+    googleWithYoutube: "Google Ads (gồm YouTube)",
+    youtube: {
+      label: "YouTube Ads",
+      card: "Chạy qua tài khoản Google Ads (chiến dịch Video, Demand Gen)",
+      noteTitle: "YouTube Ads chạy qua Google Ads",
+      note: "Quảng cáo YouTube được quản lý trong tài khoản Google Ads, nên bạn chỉ cần tạo một kết nối Google Ads. Chiến dịch Video (YouTube) chỉ xem được qua API (báo cáo, danh sách); chiến dịch Demand Gen xem và điều chỉnh được (bật/tắt, ngân sách).",
+      guideTitle: "Cách kết nối YouTube Ads (qua Google Ads)",
+      guideSummary:
+        "YouTube không có API quảng cáo riêng: chiến dịch YouTube nằm trong tài khoản Google Ads. Làm theo các bước lấy thông tin Google Ads bên dưới.",
+      guideWarning:
+        "Chiến dịch Video (YouTube) chỉ xem được qua API - muốn sửa hãy vào Google Ads. Chiến dịch Demand Gen bật/tắt và đổi ngân sách được từ AI.",
+    },
+    telegram: {
+      label: "Telegram",
+      card: "Bot gửi cảnh báo và thông báo vào nhóm, kênh hoặc chat riêng",
+    },
+    modeLabel: "Cách nhập",
+    modeToken: "Dán access token",
+    modeAuthCode: "Đổi auth_code",
+    appIdLabel: "App ID",
+    appIdPlaceholder: "Ví dụ: 7312345678901234567",
+    appSecretLabel: "Secret của app",
+    authCodeLabel: "auth_code",
+    authCodePlaceholder:
+      "Dán auth_code trên thanh địa chỉ sau khi advertiser đồng ý",
+    authCodeHelp:
+      "Mã chỉ dùng được 1 lần và hết hạn sau 1 giờ. Khi bạn bấm Đổi mã & lưu kết nối, hệ thống tự lấy token dài hạn từ TikTok và lưu ngay - token không hiện trên trình duyệt.",
+    authCodeModeHint:
+      "Sau khi advertiser bấm đồng ý ở link uỷ quyền của app, TikTok chuyển về địa chỉ chuyển hướng kèm ?auth_code=…. Nếu địa chỉ đó là trang này, ô auth_code được điền sẵn và mã được xoá khỏi thanh địa chỉ; nếu không, sao chép giá trị đó và dán vào đây.",
+    authCodeSubmit: "Đổi mã & lưu kết nối",
+    authCodeSuccess: "Đã đổi auth_code và lưu kết nối.",
+    authCodeFailedTitle: "Không đổi được auth_code",
     verifyNow: "Kiểm tra kết nối",
     verifying: "Đang kiểm tra token và tìm tài khoản quảng cáo…",
     verifyingHint: "Việc này có thể mất vài giây. Vui lòng không đóng trang.",
@@ -244,6 +288,11 @@ export const connections = {
     nameRequired: "Vui lòng nhập tên kết nối.",
     nameTooLong: "Tên kết nối tối đa 100 ký tự.",
     platformRequired: "Vui lòng chọn nền tảng.",
+    tiktokOnly: "Chỉ kết nối TikTok mới đổi được auth_code.",
+    appIdRequired: "Vui lòng nhập App ID.",
+    appIdFormat: "App ID chỉ gồm chữ số (tối đa 64 ký tự).",
+    appSecretRequired: "Vui lòng nhập Secret của app.",
+    authCodeRequired: "Vui lòng dán auth_code.",
     tooManyAccounts: "Quá nhiều tài khoản trong một lần cập nhật.",
     connectionDisabled: "Kết nối đã bị tắt.",
     pagesUnreadable: "Không đọc được danh sách Trang Facebook (Meta trả lỗi).",

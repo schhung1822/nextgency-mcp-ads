@@ -18,6 +18,7 @@ import {
   type McpDetail,
   type SelectableConnection,
 } from "@/server/services/mcp-servers"
+import { listChannelsForMcpScope } from "@/server/services/notification-channels"
 
 import { parseDetailTab } from "../_components/detail-tabs"
 import { McpDetailView } from "../_components/mcp-detail"
@@ -87,16 +88,21 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
   const actor = { id: user.id, email: user.email, role: user.role } as const
   const mcp = await getMcpServer(actor, id)
   if (!mcp) notFound()
-  const connections = await listSelectableConnections(actor, {
-    id: mcp.ownerId,
-    role: mcp.ownerRole,
-  })
+  const [connections, channels] = await Promise.all([
+    listSelectableConnections(actor, {
+      id: mcp.ownerId,
+      role: mcp.ownerRole,
+    }),
+    // Telegram channels of the MCP OWNER only (what the service accepts on save) - admins included
+    listChannelsForMcpScope({ id: mcp.ownerId }),
+  ])
   const accountNames = await switchedOffAccountNames(actor, mcp, connections)
   const initialTab = parseDetailTab(sp.tab)
   return (
     <McpDetailView
       mcp={mcp}
       connections={connections}
+      channels={channels}
       accountNames={accountNames}
       twoFactorEnabled={user.twoFactorEnabled}
       initialTab={initialTab}

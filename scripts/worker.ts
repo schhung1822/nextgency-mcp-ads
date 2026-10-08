@@ -8,6 +8,7 @@ import { safeErrorForLog } from "@/server/audit/safe-error"
 import { assertKeyRing } from "@/server/crypto/secret-box"
 import { pool } from "@/server/db/client"
 import { JOBS, jobTimezone, type JobDefinition } from "@/server/jobs"
+import { setNotificationJobSender } from "@/server/notifications/queue"
 import { ensureProvidersRegistered } from "@/server/providers"
 
 const STOP_TIMEOUT_MS = 30_000
@@ -67,6 +68,8 @@ async function main() {
   boss.on("error", (e) => console.error(`[worker] pg-boss error: ${errText(e)}`))
   await boss.start()
   log("pg-boss started")
+  // notify.telegram retries / notification enqueues from jobs go through this started instance
+  setNotificationJobSender((name, data, options) => boss.send(name, data, options))
 
   const abort = new AbortController()
   for (const job of JOBS) await registerJob(boss, job, abort.signal)

@@ -6,7 +6,16 @@ import type { Budget } from "../../../providers/types"
 import { denied, invalid } from "../../errors"
 import { assertGrant } from "../../grant"
 import { campaignFlightOrDeny } from "../../budget-flight"
-import { checkDailyCap, checkLifetimeCap, fmtMoney as fmt, legacyCapWarning, lifetimeLimit, requireMoneyCaps, type Flight } from "../../guardrails"
+import {
+  checkDailyCap,
+  checkLifetimeCap,
+  DYNAMIC_DAILY_NOTE,
+  fmtMoney as fmt,
+  legacyCapWarning,
+  lifetimeLimit,
+  requireMoneyCaps,
+  type Flight,
+} from "../../guardrails"
 import { accountIdSchema, objectIdSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext } from "../../tool"
 import { grantPlatformsWith, type McpSettings } from "../../types"
@@ -55,8 +64,11 @@ export function checkBudgetGuardrails(
       `Gọi lại với budget_type="${current.type}".`
     )
   }
-  if (next.type === "daily") checkDailyCap(settings, next.amount, cur)
+  // a flexible daily budget (TikTok) keeps its mode: the cap is compared with what one day may spend (125%)
+  const dynamic = next.type === "daily" && current?.type === "daily" && current.dynamic === true
+  if (next.type === "daily") checkDailyCap(settings, next.amount, cur, dynamic ? "Ngân sách ngày linh hoạt" : "Ngân sách ngày", { dynamic })
   else checkLifetimeCap(settings, next.amount, cur, flight ?? {})
+  if (dynamic) warnings.push(`${DYNAMIC_DAILY_NOTE} Mức ${fmt(next.amount, cur)} có thể chi tới ${fmt(next.amount * 1.25, cur)} trong một ngày.`)
   return { warnings, changePct }
 }
 
@@ -120,7 +132,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Đổi ngân sách",
     description:
-      "Dùng khi cần đặt ngân sách ngày (daily) hoặc trọn đời (lifetime) cho một chiến dịch hoặc nhóm quảng cáo, theo đơn vị chính của tiền tệ tài khoản (vd 500000 nghĩa là 500.000 VND). Gọi ads_list_accounts và ads_get_object trước để biết ngân sách đang nằm ở cấp nào (CBO/ABO) và giá trị hiện tại. Có giới hạn % thay đổi mỗi lần và trần ngân sách ngày theo cấu hình MCP; vượt giới hạn sẽ bị từ chối kèm mức cho phép. Kết quả có effective_at khi thay đổi không có hiệu lực ngay. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.",
+      "Dùng khi cần đặt ngân sách ngày (daily) hoặc trọn đời (lifetime) cho một chiến dịch hoặc nhóm quảng cáo, theo đơn vị chính của tiền tệ tài khoản (vd 500000 nghĩa là 500.000 VND). Gọi ads_list_accounts và ads_get_object trước để biết ngân sách đang nằm ở cấp nào (CBO/ABO) và giá trị hiện tại. Có giới hạn % thay đổi mỗi lần và trần ngân sách ngày theo cấu hình MCP; vượt giới hạn sẽ bị từ chối kèm mức cho phép. Kết quả có effective_at khi thay đổi không có hiệu lực ngay (vd TikTok: 00:00 hôm sau). Google: chiến dịch Video (YouTube) chỉ xem được; Demand Gen tối thiểu khoảng 5 USD/ngày. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.",
     kind: "write",
     annotations: UPDATE_ANNOTATIONS,
     input: z.object({

@@ -6,7 +6,7 @@ import { argsHash } from "../confirm"
 import { decodeCursor, encodeCursor, queryHash } from "../cursor"
 import { mapToolError, McpToolError } from "../errors"
 import { collectFanout, positionAfter } from "../fanout"
-import { assertGrant, assertPageGrant, dedupePages } from "../grant"
+import { accountIdCandidates, assertChannelGrant, assertGrant, assertPageGrant, dedupePages } from "../grant"
 import { SERVER_INSTRUCTIONS } from "../instructions"
 import { MAX_LOG_ARGS_DEPTH, stripMediaUrlQueries, stripUrlQueries } from "../log-args"
 import { buildIpMatcher, clientIpFromHeaders, ipAllowed, normalizeIp } from "../net"
@@ -120,6 +120,7 @@ describe("grant checks", () => {
         businessName: null,
       },
     ],
+    notificationChannels: [{ id: "ch1", name: "Nhóm A", chatTitle: "Team", hasThread: false }],
   }
   it("accepts a granted Page and refuses others / an MCP without Meta read", () => {
     expect(assertPageGrant(grant, "111").id).toBe("p1")
@@ -145,6 +146,21 @@ describe("grant checks", () => {
     expect(() => assertGrant(grant, { platform: "meta", accountId: "act_2", permission: "read" })).toThrow(/không thuộc phạm vi/)
     expect(() => assertGrant(grant, { platform: "meta", accountId: "act_1", permission: "update" })).toThrow(McpToolError)
     expect(() => assertGrant(grant, { platform: "openai_ads", accountId: "act_1", permission: "read" })).toThrow(McpToolError)
+    expect(() => assertGrant(grant, { platform: "tiktok", accountId: "act_1", permission: "read" })).toThrow(McpToolError)
+  })
+  it("google ids accept dashes; meta act_ prefix optional", () => {
+    expect(accountIdCandidates("google_ads", "123-456-7890")).toContain("1234567890")
+    expect(accountIdCandidates("meta", "123")).toContain("act_123")
+    expect(accountIdCandidates("tiktok", "7012")).toEqual(["7012"])
+  })
+  it("Telegram channel must be in scope; the only channel is the default", () => {
+    expect(assertChannelGrant(grant, undefined).id).toBe("ch1")
+    expect(assertChannelGrant(grant, " ch1 ").id).toBe("ch1")
+    expect(() => assertChannelGrant(grant, "ch2")).toThrow(/không thuộc phạm vi/)
+    expect(() => assertChannelGrant({ ...grant, notificationChannels: [] }, undefined)).toThrow(/chưa được cấp kênh/)
+    const two = { ...grant, notificationChannels: [...grant.notificationChannels, { id: "ch2", name: "B", chatTitle: null, hasThread: true }] }
+    expect(() => assertChannelGrant(two, undefined)).toThrow(/channel_id/)
+    expect(assertChannelGrant(two, "ch2").id).toBe("ch2")
   })
 })
 

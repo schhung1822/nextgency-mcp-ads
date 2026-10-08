@@ -11,11 +11,14 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import {
+  BrandIcon,
   createDataTableColumnHelper,
   DataTable,
   EmptyState,
   FilterBar,
   getStatusMeta,
+  PageGuide,
+  PageHeader,
   PlatformBadge,
   PlatformIcon,
   RelativeTime,
@@ -30,11 +33,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PLATFORM_LABELS } from "@/lib/constants"
 import { formatDate } from "@/lib/format"
 import { connections as m } from "@/lib/i18n/vi/connections"
+import { guides as tg } from "@/lib/i18n/vi/guides"
+import { notifications as tn } from "@/lib/i18n/vi/notifications"
 import {
   CONNECTION_PLATFORMS,
   statusTooltip,
   type ConnectionListItem,
 } from "@/lib/schemas/connections"
+import type { NotificationChannelDto } from "@/lib/schemas/notifications"
+
+import { TelegramChannelsTable } from "./telegram-channels-table"
+
+/** view tab of the Telegram notification channels (next to the platform tabs) */
+export const TELEGRAM_TAB = "telegram"
 
 const col = createDataTableColumnHelper<ConnectionListItem>()
 
@@ -133,13 +144,28 @@ function buildColumns(isAdmin: boolean) {
 
 export function ConnectionsTable({
   items,
+  channels = [],
   isAdmin,
+  initialTab = "all",
 }: {
   items: ConnectionListItem[]
+  /** Telegram notification channels (tab "Telegram") */
+  channels?: NotificationChannelDto[]
   isAdmin: boolean
+  /** ?tab=… (e.g. "telegram" after deleting a channel) */
+  initialTab?: string
 }) {
   const router = useRouter()
-  const [tab, setTab] = React.useState<string>("all")
+  const [tab, setTab] = React.useState<string>(initialTab)
+  // phones: the tab strip scrolls sideways - bring a preselected tab (?tab=telegram, the last one) into view
+  const tabsScrollRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (initialTab === "all") return
+    const el = tabsScrollRef.current?.querySelector<HTMLElement>(
+      '[role="tab"][data-state="active"]'
+    )
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  }, [initialTab])
   const [search, setSearch] = React.useState("")
   const [filters, setFilters] = React.useState<FilterValues>({})
   const columns = React.useMemo(() => buildColumns(isAdmin), [isAdmin])
@@ -160,9 +186,38 @@ export function ConnectionsTable({
     })
   }, [items, tab, search, filters, isAdmin])
 
-  if (items.length === 0) {
+  const total = items.length + channels.length
+  const onTelegram = tab === TELEGRAM_TAB
+  const header = (
+    <PageHeader
+      title={m.list.title}
+      description={m.list.description}
+      // empty list: the empty state carries the one brand button instead;
+      // the Telegram view adds a Telegram connection straight away (no platform picker)
+      primaryAction={
+        total > 0 ? (
+          <Button variant="brand" asChild>
+            <Link href={onTelegram ? "/connections/telegram/new" : "/connections/new"}>
+              <HugeiconsIcon
+                icon={Add01Icon}
+                strokeWidth={2}
+                data-icon="inline-start"
+                aria-hidden
+              />
+              {onTelegram ? tn.list.add : m.list.add}
+            </Link>
+          </Button>
+        ) : undefined
+      }
+    />
+  )
+
+  if (total === 0) {
     return (
+      <>
+      {header}
       <Card className="py-0">
+        <PageGuide guide={tg.connections} />
         <EmptyState
           icon={Plug01Icon}
           title={m.list.emptyTitle}
@@ -182,17 +237,31 @@ export function ConnectionsTable({
           }
         />
       </Card>
+      </>
     )
   }
 
   const count = (p: string) =>
     p === "all" ? items.length : items.filter((c) => c.platform === p).length
+  // no ad connection at all (only Telegram) / none on this platform tab: say so and offer to add one,
+  // instead of the "no match for the filter" message
+  const tabPlatform = tab === "all" || onTelegram ? null : tab
+  const tabEmpty = !onTelegram && count(tab) === 0
+  const tabPlatformLabel = tabPlatform
+    ? (PLATFORM_LABELS as Record<string, string>)[tabPlatform] ?? tabPlatform
+    : null
 
   return (
+    <>
+    {header}
     <Card className="@container gap-0 py-0">
+      {/* tab-aware guide: the Telegram view explains notification channels */}
+      <PageGuide
+        guide={tab === TELEGRAM_TAB ? tg.telegramList : tg.connections}
+      />
       <Tabs value={tab} onValueChange={setTab} className="gap-0">
         {/* scrolls sideways on phones; the right edge fades so a cut-off tab reads as "more →" */}
-        <div className="[scrollbar-width:none] overflow-x-auto border-b px-3 pt-3 max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)] [&::-webkit-scrollbar]:hidden">
+        <div ref={tabsScrollRef} className="[scrollbar-width:none] overflow-x-auto border-b px-3 pt-3 max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-1.5rem),transparent)] [&::-webkit-scrollbar]:hidden">
           <TabsList
             variant="line"
             aria-label={m.list.tabsLabel}
@@ -209,8 +278,55 @@ export function ConnectionsTable({
                 <TabCount n={count(p)} />
               </TabsTrigger>
             ))}
+            <TabsTrigger value={TELEGRAM_TAB}>
+              <BrandIcon brand="telegram" />
+              {tn.list.tab}
+              <TabCount n={channels.length} />
+            </TabsTrigger>
           </TabsList>
         </div>
+        {tab === TELEGRAM_TAB ? (
+          <TabsContent value={TELEGRAM_TAB} className="flex flex-col">
+            <TelegramChannelsTable
+              channels={channels}
+              isAdmin={isAdmin}
+              ctaVariant="outline"
+            />
+          </TabsContent>
+        ) : tabEmpty ? (
+          <TabsContent value={tab} className="flex flex-col">
+            <EmptyState
+              icon={Plug01Icon}
+              title={
+                tabPlatformLabel
+                  ? m.list.emptyAdsPlatformTitle(tabPlatformLabel)
+                  : m.list.emptyAdsTitle
+              }
+              description={m.list.emptyAdsDescription}
+              action={
+                <Button variant="outline" asChild>
+                  <Link
+                    href={
+                      tabPlatform
+                        ? `/connections/new?platform=${tabPlatform}`
+                        : "/connections/new"
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={Add01Icon}
+                      strokeWidth={2}
+                      data-icon="inline-start"
+                      aria-hidden
+                    />
+                    {tabPlatformLabel
+                      ? m.list.addAdsPlatform(tabPlatformLabel)
+                      : m.list.addAds}
+                  </Link>
+                </Button>
+              }
+            />
+          </TabsContent>
+        ) : (
         <TabsContent value={tab} className="flex flex-col">
           <div className="border-b p-3">
             <FilterBar
@@ -300,8 +416,10 @@ export function ConnectionsTable({
             )}
           />
         </TabsContent>
+        )}
       </Tabs>
     </Card>
+    </>
   )
 }
 

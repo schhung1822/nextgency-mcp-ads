@@ -20,7 +20,7 @@ docker compose logs -f --tail=200 web worker
 docker compose restart web worker
 docker compose run --rm web node dist/cli.mjs <lệnh>   # CLI quản trị
 ```
-CLI: `create-admin --email <email>` (mật khẩu tạm: biến `ADMIN_PASSWORD` hoặc `--password-stdin`, không có thì tự sinh) · `reset-password <email>` · `reset-2fa <email>` · `unlock <email>` (gỡ khoá đăng nhập do nhập sai nhiều lần) · `unban <email>` (mở khoá tài khoản bị khoá) · `reencrypt`.
+CLI: `create-admin --email <email>` (mật khẩu tạm: biến `ADMIN_PASSWORD` hoặc `--password-stdin`, không có thì tự sinh) · `reset-password <email>` · `reset-2fa <email>` · `unlock <email>` (gỡ khoá đăng nhập do nhập sai nhiều lần) · `unban <email>` (mở khoá tài khoản bị khoá) · `google:refresh-token --client-id …` (lấy refresh token Google Ads) · `reencrypt`.
 
 Không đặt mật khẩu/secret trên dòng lệnh (lộ qua `ps`, lịch sử shell).
 `docker-compose.yml` chỉ truyền vào container các biến có trong danh sách của nó, nên `ADMIN_PASSWORD` ghi trong `.env` **không** tới được CLI. Muốn tự đặt mật khẩu tạm, truyền qua biến của shell (không ghi giá trị trên dòng lệnh) hoặc stdin:
@@ -30,7 +30,15 @@ docker compose run --rm -e ADMIN_PASSWORD web node dist/cli.mjs create-admin --e
 ```
 (hoặc `--password-stdin` kèm `docker compose run --rm -T web ...`; không đặt gì thì CLI tự sinh mật khẩu tạm và in ra 1 lần).
 
-Trang công khai cho app Meta/OpenAI (không cần đăng nhập): `https://<tên miền>/privacy`, `/terms`, `/data-deletion` - điền **Cài đặt → Thông tin pháp lý** (tên đơn vị vận hành, email liên hệ) trước khi dán vào Meta App Dashboard; sao chép nhanh ở khối "Liên kết cho ứng dụng" dưới sidebar.
+Lấy refresh token Google Ads (chỉ khi dùng OAuth; khuyên dùng service account để khỏi cần bước này) qua đường hầm SSH, cổng chỉ publish ra loopback của VPS:
+```bash
+ssh -L 8085:127.0.0.1:8085 user@vps          # trên máy của bạn, giữ cửa sổ này mở
+docker compose run --rm -p 127.0.0.1:8085:8085 web \
+  node dist/cli.mjs google:refresh-token --client-id <CLIENT_ID> --host 0.0.0.0   # client secret nhập ẩn khi được hỏi
+```
+Mở link CLI in ra bằng trình duyệt trên máy của bạn, đăng nhập Google (tài khoản bị Google Ads bắt buộc passkey phải dùng passkey) → **Cho phép**. OAuth consent screen phải ở **In production** (kèm Verify Branding) — để **Testing** thì refresh token hết hạn sau 7 ngày. Không cần developer token.
+
+Trang công khai cho app Meta/TikTok/Google/OpenAI (không cần đăng nhập): `https://<tên miền>/privacy`, `/terms`, `/data-deletion` - điền **Cài đặt → Thông tin pháp lý** (tên đơn vị vận hành, email liên hệ) trước khi dán vào Meta App Dashboard; sao chép nhanh ở khối "Liên kết cho ứng dụng" dưới sidebar.
 
 ## Cập nhật phiên bản
 ### Tự động (admin bấm nút trong web)
@@ -142,8 +150,9 @@ Khi nghi lộ khoá, khi nhân sự giữ khoá nghỉ việc, hoặc định k�
 
 ## Giám sát
 - **Healthcheck**: `docker compose ps` — `web` phải `healthy`. Giám sát từ ngoài (UptimeRobot, Better Stack…): kiểm tra `https://<tên-miền>/api/health` trả HTTP 200 mỗi 1–5 phút.
-- **Cảnh báo trong app**: trang **Tổng quan** hiện token lỗi/sắp hết hạn (Meta 60 ngày…), tỉ lệ lỗi MCP 24h; chuông thông báo trên thanh trên cùng.
-- **Phiên bản API**: **Cài đặt → Phiên bản API nền tảng** cảnh báo khi phiên bản đang dùng sắp ngừng (Meta đổi phiên bản 3–4 lần/năm) → cập nhật Ads MCP.
+- **Cảnh báo trong app**: trang **Tổng quan** hiện token lỗi/sắp hết hạn (Meta 60 ngày, Google refresh token ở Testing 7 ngày…; token TikTok không hết hạn, chỉ mất khi bị thu hồi), tỉ lệ lỗi MCP 24h; chuông thông báo trên thanh trên cùng.
+- **Cảnh báo qua Telegram** (tuỳ chọn): thêm kênh Telegram (**Kết nối quảng cáo → Thêm kết nối → Kênh thông báo**), đăng ký sự kiện *kết nối quảng cáo* và (admin) *cập nhật hệ thống*. Máy chủ cần ra Internet tới `api.telegram.org` (HTTPS 443). Biến `TELEGRAM_API_BASE_URL` **tuỳ chọn** (mặc định `https://api.telegram.org`; chỉ đổi khi dùng Bot API server riêng, phải là https). Lịch sử gửi tin xem ở trang chi tiết kênh, được dọn theo thời hạn nhật ký MCP.
+- **Phiên bản API**: **Cài đặt → Phiên bản API nền tảng** cảnh báo khi phiên bản đang dùng sắp ngừng (Meta, Google đổi phiên bản 3–4 lần/năm; TikTok hiện chỉ có v1.3) → cập nhật Ads MCP.
 - **Tài nguyên**: `docker stats --no-stream`. Tham khảo: web ~250 MB, worker ~120 MB RAM.
 - **Đĩa**: cảnh báo khi ổ < 20% trống (log + backup tăng dần).
 

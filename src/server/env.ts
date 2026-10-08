@@ -18,6 +18,27 @@ export function isAcceptableAuthUrl(url: string, nodeEnv: string | undefined): b
   }
 }
 
+/** Same rule as src/server/providers/tiktok/client.ts: https only, no credentials/query/fragment (tokens go there). */
+export function isSafeHttpsBaseUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    return u.protocol === "https:" && !u.username && !u.password && !u.search && !u.hash
+  } catch {
+    return false
+  }
+}
+
+/** Same rule as src/server/notifications/telegram.ts (the bot token travels in the URL path). */
+export function isSafeTelegramBaseUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    if (u.username || u.password || u.search || u.hash) return false
+    return u.protocol === "https:" || (u.protocol === "http:" && LOOPBACK_HOSTS.has(u.hostname))
+  } catch {
+    return false
+  }
+}
+
 const baseSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_DOMAIN: z.string().min(1).default("localhost"),
@@ -35,7 +56,23 @@ const baseSchema = z.object({
   LOG_RETENTION_MONTHS: z.coerce.number().int().min(1).max(24).default(3),
   APP_TIMEZONE: z.string().default("Asia/Ho_Chi_Minh"),
   META_API_VERSION: z.string().default("v26.0"),
+  GOOGLE_ADS_API_VERSION: z.string().default("v25"),
+  TIKTOK_API_VERSION: z.string().default("v1.3"),
   OPENAI_ADS_API_VERSION: z.string().default("v1"),
+  /** TikTok API base (sandbox: https://sandbox-ads.tiktok.com/open_api); https only; unset = production */
+  TIKTOK_BASE_URL: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.trim() === "" || isSafeHttpsBaseUrl(v.trim()), {
+      message: "TIKTOK_BASE_URL phải là địa chỉ https://, không kèm user/mật khẩu hay query",
+    }),
+  /** Telegram Bot API base (notification channels): https only (http for localhost); unset = https://api.telegram.org */
+  TELEGRAM_API_BASE_URL: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.trim() === "" || isSafeTelegramBaseUrl(v.trim()), {
+      message: "TELEGRAM_API_BASE_URL phải là địa chỉ https:// (http chỉ cho localhost), không kèm user/mật khẩu hay query",
+    }),
 })
 
 const schema = baseSchema.superRefine((v, ctx) => {

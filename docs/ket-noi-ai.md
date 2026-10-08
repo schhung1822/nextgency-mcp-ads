@@ -75,11 +75,28 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 
 ## Câu lệnh mẫu
 - “Liệt kê các tài khoản quảng cáo tôi được dùng.” *(AI luôn gọi bước này trước để biết tiền tệ, múi giờ, quyền)*
-- “Chi tiêu, lượt nhấp, CPA hôm qua của tất cả tài khoản Meta và OpenAI Ads, xếp theo chi tiêu.”
+- “Chi tiêu, lượt nhấp, CPA hôm qua của tất cả tài khoản Meta, TikTok, Google Ads và OpenAI Ads, xếp theo chi tiêu.” *(mỗi tài khoản giữ tiền tệ riêng — AI không cộng chéo tiền tệ)*
+- “Báo cáo các chiến dịch YouTube tuần qua của tài khoản Google Ads X: lượt xem, tỉ lệ xem, CPV, tỉ lệ xem hết video.”
+- “Từ khoá nào của chiến dịch Search Y có chi phí cao nhưng không có chuyển đổi trong 14 ngày qua?”
 - “Báo cáo theo ngày từ 1/9 đến 30/9 của chiến dịch X.”
 - “Tắt các quảng cáo có CPA trên 200.000đ trong 7 ngày qua.” → AI hiện **bản xem trước** → bạn đồng ý → AI xác nhận.
 - “Tăng ngân sách nhóm Y lên 1 triệu/ngày.” *(bị chặn nếu vượt giới hạn % thay đổi đã cấu hình)*
 - “Nhân bản chiến dịch Z, thêm hậu tố ‘T10’.” *(bản sao luôn ở trạng thái tạm dừng)*
+- “Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team.” *(cần MCP được cấp kênh Telegram và bật “AI được gửi tin”)*
+
+## Lưu ý theo nền tảng
+- **Meta**: số liệu trong ngày có độ trễ, chuyển đổi được ghi nhận muộn.
+- **TikTok Ads**: số liệu chậm khoảng 30 phút, có lúc tới 2 giờ. Đổi ngân sách có thể chỉ có hiệu lực từ 00:00 hôm sau — AI sẽ báo thời điểm có hiệu lực. TikTok ngừng cho tạo chiến dịch thủ công (Manual) qua API từ 31/12/2026; sửa, bật/tắt chiến dịch có sẵn vẫn dùng được.
+- **Google Ads (gồm YouTube)**: quảng cáo YouTube là chiến dịch **Video** / **Demand Gen** trong tài khoản Google Ads — kết nối Google Ads là xem được, không cần kết nối riêng. Hỏi AI theo kênh (Search, YouTube, Performance Max…) và chỉ số video (lượt xem, tỉ lệ xem, CPV, tỉ lệ xem 25/50/75/100%). Chiến dịch **Video chỉ xem được** qua API — bật/tắt, sửa ngân sách hãy làm trong Google Ads. Số liệu chậm 1–3 giờ. ID tài khoản 10 số, có hoặc không có dấu gạch (`123-456-7890`).
+- **OpenAI Ads**: không có xoá (chỉ lưu trữ) và không có sao chép gốc của nền tảng.
+
+## Thông báo Telegram (tuỳ chọn)
+Ads MCP có thể gửi tin vào nhóm/kênh Telegram của bạn:
+1. **Kết nối quảng cáo → Thêm kết nối → Kênh thông báo → Telegram**: dán bot token (tạo bot với **@BotFather**), chat ID của nhóm/kênh (và ID chủ đề nếu nhóm bật Topics) → **Kiểm tra & lưu** → **Gửi tin thử**. Thêm bot vào nhóm/kênh và cấp quyền gửi tin trước khi kiểm tra.
+2. Chọn sự kiện hệ thống muốn nhận: kết nối quảng cáo sắp hết hạn / lỗi / hoạt động lại; quản trị viên nhận thêm thông báo cập nhật phần mềm.
+3. Trong **MCP → Tạo/Sửa MCP**: chọn kênh Telegram, rồi bật **AI được gửi tin** (AI dùng tool `telegram_send_message`, có giới hạn tin/giờ) và/hoặc **Tự báo khi AI thay đổi quảng cáo** (mỗi lần AI bật/tắt, đổi ngân sách, sửa, tạo, sao chép, xoá thành công).
+
+Tin do AI gửi luôn có tiêu đề “🤖 Tin từ AI · MCP <tên>”; AI không bao giờ thấy bot token hay chat ID. Hướng dẫn chi tiết từng bước nằm ngay trong trang thêm kết nối Telegram của app.
 
 ## Khi có lỗi
 | Hiện tượng | Xử lý |

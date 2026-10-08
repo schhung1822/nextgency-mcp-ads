@@ -61,7 +61,10 @@ export async function assertActivationWithinCaps(
     if (!b || !(b.amount > 0)) return
     const c = (b.currency || cur).toUpperCase()
     const label = `${LEVEL_VI[b.level ?? o.level] ?? o.level} "${String(o.name ?? o.id).slice(0, 80)}" (${o.id})`
-    if (b.type === "daily") return checkDailyCap(s, b.amount, c, `Ngân sách ngày của ${label}`)
+    if (b.type === "daily") {
+      // flexible daily budget (TikTok, campaign CBO or ad group): one day may spend 125% of it
+      return checkDailyCap(s, b.amount, c, `Ngân sách ngày${b.dynamic ? " linh hoạt" : ""} của ${label}`, { dynamic: b.dynamic === true })
+    }
     const flight: Flight =
       o.level === "campaign"
         ? await campaignFlightOrDeny(provider, ctx, o, { activating, children: () => kidsOf(o.id) })
@@ -85,7 +88,7 @@ export async function assertActivationWithinCaps(
     const o = await get(level, id)
     await check(o)
     if (level === "campaign") await checkChildren(o)
-    const adGroupId: string | null = level === "ad" ? (o.parentId ?? null) : null
+    const adGroupId: string | null = level === "ad" || level === "keyword" ? (o.parentId ?? null) : null
     let campaignId: string | null = level === "campaign" ? null : (o.campaignId ?? (level === "ad_group" ? o.parentId : null) ?? null)
     if (adGroupId) {
       const g = await get("ad_group", adGroupId).catch((e: unknown) => unverifiable(e, id))
@@ -118,7 +121,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Bật / tạm dừng quảng cáo",
     description:
-      "Dùng khi cần bật chạy (active) hoặc tạm dừng (paused) 1–50 chiến dịch, nhóm quảng cáo hoặc quảng cáo cùng cấp trong một tài khoản. Gọi ads_list_accounts và ads_list_objects (hoặc ads_get_report) trước để có account_id và id đúng. Khi MCP bật xác nhận 2 bước, lần gọi đầu trả confirmation_required kèm preview và confirm_token; chỉ gọi lại với cùng tham số + confirm_token sau khi người dùng đồng ý. Bật chạy sẽ bắt đầu tiêu tiền.",
+      "Dùng khi cần bật chạy (active) hoặc tạm dừng (paused) 1–50 chiến dịch, nhóm quảng cáo, quảng cáo hoặc keyword (Google) cùng cấp trong một tài khoản. Chiến dịch Video (YouTube) của Google chỉ xem được, không bật/tắt qua API. Gọi ads_list_accounts và ads_list_objects (hoặc ads_get_report) trước để có account_id và id đúng. Khi MCP bật xác nhận 2 bước, lần gọi đầu trả confirmation_required kèm preview và confirm_token; chỉ gọi lại với cùng tham số + confirm_token sau khi người dùng đồng ý. Bật chạy sẽ bắt đầu tiêu tiền.",
     kind: "write",
     annotations: UPDATE_ANNOTATIONS,
     input: z.object({
@@ -134,6 +137,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       const account = assertGrant(env.grant, { platform: args.platform, accountId: args.account_id, permission: "status" })
       const ids = [...new Set(args.ids)]
       if (ids.length > MAX_STATUS_IDS) throw invalid("too_many_ids", `Tối đa ${MAX_STATUS_IDS} đối tượng mỗi lần.`)
+      if (args.level === "keyword" && account.platform !== "google_ads") throw invalid("invalid_level", "level keyword chỉ dùng cho Google Ads.")
       env.log.setTarget({ platform: account.platform, accountId: account.externalId, objectIds: ids })
       const provider = providerFor(account.platform, "set_status")
       const level = args.level as ObjectLevel

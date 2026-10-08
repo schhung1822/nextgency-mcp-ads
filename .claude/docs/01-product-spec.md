@@ -4,10 +4,11 @@
 
 ## 1. Mục tiêu
 Web app source-available (chỉ đơn vị được noti.vn cấp quyền mới được dùng — `LICENSE`), tự host trên VPS (Docker + PostgreSQL), cho phép một đội marketing:
-1. **Kết nối** tài khoản quảng cáo **Meta (Facebook/Instagram), OpenAI Ads (ChatGPT Ads)** (Google Ads, TikTok Ads: *sắp ra mắt* — thẻ mờ + popup "chưa sẵn sàng", xem `12-platform-rollout.md`) bằng cách **dán token/credential từ app developer của chính họ** (không có nút "Đăng nhập bằng Facebook/Google"). Mỗi nền tảng thêm được **nhiều** kết nối; mỗi kết nối có thể chứa nhiều tài khoản quảng cáo; dùng đồng thời nhiều nền tảng.
+1. **Kết nối** tài khoản quảng cáo **Meta (Facebook/Instagram), TikTok Ads, Google Ads (gồm quảng cáo YouTube), OpenAI Ads (ChatGPT Ads)** (phát hành Google Ads + TikTok Ads: 2026-10-08, `12-platform-rollout.md`) bằng cách **dán token/credential từ app developer của chính họ** (không có nút "Đăng nhập bằng Facebook/Google"). Mỗi nền tảng thêm được **nhiều** kết nối; mỗi kết nối có thể chứa nhiều tài khoản quảng cáo; dùng đồng thời nhiều nền tảng.
 2. **Tạo MCP server** (link `https://<domain>/mcp/<key>`) để dùng với **Claude, ChatGPT, Gemini**. Mỗi MCP giới hạn: nền tảng nào, tài khoản nào, quyền gì.
 3. Từ AI, user ra lệnh: **kéo toàn bộ chỉ số theo ngày yêu cầu**, **sửa**, **bật/tắt**, **sao chép**, **tạo mới** chiến dịch/nhóm/quảng cáo, (tuỳ quyền) **xoá/lưu trữ**.
 4. **Ghi log chi tiết** mọi hoạt động MCP và mọi thao tác của nhân sự; lưu **3 tháng mặc định** (admin chỉnh được số tháng).
+5. **Kênh thông báo Telegram** (2026-10-08, `14-telegram-notifications.md`): gửi tin vào nhóm/kênh Telegram khi AI yêu cầu, khi AI thay đổi quảng cáo qua MCP, và khi có sự kiện hệ thống (kết nối sắp hết hạn/lỗi/hoạt động lại; bản cập nhật).
 
 Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **tiếng Việt**.
 
@@ -27,6 +28,8 @@ Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **t
 | Cài đặt hệ thống (retention log, bắt buộc 2FA, version API…) | ✔ | ✘ |
 | Kết nối quảng cáo: tạo/sửa/xoá/kiểm tra | ✔ tất cả (thấy cả của nhân viên, có cột "Người tạo") | ✔ **chỉ của mình** |
 | Dùng kết nối khi tạo MCP | mọi kết nối | **chỉ kết nối của mình** |
+| Kênh thông báo Telegram: tạo/sửa/xoá/tắt/gửi thử/thay token | ✔ tất cả (thấy "Người tạo"; tuỳ chọn "Nhận cảnh báo của mọi kết nối"; sự kiện "Cập nhật hệ thống") | ✔ **chỉ của mình** (chỉ sự kiện kết nối của mình) |
+| Gán kênh Telegram cho MCP | **chỉ kênh của chủ MCP** (MCP của admin: kênh của admin đó; sửa MCP của nhân viên: kênh của nhân viên đó) | **chỉ kênh của mình** |
 | MCP: tạo/sửa/tắt/xoá/xoay key | ✔ tất cả (thấy "Người tạo") | ✔ **chỉ của mình** |
 | Xem lại link MCP (reveal) | ✔ (ghi log) | ✔ của mình (ghi log, cần nhập lại mật khẩu/OTP) |
 | Nhật ký MCP | ✔ tất cả | ✔ chỉ MCP của mình |
@@ -36,21 +39,29 @@ Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **t
 Mọi kiểm tra quyền thực hiện **phía server** (server action / route / MCP), không dựa vào việc ẩn nút.
 
 ## 3. Kết nối quảng cáo (Connections)
-- Màn hình danh sách: tab **Tất cả | Meta | OpenAI Ads** (theo nền tảng đã phát hành); cột: Tên, Nền tảng, Người tạo (Admin), Số tài khoản QC, Trạng thái token (Hoạt động / Sắp hết hạn / Lỗi / Tắt), Hạn token, Kiểm tra lần cuối.
+- Màn hình danh sách: tab **Tất cả | Meta | TikTok | Google Ads | OpenAI Ads** (theo nền tảng đã phát hành) + tab **Telegram** (kênh thông báo, §3a); cột: Tên, Nền tảng, Người tạo (Admin), Số tài khoản QC, Trạng thái token (Hoạt động / Sắp hết hạn / Lỗi / Tắt), Hạn token, Kiểm tra lần cuối.
 - **Thêm kết nối** = wizard 3 bước: (1) chọn nền tảng → (2) form credential + **khung hướng dẫn từng bước lấy token** (ảnh/chữ, link tới trang dev) → (3) **Kiểm tra & đồng bộ**: gọi API xác thực, hiện danh sách tài khoản QC tìm thấy (tên, ID, tiền tệ, múi giờ, trạng thái) → user bật/tắt từng tài khoản được phép dùng → Lưu.
 - Trường credential theo nền tảng (chi tiết trong `providers/*.md`):
   - **Meta**: access token (System User), app_id/app_secret (tuỳ chọn), business_id (tuỳ chọn).
+  - **TikTok**: access token + app_id + secret; hoặc chế độ **Đổi auth_code** (dán `auth_code` vừa nhận sau khi advertiser uỷ quyền app → hệ thống đổi ngay lấy access token; `auth_code` sống ≤ 1 giờ, dùng 1 lần) — có ở cả wizard và "Thay token". Token advertiser không hết hạn (mất khi bị thu hồi).
+  - **Google Ads** (gồm YouTube): kiểu xác thực **Service account JSON** (khuyên dùng) hoặc **OAuth** client_id + client_secret + refresh_token (lấy bằng CLI `google:refresh-token`), login_customer_id (MCC, tuỳ chọn). **Không cần developer token** (Google bỏ từ 2026-09-09; giá trị cũ đã lưu vẫn đọc được nhưng không gửi). Quảng cáo **YouTube** = chiến dịch Video / Demand Gen trong tài khoản Google Ads (không có API riêng): thẻ "YouTube Ads" ở bước 1 mở form kết nối Google Ads kèm giải thích; chiến dịch Video chỉ xem được.
   - **OpenAI Ads**: API key (1 key = 1 tài khoản QC).
 - Credential **mã hoá AES-256-GCM** trước khi lưu; UI chỉ hiện 4 ký tự cuối. Không bao giờ trả credential về trình duyệt sau khi lưu (sửa = nhập lại).
-- **Kiểm tra định kỳ** (job hằng ngày): xác thực lại, cập nhật danh sách tài khoản, đánh dấu sắp hết hạn (Meta token 60 ngày) → cảnh báo trên Tổng quan.
+- **Kiểm tra định kỳ** (job hằng ngày): xác thực lại, cập nhật danh sách tài khoản, đánh dấu sắp hết hạn (Meta token 60 ngày, Google refresh token khi consent screen ở "Testing" 7 ngày) → cảnh báo trên Tổng quan (và Telegram nếu có kênh đăng ký `connection_health`).
 - **Tài khoản QC phát hiện SAU khi tạo kết nối** (đồng bộ định kỳ, bấm "Đồng bộ tài khoản", hoặc **thay token**) được thêm ở trạng thái **tắt** (`is_enabled=false`) cho tới khi user bật ở trang chi tiết kết nối ("Tài khoản mới phát hiện sẽ ở trạng thái tắt cho tới khi bạn bật"). Lý do: MCP chọn "tất cả tài khoản trong kết nối" không được âm thầm mở rộng sang tài khoản chưa ai duyệt. Chỉ lần tạo kết nối (wizard bước 3) mới bật mặc định theo lựa chọn của user — và ngay ở đó tài khoản **đã đóng / bị tắt / chờ duyệt** cùng tài khoản **quản lý (MCC)** mặc định **TẮT** (`isDefaultEnabled`; xem preview `defaultEnabled`), user có thể bật tay (`enabledExternalIds`). Trạng thái kết nối (`statusMessage` = chuyện gì xảy ra, `statusHint` = việc cần làm tiếp, vd bấm "Thay token") luôn tách hai trường. Tài khoản đã có giữ nguyên trạng thái bật/tắt.
 - **Thay token** là thao tác nhạy cảm: nhập lại mật khẩu + mã 2FA (nếu đã bật), tính chung hạn mức sai 5 lần/15 phút (xem §4).
 - Xoá kết nối: cảnh báo các MCP đang dùng nó (MCP vẫn tồn tại nhưng mất quyền truy cập các tài khoản đó).
 
+### 3a. Kênh thông báo Telegram (chi tiết: `14-telegram-notifications.md`)
+- Không phải nền tảng quảng cáo: bảng riêng `notification_channels`, không dùng enum `platform`.
+- Thêm: `/connections/new` → nhóm **Kênh thông báo** → Telegram → `/connections/telegram/new`: tên, **bot token** (`SecretInput`, mã hoá AES-256-GCM, chỉ hiện 4 ký tự cuối), **chat ID** (số âm cho nhóm/kênh hoặc `@username` công khai), message thread ID (tuỳ chọn, nhóm bật Topics), chọn sự kiện hệ thống (`connection_health`; admin thêm `system_update` và "Nhận cảnh báo của mọi kết nối") + panel hướng dẫn @BotFather → **Kiểm tra & lưu** (getMe → getChat → getChatMember) → gợi ý **Gửi tin thử**.
+- Trang `/connections/telegram/[id]`: sửa tên/chat/thread/sự kiện, Gửi tin thử, Kiểm tra lại, Thay token (xác thực lại như thay token kết nối QC), Tắt/Bật, Xoá (gõ tên; cảnh báo MCP đang dùng), 50 lần gửi gần nhất.
+- Tin gửi khi: AI yêu cầu (`telegram_send_message`), AI thay đổi quảng cáo thành công qua MCP (MCP bật "Tự báo khi AI thay đổi quảng cáo"), sự kiện hệ thống. Gửi qua hàng đợi pg-boss, chống trùng bằng `dedupe_key`; lỗi Telegram không bao giờ làm hỏng thao tác quảng cáo.
+
 ## 4. Tạo MCP
 Wizard 4 bước (đúng thứ tự yêu cầu của chủ dự án):
 1. **Đặt tên** (bắt buộc) + mô tả (tuỳ chọn).
-2. **Chọn nền tảng** dùng trong MCP (Meta / OpenAI Ads — chỉ hiện nền tảng mà user có kết nối) → với mỗi nền tảng chọn **kết nối** và **tài khoản QC** (mặc định "tất cả tài khoản **đang bật** trong kết nối", hoặc chọn từng tài khoản). Tài khoản mới phát hiện sau này ở trạng thái tắt nên không tự lọt vào phạm vi "tất cả" (§3). Với kết nối Meta có thêm **Trang Facebook** (chỉ đọc bài viết & chỉ số): "Không dùng Trang" / "Tất cả Trang đang bật" / "Chọn từng Trang" (`11-meta-pages.md`).
+2. **Chọn nền tảng** dùng trong MCP (Meta / TikTok / Google Ads / OpenAI Ads — chỉ hiện nền tảng mà user có kết nối) → với mỗi nền tảng chọn **kết nối** và **tài khoản QC** (mặc định "tất cả tài khoản **đang bật** trong kết nối", hoặc chọn từng tài khoản). Tài khoản mới phát hiện sau này ở trạng thái tắt nên không tự lọt vào phạm vi "tất cả" (§3). Với kết nối Meta có thêm **Trang Facebook** (chỉ đọc bài viết & chỉ số): "Không dùng Trang" / "Tất cả Trang đang bật" / "Chọn từng Trang" (`11-meta-pages.md`). Khối **Telegram (gửi thông báo)**: chọn kênh **của chủ MCP** (kể cả admin - MCP không dùng kênh của người khác); không có kênh → hướng dẫn "Thêm kết nối Telegram".
 3. **Chọn quyền theo từng nền tảng** (checkbox, có mô tả dễ hiểu):
    - **Xem** (`read`) — danh sách tài khoản/chiến dịch, toàn bộ chỉ số theo ngày. *Luôn bật nếu chọn nền tảng.*
    - **Bật/Tắt** (`status`) — chạy/tạm dừng chiến dịch, nhóm, quảng cáo.
@@ -58,6 +69,7 @@ Wizard 4 bước (đúng thứ tự yêu cầu của chủ dự án):
    - **Sao chép** (`copy`) — nhân bản chiến dịch/nhóm/quảng cáo (bản sao luôn ở trạng thái tạm dừng).
    - **Tạo mới** (`create`) — tạo chiến dịch/nhóm/quảng cáo, tải ảnh/video (luôn tạo ở trạng thái tạm dừng).
    - **Xoá / Lưu trữ** (`delete`) — *mặc định tắt*, hiện cảnh báo đỏ "không hoàn tác".
+   - Hàng **Telegram** (khi đã chọn kênh ở bước 2): công tắc **AI được gửi tin** (`telegram_tool`, mặc định tắt) và **Tự báo khi AI thay đổi quảng cáo** (`telegram_notify_writes`, mặc định tắt).
 4. **Bảo vệ** (có giá trị mặc định an toàn, người mới có thể bấm Tiếp):
    - Xác nhận 2 bước cho thao tác ghi (mặc định **bật**) — xem `04-mcp-design.md` §6.
    - Giới hạn thay đổi ngân sách mỗi lần (mặc định ±50%; cũng áp dụng **cộng dồn trong 24 giờ**).
@@ -66,6 +78,7 @@ Wizard 4 bước (đúng thứ tự yêu cầu của chủ dự án):
      - **Trần ngân sách trọn đời** — khi đã có trần ngày, ngân sách trọn đời tự bị giới hạn ở trần ngày × số ngày chạy (× 30 nếu chưa có ngày kết thúc); ô này đặt thêm một mức tối đa cố định (lấy mức thấp hơn).
      - **Trần giá thầu/CPA** (tuỳ chọn) — giá thầu, CPC tối đa, chi phí mục tiêu mà AI đặt.
    - **Giới hạn thao tác ghi / 10 phút** (mặc định 20; 1–1000) — số lần AI thực sự thay đổi quảng cáo (bật/tắt, sửa, tạo, sao chép, xoá…) trong 10 phút.
+   - **Giới hạn tin Telegram / giờ** (mặc định 20; 1–200) — khi bật "AI được gửi tin".
    - Ngày hết hạn MCP (tuỳ chọn), giới hạn số lệnh/phút (mặc định 60), danh sách IP cho phép (tuỳ chọn — lưu ý sẽ chặn Claude Code/Gemini CLI chạy trên máy cá nhân).
    - Chi tiết cách server áp dụng: `04-mcp-design.md` §6; khoá lưu trong `mcp_servers.settings`: `03-database-schema.md`.
 → **Hoàn tất**: bấm "Tạo MCP" mở hộp **xác thực lại** (mật khẩu + mã TOTP nếu đã bật 2FA — vì link dùng được ngay) → hiện link `https://<domain>/mcp/<key>` (nút Sao chép) + tab hướng dẫn kết nối **Claude / ChatGPT / Gemini / Claude Code / Gemini CLI** (copy-paste được).
@@ -82,6 +95,10 @@ Sau khi tạo: trang chi tiết MCP gồm Tổng quan (lượt gọi, lỗi, l�
 - "Tăng ngân sách nhóm Y lên 1 triệu/ngày" → `ads_update_budget` (preview → xác nhận).
 - "Nhân bản chiến dịch Z, thêm hậu tố 'T10'" → `ads_copy_object`.
 - "Tạo chiến dịch OpenAI Ads mới…" → `openai_ads_create_*`.
+- "Tạo chiến dịch traffic TikTok mới…" → `tiktok_create_*` (TikTok ngừng tạo chiến dịch Manual qua API từ 2026-12-31).
+- "Báo cáo chiến dịch YouTube tuần qua: lượt xem, CPV, tỉ lệ xem hết" → `ads_get_report` (Google Ads, lọc kênh YouTube/Video, bộ chỉ số video).
+- "Thêm từ khoá 'khoá học excel' (cụm từ) vào nhóm quảng cáo Search X" → `google_ads_add_keywords`.
+- "Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team" → `ads_get_report` → `telegram_send_message`.
 Danh mục tool đầy đủ: `04-mcp-design.md`.
 
 ## 6. Nhật ký (Logs)
@@ -90,7 +107,7 @@ Một trang `/logs` với **2 tab tách biệt**:
 Mỗi request tới `/mcp/<key>` = 1 dòng: thời gian, MCP (tên + người tạo), client (Claude/ChatGPT/Gemini… từ `clientInfo`/User-Agent), IP, method (`tools/list`, `tools/call`…), tên tool, nền tảng, tài khoản QC, ID đối tượng tác động, loại (đọc/ghi), tham số (đã che bí mật), kết quả tóm tắt, **giá trị trước → sau** với thao tác ghi, trạng thái (thành công / lỗi / bị từ chối quyền / vượt giới hạn / chờ xác nhận), mã lỗi + request id phía nền tảng, thời gian xử lý.
 Bộ lọc: khoảng thời gian, MCP, người tạo, nền tảng, tài khoản, tool, trạng thái, chỉ thao tác ghi. Click dòng → ngăn chi tiết JSON. Xuất CSV.
 ### Tab "Nhật ký nhân sự"
-Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất bại), đăng xuất, bật/tắt/đặt lại 2FA, đổi mật khẩu, tạo/sửa/khoá user, tạo/sửa/xoá/kiểm tra kết nối, tạo/sửa/tắt/xoá/xoay key/xem lại link MCP, đổi cài đặt, xuất log. Mỗi dòng: thời gian, người thực hiện (email + role), hành động, đối tượng, IP, thiết bị, chi tiết thay đổi (diff trước/sau, đã che bí mật), kết quả.
+Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất bại), đăng xuất, bật/tắt/đặt lại 2FA, đổi mật khẩu, tạo/sửa/khoá user, tạo/sửa/xoá/kiểm tra kết nối, tạo/sửa/xoá/tắt/gửi thử/thay token kênh Telegram, tạo/sửa/tắt/xoá/xoay key/xem lại link MCP, đổi cài đặt, xuất log. Mỗi dòng: thời gian, người thực hiện (email + role), hành động, đối tượng, IP, thiết bị, chi tiết thay đổi (diff trước/sau, đã che bí mật), kết quả.
 ### Lưu trữ
 - Mặc định **3 tháng**; Admin chỉnh trong Cài đặt (1–24 tháng, riêng cho log MCP và log nhân sự). Job hằng ngày xoá phần cũ (drop partition theo tháng) — dữ liệu được giữ **ít nhất** N tháng.
 - Log là append-only: không có UI sửa/xoá từng dòng.
@@ -99,22 +116,22 @@ Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất b�
 Sidebar trái (kiểu Shopify admin): **Tổng quan · Kết nối quảng cáo · MCP · Nhật ký · Mẹo chạy tự động · Người dùng (Admin) · Cài đặt (Admin)**; góc dưới: tài khoản của tôi, giao diện Sáng/Tối, đăng xuất.
 - `/login`, `/login/2fa`, `/setup`, `/account` (hồ sơ, đổi mật khẩu, 2FA, phiên đăng nhập, hoạt động của tôi)
 - `/` Tổng quan: thẻ số liệu (kết nối, tài khoản QC, MCP hoạt động, lượt gọi 24h, tỉ lệ lỗi), biểu đồ lượt gọi 7/30 ngày theo nền tảng, cảnh báo token, hoạt động gần đây.
-- `/connections`, `/connections/new`, `/connections/[id]`
+- `/connections`, `/connections/new`, `/connections/[id]`, `/connections/telegram/new`, `/connections/telegram/[id]`
 - `/mcp-servers`, `/mcp-servers/new`, `/mcp-servers/[id]` (KHÔNG dùng `/mcp/*` — đó là endpoint MCP)
 - `/logs?tab=mcp|staff`
 - `/automation-tips` Mẹo chạy tự động (mọi vai trò, chỉ nội dung tĩnh — 2026-10-07): cách cho Claude / ChatGPT / Gemini tự chạy theo lịch qua MCP (tác vụ hẹn giờ của chính ứng dụng AI; app **không** tự gửi lệnh cho AI). Bộ soạn quy tắc "tắt quảng cáo khi CPA vượt ngưỡng" (`src/lib/automation-prompt.ts`) xuất câu lệnh đầy đủ + `SKILL.md`; 2 chế độ Chỉ báo cáo / Tự tắt (MCP riêng: Xem + Bật/Tắt, tắt xác nhận 2 bước, trần thấp, giới hạn ghi nhỏ). Nội dung từng ứng dụng AI kiểm tra ngày 2026-10-07 — tính năng thay đổi nhanh, rà lại định kỳ. Điện thoại: mục nằm trong sheet Menu của thanh dưới.
 - `/users` (Admin), `/settings` (Admin)
-- **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; noti.vn chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
+- **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / TikTok for Developers / màn hình đồng ý OAuth của Google Cloud / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; noti.vn chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
 Yêu cầu UX: dễ hiểu cho người không rành kỹ thuật — mỗi trang có tiêu đề + 1 câu mô tả, trạng thái trống có hướng dẫn + nút hành động chính, form có helper text, xác nhận trước thao tác nguy hiểm, toast phản hồi bằng tiếng Việt.
 
 ## 8. Ngoài phạm vi v1 (ghi nhận để làm sau)
-OAuth mode cho MCP (cho Gemini app / workspace dùng chung) · gửi email (quên mật khẩu, cảnh báo) · Conversions API · chia sẻ kết nối giữa nhân viên · đa ngôn ngữ UI (cấu trúc i18n sẵn, chỉ có `vi`) · webhook/thông báo Telegram/Zalo.
+OAuth mode cho MCP (cho Gemini app / workspace dùng chung) · gửi email (quên mật khẩu, cảnh báo) · Conversions API · Google PMax / Demand Gen tạo mới · tải video lên YouTube (resumable upload) · chia sẻ kết nối giữa nhân viên · đa ngôn ngữ UI (cấu trúc i18n sẵn, chỉ có `vi`) · kênh thông báo Zalo/email (Telegram đã có — §3a).
 
 ## 9. Quyết định mặc định (chủ dự án có thể đổi)
 | # | Quyết định | Mặc định đã chọn |
 |---|---|---|
 | D1 | Xem lại link MCP sau khi tạo | Cho phép (key lưu mã hoá + hash), yêu cầu nhập lại mật khẩu/OTP, ghi log |
 | D2 | Xác nhận 2 bước cho thao tác ghi | Bật mặc định, tắt được theo từng MCP |
-| D3 | Quyền Xoá | Mặc định tắt; Meta = xoá thật, OpenAI = archive (đều không hoàn tác) |
+| D3 | Quyền Xoá | Mặc định tắt; Meta/TikTok = xoá thật, Google = REMOVED, OpenAI = archive (đều không hoàn tác) |
 | D4 | Admin dùng kết nối của nhân viên trong MCP của mình | Cho phép |
 | D5 | Retention | 2 cài đặt riêng (MCP / nhân sự), mặc định 3 tháng |

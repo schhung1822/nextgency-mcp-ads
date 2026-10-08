@@ -80,6 +80,8 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     createConnectionAction: "any",
     renameConnectionAction: "any",
     replaceCredentialsAction: "any",
+    createTikTokFromAuthCodeAction: "any",
+    replaceTikTokFromAuthCodeAction: "any",
     testConnectionAction: "any",
     syncConnectionAccountsAction: "any",
     toggleAdAccountsAction: "any",
@@ -94,6 +96,19 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     rotateMcpKeyAction: "any",
     revealMcpUrlAction: "any",
     deleteMcpAction: "any",
+  },
+  "@/server/actions/notification-channels": {
+    previewTelegramChannelAction: "any",
+    createTelegramChannelAction: "any",
+    updateTelegramChannelAction: "any",
+    replaceTelegramTokenAction: "any",
+    recheckTelegramChannelAction: "any",
+    sendTelegramTestAction: "any",
+    setTelegramChannelEnabledAction: "any",
+    telegramChannelUsageAction: "any",
+    deleteTelegramChannelAction: "any",
+    listTelegramDeliveriesAction: "any",
+    listMcpChannelOptionsAction: "any",
   },
 }
 

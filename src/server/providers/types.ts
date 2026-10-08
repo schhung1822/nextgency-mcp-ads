@@ -193,6 +193,13 @@ export interface ReportFilters {
   nameContains?: string
   /** include deleted/archived objects (heavier queries on some platforms) */
   includeDeleted?: boolean
+  /**
+   * Google Ads only (other adapters ignore it): campaign.advertising_channel_type values (SEARCH, VIDEO, DEMAND_GEN,
+   * PERFORMANCE_MAX…, case-insensitive) or "youtube" (= VIDEO + DEMAND_GEN). Not allowed at level "account".
+   */
+  channelTypes?: string[]
+  /** Google Ads only: segments.ad_network_type values (SEARCH, SEARCH_PARTNERS, CONTENT, MIXED, YOUTUBE, GOOGLE_TV) */
+  adNetworkTypes?: string[]
 }
 
 export interface ReportQuery {
@@ -245,6 +252,11 @@ export interface Budget {
   level: "campaign" | "ad_group"
   /** budget shared between several campaigns */
   shared?: boolean
+  /**
+   * Flexible daily budget (TikTok BUDGET_MODE_DYNAMIC_DAILY_BUDGET): the platform may spend up to 125% of the
+   * amount in one day, so the MCP daily cap is checked against amount × 1.25 (mcp/guardrails.ts checkDailyCap).
+   */
+  dynamic?: true
 }
 
 export interface AdObjectSummary {
@@ -278,6 +290,8 @@ export interface ListQuery {
   nameContains?: string
   cursor?: string | null
   limit: number
+  /** Google Ads only (other adapters ignore it): channel types or "youtube" - see ReportFilters.channelTypes */
+  channelTypes?: string[]
 }
 
 export interface ObjectPage {
@@ -398,6 +412,7 @@ export const LOOKUP_KINDS = [
   "pages",
   "pixels",
   "instagram_accounts",
+  "identities",
   "locations",
   "interests",
   "languages",
@@ -450,8 +465,10 @@ export type ExtensionPermission = "read" | "update" | "create"
  * caps BEFORE anything is sent (create tools must not bypass the guardrails of ads_update_budget).
  */
 export interface ExtensionMoneyItem {
-  /** dynamic/flexible daily budgets count as daily; target CPA / cost caps count as bids */
+  /** target CPA / cost caps count as bids; a flexible daily budget is daily_budget + dynamic: true */
   kind: "daily_budget" | "lifetime_budget" | "bid"
+  /** daily_budget only: flexible daily budget that may spend up to 125%/day (TikTok) → cap checked against amount × 1.25 */
+  dynamic?: true
   /** MAJOR units of the account currency */
   amount: number
   /** input path for messages, e.g. "budget.amount", "ad_groups[0].cpc_bid" */

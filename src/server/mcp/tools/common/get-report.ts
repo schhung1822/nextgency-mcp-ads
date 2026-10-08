@@ -17,6 +17,8 @@ import { assertGrant, findGrantAccount, platformLabel } from "../../grant"
 import {
   accountIdSchema,
   datePresetSchema,
+  googleAdNetworkTypesSchema,
+  googleChannelTypesSchema,
   isoDateSchema,
   metricKeySchema,
   metricPresetSchema,
@@ -77,7 +79,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       .max(MAX_ACCOUNTS)
       .optional()
       .describe("Mặc định: mọi tài khoản trong phạm vi MCP của các nền tảng đã chọn"),
-    level: reportLevelSchema.default("account").describe("account | campaign | ad_group | ad"),
+    level: reportLevelSchema.default("account").describe("account | campaign | ad_group | ad | keyword (keyword: chỉ Google)"),
     preset: datePresetSchema.optional().describe("Khoảng ngày định sẵn, tính theo múi giờ từng tài khoản. Mặc định last_7d"),
     date_from: isoDateSchema.optional().describe("YYYY-MM-DD (theo múi giờ tài khoản), dùng cùng date_to thay cho preset"),
     date_to: isoDateSchema.optional(),
@@ -105,6 +107,8 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         name_contains: z.string().max(200).optional(),
         min_spend: z.number().min(0).optional().describe("Chỉ giữ dòng có spend ≥ giá trị (đơn vị chính)"),
         include_deleted: z.boolean().optional(),
+        channel_types: googleChannelTypesSchema.optional(),
+        ad_network_types: googleAdNetworkTypesSchema.optional(),
       })
       .optional(),
     sort_by: metricKeySchema.optional().describe("Sắp xếp theo metric (trên toàn bộ kết quả, tối đa 2.000 dòng)"),
@@ -117,7 +121,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Báo cáo chỉ số quảng cáo",
     description:
-      "Dùng khi cần số liệu (chi tiêu, hiển thị, click, CTR, CPC, CPM, chuyển đổi, CPA, ROAS…) theo khoảng ngày cho một hoặc nhiều nền tảng và tài khoản. Gọi ads_list_accounts trước để biết account_id. Mặc định trả MỌI chỉ số có trên nền tảng (metrics=all, gồm extra là chỉ số riêng của nền tảng); người dùng hỏi chỉ số cụ thể thì truyền metrics (danh sách chuẩn hoá) và/hoặc extra_metrics (chỉ số riêng như add_to_cart, landing_page_view). Chọn level (account/campaign/ad_group/ad), granularity day hoặc total, filters (ids, trạng thái, tên chứa, chi tiêu tối thiểu), sort_by. Ngày (preset hoặc date_from/date_to) được tính theo múi giờ của từng tài khoản. Tiền theo đơn vị chính của tiền tệ tài khoản; totals_by_currency cộng riêng từng loại tiền (không cộng chéo tiền tệ). Metric không có trên nền tảng trả null. Kết quả phân trang: dùng next_cursor để lấy tiếp.",
+      "Dùng khi cần số liệu (chi tiêu, hiển thị, click, CTR, CPC, CPM, chuyển đổi, CPA, ROAS…) theo khoảng ngày cho một hoặc nhiều nền tảng và tài khoản. Gọi ads_list_accounts trước để biết account_id. Mặc định trả MỌI chỉ số có trên nền tảng (metrics=all, gồm extra là chỉ số riêng của nền tảng); người dùng hỏi chỉ số cụ thể thì truyền metrics (danh sách chuẩn hoá) và/hoặc extra_metrics (chỉ số riêng như add_to_cart, landing_page_view). Chọn level (account/campaign/ad_group/ad/keyword - keyword chỉ Google), granularity day hoặc total, filters (ids, trạng thái, tên chứa, chi tiêu tối thiểu; Google: channel_types - youtube = chiến dịch Video + Demand Gen - và ad_network_types, vd YOUTUBE cho phần YouTube của Performance Max), sort_by. Quảng cáo YouTube nằm trong Google Ads (metrics=video cho chỉ số video). Ngày (preset hoặc date_from/date_to) được tính theo múi giờ của từng tài khoản. Tiền theo đơn vị chính của tiền tệ tài khoản; totals_by_currency cộng riêng từng loại tiền (không cộng chéo tiền tệ). Metric không có trên nền tảng trả null. Kết quả phân trang: dùng next_cursor để lấy tiếp.",
     kind: "read",
     annotations: READ_ANNOTATIONS,
     input,
@@ -155,6 +159,21 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
           "Truyền account_ids hoặc platforms để thu hẹp phạm vi."
         )
       }
+      if (args.level === "keyword" && accounts.some((a) => a.platform !== "google_ads")) {
+        throw invalid("invalid_level", "level keyword chỉ dùng cho Google Ads.", "Chọn platforms: [\"google_ads\"] khi lấy báo cáo keyword.")
+      }
+      const channelTypes = args.filters?.channel_types?.length ? [...new Set(args.filters.channel_types)] : undefined
+      const adNetworkTypes = args.filters?.ad_network_types?.length ? [...new Set(args.filters.ad_network_types)] : undefined
+      if ((channelTypes || adNetworkTypes) && accounts.some((a) => a.platform !== "google_ads")) {
+        throw invalid(
+          "invalid_filter",
+          "channel_types / ad_network_types chỉ dùng cho Google Ads (gồm quảng cáo YouTube).",
+          "Chọn platforms: [\"google_ads\"] (hoặc account_ids chỉ gồm tài khoản Google Ads) khi lọc theo loại chiến dịch/mạng."
+        )
+      }
+      if (channelTypes && args.level === "account") {
+        throw invalid("invalid_filter", "channel_types không dùng được ở level account.", "Dùng level campaign (hoặc ad_group/ad) khi lọc theo loại chiến dịch.")
+      }
 
       // ---- dates per account time zone ----------------------------------------------------------
       if ((args.date_from && !args.date_to) || (!args.date_from && args.date_to)) {
@@ -183,6 +202,8 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         statuses: args.filters?.statuses,
         nameContains: args.filters?.name_contains,
         includeDeleted: args.filters?.include_deleted,
+        ...(channelTypes ? { channelTypes } : {}),
+        ...(adNetworkTypes ? { adNetworkTypes } : {}),
       }
       const minSpend = args.filters?.min_spend
       const sortedMode = Boolean(args.sort_by) || minSpend !== undefined

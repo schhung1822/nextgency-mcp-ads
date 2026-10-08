@@ -1,7 +1,7 @@
 // Money guardrails shared by every write path (04-mcp-design.md §6): per-currency daily cap, lifetime
 // cap (daily cap × flight days, or an explicit cap), bid cap. Amounts are MAJOR units. All checks throw
 // McpToolError(denied) with a Vietnamese explanation and run BEFORE the preview and the execution.
-import { roundMoney } from "../providers/money"
+import { roundMoney, toMicros } from "../providers/money"
 import type { ExtensionMoneyItem } from "../providers/types"
 import { denied, invalid } from "./errors"
 import { LIFETIME_DEFAULT_DAYS, type McpSettings } from "./types"
@@ -13,7 +13,7 @@ export const fmtMoney = (n: number, cur: string) => `${new Intl.NumberFormat("vi
 const CAP_HINT = "Chọn mức thấp hơn, hoặc nhờ chủ MCP nâng trần trong cấu hình MCP."
 
 /** Vietnamese name of an object level (messages). */
-export const LEVEL_VI: Record<string, string> = { campaign: "chiến dịch", ad_group: "nhóm quảng cáo", ad: "quảng cáo" }
+export const LEVEL_VI: Record<string, string> = { campaign: "chiến dịch", ad_group: "nhóm quảng cáo", ad: "quảng cáo", keyword: "từ khoá" }
 
 export interface Flight {
   startTime?: string | null
@@ -69,10 +69,46 @@ export function legacyCapWarning(s: McpSettings, currency: string): string[] {
     : []
 }
 
-export function checkDailyCap(settings: McpSettings, amount: number, currency: string, field = "Ngân sách ngày"): void {
+/**
+ * Flexible daily budgets (TikTok BUDGET_MODE_DYNAMIC_DAILY_BUDGET, doc 1739381246298114): "Daily costs will not
+ * exceed 125% of the average daily budget" → one day may spend amount × 5/4. Compared in integer micros.
+ */
+const DYNAMIC_NUM = BigInt(5)
+const DYNAMIC_DEN = BigInt(4)
+
+/** Vietnamese explanation added to previews / errors of a flexible daily budget. */
+export const DYNAMIC_DAILY_NOTE =
+  "Ngân sách ngày linh hoạt của TikTok có thể chi tới 125%/ngày (trung bình theo tuần vẫn bằng mức đã đặt), nên trần ngày của MCP được so với 125% số tiền này."
+
+/** Largest flexible daily budget whose 125% stays within `cap` (rounded DOWN to the currency precision). */
+export function maxDynamicDailyBudget(cap: number, currency: string): number {
+  const micros = (BigInt(toMicros(cap)) * DYNAMIC_DEN) / DYNAMIC_NUM // floor
+  // currency precision: 0 decimals (VND, JPY…) or 2 - same table as roundMoney
+  const unit = BigInt(roundMoney(0.01, currency) === 0.01 ? 10_000 : 1_000_000)
+  const floored = (micros / unit) * unit
+  return Number(floored / BigInt(1_000_000)) + Number(floored % BigInt(1_000_000)) / 1_000_000
+}
+
+export function checkDailyCap(
+  settings: McpSettings,
+  amount: number,
+  currency: string,
+  field = "Ngân sách ngày",
+  opts: { dynamic?: boolean } = {}
+): void {
   const cur = currency.toUpperCase()
   const cap = capOf(settings.maxDailyBudget, cur)
-  if (cap !== undefined && amount > cap) {
+  if (cap === undefined) return
+  if (opts.dynamic) {
+    // exact: amount × 5/4 > cap ⇔ amount_micros × 5 > cap_micros × 4 (no float rounding at the boundary)
+    if (Number.isFinite(amount) && amount >= 0 && BigInt(toMicros(amount)) * DYNAMIC_NUM <= BigInt(toMicros(cap)) * DYNAMIC_DEN) return
+    throw denied(
+      "budget_cap_exceeded",
+      `${field} ${fmtMoney(amount, cur)} là ngân sách ngày linh hoạt: TikTok có thể chi tới 125%/ngày (tới ${fmtMoney(amount * 1.25, cur)}), vượt trần ${fmtMoney(cap, cur)}/ngày mà MCP này cho phép.`,
+      `Ngân sách ngày linh hoạt tối đa được phép: ${fmtMoney(maxDynamicDailyBudget(cap, cur), cur)} (= trần ngày ÷ 1,25). ${CAP_HINT}`
+    )
+  }
+  if (amount > cap) {
     throw denied("budget_cap_exceeded", `${field} ${fmtMoney(amount, cur)} vượt trần ${fmtMoney(cap, cur)} mà MCP này cho phép.`, CAP_HINT)
   }
 }
@@ -122,7 +158,9 @@ export function enforceMoneyItems(settings: McpSettings, currency: string, items
     if (typeof it.amount !== "number" || !Number.isFinite(it.amount) || it.amount < 0) {
       throw invalid("invalid_amount", `Giá trị tiền không hợp lệ ở ${it.field}.`)
     }
-    if (it.kind === "daily_budget") checkDailyCap(settings, it.amount, currency, `Ngân sách ngày (${it.field})`)
+    if (it.kind === "daily_budget") {
+      checkDailyCap(settings, it.amount, currency, `Ngân sách ngày${it.dynamic ? " linh hoạt" : ""} (${it.field})`, { dynamic: it.dynamic === true })
+    }
     else if (it.kind === "lifetime_budget") checkLifetimeCap(settings, it.amount, currency, it, `Ngân sách trọn đời (${it.field})`, now)
     else checkBidCap(settings, it.amount, currency, `Giá thầu (${it.field})`)
   }

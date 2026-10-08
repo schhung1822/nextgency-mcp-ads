@@ -10,10 +10,11 @@ import { guides } from "./vi/guides"
 import { legal } from "./vi/legal"
 import { logs } from "./vi/logs"
 import { mcp } from "./vi/mcp"
+import { notifications } from "./vi/notifications"
 import { reauth } from "./vi/reauth"
 import { settings } from "./vi/settings"
 import { updates } from "./vi/updates"
 import { users } from "./vi/users"
 
-export const t = { common, auth, users, account, connections, connectionStatus, mcp, logs, dashboard, settings, reauth, guides, updates, legal, automation } as const
+export const t = { common, auth, users, account, connections, connectionStatus, mcp, logs, dashboard, settings, reauth, guides, updates, legal, automation, notifications } as const
 export type Messages = typeof t

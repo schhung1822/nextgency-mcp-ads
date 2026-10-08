@@ -43,7 +43,10 @@ docker compose pull && docker compose up -d --no-build                          
 | `SETUP_TOKEN` | ✔ (lần đầu) | chuỗi ngẫu nhiên **≥ 24 ký tự** để mở `/setup` (10 lần thử/15 phút/IP); vô hiệu khi đã có user |
 | `LOG_RETENTION_MONTHS` | — | mặc định 3 (giá trị khởi tạo; sau đó chỉnh trong Cài đặt) |
 | `APP_TIMEZONE` | — | mặc định `Asia/Ho_Chi_Minh` (hiển thị + lịch job) |
-| `META_API_VERSION` / `OPENAI_ADS_API_VERSION` | — | mặc định `v26.0` / `v1` |
+| `META_API_VERSION` / `GOOGLE_ADS_API_VERSION` / `TIKTOK_API_VERSION` / `OPENAI_ADS_API_VERSION` | — | mặc định `v26.0` / `v25` (Google hỗ trợ tới ~08/2027) / `v1.3` (bản TikTok duy nhất) / `v1`. Phải có trong `x-env-runtime` (web + worker) |
+| `TIKTOK_BASE_URL` | — | mặc định `https://business-api.tiktok.com/open_api`; chỉ đặt để trỏ sandbox `https://sandbox-ads.tiktok.com/open_api` (chỉ nhận https). `x-env-runtime` |
+| `TELEGRAM_API_BASE_URL` | — | mặc định `https://api.telegram.org`; chỉ đổi khi dùng Bot API server riêng (phải https, trừ localhost). `x-env-runtime` — worker gửi tin, web gửi tin thử / tool `telegram_send_message` (14-telegram-notifications.md §3) |
+| `GOOGLE_ADS_CLIENT_SECRET` | — | **chỉ** cho lệnh CLI `google:refresh-token` (truyền `-e GOOGLE_ADS_CLIENT_SECRET` không kèm giá trị khi `docker compose run`); app không đọc biến này, không thêm vào danh sách compose |
 | `KEEP_ALIVE_TIMEOUT` | — | `130000` (> keepalive 2 phút của Caddy) |
 | `COMPOSE_PROFILES` | - | `updater` = bật service cập nhật tự động (gen-env ghi sẵn); để trống = tắt. Chỉ compose đọc |
 | `HOST_PROJECT_DIR` | khi bật updater | đường dẫn tuyệt đối thư mục dự án **trên máy chủ** (gen-env tự điền; trống → `$PWD`). Xem §6.3 |
@@ -174,7 +177,7 @@ volumes: { pgdata: {}, caddy_data: {}, caddy_config: {} }
 	log {
 		output stdout
 		format filter {
-			request>uri regexp "^/mcp/[^/?#]+" "/mcp/[redacted]"
+			request>uri regexp "^(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
 			request>headers>Authorization delete
 			request>headers>Cookie delete
 		}
@@ -211,6 +214,8 @@ volumes: { pgdata: {}, caddy_data: {}, caddy_config: {} }
 ## 5. Vận hành
 - **Cập nhật**: admin bấm Cập nhật trong web (service `updater`, §6) hoặc tay (§6.8, `docs/deploy-vps.md` §11). Updater chỉ đổi image; bản phát hành đổi `docker-compose.yml`/`Caddyfile`/`deploy/` thì ghi chú phát hành phải yêu cầu `git pull` + `docker compose up -d --no-build` (+ `restart caddy`). Build từ mã nguồn (máy dev): `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` (migrate chạy tự động trước web/worker; có advisory lock).
 - **Tạo admin bằng CLI** (thay cho /setup, hoặc khi quên mật khẩu): `docker compose run --rm web node dist/cli.mjs create-admin --email a@b.com` (mật khẩu tạm tự sinh, hoặc `-e ADMIN_PASSWORD` không kèm giá trị - lấy từ shell; `ADMIN_PASSWORD` trong `.env` không tới container vì env allowlist - / `--password-stdin` — không dùng `--password` trên dòng lệnh) · `reset-password <email>` · `reset-2fa <email>` · `unlock <email>` (gỡ khoá đăng nhập + khoá 2FA).
+- **Google refresh token helper** (chỉ khi kết nối Google Ads dùng OAuth; service account không cần; loopback redirect, chỉ qua SSH tunnel): trên máy bạn `ssh -L 8085:127.0.0.1:8085 user@vps`, rồi trên VPS `docker compose run --rm -p 127.0.0.1:8085:8085 web node dist/cli.mjs google:refresh-token --client-id ... --host 0.0.0.0` (client secret nhập ẩn, hoặc `-e GOOGLE_ADS_CLIENT_SECRET` lấy từ shell). Không bao giờ publish `-p 8085:8085` ra mọi interface; ngoài Docker helper mặc định chỉ nghe `127.0.0.1`. Consent screen phải In production + Verify Branding (Testing → refresh token hết hạn sau 7 ngày); không cần developer token.
+- **Telegram**: máy chủ cần ra Internet tới `api.telegram.org:443` (hoặc `TELEGRAM_API_BASE_URL`). Không cần mở cổng vào (không dùng webhook Telegram).
 - **Xoay khoá mã hoá**: thêm `2:<key mới>` lên đầu `ENCRYPTION_KEYS` → restart → `node dist/cli.mjs reencrypt` (hoặc job tự chạy) → bỏ key cũ.
 - **Backup/restore**: file `./backups/*.dump` → đẩy off-site (restic/rclone, mã hoá) + sao lưu `.env` riêng chỗ khác; restore: `pg_restore -c -d adsmcp <file>`; test restore định kỳ.
 - **Theo dõi**: `docker compose logs -f web worker`; trang Cài đặt → Thông tin hệ thống (dung lượng log, partition, phiên bản API sắp hết hạn).

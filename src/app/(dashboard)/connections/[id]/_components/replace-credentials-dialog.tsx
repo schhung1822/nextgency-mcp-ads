@@ -6,6 +6,7 @@ import { Controller, useForm } from "react-hook-form"
 import { toast } from "sonner"
 
 import { SecretInput } from "@/components/app"
+import { SegmentedControl } from "@/components/mcp/segmented-control"
 import { StatusHint } from "@/components/mcp/status-hint"
 import {
   InputOTP,
@@ -37,15 +38,20 @@ import {
   visibleCredentialValues,
   type PlatformFormSpec,
 } from "@/lib/schemas/connections"
-import { replaceCredentialsAction } from "@/server/actions/connections"
+import {
+  replaceCredentialsAction,
+  replaceTikTokFromAuthCodeAction,
+} from "@/server/actions/connections"
 
 import {
+  AUTH_CODE_FIELDS,
   CredentialFields,
   initialCredentialValues,
 } from "../../_components/credential-fields"
 
 interface Values {
   credentials: Record<string, string>
+  authCode: Record<string, string>
   password: string
   code: string
 }
@@ -66,10 +72,12 @@ export function ReplaceCredentialsDialog({
   /** current user's 2FA state: re-auth also asks for the TOTP code */
   twoFactorEnabled: boolean
 }) {
+  const [mode, setMode] = React.useState<"token" | "auth_code">("token")
   const [error, setError] = React.useState<string | null>(null)
   const defaults = React.useMemo<Values>(
     () => ({
       credentials: initialCredentialValues(spec.fields),
+      authCode: initialCredentialValues(AUTH_CODE_FIELDS),
       password: "",
       code: "",
     }),
@@ -86,6 +94,7 @@ export function ReplaceCredentialsDialog({
       // drop every typed secret when the dialog closes
       form.reset(defaults)
       setError(null)
+      setMode("token")
     }
     onOpenChange(next)
   }
@@ -93,12 +102,20 @@ export function ReplaceCredentialsDialog({
   const onSubmit = form.handleSubmit(async (v) => {
     setError(null)
     const code = twoFactorEnabled ? v.code : undefined
-    const res = await replaceCredentialsAction({
-      connectionId,
-      password: v.password,
-      code,
-      credentials: visibleCredentialValues(spec.fields, v.credentials),
-    })
+    const res =
+      mode === "auth_code"
+        ? await replaceTikTokFromAuthCodeAction({
+            connectionId,
+            password: v.password,
+            code,
+            ...v.authCode,
+          })
+        : await replaceCredentialsAction({
+            connectionId,
+            password: v.password,
+            code,
+            credentials: visibleCredentialValues(spec.fields, v.credentials),
+          })
     if (!res.ok) {
       // re-auth fields are never kept after a failed attempt
       form.setValue("password", "")
@@ -128,12 +145,37 @@ export function ReplaceCredentialsDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <CredentialFields
-            fields={spec.fields}
-            control={form.control}
-            prefix="credentials"
-            idPrefix="rcred"
-          />
+          {spec.supportsAuthCode && (
+            <SegmentedControl
+              fill="mobile"
+              ariaLabel={m.new.modeLabel}
+              value={mode}
+              onValueChange={(v) => {
+                setError(null)
+                setMode(v)
+              }}
+              options={[
+                { value: "token", label: m.new.modeToken },
+                { value: "auth_code", label: m.new.modeAuthCode },
+              ]}
+            />
+          )}
+
+          {mode === "auth_code" ? (
+            <CredentialFields
+              fields={AUTH_CODE_FIELDS}
+              control={form.control}
+              prefix="authCode"
+              idPrefix="rcode"
+            />
+          ) : (
+            <CredentialFields
+              fields={spec.fields}
+              control={form.control}
+              prefix="credentials"
+              idPrefix="rcred"
+            />
+          )}
 
           <Separator />
 

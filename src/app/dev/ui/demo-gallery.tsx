@@ -748,7 +748,7 @@ export function DemoGallery() {
           <KpiCard
             label="Tài khoản QC"
             value={formatNumber(24)}
-            hint="2 nền tảng"
+            hint="4 nền tảng"
             icon={Wallet01Icon}
           />
           <KpiCard

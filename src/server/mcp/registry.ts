@@ -17,6 +17,7 @@ import * as updateObject from "./tools/common/update-object"
 import * as uploadMedia from "./tools/common/upload-media"
 import { registerExtensions } from "./tools/extensions"
 import { metaPagesAllowed, registerMetaPageTools } from "./tools/meta-pages"
+import { registerTelegramTools, telegramToolsAllowed } from "./tools/telegram"
 
 export interface ToolsetDef {
   name: string
@@ -60,6 +61,13 @@ export const TOOLSETS: ToolsetDef[] = [
     register: (server, ctx, taken) => registerMetaPageTools(server, ctx, taken),
   },
   {
+    // Telegram notification channels: independent of the ad platforms - needs ≥ 1 channel in the MCP scope
+    name: "telegram",
+    permission: "read",
+    isAllowed: (grant) => telegramToolsAllowed(grant),
+    register: (server, ctx, taken) => registerTelegramTools(server, ctx, taken),
+  },
+  {
     name: "platform_extensions",
     permission: "read",
     isAllowed: (grant) => grantPlatformsWith(grant, "read").length > 0,
@@ -69,7 +77,10 @@ export const TOOLSETS: ToolsetDef[] = [
 
 /** Names of the common tools (for docs / UI). */
 export const COMMON_TOOL_PERMISSIONS: Record<string, Permission> = Object.fromEntries(
-  TOOLSETS.filter((t) => t.name !== "platform_extensions" && t.name !== "meta_pages").map((t) => [t.name, t.permission])
+  TOOLSETS.filter((t) => t.name !== "platform_extensions" && t.name !== "meta_pages" && t.name !== "telegram").map((t) => [
+    t.name,
+    t.permission,
+  ])
 )
 
 export function registerAllowedTools(server: McpServer, ctx: ToolContext) {

@@ -316,8 +316,14 @@ const scenarios = {
   "conn-new-others": {
     user: "staff",
     run: async ({ page, shot }) => {
-      await T.goto(page, "/connections/new?platform=openai_ads")
-      await shot("step1-openai_ads")
+      for (const p of ["tiktok", "google_ads", "openai_ads"]) {
+        await T.goto(page, `/connections/new?platform=${p}`)
+        await shot(`step1-${p}`)
+      }
+      await T.goto(page, "/connections/new?platform=tiktok")
+      await page.getByRole("radio", { name: /auth_code|Auth code|mã/i }).first().click().catch(() => {})
+      await sleep(300)
+      await shot("step1-tiktok-authcode")
     },
   },
   "conn-detail": {
@@ -329,6 +335,9 @@ const scenarios = {
         ["meta-invalid", "Meta cũ"],
         ["meta-multi-currency", "BM đa tiền tệ — Noti"],
         ["meta-disabled", "BM tạm tắt"],
+        ["google", "MCC Google — Noti"],
+        ["tiktok", "TikTok Shop VN"],
+        ["tiktok-disabled", "TikTok tạm tắt"],
       ]) {
         const href = await T.hrefOf(page, "/connections", text)
         await T.goto(page, href)
@@ -348,6 +357,8 @@ const scenarios = {
         ["invalid-meta-embedded", "token bị thu hồi"],
         ["invalid-openai-dedupe", "key bị từ chối"],
         ["transient-meta", "kiểm tra lỗi tạm thời"],
+        ["invalid-google-embedded", "refresh token hết hạn"],
+        ["transient-tiktok", "máy chủ đang bận"],
       ]) {
         const href = await T.hrefOf(page, "/connections", text)
         await T.goto(page, href)

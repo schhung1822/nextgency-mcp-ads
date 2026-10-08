@@ -20,6 +20,8 @@
 | **ui-shell** | `src/components/app/**`, `src/app/globals.css`, `src/app/layout.tsx`, `src/app/(dashboard)/layout.tsx` (khung), `src/app/(dashboard)/dev/ui/**`, `src/lib/i18n/vi/common.ts`, `public/brand/**` | Token màu, glass, nút brand, AppShell (sidebar floating + top bar), PageHeader, GlassCard, KpiCard, EmptyState, StatusBadge, PlatformIcon/Badge, PermissionBadges, CopyField, SecretInput, ConfirmDialog, DataTable (TanStack v9, client + server mode), FilterBar, DateRangePicker, Stepper, JsonViewer, HelpPanel, ThemeToggle, TransparencyToggle, RelativeTime; trang demo `/dev/ui` |
 | **auth** | `src/server/auth/**`, `src/server/services/{users,settings}.ts`, `src/server/audit/activity-log.ts`, `src/server/actions/{auth,users,settings,account}.ts`, `src/app/(auth)/**`, `src/app/api/auth/**`, `src/app/(dashboard)/{users,account,security}/**`, `src/proxy.ts`, `scripts/{cli,migrate}.ts`, `src/lib/i18n/vi/{auth,users,account}.ts` | Better Auth (2FA, admin, roles), /setup, /login, /login/2fa, đổi mật khẩu bắt buộc, cổng 2FA admin, /account, /users, CLI, ghi activity_logs |
 | **provider-meta** | `src/server/providers/meta/**` | Adapter đầy đủ (validate, listAccounts, report, list/get, status, budget, update, copy, delete, upload, lookup, create campaign/adset/ad, targeting) + test MSW |
+| **provider-tiktok** | `src/server/providers/tiktok/**` | như trên (+ exchange auth_code, Smart+ routing, DIY copy) — phát hành 2026-10-08 |
+| **provider-google** | `src/server/providers/google-ads/**` | như trên (SA JWT + OAuth refresh, MCC tree, GAQL, mutate, DIY copy, create search campaign, RSA, keywords, EU declaration, run_gaql; YouTube = chiến dịch VIDEO/DEMAND_GEN, VIDEO chỉ đọc) — phát hành 2026-10-08 |
 | **provider-openai** | `src/server/providers/openai-ads/**` | như trên (feature probe, conversions, DIY copy, create campaign/ad group/ad) |
 
 Merge → orchestrator chạy typecheck/lint/test → sửa ghép nối → commit.
@@ -38,7 +40,7 @@ Merge → orchestrator chạy typecheck/lint/test → sửa ghép nối → comm
 | **deploy** | `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `.dockerignore`, `README.md`, `docs/**`, `.github/**`, `scripts/gen-secrets.sh` | Đóng gói, README VI/EN, hướng dẫn lấy token từng nền tảng |
 
 ## Đợt 4 — Kiểm định chất lượng
-- `security-reviewer`, `ads-api-reviewer` (mọi nền tảng đã phát hành), `ui-reviewer` (mọi trang) chạy song song → orchestrator tổng hợp → agent sửa lỗi theo nhóm.
+- `security-reviewer`, `ads-api-reviewer` (mọi nền tảng đã phát hành: Meta, TikTok, Google Ads, OpenAI Ads), `ui-reviewer` (mọi trang) chạy song song → orchestrator tổng hợp → agent sửa lỗi theo nhóm.
 - E2E Playwright luồng chính; build Docker + `docker compose up` thử; test thật với TKQC của chủ dự án (chỉ đọc trước, ghi trên object thử nghiệm).
 
 ## Hợp đồng chung (agent phải tuân theo)

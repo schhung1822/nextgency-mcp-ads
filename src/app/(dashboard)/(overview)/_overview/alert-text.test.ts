@@ -54,7 +54,7 @@ describe("alertText (Overview 'Cảnh báo')", () => {
   })
 
   it("gives a token that is close to its expiry (status still active) the 'expiring' next step", () => {
-    for (const platform of ["meta", "openai_ads"]) {
+    for (const platform of ["meta", "tiktok", "google_ads", "openai_ads"]) {
       expect(alertText({ ...base, platform, kind: "expiring" }).hint).toBe(
         cs.hint.expiring[platform as keyof typeof cs.hint.expiring]
       )

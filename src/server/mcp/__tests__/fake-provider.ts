@@ -260,7 +260,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
         preview: Boolean(opts?.dryRun),
         changes: [{ objectId: u.id, objectName: o.name, level: u.level, field: `${u.type}_budget`, before, after: u.amount }],
         warnings: [],
-        effectiveAt: null,
+        effectiveAt: platform === "tiktok" ? "next_day" : null,
       }
     },
     async updateObject(ctx, u, opts) {

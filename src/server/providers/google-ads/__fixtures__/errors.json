@@ -1,0 +1,164 @@
+{
+  "quotaTemporarilyExhausted": {
+    "error": {
+      "code": 429,
+      "message": "Resource has been exhausted (e.g. check quota).",
+      "status": "RESOURCE_EXHAUSTED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [
+            {
+              "errorCode": { "quotaError": "RESOURCE_TEMPORARILY_EXHAUSTED" },
+              "message": "Too many requests. Retry in 0.02 seconds.",
+              "details": { "quotaErrorDetails": { "rateScope": "ACCOUNT", "rateName": "Requests per customer", "retryDelay": "0.02s" } }
+            }
+          ],
+          "requestId": "req-quota-temp"
+        }
+      ]
+    }
+  },
+  "quotaExhausted": {
+    "error": {
+      "code": 429,
+      "message": "Resource has been exhausted (e.g. check quota).",
+      "status": "RESOURCE_EXHAUSTED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [
+            {
+              "errorCode": { "quotaError": "RESOURCE_EXHAUSTED" },
+              "message": "Too many requests. Retry in 86400 seconds.",
+              "details": { "quotaErrorDetails": { "rateScope": "DEVELOPER", "rateName": "Number of operations for explorer access", "retryDelay": "86400s" } }
+            }
+          ],
+          "requestId": "req-quota-day"
+        }
+      ]
+    }
+  },
+  "userPermissionDenied": {
+    "error": {
+      "code": 403,
+      "message": "The caller does not have permission",
+      "status": "PERMISSION_DENIED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [
+            {
+              "errorCode": { "authorizationError": "USER_PERMISSION_DENIED" },
+              "message": "User doesn't have permission to access customer. Note: If you're accessing a client customer, the manager's customer id must be set in the 'login-customer-id' header."
+            }
+          ],
+          "requestId": "req-perm"
+        }
+      ]
+    }
+  },
+  "projectNotApproved": {
+    "error": {
+      "code": 403,
+      "message": "The caller does not have permission",
+      "status": "PERMISSION_DENIED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [
+            {
+              "errorCode": { "authorizationError": "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" },
+              "message": "The Google Cloud project is only approved for use with test accounts."
+            }
+          ],
+          "requestId": "req-explorer"
+        }
+      ]
+    }
+  },
+  "serviceDisabled": {
+    "error": {
+      "code": 403,
+      "message": "Google Ads API has not been used in project 123456 before or it is disabled.",
+      "status": "PERMISSION_DENIED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "SERVICE_DISABLED",
+          "domain": "googleapis.com",
+          "metadata": { "service": "googleads.googleapis.com", "consumer": "projects/123456" }
+        },
+        { "@type": "type.googleapis.com/google.rpc.Help", "links": [{ "description": "Google developers console API activation", "url": "https://console.developers.google.com/apis/api/googleads.googleapis.com/overview?project=123456" }] }
+      ]
+    }
+  },
+  "tokenExpired": {
+    "error": {
+      "code": 401,
+      "message": "Request is missing required authentication credential.",
+      "status": "UNAUTHENTICATED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [{ "errorCode": { "authenticationError": "OAUTH_TOKEN_EXPIRED" }, "message": "Authentication of the request failed." }],
+          "requestId": "req-expired"
+        }
+      ]
+    }
+  },
+  "euDeclarationRequired": {
+    "error": {
+      "code": 400,
+      "message": "Request contains an invalid argument.",
+      "status": "INVALID_ARGUMENT",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [
+            {
+              "errorCode": { "mutateError": "EU_POLITICAL_ADVERTISING_DECLARATION_REQUIRED" },
+              "message": "The account has campaigns missing the EU political advertising declaration.",
+              "location": { "fieldPathElements": [{ "fieldName": "operations", "index": 0 }] }
+            }
+          ],
+          "requestId": "req-eu"
+        }
+      ]
+    }
+  },
+  "concurrentModification": {
+    "error": {
+      "code": 409,
+      "message": "The operation was aborted.",
+      "status": "ABORTED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [{ "errorCode": { "databaseError": "CONCURRENT_MODIFICATION" }, "message": "Multiple requests were attempting to modify the same resource at once. Retry the request." }],
+          "requestId": "req-conc"
+        }
+      ]
+    }
+  },
+  "fieldRequired": {
+    "error": {
+      "code": 400,
+      "message": "Request contains an invalid argument.",
+      "status": "INVALID_ARGUMENT",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+          "errors": [
+            {
+              "errorCode": { "fieldError": "REQUIRED" },
+              "message": "The required field was not present.",
+              "location": { "fieldPathElements": [{ "fieldName": "mutate_operations", "index": 1 }, { "fieldName": "campaign_operation" }, { "fieldName": "create" }, { "fieldName": "contains_eu_political_advertising" }] }
+            }
+          ],
+          "requestId": "req-required"
+        }
+      ]
+    }
+  }
+}

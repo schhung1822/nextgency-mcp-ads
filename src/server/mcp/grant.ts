@@ -8,16 +8,26 @@ import {
   adAccounts,
   connections,
   mcpAccountScopes,
+  mcpNotificationScopes,
   mcpPageScopes,
   mcpPlatformPermissions,
   mcpServers,
   metaPages,
+  notificationChannels,
   user,
 } from "../db/schema"
 import { PLATFORMS, type Platform } from "../providers/types"
 import { denied } from "./errors"
 import { parseMcpSettings } from "./settings"
-import { PERMISSIONS, grantAllows, type GrantAccount, type GrantPage, type McpGrant, type Permission } from "./types"
+import {
+  PERMISSIONS,
+  grantAllows,
+  type GrantAccount,
+  type GrantChannel,
+  type GrantPage,
+  type McpGrant,
+  type Permission,
+} from "./types"
 
 /** Grants are rebuilt per request; this tiny cache only absorbs bursts (≤ 5 s staleness, per spec). */
 const GRANT_CACHE_TTL_MS = 3_000
@@ -305,6 +315,34 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
       .sort((a, b) => a.name.localeCompare(b.name) || a.externalId.localeCompare(b.externalId))
   }
 
+  // Telegram channels: usable (active|error), not deleted, and owned by the MCP owner - for an admin's MCP too (a
+  // channel of somebody else could be re-pointed by that person to read this MCP's notifications); scope rows that
+  // break the rule (legacy) are ignored here and pruned on the next save
+  const channelRows = await db
+    .select({
+      id: notificationChannels.id,
+      name: notificationChannels.name,
+      config: notificationChannels.config,
+    })
+    .from(mcpNotificationScopes)
+    .innerJoin(notificationChannels, eq(notificationChannels.id, mcpNotificationScopes.channelId))
+    .where(
+      and(
+        eq(mcpNotificationScopes.mcpId, m.id),
+        isNull(notificationChannels.deletedAt),
+        inArray(notificationChannels.status, ["active", "error"]),
+        eq(notificationChannels.ownerId, m.ownerId)
+      )
+    )
+  const notificationChannelsInScope: GrantChannel[] = channelRows
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      chatTitle: c.config?.chatTitle ?? null,
+      hasThread: c.config?.messageThreadId != null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+
   return {
     mcpId: m.id,
     mcpName: m.name,
@@ -315,6 +353,7 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
     permissions,
     accounts,
     pages,
+    notificationChannels: notificationChannelsInScope,
   }
 }
 
@@ -324,6 +363,8 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
 
 const PLATFORM_LABEL: Partial<Record<Platform, string>> = {
   meta: "Meta",
+  tiktok: "TikTok",
+  google_ads: "Google Ads",
   openai_ads: "OpenAI Ads",
 }
 
@@ -340,13 +381,14 @@ const PERMISSION_LABEL: Record<Permission, string> = {
   delete: "Xoá",
 }
 
-/** Candidate spellings of an account id (Meta "act_" prefix optional). */
+/** Candidate spellings of an account id (Meta "act_" prefix optional, Google dashes optional). */
 export function accountIdCandidates(platform: Platform, raw: string): string[] {
   const id = raw.trim()
   const out = new Set([id])
   if (platform === "meta") {
     if (/^\d+$/.test(id)) out.add(`act_${id}`)
   }
+  if (platform === "google_ads") out.add(id.replace(/-/g, ""))
   return [...out]
 }
 
@@ -403,6 +445,32 @@ export function assertPageGrant(grant: McpGrant, pageId: string): GrantPage {
     )
   }
   return page
+}
+
+/**
+ * Every Telegram tool calls this: the channel must be in the MCP's scope. No id → the only channel of the scope (an
+ * MCP with several channels must name one). Throws McpToolError (logged as "denied").
+ */
+export function assertChannelGrant(grant: McpGrant, channelId: string | null | undefined): GrantChannel {
+  const channels = grant.notificationChannels
+  const id = String(channelId ?? "").trim()
+  if (!id) {
+    if (channels.length === 1) return channels[0]!
+    throw denied(
+      channels.length === 0 ? "channel_not_in_scope" : "channel_required",
+      channels.length === 0 ? "MCP này chưa được cấp kênh Telegram nào." : "MCP này có nhiều kênh Telegram - cần chọn channel_id.",
+      "Gọi telegram_list_channels để lấy đúng channel_id."
+    )
+  }
+  const channel = channels.find((c) => c.id === id)
+  if (!channel) {
+    throw denied(
+      "channel_not_in_scope",
+      `Kênh Telegram "${id.slice(0, 64)}" không thuộc phạm vi của MCP này.`,
+      "Gọi telegram_list_channels để lấy đúng channel_id."
+    )
+  }
+  return channel
 }
 
 /** Platforms on which the grant has this permission AND at least one account. */

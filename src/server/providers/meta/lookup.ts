@@ -1,5 +1,5 @@
 // ads_lookup for Meta: secondary assets needed to create ads/targeting.
-import { isProviderError } from "../errors"
+import { isProviderError, ProviderError } from "../errors"
 import type { LookupItem, LookupKind, ProviderContext } from "../types"
 import { actId, graphAll, graphPage, type MetaCredentials } from "./client"
 import { callCtx, invalid } from "./shared"
@@ -172,5 +172,12 @@ export async function metaLookup(
       const res = await graphPage<Raw>(call, "search", { type: "adlocale", q: needQ(), limit })
       return { items: res.data.map((l) => ({ id: s(l.key), name: s(l.name) })), warnings }
     }
+    case "identities":
+      throw new ProviderError({
+        platform: "meta",
+        code: "unsupported",
+        message: "meta: identities lookup is TikTok-only",
+        userMessageVi: "Meta không có “identities” - dùng pages hoặc instagram_accounts.",
+      })
   }
 }

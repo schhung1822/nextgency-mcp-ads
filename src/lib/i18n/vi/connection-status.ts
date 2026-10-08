@@ -14,11 +14,15 @@ export const connectionStatus = {
     /** token rejected / expired → create a new credential and replace it */
     invalid: {
       meta: 'Tạo token mới trong Graph API Explorer (cùng app), rồi bấm "Thay token" ở trang kết nối.',
+      tiktok: 'Cấp quyền lại để lấy access token mới (hoặc đổi auth_code), rồi bấm "Thay token" ở trang kết nối.',
+      google_ads: 'Tạo lại refresh token (hoặc kiểm tra service account còn được cấp quyền), rồi bấm "Thay token" ở trang kết nối.',
       openai_ads: 'Tạo API key mới trong OpenAI Ads, rồi bấm "Thay token" ở trang kết nối.',
     },
     /** token still works but is about to expire */
     expiring: {
       meta: 'Tạo token mới trong Graph API Explorer trước khi hết hạn, rồi bấm "Thay token" ở trang kết nối.',
+      tiktok: 'Lấy access token mới trước khi hết hạn, rồi bấm "Thay token" ở trang kết nối.',
+      google_ads: 'Tạo lại refresh token trước khi hết hạn, rồi bấm "Thay token" ở trang kết nối.',
       openai_ads: 'Tạo API key mới trước khi hết hạn, rồi bấm "Thay token" ở trang kết nối.',
     },
     /** stored ciphertext cannot be decrypted by this process */

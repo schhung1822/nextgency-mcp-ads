@@ -60,7 +60,8 @@ export function CredentialFields<T extends FieldValues>({
               <Field data-invalid={invalid}>
                 <FieldLabel htmlFor={id}>
                   {f.label}
-                  {!f.required && !/t[uù]y chọn|tuỳ chọn/i.test(f.label) && <span className="font-normal text-muted-foreground">{m.new.optional}</span>}
+                  {/* provider labels carry no "(tuỳ chọn)" suffix: the form adds it from `required` */}
+                  {!f.required && <span className="font-normal text-muted-foreground">{m.new.optional}</span>}
                 </FieldLabel>
                 {f.type === "select" ? (
                   <Select
@@ -117,3 +118,17 @@ export function CredentialFields<T extends FieldValues>({
     </FieldGroup>
   )
 }
+
+/** TikTok "Đổi auth_code" fields (App ID, secret, auth_code) - the values go straight to the server. */
+export const AUTH_CODE_FIELDS: CredentialField[] = [
+  { key: "appId", label: m.new.appIdLabel, type: "text", required: true, placeholder: m.new.appIdPlaceholder },
+  { key: "secret", label: m.new.appSecretLabel, type: "secret", required: true },
+  {
+    key: "authCode",
+    label: m.new.authCodeLabel,
+    type: "secret",
+    required: true,
+    placeholder: m.new.authCodePlaceholder,
+    help: m.new.authCodeHelp,
+  },
+]

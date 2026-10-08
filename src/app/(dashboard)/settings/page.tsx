@@ -89,6 +89,16 @@ export default async function SettingsPage() {
         version: e.META_API_VERSION,
       },
       {
+        platform: "tiktok",
+        envVar: "TIKTOK_API_VERSION",
+        version: e.TIKTOK_API_VERSION,
+      },
+      {
+        platform: "google_ads",
+        envVar: "GOOGLE_ADS_API_VERSION",
+        version: e.GOOGLE_ADS_API_VERSION,
+      },
+      {
         platform: "openai_ads",
         envVar: "OPENAI_ADS_API_VERSION",
         version: e.OPENAI_ADS_API_VERSION,

@@ -14,6 +14,7 @@ import { aad, decryptJson, encryptJson } from "@/server/crypto/secret-box"
 import { db, type Tx } from "@/server/db/client"
 import { adAccounts, connections, mcpPageScopes, metaPages } from "@/server/db/schema"
 import { isProviderError } from "@/server/providers/errors"
+import { notifyConnectionHealth } from "@/server/notifications/events"
 import { getProvider } from "@/server/providers/registry"
 import type { AdAccountInfo, CredentialCheck, PageInfo, PageListResult, Platform } from "@/server/providers/types"
 
@@ -501,7 +502,20 @@ export async function refreshConnection(
   if (!row || row.status === "disabled") return null
   const plan = await planRefresh(row, opts)
   const accountsSummary = await db.transaction((tx) => applyRefresh(tx, row, plan, opts.now))
+  // Telegram (after commit, never throws): only a real status transition, once per connection/status/day
+  await notifyConnectionHealth({
+    connectionId: row.id,
+    before: row.status,
+    after: effectiveStatusAfter(row, plan),
+    statusMessage: plan.statusMessage,
+    now: opts.now,
+  })
   return { ...plan, accountsSummary }
+}
+
+/** connections.status after applyRefresh (a disabled connection keeps its status; null plan status = unchanged). */
+export function effectiveStatusAfter(row: Pick<ConnectionRow, "status">, plan: Pick<RefreshPlan, "status">): string {
+  return plan.status && row.status !== "disabled" ? plan.status : row.status
 }
 
 /** Ids of every connection the background jobs should look at (not deleted, not disabled). */

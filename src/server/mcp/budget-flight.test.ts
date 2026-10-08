@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest"
 
 import type { AdObjectSummary, AdsProvider, ListQuery, ProviderContext } from "../providers/types"
-import { campaignBudgetFlight, campaignFlightOrDeny, CHILD_MAX_PAGES, CHILD_PAGE_SIZE, isConfiguredOn, listChildAdGroups } from "./budget-flight"
+import {
+  adGroupFlightsMatter,
+  campaignBudgetFlight,
+  campaignFlightOrDeny,
+  CHILD_MAX_PAGES,
+  CHILD_PAGE_SIZE,
+  isConfiguredOn,
+  listChildAdGroups,
+} from "./budget-flight"
 import { McpToolError } from "./errors"
 
 const ctx = {} as ProviderContext
@@ -21,7 +29,7 @@ function kid(id: string, configured: "ACTIVE" | "PAUSED" | "ARCHIVED", endTime: 
   }
 }
 
-function provider(platform: "meta" | "openai_ads", kids: AdObjectSummary[], pageSize = CHILD_PAGE_SIZE, endless = false) {
+function provider(platform: "meta" | "tiktok" | "google_ads" | "openai_ads", kids: AdObjectSummary[], pageSize = CHILD_PAGE_SIZE, endless = false) {
   const listObjects = vi.fn(async (_ctx: ProviderContext, q: ListQuery) => {
     const offset = q.cursor ? Number(q.cursor) : 0
     const items = kids.filter((k) => k.parentId === q.parentId).slice(offset, offset + Math.min(q.limit, pageSize))
@@ -94,12 +102,21 @@ describe("campaign lifetime budget flight", () => {
     expect(listObjects).toHaveBeenCalledTimes(3)
   })
 
-  it("other platforms keep the campaign dates and never list ad groups", async () => {
-    const { p, listObjects } = provider("openai_ads", [kid("a", "ACTIVE", "2026-10-12T00:00:00Z")])
-    const c = campaign({ startTime: "2026-10-01T00:00:00Z", endTime: "2026-12-01T00:00:00Z" })
-    expect(await campaignBudgetFlight({ provider: p, ctx, campaign: c })).toEqual({ startTime: "2026-10-01T00:00:00Z", endTime: "2026-12-01T00:00:00Z" })
-    expect(await campaignFlightOrDeny(p, ctx, campaign())).toEqual({ startTime: null, endTime: null })
-    expect(listObjects).not.toHaveBeenCalled()
+  it("other platforms (Google, OpenAI) keep the campaign dates and never list ad groups", async () => {
+    for (const platform of ["openai_ads", "google_ads"] as const) {
+      const { p, listObjects } = provider(platform, [kid("a", "ACTIVE", "2026-10-12T00:00:00Z")])
+      const c = campaign({ startTime: "2026-10-01T00:00:00Z", endTime: "2026-12-01T00:00:00Z" })
+      expect(await campaignBudgetFlight({ provider: p, ctx, campaign: c })).toEqual({ startTime: "2026-10-01T00:00:00Z", endTime: "2026-12-01T00:00:00Z" })
+      expect(await campaignFlightOrDeny(p, ctx, campaign())).toEqual({ startTime: null, endTime: null })
+      expect(listObjects).not.toHaveBeenCalled()
+    }
+  })
+
+  it("TikTok campaign budgets follow the ad group schedules like Meta CBO", async () => {
+    expect(["meta", "tiktok", "google_ads", "openai_ads"].map((x) => adGroupFlightsMatter(x as "meta"))).toEqual([true, true, false, false])
+    const { p, listObjects } = provider("tiktok", [kid("a", "ACTIVE", "2026-10-12T00:00:00Z"), kid("b", "PAUSED", "2026-10-30T00:00:00Z")])
+    expect(await campaignBudgetFlight({ provider: p, ctx, campaign: campaign() })).toEqual({ startTime: null, endTime: "2026-10-12T00:00:00.000Z" })
+    expect(listObjects).toHaveBeenCalled()
   })
 
   it("isConfiguredOn reads the configured status, falling back to the raw status", () => {

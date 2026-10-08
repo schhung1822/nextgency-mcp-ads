@@ -33,4 +33,14 @@ describe("env validation", () => {
     expect(hasSamplePostgresPassword("postgres://adsmcp:Zx81kQ@db:5432/adsmcp")).toBe(false)
     expect(parseEnv({ ...BASE, DATABASE_URL: url }).success).toBe(true)
   })
+
+  it("Google Ads / TikTok API versions default to v25 / v1.3; TIKTOK_BASE_URL is optional and https only", () => {
+    const d = parseEnv({ ...BASE })
+    expect(d.success && [d.data.GOOGLE_ADS_API_VERSION, d.data.TIKTOK_API_VERSION]).toEqual(["v25", "v1.3"])
+    expect(parseEnv({ ...BASE, TIKTOK_BASE_URL: "" }).success).toBe(true)
+    expect(parseEnv({ ...BASE, TIKTOK_BASE_URL: "https://sandbox-ads.tiktok.com/open_api" }).success).toBe(true)
+    for (const bad of ["http://sandbox-ads.tiktok.com/open_api", "http://localhost:9000", "https://u:p@x.example", "https://x.example/?a=1", "nope"]) {
+      expect(parseEnv({ ...BASE, TIKTOK_BASE_URL: bad }).success, bad).toBe(false)
+    }
+  })
 })

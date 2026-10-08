@@ -9,15 +9,18 @@ import {
   DEFAULT_SETTINGS_INPUT,
   defaultMcpFormValues,
   expiryDateToIso,
+  formValuesToConfig,
   formValuesToCreateInput,
   isoToExpiryDate,
   matchPermissionPreset,
+  mcpConfigSchema,
   mcpSettingsSchema,
   missingDailyCapCurrencies,
   MONEY_WRITE_PERMISSIONS,
   normalizePermissions,
   parseAmountText,
   parseIpList,
+  pruneChannelsToSelectable,
   pruneToSelectable,
   summarizeScopeIssues,
   toStoredMcpSettings,
@@ -157,7 +160,46 @@ describe("mcp-servers schemas", () => {
       write_rate_limit_per_10min: 20,
       allowed_ips: ["::1"],
       money_caps_required: true,
+      telegram_tool: false,
+      telegram_notify_writes: false,
+      telegram_messages_per_hour: 20,
     })
+  })
+
+  it("Telegram settings: safe defaults, bounds 1-200, stored snake_case, channel ids optional", () => {
+    const base = {
+      twoStepConfirm: true,
+      budgetChangeMaxPct: 50,
+      maxDailyBudget: {},
+      rateLimitPerMin: 60,
+      allowedIps: [],
+    }
+    const d = mcpSettingsSchema.parse(base)
+    expect([d.telegramTool, d.telegramNotifyWrites, d.telegramMessagesPerHour]).toEqual([false, false, 20])
+    for (const bad of [0, 201, 2.5]) {
+      expect(mcpSettingsSchema.safeParse({ ...base, telegramMessagesPerHour: bad }).success).toBe(false)
+    }
+    const s = toStoredMcpSettings(
+      mcpSettingsSchema.parse({ ...base, telegramTool: true, telegramNotifyWrites: true, telegramMessagesPerHour: 200 })
+    )
+    expect([s.telegram_tool, s.telegram_notify_writes, s.telegram_messages_per_hour]).toEqual([true, true, 200])
+    // form round trip
+    const v = defaultMcpFormValues()
+    expect([v.notificationChannelIds, v.telegramTool, v.telegramNotifyWrites, v.telegramMessagesPerHour]).toEqual([[], false, false, "20"])
+    v.telegramMessagesPerHour = "0"
+    expect(validateProtectionStep(v).telegramMessagesPerHour).toBeDefined()
+    v.telegramMessagesPerHour = "50"
+    expect(validateProtectionStep(v).telegramMessagesPerHour).toBeUndefined()
+    v.notificationChannelIds = [CONN, CONN]
+    v.telegramTool = true
+    const cfg = formValuesToConfig(v)
+    expect(cfg.notificationChannelIds).toEqual([CONN])
+    expect(cfg.settings.telegramTool).toBe(true)
+    expect(cfg.settings.telegramMessagesPerHour).toBe(50)
+    expect(pruneChannelsToSelectable(v, []).notificationChannelIds).toEqual([])
+    expect(
+      mcpConfigSchema.safeParse({ ...formValuesToConfig(defaultMcpFormValues()), notificationChannelIds: ["x"] }).success
+    ).toBe(false)
   })
 
   it("lifetime/bid caps and write rate limit: defaults, bounds, stored snake_case", () => {

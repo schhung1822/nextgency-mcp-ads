@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto"
 import type { CallToolResult, McpServer, ServerContext, ToolAnnotations } from "@modelcontextprotocol/server"
 import type { z } from "zod"
+import { safeErrorForLog } from "../audit/safe-error"
 import { getProvider } from "../providers/registry"
 import type { AdsProvider, Capability, FieldChange, Platform } from "../providers/types"
 import { argsHash, runConfirmFlow, type PreviewInfo, type StoredOutcome } from "./confirm"
@@ -11,6 +12,7 @@ import { providerContextFactory, type ProviderContextFactory } from "./context"
 import { McpToolError, mapToolError, type CallLogStatus, type ToolErrorPayload } from "./errors"
 import { platformLabel } from "./grant"
 import { CallLog } from "./logging"
+import { notifyWriteExecuted } from "./notify"
 import { consumeWriteRate } from "./rate-limit"
 import type { RequestState } from "./request-state"
 import type { GrantAccount, McpGrant } from "./types"
@@ -58,6 +60,11 @@ export interface ToolEnv {
   toolName: string
   /** spec.logArgs(args) when the tool defines it (stored instead of the raw args) */
   storedArgs?: Record<string, unknown>
+  /**
+   * Run (fire-and-forget) once the call ended successfully AND its mcp_call_logs row is written - e.g. the Telegram
+   * summary of an executed write. Never awaited; a failure is only logged.
+   */
+  afterSuccess: (() => void)[]
 }
 
 export interface ToolOutcome {
@@ -145,6 +152,7 @@ async function runTool<S extends z.ZodObject<any>>(
     signal,
     toolName: spec.name,
     storedArgs: spec.logArgs ? spec.logArgs(args) : undefined,
+    afterSuccess: [],
     providerCtx: providerContextFactory({
       ownerId: grant.ownerId,
       ownerIsAdmin: grant.ownerRole === "admin",
@@ -160,7 +168,17 @@ async function runTool<S extends z.ZodObject<any>>(
       return errorResult(out.error)
     }
     const structured = out.structured
-    await log.finish({ status: out.status ?? "success", response: structured })
+    const status = out.status ?? "success"
+    await log.finish({ status, response: structured })
+    if (status === "success") {
+      for (const fn of env.afterSuccess) {
+        try {
+          fn()
+        } catch (e) {
+          console.warn(`[mcp] after-success hook of ${spec.name} failed`, safeErrorForLog(e))
+        }
+      }
+    }
     return okResult(structured, out.summary)
   } catch (e) {
     // a revoked/expired token: flag the connection so the UI shows it (only when the call used one)
@@ -236,6 +254,7 @@ export async function runWrite(
   }
 ): Promise<ToolOutcome> {
   const base = { platform: o.account.platform, account_id: o.account.externalId }
+  let executed: FieldChange[] | null = null
   const flow = await runConfirmFlow({
     grant: env.grant,
     toolName: env.toolName,
@@ -259,9 +278,8 @@ export async function runWrite(
     execute: async (pendingActionId): Promise<StoredOutcome> => {
       const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }))
       // the logs UI ("Trước → Sau") reads only the changes column: never leave it empty for an executed write
-      env.log.setChanges(
-        r.changes?.length ? r.changes : [{ objectId: "-", field: env.toolName, before: null, after: r.structured.result ?? r.summary }]
-      )
+      executed = r.changes?.length ? r.changes : [{ objectId: "-", field: env.toolName, before: null, after: r.structured.result ?? r.summary }]
+      env.log.setChanges(executed)
       return { ok: true, structured: { status: "success", ...base, ...r.structured }, summary: r.summary }
     },
   })
@@ -276,6 +294,12 @@ export async function runWrite(
   }
   env.log.pendingActionId = flow.pendingActionId
   if (!flow.outcome.ok) return { structured: {}, summary: "", error: flow.outcome.error }
+  // Telegram summary of THIS execution (not of a replay), after the call log is written (runTool)
+  const changes = executed as FieldChange[] | null
+  if (flow.kind === "executed" && changes) {
+    const reason = typeof o.args.reason === "string" ? o.args.reason : null
+    env.afterSuccess.push(() => notifyWriteExecuted({ grant: env.grant, account: o.account, toolName: env.toolName, changes, reason }))
+  }
   if (flow.kind === "replayed") {
     return {
       structured: { ...flow.outcome.structured, replayed: true },

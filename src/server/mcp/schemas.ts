@@ -1,6 +1,7 @@
 // Shared zod schemas for MCP tool inputs/outputs.
 import { z } from "zod"
 import { DATE_PRESETS } from "../providers/dates"
+import { AD_NETWORK_TYPES, CHANNEL_TYPES } from "../providers/google-ads/youtube"
 import { LOOKUP_KINDS, METRIC_PRESETS, NORMALIZED_METRICS, type Platform } from "../providers/types"
 
 /** `platform` enum limited to the platforms the grant allows for the tool's permission. */
@@ -13,15 +14,15 @@ export const accountIdSchema = z
   .trim()
   .min(1)
   .max(64)
-  .describe("account_id lấy từ ads_list_accounts (Meta act_…, OpenAI Ads adacct_…)")
+  .describe("account_id lấy từ ads_list_accounts (Meta act_…, TikTok advertiser_id, Google 10 chữ số, OpenAI adacct_…)")
 
 export const objectIdSchema = z.string().trim().min(1).max(128)
 
 export const objectLevelSchema = z
-  .enum(["campaign", "ad_group", "ad"])
-  .describe("Cấp đối tượng: campaign, ad_group (ad set/ad group), ad")
+  .enum(["campaign", "ad_group", "ad", "keyword"])
+  .describe("Cấp đối tượng: campaign, ad_group (ad set/ad group), ad, keyword (chỉ Google)")
 
-export const reportLevelSchema = z.enum(["account", "campaign", "ad_group", "ad"])
+export const reportLevelSchema = z.enum(["account", "campaign", "ad_group", "ad", "keyword"])
 
 export const datePresetSchema = z.enum(DATE_PRESETS)
 
@@ -42,6 +43,22 @@ export const statusFilterSchema = z.enum([
 export const metricPresetSchema = z.enum(METRIC_PRESETS)
 export const metricKeySchema = z.enum(NORMALIZED_METRICS)
 export const lookupKindSchema = z.enum(LOOKUP_KINDS)
+
+/** Google Ads campaign types (advertising_channel_type) + alias "youtube" (= VIDEO + DEMAND_GEN). Google only. */
+export const googleChannelTypesSchema = z
+  .array(z.enum(["youtube", ...CHANNEL_TYPES]))
+  .min(1)
+  .max(CHANNEL_TYPES.length + 1)
+  .describe(
+    "Chỉ Google Ads: lọc theo loại chiến dịch. youtube = chiến dịch Video + Demand Gen (quảng cáo YouTube nằm trong Google Ads); hoặc SEARCH, DISPLAY, SHOPPING, VIDEO, DEMAND_GEN, PERFORMANCE_MAX…"
+  )
+
+/** Google Ads segments.ad_network_type values (e.g. YOUTUBE = the YouTube slice of Performance Max). Google only. */
+export const googleAdNetworkTypesSchema = z
+  .array(z.enum(AD_NETWORK_TYPES))
+  .min(1)
+  .max(AD_NETWORK_TYPES.length)
+  .describe("Chỉ Google Ads: tách/lọc theo mạng hiển thị (YOUTUBE, SEARCH, SEARCH_PARTNERS, CONTENT, MIXED, GOOGLE_TV); mỗi dòng có extra.ad_network_type")
 
 /** Extra fields every write tool accepts. */
 export const writeFields = {

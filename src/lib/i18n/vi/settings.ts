@@ -67,6 +67,8 @@ export const settings = {
     note: "Ghi chú",
     notes: {
       meta: "v24.0 hết hạn ngày 06/10/2026. Từ 27/10/2026 thay đổi của v26 áp dụng cho mọi phiên bản.",
+      tiktok: "Sau 31/12/2026 không tạo được chiến dịch thủ công (Manual) qua API - chuyển sang Smart+.",
+      google_ads: "Mỗi phiên bản sống khoảng 1 năm (v25 tới khoảng 08/2027). Developer token đã ngừng bắt buộc từ 09/09/2026.",
       openai_ads: "API mới, thay đổi nhanh - xem tài liệu nền tảng trước khi nâng cấp.",
     },
     warnSoon: "Sắp hết hạn",

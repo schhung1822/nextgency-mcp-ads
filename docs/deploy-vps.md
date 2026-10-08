@@ -614,7 +614,7 @@ Nội dung chính của `deploy/nginx/ads-mcp.conf` (đã kiểm `nginx -t` trê
 - `Host`, `X-Forwarded-Proto https`, `X-Forwarded-Host` như Caddy (app kiểm tra Host cho MCP và Origin cho server action).
 - `location /mcp/`: `proxy_buffering off` (SSE), `client_max_body_size 1m`, `proxy_read_timeout 600s`, không gzip, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
 - HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY` (ẩn bản của app rồi đặt lại 1 lần, không nhân đôi header).
-- **Che key MCP trong access log** (`/var/log/nginx/ads-mcp.access.log`, định dạng JSON): đường dẫn và Referer thành `/mcp/[redacted]`. Log lỗi của `/mcp/` chỉ ghi mức `crit` vì error log của Nginx in cả dòng request (có key) và không che được.
+- **Che key MCP trong access log** (`/var/log/nginx/ads-mcp.access.log`, định dạng JSON): đường dẫn và Referer thành `/mcp/[redacted]`; mã uỷ quyền TikTok trong query thành `auth_code=[redacted]`. Log lỗi của `/mcp/` chỉ ghi mức `crit` vì error log của Nginx in cả dòng request (có key) và không che được.
 - Không bật `ssl_stapling` (Let's Encrypt đã ngừng OCSP từ 08/2025). `ssl_ciphers` theo mức "intermediate" của Mozilla (TLS 1.2 chỉ AEAD + ECDHE).
 
 Tuỳ chọn: `deploy/nginx/default-deny.conf` từ chối mọi request không gửi tới đúng tên miền (quét theo IP, `Host` lạ; cổng 443 từ chối bắt tay TLS nên không lộ chứng chỉ). **Chỉ** bật khi không site nào khác trên máy chủ khai báo `default_server` (hai `default_server` cùng cổng làm `nginx -t` lỗi); cách cài ghi ở đầu file.

@@ -1,6 +1,6 @@
 # Ads MCP by: noti.vn
 
-Web app **source-available** (giấy phép riêng của noti.vn — chỉ đơn vị được cấp quyền mới được dùng, xem `LICENSE`), tự host (VPS + Docker + PostgreSQL), cho phép đội marketing **dán token từ app developer** để kết nối tài khoản quảng cáo **Meta, OpenAI Ads** (Google Ads, TikTok Ads: *sắp ra mắt* — xem `.claude/docs/12-platform-rollout.md`), rồi tạo **MCP server** (`https://<domain>/mcp/<key>`) để điều khiển quảng cáo từ **Claude, ChatGPT, Gemini**: kéo chỉ số theo ngày, sửa, bật/tắt, sao chép, tạo mới. Có phân quyền Admin/Nhân viên, 2FA, nhật ký chi tiết (MCP + nhân sự) lưu N tháng.
+Web app **source-available** (giấy phép riêng của noti.vn — chỉ đơn vị được cấp quyền mới được dùng, xem `LICENSE`), tự host (VPS + Docker + PostgreSQL), cho phép đội marketing **dán token từ app developer** để kết nối tài khoản quảng cáo **Meta, TikTok Ads, Google Ads (gồm YouTube), OpenAI Ads** và **kênh thông báo Telegram**, rồi tạo **MCP server** (`https://<domain>/mcp/<key>`) để điều khiển quảng cáo từ **Claude, ChatGPT, Gemini**: kéo chỉ số theo ngày, sửa, bật/tắt, sao chép, tạo mới. Có phân quyền Admin/Nhân viên, 2FA, nhật ký chi tiết (MCP + nhân sự) lưu N tháng.
 
 ## Trạng thái hiện tại
 **Đang triển khai** (chủ dự án đã cho phép bắt đầu ngày 2026-10-02). Làm theo thứ tự trong `.claude/docs/08-roadmap.md`, cập nhật checklist ở đó sau mỗi phần việc.
@@ -20,10 +20,11 @@ Next.js 16 khác dữ liệu huấn luyện — trước khi dùng API Next, đ�
 | `.claude/docs/07-deployment.md` | Env, Dockerfile, compose, Caddyfile, vận hành/backup |
 | `.claude/docs/08-roadmap.md` | Các giai đoạn + tiêu chí "đạt" + câu hỏi còn mở |
 | `.claude/docs/11-meta-pages.md` | Tính năng Trang Facebook (danh sách Trang, bài viết, chỉ số — chỉ đọc): quyết định, bảng, tool, UI (đã làm 2026-10-04, §11 = bản thực tế) |
-| `.claude/docs/providers/{meta,openai-ads}.md` | API từng nền tảng: version, credential, endpoint, đơn vị tiền, copy, rate limit, lỗi |
+| `.claude/docs/providers/{meta,tiktok,google-ads,openai-ads}.md` | API từng nền tảng: version, credential, endpoint, đơn vị tiền, copy, rate limit, lỗi |
 | `.claude/docs/providers/openai-ads.openapi.json` | OpenAPI chính thức OpenAI Ads — grep để lấy schema chính xác |
-| `.claude/docs/12-platform-rollout.md` | Bật/tắt nền tảng (`src/lib/platforms.ts`) + checklist phát hành Google Ads / TikTok Ads |
+| `.claude/docs/12-platform-rollout.md` | Bật/tắt nền tảng (`src/lib/platforms.ts`) + checklist phát hành nền tảng mới (Google Ads, TikTok Ads đã phát hành 2026-10-08) |
 | `.claude/docs/13-system-notices.md` | Thông báo hệ thống (webhook noti.vn 1 giờ/lần → chạy chữ top bar web); kết quả MCP không kèm thông báo |
+| `.claude/docs/14-telegram-notifications.md` | Kênh thông báo Telegram: bảng, gửi tin (Bot API), hàng đợi, sự kiện, tool MCP `telegram_*`, UI, bảo mật |
 
 ## Stack (chi tiết + version: 02-architecture.md)
 Next.js 16.3.8 App Router · React 19 · TypeScript strict · Tailwind v4 · shadcn/ui (Radix, style `radix-maia`, icon Hugeicons) · Better Auth 1.7.7 (email/password, 2FA TOTP, admin) · Drizzle 0.45 + PostgreSQL 18 · pg-boss (worker) · MCP TS SDK v2 `@modelcontextprotocol/server` · Caddy · pnpm · Node 24 · Vitest + Playwright.
@@ -36,7 +37,7 @@ pnpm lint && pnpm typecheck && pnpm test     # bắt buộc xanh trước khi b�
 pnpm test:e2e       # Playwright
 pnpm db:generate    # drizzle-kit generate (không dùng push cho production)
 pnpm db:migrate
-pnpm cli <cmd>      # create-admin | reset-password | reset-2fa | unlock | unban | reencrypt
+pnpm cli <cmd>      # create-admin | reset-password | reset-2fa | unlock | unban | reencrypt | google:refresh-token
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build   # build từ mã nguồn + chạy full stack (VPS chỉ pull: docker compose pull && docker compose up -d --no-build)
 ```
 
@@ -47,7 +48,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build  
    - `auth.api.createUser` (và mọi API admin của Better Auth) **phải** kèm `headers: await headers()`.
    - MCP: key sai/tắt/hết hạn → **404, không bao giờ 401**. Mỗi tool tự kiểm tra lại platform/account/quyền theo grant.
 2. **An toàn thao tác quảng cáo**: object tạo mới/bản sao luôn **tạm dừng**; thao tác ghi qua luồng xác nhận 2 bước khi MCP bật; tôn trọng guardrail ngân sách; xoá không hoàn tác → luôn xác nhận.
-3. **Tiền & ngày**: tool MCP nhận/trả **đơn vị chính + mã tiền tệ**; adapter tự quy đổi (Meta minor-unit, **VND offset 1**; OpenAI micros). Không dùng float cho số gửi lên API. **Không cộng chéo tiền tệ.** Ngày theo múi giờ tài khoản QC; DB lưu UTC.
+3. **Tiền & ngày**: tool MCP nhận/trả **đơn vị chính + mã tiền tệ**; adapter tự quy đổi (Meta minor-unit, **VND offset 1**; Google/OpenAI micros; TikTok đơn vị chính). Không dùng float cho số gửi lên API. **Không cộng chéo tiền tệ.** Ngày theo múi giờ tài khoản QC; DB lưu UTC.
 4. **API nền tảng thay đổi nhanh**: không code theo trí nhớ — đọc `providers/*.md`; nếu nghi ngờ hoặc tài liệu > 30 ngày, chạy `/provider-api-check <platform>`. Version API là hằng số override bằng env.
 5. **Log là yêu cầu cốt lõi**: thao tác của nhân sự ghi `activity_logs` **trong cùng transaction**; mọi request MCP ghi `mcp_call_logs` (kèm before/after khi ghi).
 6. **Ranh giới code**: `src/server/providers/**` và `src/server/mcp/**` **không import `next/*`**. Client component không import `src/server/*`.

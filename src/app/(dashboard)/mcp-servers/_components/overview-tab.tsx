@@ -458,6 +458,49 @@ export function OverviewTab({
                   ? o.nIps(mcp.settings.allowedIps.length)
                   : o.anyIp}
               </SummaryRow>
+              <SummaryRow label={t.telegram.summaryChannels}>
+                {mcp.notificationChannels.length === 0
+                  ? t.telegram.summaryNone
+                  : mcp.notificationChannels.map((c) => (
+                      <span key={c.id} className="block break-words">
+                        {c.name}
+                        {c.deleted ? (
+                          <span className="text-destructive-strong">
+                            {" "}
+                            {t.telegram.deletedChannel}
+                          </span>
+                        ) : c.status === "error" || c.status === "disabled" ? (
+                          <>
+                            {" "}
+                            <StatusBadge
+                              kind="connection"
+                              status={c.status === "error" ? "invalid" : "disabled"}
+                              label={
+                                c.status === "error"
+                                  ? t.telegram.statusError
+                                  : t.telegram.statusDisabled
+                              }
+                            />
+                          </>
+                        ) : null}
+                      </span>
+                    ))}
+              </SummaryRow>
+              {mcp.notificationChannels.length > 0 && (
+                <>
+                  <SummaryRow label={t.telegram.summaryTool}>
+                    {mcp.settings.telegramTool ? o.on : o.off}
+                  </SummaryRow>
+                  <SummaryRow label={t.telegram.summaryNotify}>
+                    {mcp.settings.telegramNotifyWrites ? o.on : o.off}
+                  </SummaryRow>
+                  {mcp.settings.telegramTool && (
+                    <SummaryRow label={t.telegram.summaryPerHour}>
+                      {mcp.settings.telegramMessagesPerHour}
+                    </SummaryRow>
+                  )}
+                </>
+              )}
             </dl>
           </CardContent>
         </Card>

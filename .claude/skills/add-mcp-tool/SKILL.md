@@ -1,6 +1,6 @@
 ---
 name: add-mcp-tool
-description: Quy trình thêm hoặc sửa một tool MCP (chung `ads_*` hoặc riêng nền tảng `meta_*|openai_ads_*`) — schema, quyền, annotations, kiểm tra grant, adapter, xác nhận 2 bước, log, test, cập nhật tài liệu. Dùng mỗi khi tạo/sửa file trong src/server/mcp/tools/.
+description: Quy trình thêm hoặc sửa một tool MCP (chung `ads_*`, riêng nền tảng `meta_*|tiktok_*|google_ads_*|openai_ads_*`, hoặc kênh thông báo `telegram_*`) — schema, quyền, annotations, kiểm tra grant, adapter, xác nhận 2 bước, log, test, cập nhật tài liệu. Dùng mỗi khi tạo/sửa file trong src/server/mcp/tools/.
 argument-hint: "<tool_name> [mô tả ngắn]"
 ---
 

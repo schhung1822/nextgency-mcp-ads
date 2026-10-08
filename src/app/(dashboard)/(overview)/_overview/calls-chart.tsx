@@ -34,12 +34,15 @@ import { formatNumber } from "@/lib/format"
 import { dashboard as td } from "@/lib/i18n/vi/dashboard"
 import type { ChartPoint } from "@/server/services/dashboard"
 
-type SeriesKey = "meta" | "openai_ads" | "other"
-const SERIES: SeriesKey[] = ["meta", "openai_ads", "other"]
+type SeriesKey = "meta" | "tiktok" | "google_ads" | "openai_ads" | "other"
+const SERIES: SeriesKey[] = ["meta", "tiktok", "google_ads", "openai_ads", "other"]
 
 // Categorical per-platform palette lives in globals.css (--chart-platform-*, light + dark variants).
+// Platform brand colours are not used: Meta/Google are both blue, TikTok/OpenAI both black.
 const chartConfig = {
   meta: { label: PLATFORM_LABELS.meta, color: "var(--chart-platform-meta)" },
+  tiktok: { label: PLATFORM_LABELS.tiktok, color: "var(--chart-platform-tiktok)" },
+  google_ads: { label: PLATFORM_LABELS.google_ads, color: "var(--chart-platform-google)" },
   openai_ads: { label: PLATFORM_LABELS.openai_ads, color: "var(--chart-platform-openai)" },
   other: { label: td.chart.other, color: "var(--chart-platform-other)" },
 } satisfies ChartConfig

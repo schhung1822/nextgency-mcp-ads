@@ -117,6 +117,31 @@ Chỉ cho kết nối Meta có trong phạm vi TKQC của MCP. Khi nạp grant (
 ### `mcp_call_stats_hourly` — số liệu biểu đồ
 `bucket timestamptz`, `mcp_id uuid`, `owner_id text`, `platform text`, `tool_name text`, `calls int`, `errors int`, `writes int`, `duration_ms_sum bigint`. PK `(bucket, mcp_id, platform, tool_name)`. Worker upsert mỗi 5 phút từ `mcp_call_logs`; giữ 13 tháng.
 
+### `notification_channels` - kênh thông báo Telegram (migration `0006_notifications`, thiết kế `14-telegram-notifications.md`)
+Bảng thường (không partition). Telegram là **kênh thông báo**, không phải nền tảng QC (không dùng enum `platform`).
+| Cột | Kiểu | Ghi chú |
+|---|---|---|
+| id | uuid PK default `uuidv7()` | app sinh trước khi insert (làm AAD) |
+| owner_id | text → user.id RESTRICT | staff chỉ thấy/dùng kênh của mình |
+| type | text default `telegram` | CHECK `in ('telegram')` |
+| name | text | |
+| credentials_encrypted | text | bot token, `encryptSecret(token, "notification_channel:<id>:credentials")`; xoá mềm → mã hoá chuỗi rỗng |
+| credential_hint | text | 4 ký tự cuối token |
+| config | jsonb | `{chatId, chatTitle, chatType: private\|group\|supergroup\|channel, messageThreadId (null = General/không topic), botId, botUsername}` - không bí mật; chatId là id chuẩn từ `getChat` (cập nhật tự động khi nhóm migrate) |
+| events | text[] default `{}` | CHECK `<@ {connection_health, system_update}`; `system_update` chỉ có hiệu lực khi chủ kênh là admin |
+| all_connections | boolean default false | chỉ admin: nhận `connection_health` của mọi kết nối |
+| status | text default `active` | CHECK `active`·`error`·`disabled` (`error`: Telegram trả 401/403/400 chat/thread) |
+| status_message | text null | lý do tiếng Việt + cách sửa |
+| last_sent_at, last_error_at, created_at, updated_at, deleted_at | timestamptz | xoá mềm |
+Index `(owner_id)`.
+
+### `notification_deliveries` - nhật ký gửi + trạng thái hàng đợi
+`id uuid PK` · `channel_id → notification_channels CASCADE` · `source` CHECK `system|mcp_tool|mcp_write|test` · `event_type` CHECK (`connection_expiring`, `connection_invalid`, `connection_recovered`, `update_available`, `update_succeeded`, `update_failed`, `mcp_write`, `mcp_message`, `test`) · `mcp_id uuid null → mcp_servers SET NULL` · `dedupe_key text null` (**UNIQUE (channel_id, dedupe_key)**: `conn:<id>:<status>:<YYYY-MM-DD VN>`, `update:<version>`, `update-result:<requestId>`) · `status` CHECK `pending|sent|failed` · `attempts int` (tối đa 4; claim lạc quan `attempts = <giá trị job mong đợi>` để job trùng không gửi 2 lần) · `telegram_message_id bigint null` · `error_code int null` · `error_message text null` (đã redact) · `preview text` (≤ 300 ký tự text thuần, đã redact) · `message text null` (HTML đầy đủ để gửi; **xoá về null khi delivery kết thúc**) · `created_at` · `sent_at`.
+Index `(channel_id, created_at DESC)`, `(mcp_id, created_at)` (FK + hạn mức tin/giờ của tool `telegram_send_message`), `(created_at)` (sweep/retention). Job `notifications.cleanup` (03:40 hằng ngày) xoá dòng cũ hơn `log_retention_months_mcp`; `notifications.sweep` (5 phút) queue lại delivery `pending` chưa thử lần nào > 2 phút, đánh `failed` delivery `pending` > 1 giờ, và báo kết quả `system_update_requests` vừa kết thúc (updater không gọi được module thông báo).
+
+### `mcp_notification_scopes`
+`(mcp_id → mcp_servers CASCADE, channel_id → notification_channels CASCADE)` PK kép; index `channel_id`. Xoá kênh (mềm) → xoá luôn các dòng scope trong cùng transaction; kênh tắt giữ scope (grant tự lọc theo `status`).
+
 ### `system_update_requests` - yêu cầu cập nhật hệ thống (migration `0002_system_update_requests` + `0003_system_update_requests_target_strict`)
 Hợp đồng giữa web và service `updater` (`10-update-system.md` §3). Web chỉ **INSERT** dòng `pending`; `updater` nhận việc, chạy và ghi kết quả. Không partition.
 | Cột | Kiểu | Ghi chú |
@@ -212,7 +237,7 @@ SELECT app_ensure_monthly_partitions('mcp_call_logs', 3), app_ensure_monthly_par
 - Postgres chạy với `-c default_toast_compression=lz4`.
 
 ## 4. Danh mục `activity_logs.action`
-`setup.first_admin` · `auth.login.success` · `auth.login.failure` · `auth.logout` · `auth.2fa.enable` · `auth.2fa.disable` · `auth.2fa.backup_codes.regenerate` · `auth.password.change` · `user.create` · `user.update` · `user.role.change` · `user.ban` · `user.unban` · `user.delete` · `user.password.reset` · `user.2fa.reset` · `user.sessions.revoke` · `connection.create` · `connection.update` · `connection.delete` · `connection.test` · `connection.accounts.toggle` · `connection.pages.toggle` · `mcp.create` · `mcp.update` · `mcp.enable` · `mcp.disable` · `mcp.delete` · `mcp.key.rotate` · `mcp.key.reveal` · `settings.update` · `logs.export` · `system.update_check` · `system.update_requested` · `system.update_succeeded` · `system.update_failed` · `system.update_rolled_back`
+`setup.first_admin` · `auth.login.success` · `auth.login.failure` · `auth.logout` · `auth.2fa.enable` · `auth.2fa.disable` · `auth.2fa.backup_codes.regenerate` · `auth.password.change` · `user.create` · `user.update` · `user.role.change` · `user.ban` · `user.unban` · `user.delete` · `user.password.reset` · `user.2fa.reset` · `user.sessions.revoke` · `connection.create` · `connection.update` · `connection.delete` · `connection.test` · `connection.accounts.toggle` · `connection.pages.toggle` · `notification_channel.create` · `notification_channel.update` · `notification_channel.delete` · `notification_channel.disable` · `notification_channel.enable` · `notification_channel.test` · `notification_channel.token.replace` · `mcp.create` · `mcp.update` · `mcp.enable` · `mcp.disable` · `mcp.delete` · `mcp.key.rotate` · `mcp.key.reveal` · `settings.update` · `logs.export` · `system.update_check` · `system.update_requested` · `system.update_succeeded` · `system.update_failed` · `system.update_rolled_back`
 Nhóm `system` = hệ thống cập nhật: web ghi `system.update_check` (admin bấm "Kiểm tra ngay"; job tự chạy KHÔNG ghi) và `system.update_requested` (cùng transaction với dòng `system_update_requests`); `updater` ghi 3 action còn lại cùng transaction với việc đổi trạng thái (actor = `requested_by`).
 Sự kiện đăng nhập/2FA lấy từ `hooks.after` của Better Auth (`/sign-in/email`, `/two-factor/*`, `/sign-out`) + `databaseHooks.session.create.after`.
 

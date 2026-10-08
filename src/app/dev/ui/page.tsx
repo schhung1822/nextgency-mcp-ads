@@ -31,7 +31,7 @@ export default function DevUiPage() {
             {
               label: "Báo cáo hằng ngày",
               href: "/mcp-servers/demo-1",
-              hint: "Meta, OpenAI Ads",
+              hint: "Meta, TikTok, Google Ads, OpenAI Ads",
             },
             {
               label: "Vận hành Meta",

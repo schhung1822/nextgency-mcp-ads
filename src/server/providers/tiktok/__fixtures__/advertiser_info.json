@@ -1,0 +1,36 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "2026100207000001ABCDEF0123456789EF",
+  "data": {
+    "list": [
+      {
+        "advertiser_id": "7100000000000000001",
+        "name": "Shop ABC - VN",
+        "currency": "VND",
+        "timezone": "Etc/GMT-7",
+        "display_timezone": "Asia/Ho_Chi_Minh",
+        "status": "STATUS_ENABLE",
+        "role": "ROLE_ADVERTISER",
+        "balance": 12500000.0,
+        "owner_bc_id": "7000000000000000777",
+        "country": "VN",
+        "company": "Cong ty ABC",
+        "advertiser_account_type": "AUCTION",
+        "create_time": 1700000000
+      },
+      {
+        "advertiser_id": "7100000000000000002",
+        "name": "Shop ABC - US",
+        "currency": "USD",
+        "timezone": "America/Los_Angeles",
+        "display_timezone": "",
+        "status": "STATUS_LIMIT",
+        "role": "ROLE_CHILD_ADVERTISER",
+        "balance": 120.5,
+        "country": "US",
+        "advertiser_account_type": "AUCTION"
+      }
+    ]
+  }
+}

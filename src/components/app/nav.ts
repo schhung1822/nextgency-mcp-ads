@@ -1,6 +1,7 @@
 // Navigation config + pure helpers (no React, no icon imports - icons live in nav-icons.ts so tests stay light).
 
 import { common } from "@/lib/i18n/vi/common"
+import { notifications } from "@/lib/i18n/vi/notifications"
 
 export type AppRole = "admin" | "staff"
 
@@ -42,7 +43,11 @@ export const NAV_MAIN: NavItem[] = [
       "ket noi",
       "token",
       "meta",
+      "tiktok",
+      "google",
+      "youtube",
       "openai",
+      "telegram",
     ],
   },
   {
@@ -180,6 +185,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   edit: common.nav.crumbEdit,
   dev: common.nav.crumbDev,
   ui: common.nav.crumbDevUi,
+  telegram: notifications.ui.crumb,
 }
 
 /**

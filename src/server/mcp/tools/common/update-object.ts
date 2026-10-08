@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { googleScheduleIso } from "../../../providers/google-ads/time"
 import type { AdsProvider, ObjectLevel, ObjectUpdate } from "../../../providers/types"
 import { campaignFlightOrDeny } from "../../budget-flight"
 import { invalid } from "../../errors"
@@ -31,9 +32,13 @@ export async function assertScheduleWithinCaps(
   if (!lifetimeLimit(s, cur, {})) return
   const ctx = await env.providerCtx(account)
   const obj = await provider.getObject(ctx, level, id)
+  // Google rounds a new schedule to whole days (start 00:00:00, end 23:59:59 account time) → check that flight
+  const g = account.platform === "google_ads"
+  const start = changes.startTime !== undefined && g ? googleScheduleIso(changes.startTime, "start", account.timezone) : changes.startTime
+  const end = changes.endTime !== undefined && g ? googleScheduleIso(changes.endTime, "end", account.timezone) : changes.endTime
   const nf: Flight = {
-    startTime: changes.startTime !== undefined ? changes.startTime : (obj.startTime ?? null),
-    endTime: changes.endTime !== undefined ? changes.endTime : (obj.endTime ?? null),
+    startTime: start !== undefined ? start : (obj.startTime ?? null),
+    endTime: end !== undefined ? end : (obj.endTime ?? null),
   }
   const label = (o: { level: string; name?: string | null; id: string }) =>
     `${LEVEL_VI[o.level] ?? o.level} "${String(o.name ?? o.id).slice(0, 80)}" (${o.id})`
@@ -98,6 +103,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     async handler(args, env) {
       const account = assertGrant(env.grant, { platform: args.platform, accountId: args.account_id, permission: "update" })
       env.log.setTarget({ platform: account.platform, accountId: account.externalId, objectIds: [args.id] })
+      if (args.level === "keyword" && account.platform !== "google_ads") throw invalid("invalid_level", "level keyword chỉ dùng cho Google Ads.")
       const changes: ObjectUpdate["changes"] = {}
       if (args.name !== undefined) changes.name = args.name
       if (args.start_time !== undefined) changes.startTime = args.start_time

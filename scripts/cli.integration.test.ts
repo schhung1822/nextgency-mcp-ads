@@ -326,6 +326,20 @@ describe.skipIf(!hasDb)("CLI (DB)", () => {
       }
     })
   })
+
+  describe("google:refresh-token", () => {
+    it("thiếu --client-id / client secret / cổng hoặc host không hợp lệ: exit 1 trước khi mở cổng nào", async () => {
+      expect((await cli(["google:refresh-token"])).code).toBe(1)
+      expect((await cli(["google:refresh-token", "--client-id", "abc"])).err).toMatch(/client secret/)
+      const badPort = await cli(["google:refresh-token", "--client-id", "abc", "--port", "80"], { GOOGLE_ADS_CLIENT_SECRET: "s" })
+      expect(badPort.code).toBe(1)
+      expect(badPort.err).toMatch(/--port/)
+      const badHost = await cli(["google:refresh-token", "--client-id", "abc", "--host", "example.com"], { GOOGLE_ADS_CLIENT_SECRET: "s" })
+      expect(badHost.code).toBe(1)
+      expect(badHost.err).toMatch(/--host/)
+      expect((await cli(["--help"])).out).toContain("google:refresh-token --client-id")
+    })
+  })
 })
 
 void PASSWORD

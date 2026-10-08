@@ -24,7 +24,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Tra cứu tài sản phụ",
     description:
-      "Dùng khi cần id của tài sản phụ để tạo/sửa quảng cáo: pages (Fanpage), pixels, instagram_accounts, locations, interests, languages, conversion_events, custom_audiences - tuỳ nền tảng hỗ trợ. Gọi ads_list_accounts trước để có account_id; q là chuỗi tìm kiếm (bắt buộc với locations/interests trên đa số nền tảng).",
+      "Dùng khi cần id của tài sản phụ để tạo/sửa quảng cáo: pages (Fanpage), pixels, instagram_accounts, identities (TikTok), locations, interests, languages, conversion_events, custom_audiences - tuỳ nền tảng hỗ trợ. Gọi ads_list_accounts trước để có account_id; q là chuỗi tìm kiếm (bắt buộc với locations/interests trên đa số nền tảng).",
     kind: "read",
     annotations: READ_ANNOTATIONS,
     input: z.object({

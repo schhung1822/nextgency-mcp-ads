@@ -66,7 +66,7 @@ export function GuideBody({
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-pretty">{step.title}</p>
                 {step.detail && (
-                  <p className="mt-0.5 text-[13px] leading-5 text-pretty whitespace-pre-line text-muted-foreground">
+                  <p className="mt-0.5 text-[13px] leading-5 text-pretty break-words whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]">
                     {step.detail}
                   </p>
                 )}
@@ -107,7 +107,7 @@ export function GuideBody({
             />
             {ui.warnings}
           </p>
-          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-5 text-foreground/90">
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-5 break-words text-foreground/90 [overflow-wrap:anywhere]">
             {warnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
@@ -126,7 +126,7 @@ export function GuideBody({
             />
             {ui.tips}
           </p>
-          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-5 text-muted-foreground">
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-5 break-words text-muted-foreground [overflow-wrap:anywhere]">
             {tips.map((tip, i) => (
               <li key={i}>{tip}</li>
             ))}

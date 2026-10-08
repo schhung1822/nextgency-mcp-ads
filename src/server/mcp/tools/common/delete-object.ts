@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { ObjectLevel } from "../../../providers/types"
+import { invalid } from "../../errors"
 import { assertGrant } from "../../grant"
 import { accountIdSchema, objectIdSchema, objectLevelSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext } from "../../tool"
@@ -15,7 +16,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Xoá / lưu trữ đối tượng",
     description:
-      "Dùng khi người dùng yêu cầu rõ ràng việc xoá một chiến dịch, nhóm quảng cáo, hoặc quảng cáo (Meta: DELETED, OpenAI Ads: archive). KHÔNG hoàn tác được. Luôn có 2 bước: lần gọi đầu trả confirmation_required kèm preview và confirm_token; chỉ gọi lại với cùng tham số + confirm_token sau khi người dùng đồng ý. Muốn ngừng chạy tạm thời thì dùng ads_set_status (paused). Gọi ads_list_accounts và ads_get_object trước để xác định đúng đối tượng.",
+      "Dùng khi người dùng yêu cầu rõ ràng việc xoá một chiến dịch, nhóm quảng cáo, quảng cáo hoặc keyword (Meta: DELETED, TikTok: delete, Google: remove - trừ chiến dịch Video/YouTube chỉ xem được, OpenAI: archive). KHÔNG hoàn tác được. Luôn có 2 bước: lần gọi đầu trả confirmation_required kèm preview và confirm_token; chỉ gọi lại với cùng tham số + confirm_token sau khi người dùng đồng ý. Muốn ngừng chạy tạm thời thì dùng ads_set_status (paused). Gọi ads_list_accounts và ads_get_object trước để xác định đúng đối tượng.",
     kind: "write",
     annotations: UPDATE_ANNOTATIONS,
     input: z.object({
@@ -29,6 +30,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     async handler(args, env) {
       const account = assertGrant(env.grant, { platform: args.platform, accountId: args.account_id, permission: "delete" })
       env.log.setTarget({ platform: account.platform, accountId: account.externalId, objectIds: [args.id] })
+      if (args.level === "keyword" && account.platform !== "google_ads") throw invalid("invalid_level", "level keyword chỉ dùng cho Google Ads.")
       const provider = providerFor(account.platform, "delete")
       const level = args.level as ObjectLevel
       return runWrite(env, {

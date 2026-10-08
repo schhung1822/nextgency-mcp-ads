@@ -28,6 +28,7 @@ import {
   type McpFormValues,
   type StepErrors,
 } from "@/lib/schemas/mcp-servers"
+import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
 import { McpCreated } from "./mcp-created"
@@ -39,6 +40,10 @@ import {
   ProtectionSection,
   type FormUpdater,
 } from "./mcp-form-sections"
+import {
+  TelegramChannelsSection,
+  TelegramPermissionsSection,
+} from "./telegram-sections"
 
 export type CreateMcpActionFn = (
   input: unknown
@@ -94,10 +99,13 @@ export function mapServerErrors(
     if (k === "name" || k === "description") {
       errors[k] = msg
       at(0)
+    } else if (k.startsWith("notificationChannelIds")) {
+      errors.notificationChannelIds = msg
+      at(1)
     } else if (k.startsWith("platforms")) {
       errors[
         k.match(
-          /^platforms\.(meta|openai_ads)(\.[0-9a-f-]{36})?$/
+          /^platforms\.(meta|tiktok|google_ads|openai_ads)(\.[0-9a-f-]{36})?$/
         )
           ? k
           : "platforms"
@@ -121,10 +129,13 @@ export function mapServerErrors(
 
 export function McpWizard({
   connections,
+  channels = [],
   createAction,
   twoFactorEnabled,
 }: {
   connections: SelectableConnection[]
+  /** Telegram channels the user may give the MCP: the user's own channels (admins too) */
+  channels?: McpChannelOption[]
   createAction: CreateMcpActionFn
   /** current user's 2FA state: the final re-auth asks for the TOTP code too */
   twoFactorEnabled: boolean
@@ -252,15 +263,26 @@ export function McpWizard({
               />
             )}
             {step === 1 && (
-              <PlatformsSection
-                values={values}
-                update={update}
-                errors={errors}
-                connections={connections}
-              />
+              <div className="flex flex-col gap-6">
+                <PlatformsSection
+                  values={values}
+                  update={update}
+                  errors={errors}
+                  connections={connections}
+                />
+                <TelegramChannelsSection
+                  values={values}
+                  update={update}
+                  errors={errors}
+                  channels={channels}
+                />
+              </div>
             )}
             {step === 2 && (
-              <PermissionsSection values={values} update={update} />
+              <div className="flex flex-col gap-6">
+                <PermissionsSection values={values} update={update} />
+                <TelegramPermissionsSection values={values} update={update} />
+              </div>
             )}
             {step === 3 && (
               <ProtectionSection

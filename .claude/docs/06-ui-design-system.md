@@ -22,7 +22,7 @@ Mục tiêu: **nhìn là hiểu, bấm là làm được** — bố cục kiểu
 | `--background` | trắng ấm `oklch(0.985 0.004 30)` | `oklch(0.16 0.01 30)` | nền |
 ⚠️ `#ED3C47` với chữ trắng chỉ đạt 3.93:1 → **không** dùng làm nền nút có chữ; gradient nút chính dùng cặp `#D6303C → #CC4A0E`. Gradient `#ED3C47 → #F26A1B` chỉ cho logo/wordmark/viền/biểu đồ.
 
-Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `#000`/trắng ở dark; Google Ads logo 3 màu `#FBBC04`/`#4285F4`/`#34A853`, TikTok `#000` (thẻ "Sắp ra mắt"). Icon thương hiệu là SVG inline (simple-icons, CC0) trong `components/app/platform-icon.tsx`.
+Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `#000`/trắng ở dark; Google Ads logo 3 màu `#FBBC04`/`#4285F4`/`#34A853`, TikTok `#000`/trắng ở dark (+ `#FE2C55` điểm nhấn), YouTube (thẻ "YouTube Ads" — thực chất là kết nối Google Ads) `#FF0000`, Telegram `#26A5E4`. Icon thương hiệu là SVG inline (simple-icons, CC0) trong `components/app/platform-icon.tsx`.
 
 ## 3. Liquid Glass — quy tắc
 - **Glass chỉ cho "khung" nổi trên nội dung**: top bar, sidebar (floating), menu/popover/dropdown, dialog/sheet, thanh hành động hàng loạt nổi, thanh "Có thay đổi chưa lưu", toast, thẻ KPI ở Tổng quan, màn hình đăng nhập.
@@ -132,7 +132,7 @@ Responsive: ≥1024 sidebar mở; 768–1023 sidebar thu icon; <768 sidebar thà
 ### Kết nối quảng cáo `/connections`
 ```
 [Kết nối quảng cáo]  Dán token từ app developer của bạn để kết nối tài khoản QC.  [+ Thêm kết nối]
-Tabs: Tất cả · Meta · OpenAI Ads                             [Tìm kiếm...] [Trạng thái ▾]
+Tabs: Tất cả · Meta · TikTok · Google Ads · OpenAI Ads · Telegram   [Tìm kiếm...] [Trạng thái ▾]
 | Tên            | Nền tảng | Người tạo* | TKQC | Trạng thái        | Hạn token  | Kiểm tra lúc |
 | BM chính       | (f) Meta | Thắng      | 12   | ● Hoạt động       | Không hạn  | 5 phút trước |
 | OpenAI Shop    | (◎)      | Lan        | 1    | ● Sắp hết hạn     | 07/10/2026 | 1 giờ trước  |
@@ -141,7 +141,8 @@ Tabs: Tất cả · Meta · OpenAI Ads                             [Tìm kiếm.
 ### Thêm kết nối `/connections/new` (wizard 3 bước)
 ```
 ① Chọn nền tảng  ② Nhập thông tin  ③ Kiểm tra & chọn tài khoản
-Bước 1: lưới 2 cột thẻ lớn có logo + mô tả 1 dòng — hàng 1: Meta · OpenAI Ads (chọn được); hàng 2: Google Ads · TikTok Ads (nét đứt, mờ, badge "Sắp ra mắt"; bấm → popup "Kết nối … chưa sẵn sàng")
+Bước 1: lưới 2 cột thẻ lớn có logo + mô tả 1 dòng — nhóm "Quảng cáo": Meta · TikTok Ads · Google Ads · YouTube Ads (mở form Google Ads kèm giải thích "YouTube chạy qua Google Ads") · OpenAI Ads; nhóm "Kênh thông báo": Telegram (→ `/connections/telegram/new`). Thẻ "Sắp ra mắt" (nét đứt, mờ, popup "chưa sẵn sàng") chỉ hiện khi `UPCOMING_PLATFORMS` khác rỗng.
+        TikTok bước 2 có SegmentedControl "Dán access token | Đổi auth_code"; Google Ads có chọn kiểu xác thực "Service account (khuyên dùng) | OAuth refresh token"
 Bước 2: ┌ Form (Card đặc) ─────────────┐ ┌ Panel Hướng dẫn: "Cách lấy token Meta" ─┐
         │Tên kết nối*                  │ │1. Vào Business Settings → ...      │
         │Access token*  [••••••] 👁    │ │2. Tạo System User ...  [Mở trang ↗]│
@@ -182,7 +183,7 @@ Nền gradient ấm + 1 glass card giữa màn: logo, "Đăng nhập Ads MCP", e
 
 ## 8. Văn phong tiếng Việt
 - Xưng "bạn"; câu ngắn; nút bắt đầu bằng động từ: "Thêm kết nối", "Tạo MCP", "Sao chép link", "Kiểm tra lại", "Lưu thay đổi".
-- Thuật ngữ thống nhất: Connection = **Kết nối** · Ad account = **Tài khoản quảng cáo (TKQC)** · Campaign = **Chiến dịch** · Ad set / Ad group = **Nhóm quảng cáo** · Ad = **Quảng cáo** · Spend = **Chi tiêu** · Impressions = **Lượt hiển thị** · Reach = **Người tiếp cận** · Clicks = **Lượt nhấp** · Conversions = **Chuyển đổi** · Budget = **Ngân sách** · Staff = **Nhân viên** · Activity log = **Nhật ký nhân sự** · MCP log = **Nhật ký MCP**.
+- Thuật ngữ thống nhất: Connection = **Kết nối** · Ad account = **Tài khoản quảng cáo (TKQC)** · Campaign = **Chiến dịch** · Ad set / Ad group = **Nhóm quảng cáo** · Ad = **Quảng cáo** · Spend = **Chi tiêu** · Impressions = **Lượt hiển thị** · Reach = **Người tiếp cận** · Clicks = **Lượt nhấp** · Conversions = **Chuyển đổi** · Budget = **Ngân sách** · Staff = **Nhân viên** · Activity log = **Nhật ký nhân sự** · MCP log = **Nhật ký MCP** · Telegram notification channel = **Kết nối Telegram** (không gọi "kênh"; chữ "Kênh" chỉ dành cho loại chat Telegram - `ui.chatTypes.channel` - và nhóm "Kênh thông báo" ở bước 1 Thêm kết nối) · Telegram topic / `message_thread_id` = **Chủ đề (Thread ID)** (nhãn ô nhập/thông tin; tiêu đề cột bảng: "Chủ đề").
 - Định dạng: tiền `Intl.NumberFormat('vi-VN', {style:'currency', currency})` (vd `1.250.000 ₫`, `12,50 US$`); số `1.284`; ngày `dd/MM/yyyy HH:mm` theo `Asia/Ho_Chi_Minh`; thời gian tương đối `date-fns` locale `vi` ("5 phút trước").
 - Thông báo lỗi: nói chuyện gì xảy ra + cách sửa ("Token Meta đã hết hạn. Vào Business Settings tạo token mới rồi dán lại."). Không hiện stack trace.
 - Tất cả chuỗi UI đặt trong `src/lib/i18n/vi.ts` (object typed) — chuẩn bị cho đa ngôn ngữ sau này; zod dùng `z.config(z.locales.vi())`.

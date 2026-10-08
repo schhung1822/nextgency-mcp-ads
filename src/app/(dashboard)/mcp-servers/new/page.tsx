@@ -5,6 +5,7 @@ import { mcp as t } from "@/lib/i18n/vi/mcp"
 import { createMcpAction } from "@/server/actions/mcp-servers"
 import { requireUser } from "@/server/auth/session"
 import { listSelectableConnections } from "@/server/services/mcp-servers"
+import { listChannelsForMcpScope } from "@/server/services/notification-channels"
 
 import { McpWizard } from "../_components/mcp-wizard"
 
@@ -12,11 +13,11 @@ export const metadata: Metadata = { title: t.meta.newTitle }
 
 export default async function NewMcpPage() {
   const { user } = await requireUser()
-  const connections = await listSelectableConnections({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-  })
+  const actor = { id: user.id, email: user.email, role: user.role }
+  const [connections, channels] = await Promise.all([
+    listSelectableConnections(actor),
+    listChannelsForMcpScope(actor),
+  ])
   return (
     <div className="w-full">
       <PageHeader
@@ -26,6 +27,7 @@ export default async function NewMcpPage() {
       />
       <McpWizard
         connections={connections}
+        channels={channels}
         createAction={createMcpAction}
         twoFactorEnabled={user.twoFactorEnabled}
       />

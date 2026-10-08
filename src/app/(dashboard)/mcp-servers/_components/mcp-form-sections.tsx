@@ -83,6 +83,8 @@ import type { Permission } from "@/server/mcp/types"
 import type { ReleasedPlatform as Platform } from "@/lib/platforms"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
+import { TelegramLimitSection } from "./telegram-sections"
+
 export type FormUpdater = (fn: (prev: McpFormValues) => McpFormValues) => void
 
 /** id of the per-currency caps section (the overview "set caps" action scrolls here) */
@@ -1281,6 +1283,18 @@ export function ProtectionSection({
           </Alert>
         </Field>
       </section>
+
+      {/* 5 · Telegram (only when the MCP uses a channel) */}
+      {values.notificationChannelIds.length > 0 && (
+        <>
+          <Separator />
+          <TelegramLimitSection
+            values={values}
+            update={update}
+            errors={errors}
+          />
+        </>
+      )}
     </div>
   )
 }

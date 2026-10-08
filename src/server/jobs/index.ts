@@ -5,6 +5,9 @@ import { authCleanupJob } from "./auth-cleanup"
 import { logsMaintainJob } from "./logs-maintain"
 import { logsRollupJob } from "./logs-rollup"
 import { noticesFetchJob } from "./notices-fetch"
+import { notificationsCleanupJob } from "./notifications-cleanup"
+import { notificationsSweepJob } from "./notifications-sweep"
+import { notifyTelegramJob } from "./notify-telegram"
 import { pendingActionsCleanupJob } from "./pending-cleanup"
 import { tokensHealthJob } from "./tokens-health"
 import type { JobDefinition } from "./types"
@@ -20,6 +23,9 @@ export const JOBS: JobDefinition<any>[] = [
   authCleanupJob,
   updateCheckJob,
   noticesFetchJob,
+  notifyTelegramJob,
+  notificationsSweepJob,
+  notificationsCleanupJob,
 ]
 
 export {

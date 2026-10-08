@@ -74,6 +74,8 @@ export interface McpCfg {
   platforms: Partial<Record<Platform, McpPlatformCfg>>
   settings?: Partial<McpSettingsInput>
   expiresAt?: Date | null
+  /** Telegram channel ids in scope (omitted = none) */
+  notificationChannelIds?: string[]
 }
 
 export interface McpInfo {
@@ -105,6 +107,9 @@ export const DEFAULT_SETTINGS: McpSettingsInput = {
   rateLimitPerMin: 600,
   writeRateLimitPer10Min: 1000,
   allowedIps: [],
+  telegramTool: false,
+  telegramNotifyWrites: false,
+  telegramMessagesPerHour: 20,
 }
 
 export class World {
@@ -246,6 +251,7 @@ export class World {
         maxDailyBudget: { ...DEFAULT_TEST_DAILY_CAPS, ...cfg.settings?.maxDailyBudget },
       },
       expiresAt: cfg.expiresAt ? cfg.expiresAt.toISOString() : null,
+      ...(cfg.notificationChannelIds ? { notificationChannelIds: cfg.notificationChannelIds } : {}),
     }
   }
 
@@ -343,7 +349,13 @@ function digitsOf(prefix: string, len: number): string {
 export function demoAccounts(prefix: string, platform: Platform): AdAccountInfo[] {
   const d = digitsOf(prefix, 9)
   const idOf = (n: number) =>
-    platform === "meta" ? `act_${d}${n}` : `adacct_${prefix}${n}`
+    platform === "meta"
+      ? `act_${d}${n}`
+      : platform === "tiktok"
+        ? `70${d}${n}`
+        : platform === "google_ads"
+          ? `${[...d].reverse().join("")}${n}` // differs from the Meta digits: a bare number must not match across platforms
+          : `adacct_${prefix}${n}`
   const mk = (n: number, currency: string, timezone: string): AdAccountInfo => ({
     externalId: idOf(n),
     name: `${platform} ${n} ${currency}`,
@@ -355,6 +367,10 @@ export function demoAccounts(prefix: string, platform: Platform): AdAccountInfo[
   switch (platform) {
     case "meta":
       return [mk(1, "VND", "Asia/Ho_Chi_Minh"), mk(2, "USD", "America/New_York"), mk(3, "JPY", "Asia/Tokyo")]
+    case "tiktok":
+      return [mk(1, "VND", "Asia/Ho_Chi_Minh"), mk(2, "USD", "UTC")]
+    case "google_ads":
+      return [mk(1, "EUR", "Europe/Berlin"), mk(2, "USD", "America/Los_Angeles")]
     case "openai_ads":
       return [mk(1, "USD", "America/Los_Angeles")] // one key = one account
     default:

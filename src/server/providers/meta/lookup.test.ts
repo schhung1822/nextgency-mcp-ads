@@ -89,4 +89,9 @@ describe("metaLookup", () => {
     const res = await metaLookup(providerCtx(), "pages")
     expect(res.items.map((i) => i.id)).toEqual(["888"])
   })
+
+  it("identities is TikTok-only", async () => {
+    mockGraph([])
+    await expect(metaLookup(providerCtx(), "identities")).rejects.toMatchObject({ code: "unsupported" })
+  })
 })

@@ -8,7 +8,7 @@ import { PLATFORMS, type FieldChange, type MutationResult, type Platform, type P
 import { previewChanges, type PreviewInfo } from "../confirm"
 import { denied } from "../errors"
 import { assertGrant } from "../grant"
-import { enforceMoneyItems, legacyCapWarning, moneyLikePaths, requireMoneyCaps } from "../guardrails"
+import { DYNAMIC_DAILY_NOTE, enforceMoneyItems, legacyCapWarning, moneyLikePaths, requireMoneyCaps } from "../guardrails"
 import { stripMediaUrlQueries } from "../log-args"
 import { changesForLog } from "../logging"
 import { accountIdSchema, writeFields } from "../schemas"
@@ -27,6 +27,8 @@ import { grantAllows } from "../types"
 /** Tool-name prefix per platform shipped in this build (an extension of any other platform is skipped). */
 const PREFIX: Partial<Record<Platform, string>> = {
   meta: "meta_",
+  tiktok: "tiktok_",
+  google_ads: "google_ads_",
   openai_ads: "openai_ads_",
 }
 const NAME_RE = /^[a-z0-9_]{3,40}$/
@@ -144,6 +146,7 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
             moneyWarnings = legacyCapWarning(env.grant.settings, account.currency)
           }
           enforceMoneyItems(env.grant.settings, account.currency, items)
+          if (items.some((it) => it.kind === "daily_budget" && it.dynamic)) moneyWarnings = [...moneyWarnings, DYNAMIC_DAILY_NOTE]
         } else {
           const paths = moneyLikePaths(parsed)
           if (paths.length) {

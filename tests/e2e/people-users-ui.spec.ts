@@ -255,5 +255,6 @@ test("xoá người dùng cần gõ lại email; người dùng còn kết nối
   await dlg.locator("input").fill(gone.email)
   await confirm.click()
   await expect.poll(async () => await userRow(gone.email)).toBeUndefined()
-  expect((await lastLog(admin.id, "user.delete"))?.status).toBe("success")
+  // Better Auth removes the user on its own connection; the success log commits a moment later with the guard tx
+  await expect.poll(async () => (await lastLog(admin.id, "user.delete"))?.status).toBe("success")
 })

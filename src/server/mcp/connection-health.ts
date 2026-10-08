@@ -1,11 +1,13 @@
 // When a platform says the token is invalid (ProviderError code "auth_invalid"), mark the connection
 // `invalid` with the Vietnamese reason so the UI shows the broken token and later MCP calls fail fast
 // (context.ts refuses invalid connections). At most one UPDATE per connection per minute.
+// A real transition (active/expiring → invalid) is announced on the owner's Telegram channels (connection_health).
 import { and, eq, inArray, isNull } from "drizzle-orm"
 import { redactString } from "../audit/redact"
 import { safeErrorForLog } from "../audit/safe-error"
 import { db } from "../db/client"
 import { connections } from "../db/schema"
+import { notifyConnectionHealth } from "../notifications"
 import { isProviderError } from "../providers/errors"
 
 const THROTTLE_MS = 60_000
@@ -18,12 +20,30 @@ export async function markConnectionInvalid(connectionId: string, messageVi: str
   if (prev !== undefined && now - prev < THROTTLE_MS) return false
   lastMarked.set(connectionId, now)
   if (lastMarked.size > 10_000) lastMarked.clear()
+  // compare-and-set on the status read just before: the transition (before → invalid) is known exactly
+  const [cur] = await db
+    .select({ status: connections.status })
+    .from(connections)
+    .where(and(eq(connections.id, connectionId), isNull(connections.deletedAt)))
+    .limit(1)
+  if (!cur || (cur.status !== "active" && cur.status !== "expiring")) return false
+  const statusMessage = redactString(messageVi).slice(0, 500)
   const rows = await db
     .update(connections)
-    .set({ status: "invalid", statusMessage: redactString(messageVi).slice(0, 500), lastCheckedAt: new Date(now) })
-    .where(and(eq(connections.id, connectionId), inArray(connections.status, ["active", "expiring"]), isNull(connections.deletedAt)))
+    .set({ status: "invalid", statusMessage, lastCheckedAt: new Date(now) })
+    .where(
+      and(
+        eq(connections.id, connectionId),
+        eq(connections.status, cur.status),
+        inArray(connections.status, ["active", "expiring"]),
+        isNull(connections.deletedAt)
+      )
+    )
     .returning({ id: connections.id })
-  return rows.length > 0
+  if (rows.length === 0) return false
+  // committed (single statement): announce it - never throws, never blocks the MCP answer
+  void notifyConnectionHealth({ connectionId, before: cur.status, after: "invalid", statusMessage, now: new Date(now) })
+  return true
 }
 
 /** If `e` is an auth_invalid ProviderError, mark the connection (errors are logged, never thrown). */

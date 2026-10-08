@@ -8,7 +8,7 @@
 //    expiry, revoked token, transient failure);
 //  - every `getReport()` is recorded (account, time zone, resolved date range, cursor) so tests can assert
 //    per-account date resolution and pagination.
-import type { DateRange, AdAccountInfo, AdsProvider, Platform, ReportLevel } from "../../../providers/types"
+import type { DateRange, AdAccountInfo, AdsProvider, Platform, ReportLevel, ReportQuery } from "../../../providers/types"
 import { ProviderError } from "../../../providers/errors"
 import { createFakeProvider, newFakeState, type FakeState } from "../fake-provider"
 
@@ -36,6 +36,8 @@ export interface ReportCall {
   granularity: string
   cursor: string | null
   limit: number
+  /** filters handed to the adapter (Google channel / network filters included) */
+  filters?: ReportQuery["filters"] | null
 }
 
 export interface FlowsState extends FakeState {
@@ -105,6 +107,7 @@ export function createFlowsProvider(platform: Platform, state: FlowsState): AdsP
         granularity: q.granularity,
         cursor: q.cursor ?? null,
         limit: q.limit,
+        filters: q.filters ?? null,
       })
       return base.getReport(ctx, q)
     },

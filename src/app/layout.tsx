@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic"
 export const metadata: Metadata = {
   title: { default: "Ads MCP · noti.vn", template: "%s · Ads MCP" },
   description:
-    "Kết nối tài khoản quảng cáo Meta, OpenAI Ads với Claude, ChatGPT, Gemini qua MCP.",
+    "Kết nối tài khoản quảng cáo Meta, TikTok, Google Ads (gồm YouTube), OpenAI Ads với Claude, ChatGPT, Gemini qua MCP.",
   icons: { icon: "/brand/favicon.png" },
   robots: { index: false, follow: false },
 }

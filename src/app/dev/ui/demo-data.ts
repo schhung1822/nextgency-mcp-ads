@@ -78,6 +78,26 @@ export const DEMO_CONNECTIONS: DemoConnection[] = [
     tokenExpiresAt: daysAhead(300),
     checkedAt: minutes(2),
   },
+  {
+    id: "c7",
+    name: "TikTok Shop VN",
+    platform: "tiktok",
+    owner: "Lan",
+    accounts: 3,
+    status: "active",
+    tokenExpiresAt: null,
+    checkedAt: minutes(9),
+  },
+  {
+    id: "c8",
+    name: "Google MCC tổng (gồm YouTube)",
+    platform: "google_ads",
+    owner: "Thắng",
+    accounts: 5,
+    status: "invalid",
+    tokenExpiresAt: null,
+    checkedAt: minutes(95),
+  },
 ]
 
 export interface DemoLog {
@@ -110,7 +130,7 @@ const STATUSES: LogStatus[] = [
   "pending_confirmation",
   "invalid_request",
 ]
-const PLATFORMS: Platform[] = ["meta", "openai_ads"]
+const PLATFORMS: Platform[] = ["meta", "tiktok", "google_ads", "openai_ads"]
 
 /** Deterministic fake keyset page (newest first). */
 export function demoLogPage(

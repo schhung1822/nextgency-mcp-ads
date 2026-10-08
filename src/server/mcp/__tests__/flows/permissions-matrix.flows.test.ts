@@ -182,6 +182,8 @@ describe.skipIf(!hasDb)("permission matrix (services → endpoint)", { timeout: 
   it("mixed MCP: each platform keeps its OWN permissions (a tool visible through platform A is refused on platform B)", async () => {
     const grants: Partial<Record<Platform, Permission[]>> = {
       meta: ["read", "status", "update"],
+      tiktok: ["read"],
+      google_ads: ["read", "copy", "create"],
       openai_ads: ["read", "delete"],
     }
     const cfg: McpCfg = {

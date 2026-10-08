@@ -23,8 +23,9 @@ Chỉ phiên bản phát hành mới nhất (nhánh `main` / tag `v*` mới nh�
 
 ## Khi nghi ngờ bị lộ thông tin
 1. **Key MCP lộ**: trang MCP → **Bảo mật → Xoay key** (link cũ chết ngay) và xem **Nhật ký MCP** để kiểm tra lượt gọi lạ.
-2. **Token nền tảng lộ**: thu hồi ngay trên Meta/OpenAI, tạo token mới, dán lại vào kết nối.
-3. **`.env` lộ**: xoay `ENCRYPTION_KEYS` (xem `docs/van-hanh.md`), đổi `MCP_KEY_PEPPER` (mọi link MCP chết — xoay key từng MCP), đổi `BETTER_AUTH_SECRET` (mọi phiên bị đăng xuất), đổi `POSTGRES_PASSWORD`, và thu hồi toàn bộ token nền tảng.
+2. **Token nền tảng lộ**: thu hồi ngay trên Meta/TikTok/Google/OpenAI, tạo token mới, dán lại vào kết nối.
+   **Bot token Telegram lộ**: mở @BotFather → `/revoke` để lấy token mới, rồi **Thay token** ở trang kênh Telegram trong Ads MCP.
+3. **`.env` lộ**: xoay `ENCRYPTION_KEYS` (xem `docs/van-hanh.md`), đổi `MCP_KEY_PEPPER` (mọi link MCP chết — xoay key từng MCP), đổi `BETTER_AUTH_SECRET` (mọi phiên bị đăng xuất), đổi `POSTGRES_PASSWORD`, và thu hồi toàn bộ token nền tảng (kể cả bot token Telegram).
 
 ---
 

@@ -28,7 +28,7 @@ import {
   mcpKeyPrefix,
 } from "@/server/crypto/mcp-key"
 
-type Platform = "meta" | "openai_ads"
+type Platform = "meta" | "tiktok" | "google_ads" | "openai_ads"
 type Acc = {
   name: string
   cur: string
@@ -93,7 +93,11 @@ async function addConnection(
     externalId:
       platform === "meta"
         ? `act_${(900_000_000 + i * 7919).toString()}`
-        : `oaa_${(10_000 + i).toString()}`,
+        : platform === "google_ads"
+          ? (1_234_567_000 + i * 101).toString()
+          : platform === "tiktok"
+            ? `7${(300_000_000_000 + i * 137).toString()}`
+            : `oaa_${(10_000 + i).toString()}`,
     name: a.name,
     currency: a.cur,
     timezone:
@@ -334,12 +338,44 @@ async function main() {
     }
   )
 
+  const tiktok = await addConnection(adminId, "tiktok", "TikTok Shop VN", {
+    expiresInDays: null,
+    accounts: [
+      { name: "TikTok Shop — Thời trang", cur: "VND" },
+      { name: "TikTok Shop — Gia dụng", cur: "VND" },
+      { name: "TikTok Live Shopping", cur: "VND" },
+      { name: "TikTok Brand US", cur: "USD" },
+    ],
+  })
+  await addConnection(adminId, "tiktok", "TikTok tạm tắt", {
+    status: "disabled",
+    accounts: [{ name: "TikTok test", cur: "VND", enabled: false }],
+  })
+  const google = await addConnection(
+    adminId,
+    "google_ads",
+    "MCC Google — Noti",
+    {
+      expiresInDays: null,
+      accounts: [
+        { name: "MCC Noti (tài khoản quản lý)", cur: "USD", manager: true },
+        { name: "Search — Khoá học", cur: "VND" },
+        { name: "Performance Max — Ebook", cur: "USD" },
+        { name: "YouTube Ads Thailand", cur: "THB" },
+      ],
+    }
+  )
+
   const sMeta = await addConnection(staffId, "meta", "Lan · Meta cá nhân", {
     expiresInDays: 55,
     accounts: [
       { name: "Shop của Lan", cur: "VND" },
       { name: "Shop Lan 2", cur: "VND" },
     ],
+  })
+  const sTik = await addConnection(staffId, "tiktok", "Lan · TikTok", {
+    expiresInDays: null,
+    accounts: [{ name: "TikTok của Lan", cur: "VND" }],
   })
 
   const readOnly = ["read"]
@@ -403,6 +439,22 @@ async function main() {
       ],
     }
   )
+  await addMcp(adminId, "Đa nền tảng — TikTok + Google Ads (YouTube)", {
+    description: "Theo dõi TikTok Shop và chiến dịch Search / YouTube của MCC Google.",
+    lastUsedMinutesAgo: 35,
+    platforms: [
+      {
+        platform: "tiktok",
+        permissions: noDelete,
+        scopes: [{ conn: tiktok, accounts: [0, 1] }],
+      },
+      {
+        platform: "google_ads",
+        permissions: operate,
+        scopes: [{ conn: google, accounts: "all" }],
+      },
+    ],
+  })
   await addMcp(adminId, "MCP tạm tắt", {
     status: "disabled",
     lastUsedMinutesAgo: 60 * 24 * 9,
@@ -450,6 +502,16 @@ async function main() {
       },
     ],
   })
+  await addMcp(staffId, "Lan · TikTok báo cáo", {
+    lastUsedMinutesAgo: 75,
+    platforms: [
+      {
+        platform: "tiktok",
+        permissions: readOnly,
+        scopes: [{ conn: sTik, accounts: "all" }],
+      },
+    ],
+  })
   // ---- status message + hint (connection detail / list / Overview "Cảnh báo") ----
   // Meta: the adapter embeds its own sentence, the platform hint adds the click path
   await addConnection(adminId, "meta", "Meta — token bị thu hồi", {
@@ -462,6 +524,18 @@ async function main() {
     status: "invalid",
     msg: `API key bị từ chối (401). ${connectionStatus.hint.invalid.openai_ads}`,
     accounts: [{ name: "OpenAI Ads cũ", cur: "USD", status: "unknown" }],
+  })
+  // Google: the adapter embeds its own "Hãy lấy refresh token mới…" sentence, the platform hint adds the click path
+  await addConnection(adminId, "google_ads", "Google Ads — refresh token hết hạn", {
+    status: "invalid",
+    msg: "Refresh token đã hết hạn hoặc bị thu hồi (invalid_grant). Hãy lấy refresh token mới và dán lại.",
+    accounts: [{ name: "Google Ads Hà Nội", cur: "VND" }],
+  })
+  // TikTok: transient failure on a healthy connection
+  await addConnection(adminId, "tiktok", "TikTok — máy chủ đang bận", {
+    status: "active",
+    msg: connectionStatus.message.checkFailed("TikTok đang bận (HTTP 503)."),
+    accounts: [{ name: "TikTok thử lại", cur: "VND" }],
   })
   // transient failure on a healthy connection → the "retry" hint
   await addConnection(adminId, "meta", "Meta — kiểm tra lỗi tạm thời", {

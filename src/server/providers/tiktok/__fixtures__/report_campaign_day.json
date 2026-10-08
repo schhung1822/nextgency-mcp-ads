@@ -1,0 +1,54 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "2026100207221501234567890ABCDEF012",
+  "data": {
+    "page_info": { "page": 1, "page_size": 1000, "total_number": 2, "total_page": 1 },
+    "list": [
+      {
+        "dimensions": { "campaign_id": "1810000000000000001", "stat_time_day": "2026-09-01 00:00:00" },
+        "metrics": {
+          "campaign_name": "Sale thang 10",
+          "spend": "1250000.0",
+          "impressions": "84321",
+          "reach": "60210",
+          "frequency": "1.40",
+          "clicks": "1532",
+          "ctr": "1.82",
+          "cpc": "815.93",
+          "cpm": "14824.30",
+          "conversion": "42",
+          "cost_per_conversion": "29761.90",
+          "complete_payment": "38",
+          "total_complete_payment_rate": "9120000.00",
+          "complete_payment_roas": "7.30",
+          "form": "3",
+          "onsite_form": "5",
+          "messaging_total_conversation_tiktok_direct_message": "11"
+        }
+      },
+      {
+        "dimensions": { "campaign_id": "1810000000000000002", "stat_time_day": "2026-09-01 00:00:00" },
+        "metrics": {
+          "campaign_name": "Brand awareness",
+          "spend": "300000.0",
+          "impressions": "120000",
+          "reach": "95000",
+          "frequency": "1.26",
+          "clicks": "240",
+          "ctr": "0.20",
+          "cpc": "1250.00",
+          "cpm": "2500.00",
+          "conversion": "0",
+          "cost_per_conversion": "0.00",
+          "complete_payment": "0",
+          "total_complete_payment_rate": "0.00",
+          "complete_payment_roas": "0.00",
+          "form": "0",
+          "onsite_form": "0",
+          "messaging_total_conversation_tiktok_direct_message": "0"
+        }
+      }
+    ]
+  }
+}

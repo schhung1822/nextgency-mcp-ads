@@ -70,7 +70,7 @@ export const automation = {
   builder: {
     title: "Bước 2 - Soạn quy tắc: tắt quảng cáo khi CPA vượt ngưỡng",
     description:
-      "Nhập số liệu của bạn, câu lệnh và skill bên dưới tự cập nhật. Dùng đơn vị chính của tiền tệ tài khoản (vd 200000 VND, 12.5 USD).",
+      "Nhập số liệu của bạn, câu lệnh và skill bên dưới tự cập nhật. Quy tắc dùng được cho mọi nền tảng đã kết nối: Meta, TikTok, Google Ads (gồm YouTube), OpenAI Ads. Dùng đơn vị chính của tiền tệ tài khoản (vd 200000 VND, 12.5 USD).",
     modeLabel: "Chế độ",
     modes: {
       report: {
@@ -333,6 +333,7 @@ export const automation = {
     title: "Trước khi bật tự động",
     items: [
       "Số liệu trong ngày của Meta có độ trễ và chuyển đổi được ghi nhận muộn - CPA buổi sáng thường cao hơn thực tế. Đặt chi tiêu tối thiểu đủ lớn hoặc dùng khoảng 7 ngày.",
+      "TikTok cập nhật số liệu chậm khoảng 30 phút, có lúc tới 2 giờ; Google Ads (gồm YouTube) thường chậm 1-3 giờ. Đừng hẹn lịch dày hơn độ trễ này và tránh xét CPA của ngày hôm nay quá sớm.",
       "AI có thể hiểu sai. Chạy chế độ Chỉ báo cáo vài ngày, đối chiếu với Trình quản lý quảng cáo rồi mới chuyển sang Tự tắt.",
       "Ai có link MCP đều dùng được nó. Không dán link vào tác vụ chia sẻ cho người khác.",
     ],

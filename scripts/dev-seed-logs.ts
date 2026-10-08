@@ -97,6 +97,8 @@ async function main() {
       { ownerId: adminId, platform: "meta", name: "BM cũ", credentialsEncrypted: "dev", credentialHint: "EAA…ab", status: "invalid", statusMessage: "Token không hợp lệ hoặc đã bị thu hồi." },
       { ownerId: staffId, platform: "meta", name: "Via Shop VN", credentialsEncrypted: "dev", credentialHint: "EAA…f3", status: "active" },
       { ownerId: staffId, platform: "openai_ads", name: "OpenAI Ads", credentialsEncrypted: "dev", credentialHint: "sk-…k2", status: "active" },
+      { ownerId: adminId, platform: "google_ads", name: "MCC Google", credentialsEncrypted: "dev", credentialHint: "1//…ab", status: "invalid", statusMessage: "Refresh token đã hết hạn hoặc bị thu hồi (invalid_grant)." },
+      { ownerId: staffId, platform: "tiktok", name: "TikTok Shop VN", credentialsEncrypted: "dev", credentialHint: "…f3", status: "active" },
     ])
     .returning({ id: connections.id, platform: connections.platform, ownerId: connections.ownerId })
 
@@ -105,9 +107,15 @@ async function main() {
       connectionId: c.id,
       platform: c.platform,
       externalId:
-        c.platform === "meta" ? `act_10${i}${j}55` : `adacct_dev${i}${j}`,
+        c.platform === "meta"
+          ? `act_10${i}${j}55`
+          : c.platform === "google_ads"
+            ? `12345${i}${j}890`
+            : c.platform === "tiktok"
+              ? `7${i}${j}0001234`
+              : `adacct_dev${i}${j}`,
       name: `${pick(["Shop Thời Trang", "Mỹ Phẩm Hana", "Nội Thất Gỗ"], j)} ${i + 1}`,
-      currency: c.platform === "meta" ? "VND" : "USD",
+      currency: c.platform === "meta" || c.platform === "tiktok" ? "VND" : "USD",
       timezone: "Asia/Ho_Chi_Minh",
       status: "active",
     }))
@@ -120,15 +128,17 @@ async function main() {
       { ownerId: adminId, name: "Báo cáo hằng ngày", keyHash: `dev-${randomBytes(8).toString("hex")}`, keyPrefix: "amcp_dev1", keyEncrypted: "dev", lastClient: "claude-ai" },
       { ownerId: adminId, name: "Vận hành Meta", keyHash: `dev-${randomBytes(8).toString("hex")}`, keyPrefix: "amcp_dev2", keyEncrypted: "dev", lastClient: "ChatGPT" },
       { ownerId: staffId, name: "Lan · Meta + OpenAI", keyHash: `dev-${randomBytes(8).toString("hex")}`, keyPrefix: "amcp_dev3", keyEncrypted: "dev", lastClient: "gemini-cli" },
+      { ownerId: staffId, name: "Lan · TikTok", keyHash: `dev-${randomBytes(8).toString("hex")}`, keyPrefix: "amcp_dev4", keyEncrypted: "dev", lastClient: "claude-code" },
     ])
     .returning({ id: mcpServers.id, name: mcpServers.name, ownerId: mcpServers.ownerId })
 
   // An MCP without platform permission / scope rows looks like "every platform OFF" in the admin UI (Config tab) and
   // serves no account: give each demo MCP the platforms its name promises (all accounts of the owner's connection).
   const grants: Record<string, Record<string, string[]>> = {
-    "Báo cáo hằng ngày": { meta: ["read"], openai_ads: ["read"] },
+    "Báo cáo hằng ngày": { meta: ["read"], google_ads: ["read"], openai_ads: ["read"] },
     "Vận hành Meta": { meta: ["read", "status", "update"] },
     "Lan · Meta + OpenAI": { meta: ["read"], openai_ads: ["read"] },
+    "Lan · TikTok": { tiktok: ["read", "copy"] },
   }
   for (const mcp of mcps) {
     for (const [platform, permissions] of Object.entries(grants[mcp.name] ?? {})) {
@@ -151,6 +161,15 @@ async function main() {
       { name: "meta_list_campaigns", kind: "read" },
       { name: "ads_update_budget", kind: "write" },
       { name: "ads_set_status", kind: "write" },
+    ],
+    google_ads: [
+      { name: "ads_get_report", kind: "read" },
+      { name: "google_ads_run_gaql", kind: "read" },
+    ],
+    tiktok: [
+      { name: "ads_get_report", kind: "read" },
+      { name: "ads_list_objects", kind: "read" },
+      { name: "ads_copy_object", kind: "write" },
     ],
     openai_ads: [
       { name: "ads_get_report", kind: "read" },

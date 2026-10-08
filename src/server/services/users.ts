@@ -11,7 +11,7 @@
 // in that transaction - if the log insert fails, the Better Auth change has already happened (logged as a
 // failure by logFailure).
 import "server-only"
-import { and, count, desc, eq, gt, inArray, isNull, like, max, ne, or, sql } from "drizzle-orm"
+import { and, count, desc, eq, gt, inArray, isNotNull, isNull, like, max, ne, or, sql } from "drizzle-orm"
 import { headers } from "next/headers"
 
 import { auth as tAuth } from "@/lib/i18n/vi/auth"
@@ -36,7 +36,16 @@ import { AuthorizationError, type AppSession } from "@/server/auth/session"
 import { runWithUserCreateContext } from "@/server/auth/user-create-context"
 import { db, type Tx } from "@/server/db/client"
 import { invalidateGrantCache } from "@/server/mcp/grant"
-import { activityLogs, connections, mcpServers, session, twoFactor, user, verification } from "@/server/db/schema"
+import {
+  activityLogs,
+  connections,
+  mcpServers,
+  notificationChannels,
+  session,
+  twoFactor,
+  user,
+  verification,
+} from "@/server/db/schema"
 
 /** pg_advisory_xact_lock keys (arbitrary constants, distinct from scripts/migrate.ts). */
 const SETUP_LOCK = 7272711
@@ -568,6 +577,34 @@ export async function revokeUserSessionsByAdmin(
   }
 }
 
+/**
+ * User removal: Telegram channels the user already deleted (soft-deleted, token wiped) would block the RESTRICT
+ * foreign key, so they are deleted for good (their delivery log cascades) with one activity log each, in their own
+ * transaction. It commits BEFORE Better Auth's removeUser (which deletes the user on another connection: its FK
+ * check would wait on rows deleted by a still-open transaction - a deadlock). Runs while the caller holds the
+ * admin-guard advisory lock, so other user operations stay serialised.
+ */
+async function purgeDeletedChannels(actor: AppSession, target: { id: string; email: string }): Promise<number> {
+  return db.transaction(async (ptx) => {
+    const purged = await ptx
+      .delete(notificationChannels)
+      .where(and(eq(notificationChannels.ownerId, target.id), isNotNull(notificationChannels.deletedAt)))
+      .returning({ id: notificationChannels.id, name: notificationChannels.name })
+    for (const ch of purged) {
+      await logActivity(
+        {
+          actor: actorOf(actor.user),
+          action: "notification_channel.delete",
+          target: { type: "notification_channel", id: ch.id, label: ch.name },
+          metadata: { purged: true, reason: "user.delete", ownerId: target.id, ownerEmail: target.email },
+        },
+        ptx
+      )
+    }
+    return purged.length
+  })
+}
+
 export async function deleteUserByAdmin(
   actor: AppSession,
   input: { userId: string },
@@ -582,14 +619,20 @@ export async function deleteUserByAdmin(
     await withUserGuard(actor, input.userId, "delete", async ({ tx, target }) => {
       // re-checked under the lock (the target may have been promoted meanwhile)
       if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action: "user.delete" }, undefined)
-      // connections/mcp_servers.owner_id are ON DELETE RESTRICT (also soft-deleted rows).
-      const [[c], [m]] = await Promise.all([
+      // connections/mcp_servers/notification_channels.owner_id are ON DELETE RESTRICT (also soft-deleted rows).
+      const [[c], [m], [t]] = await Promise.all([
         tx.select({ n: count() }).from(connections).where(eq(connections.ownerId, target.id)),
         tx.select({ n: count() }).from(mcpServers).where(eq(mcpServers.ownerId, target.id)),
+        tx
+          .select({ n: count() })
+          .from(notificationChannels)
+          .where(and(eq(notificationChannels.ownerId, target.id), isNull(notificationChannels.deletedAt))),
       ])
       const nc = Number(c?.n ?? 0)
       const nm = Number(m?.n ?? 0)
-      if (nc > 0 || nm > 0) throw new UserFacingError(tUsers.errors.ownsResources(nc, nm))
+      const nt = Number(t?.n ?? 0)
+      if (nc > 0 || nm > 0 || nt > 0) throw new UserFacingError(tUsers.errors.ownsResources(nc, nm, nt))
+      await purgeDeletedChannels(actor, target)
       await getAuth().api.removeUser({ body: { userId: target.id }, headers: h })
       await logActivity(
         {

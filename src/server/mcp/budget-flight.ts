@@ -10,9 +10,9 @@ import { parseFlightTime, type Flight } from "./guardrails"
 export const CHILD_PAGE_SIZE = 200
 export const CHILD_MAX_PAGES = 3
 
-/** Platforms whose ad groups carry their own flight / budget under a campaign (Meta ad sets). */
+/** Platforms whose ad groups carry their own flight / budget under a campaign (Meta ad sets, TikTok ad groups). */
 export function adGroupFlightsMatter(platform: Platform): boolean {
-  return platform === "meta"
+  return platform === "meta" || platform === "tiktok"
 }
 
 const GONE = new Set(["ARCHIVED", "DELETED"])
