@@ -88,6 +88,8 @@ export interface ToolSpec<S extends z.ZodObject<any>> {
   output: z.ZodObject<any>
   /** transform args before they are logged / stored (e.g. strip signed URL query strings) */
   logArgs?(args: z.infer<S>): Record<string, unknown>
+  /** tool descriptor `_meta` (e.g. `{ "openai/fileParams": ["file"] }` - ChatGPT file inputs) */
+  meta?: Record<string, unknown>
   handler(args: z.infer<S>, env: ToolEnv): Promise<ToolOutcome>
 }
 
@@ -120,6 +122,7 @@ export function registerToolSpec<S extends z.ZodObject<any>>(server: McpServer, 
       inputSchema: spec.input,
       outputSchema: spec.output,
       annotations: { title: spec.title, ...spec.annotations },
+      ...(spec.meta ? { _meta: spec.meta } : {}),
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (async (args: any, ctx: ServerContext) => runTool(spec, tctx, args as z.infer<S>, ctx)) as never
@@ -239,6 +242,23 @@ export function writeIdempotencyKey(
 }
 
 /**
+ * Spend one unit of the MCP write limit (settings.writeRateLimitPer10Min executed writes per 10 minutes) or throw
+ * write_rate_limited. runWrite calls it for each real execution; writes without the confirm flow (e.g.
+ * drive_sheet_update_rows) call it right before they write.
+ */
+export function admitWrite(grant: McpGrant, o: { confirmable?: boolean } = {}): void {
+  const limit = grant.settings.writeRateLimitPer10Min
+  const d = consumeWriteRate(grant.mcpId, limit)
+  if (d.ok) return
+  throw new McpToolError({
+    code: "write_rate_limited",
+    messageVi: `MCP này đã thực hiện ${limit} thao tác ghi trong 10 phút qua - vượt giới hạn.`,
+    hint: `Thử lại sau khoảng ${Math.ceil(d.retryAfterSec / 60)} phút${o.confirmable ? " (confirm_token vẫn dùng được nếu chưa hết hạn)" : ""}, hoặc nhờ chủ MCP nâng giới hạn.`,
+    logStatus: "rate_limited",
+  })
+}
+
+/**
  * Standard write path: write rate limit → two-step confirmation (when enabled / always for delete) →
  * execute once (deterministic idempotency key) → changes recorded in the call log. Guardrails must be
  * checked by the caller BEFORE this (on both steps).
@@ -263,18 +283,7 @@ export async function runWrite(
     alwaysConfirm: o.alwaysConfirm,
     preview: o.preview,
     // the write quota is spent by real executions only (not by previews, replays of a consumed token or invalid tokens)
-    admit: () => {
-      const limit = env.grant.settings.writeRateLimitPer10Min
-      const d = consumeWriteRate(env.grant.mcpId, limit)
-      if (!d.ok) {
-        throw new McpToolError({
-          code: "write_rate_limited",
-          messageVi: `MCP này đã thực hiện ${limit} thao tác ghi trong 10 phút qua - vượt giới hạn.`,
-          hint: `Thử lại sau khoảng ${Math.ceil(d.retryAfterSec / 60)} phút (confirm_token vẫn dùng được nếu chưa hết hạn), hoặc nhờ chủ MCP nâng giới hạn.`,
-          logStatus: "rate_limited",
-        })
-      }
-    },
+    admit: () => admitWrite(env.grant, { confirmable: true }),
     execute: async (pendingActionId): Promise<StoredOutcome> => {
       const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }))
       // the logs UI ("Trước → Sau") reads only the changes column: never leave it empty for an executed write

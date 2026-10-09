@@ -7,6 +7,7 @@ import {
   type AdsProvider,
   type Capability,
   type CapabilityMode,
+  type MediaRef,
   type MutationResult,
   type Platform,
   type ProviderContext,
@@ -38,6 +39,8 @@ export interface FakeState {
   credentialsSeen: unknown[]
   /** accounts whose getReport throws */
   failingAccounts: Set<string>
+  /** merged into the uploadMedia result (e.g. { processing: true }) */
+  uploadOverride?: Partial<MediaRef>
 }
 
 const CAPS: Record<Capability, CapabilityMode> = {
@@ -301,7 +304,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
     },
     async uploadMedia(ctx, r) {
       record("upload", ctx, r)
-      return { type: r.type, id: "img_1", url: null }
+      return { type: r.type, id: "img_1", url: null, ...state.uploadOverride }
     },
     async lookup() {
       return { items: [{ id: "p1", name: "Page 1" }], warnings: [] }

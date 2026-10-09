@@ -28,9 +28,14 @@ import {
   type McpFormValues,
   type StepErrors,
 } from "@/lib/schemas/mcp-servers"
+import type { McpDriveSourceOption } from "@/lib/schemas/drive"
 import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
+import {
+  DrivePermissionsSection,
+  DriveSourcesSection,
+} from "./drive-sections"
 import { McpCreated } from "./mcp-created"
 import {
   moneyScopeCurrencies,
@@ -102,6 +107,9 @@ export function mapServerErrors(
     } else if (k.startsWith("notificationChannelIds")) {
       errors.notificationChannelIds = msg
       at(1)
+    } else if (k.startsWith("driveSourceIds")) {
+      errors.driveSourceIds = msg
+      at(1)
     } else if (k.startsWith("platforms")) {
       errors[
         k.match(
@@ -130,12 +138,18 @@ export function mapServerErrors(
 export function McpWizard({
   connections,
   channels = [],
+  driveSources = [],
+  drivePublicAvailable = true,
   createAction,
   twoFactorEnabled,
 }: {
   connections: SelectableConnection[]
   /** Telegram channels the user may give the MCP: the user's own channels (admins too) */
   channels?: McpChannelOption[]
+  /** Google Drive sources the MCP may read: company + the user's own (admin: + staff sources) */
+  driveSources?: McpDriveSourceOption[]
+  /** a Drive API key is saved: public Drive links can be read */
+  drivePublicAvailable?: boolean
   createAction: CreateMcpActionFn
   /** current user's 2FA state: the final re-auth asks for the TOTP code too */
   twoFactorEnabled: boolean
@@ -276,12 +290,24 @@ export function McpWizard({
                   errors={errors}
                   channels={channels}
                 />
+                <DriveSourcesSection
+                  values={values}
+                  update={update}
+                  errors={errors}
+                  sources={driveSources}
+                />
               </div>
             )}
             {step === 2 && (
               <div className="flex flex-col gap-6">
                 <PermissionsSection values={values} update={update} />
                 <TelegramPermissionsSection values={values} update={update} />
+                <DrivePermissionsSection
+                  values={values}
+                  update={update}
+                  sources={driveSources}
+                  publicLinksAvailable={drivePublicAvailable}
+                />
               </div>
             )}
             {step === 3 && (

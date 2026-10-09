@@ -1,7 +1,7 @@
 // Parse mcp_servers.settings (jsonb) into McpSettings. Accepts the documented snake_case shape
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
 //    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required,
-//    telegram_tool, telegram_notify_writes, telegram_messages_per_hour })
+//    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields.
 import { z } from "zod"
@@ -29,6 +29,8 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   telegram_tool: "telegramTool",
   telegram_notify_writes: "telegramNotifyWrites",
   telegram_messages_per_hour: "telegramMessagesPerHour",
+  drive_public_links: "drivePublicLinks",
+  drive_sheet_writeback: "driveSheetWriteback",
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -78,5 +80,9 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     telegramTool: n.telegramTool === true,
     telegramNotifyWrites: n.telegramNotifyWrites === true,
     telegramMessagesPerHour: pick(fields.telegramMessagesPerHour, n.telegramMessagesPerHour, d.telegramMessagesPerHour),
+    // Google Drive: ON unless explicitly false (owner decision G6) - MCPs saved before the feature have no key and
+    // get the default without a data migration
+    drivePublicLinks: n.drivePublicLinks !== false,
+    driveSheetWriteback: n.driveSheetWriteback !== false,
   }
 }

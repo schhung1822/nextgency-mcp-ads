@@ -83,6 +83,9 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 - “Tăng ngân sách nhóm Y lên 1 triệu/ngày.” *(bị chặn nếu vượt giới hạn % thay đổi đã cấu hình)*
 - “Nhân bản chiến dịch Z, thêm hậu tố ‘T10’.” *(bản sao luôn ở trạng thái tạm dừng)*
 - “Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team.” *(cần MCP được cấp kênh Telegram và bật “AI được gửi tin”)*
+- “Trong thư mục Drive ‘Creative T10’ có những video nào mới tuần này?” *(cần MCP được cấp thư mục Google Drive — xem mục Google Drive bên dưới)*
+- “Lên quảng cáo TikTok (tạm dừng) cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10, nội dung theo file.”
+- “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet.”
 
 ## Lưu ý theo nền tảng
 - **Meta**: số liệu trong ngày có độ trễ, chuyển đổi được ghi nhận muộn.
@@ -91,12 +94,25 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 - **OpenAI Ads**: không có xoá (chỉ lưu trữ) và không có sao chép gốc của nền tảng.
 
 ## Thông báo Telegram (tuỳ chọn)
-Ads MCP có thể gửi tin vào nhóm/kênh Telegram của bạn:
-1. **Kết nối quảng cáo → Thêm kết nối → Kênh thông báo → Telegram**: dán bot token (tạo bot với **@BotFather**), chat ID của nhóm/kênh (và ID chủ đề nếu nhóm bật Topics) → **Kiểm tra & lưu** → **Gửi tin thử**. Thêm bot vào nhóm/kênh và cấp quyền gửi tin trước khi kiểm tra.
-2. Chọn sự kiện hệ thống muốn nhận: kết nối quảng cáo sắp hết hạn / lỗi / hoạt động lại; quản trị viên nhận thêm thông báo cập nhật phần mềm.
-3. Trong **MCP → Tạo/Sửa MCP**: chọn kênh Telegram, rồi bật **AI được gửi tin** (AI dùng tool `telegram_send_message`, có giới hạn tin/giờ) và/hoặc **Tự báo khi AI thay đổi quảng cáo** (mỗi lần AI bật/tắt, đổi ngân sách, sửa, tạo, sao chép, xoá thành công).
+Ads MCP gửi tin vào nhóm / kênh / chat riêng trên Telegram qua bot của bạn. Hướng dẫn đầy đủ (tạo bot, lấy Chat ID / Thread ID, giới hạn, xử lý lỗi): **[huong-dan-telegram.md](huong-dan-telegram.md)**.
 
-Tin do AI gửi luôn có tiêu đề “🤖 Tin từ AI · MCP <tên>”; AI không bao giờ thấy bot token hay chat ID. Hướng dẫn chi tiết từng bước nằm ngay trong trang thêm kết nối Telegram của app.
+1. **Kết nối quảng cáo → tab Telegram → Thêm kết nối Telegram**: dán bot token (tạo bot với **@BotFather**), Chat ID (và Thread ID nếu nhóm bật Chủ đề), chọn sự kiện hệ thống → **Kiểm tra & lưu** → **Gửi tin thử**. Thêm bot vào nhóm/kênh và cấp quyền gửi tin trước.
+2. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn kết nối Telegram (chỉ kết nối của chủ MCP); bước Quyền bật **AI được gửi tin** và/hoặc **Tự báo khi AI thay đổi quảng cáo** (mặc định tắt); bước Bảo vệ đặt **Giới hạn tin Telegram / giờ**.
+3. Trong AI: “Gửi tóm tắt chi tiêu hôm qua vào nhóm Marketing.” Tin luôn có tiêu đề “🤖 Tin từ AI · MCP <tên>” và dòng ghi nguồn “Ads MCP Simple” ở cuối; AI không bao giờ thấy bot token hay Chat ID.
+
+**Kèm ảnh / video / tệp** (1 tệp mỗi tin, chú thích ≤ 800 ký tự, ảnh ≤ 10 MB, mọi tệp ≤ 50 MB, 20 lượt gửi tệp / 10 phút / MCP): link https công khai tải trực tiếp (mọi AI), tệp đính kèm trong **ChatGPT bản web**, hoặc tệp chữ AI tự viết (CSV/TSV/TXT/MD/JSON ≤ 256 KB). Ảnh do ChatGPT/Gemini tự tạo chưa gửi được. Chi tiết: [huong-dan-telegram.md — Bước 6](huong-dan-telegram.md#bước-6--nhờ-ai-gửi-tin-ảnh-video-tệp).
+
+## Google Drive / Google Sheet (tuỳ chọn)
+AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự lấy file từ Google Drive: bạn chỉ cần nói tên file / thư mục, dán link Drive hoặc trỏ tới một dòng trong Google Sheet. Hướng dẫn đầy đủ (quản trị viên cài đặt, chia sẻ, khai báo, mẫu sheet, câu lệnh mẫu, giới hạn, xử lý lỗi): **[huong-dan-google-drive.md](huong-dan-google-drive.md)**.
+
+1. **Quản trị viên** (một lần): **Cài đặt → Google Drive hệ thống** — dán khoá JSON service account (và API key nếu muốn dùng link Drive công khai).
+2. **Kết nối quảng cáo → tab Google Drive**: chia sẻ thư mục ảnh/video (quyền **Người xem**) hoặc Google Sheet (**Người chỉnh sửa** nếu muốn AI ghi trạng thái) cho **email hệ thống**, rồi **Thêm thư mục / sheet**.
+3. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn thư mục / sheet ở khối **Google Drive**; bước Quyền bật quyền **Tạo mới** cho nền tảng muốn tải ảnh/video lên, giữ **Cho phép dùng link Drive công khai** và **Cho phép ghi trạng thái vào Google Sheet** (mặc định bật).
+4. Trong AI: “Lên quảng cáo TikTok tạm dừng cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10” hoặc “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet”.
+
+- **Ảnh** dùng được cho cả 4 nền tảng (Meta ≤ 30 MB; Google Ads ≤ 5 MB JPEG/PNG/GIF; TikTok ≤ 30 MB JPG/PNG; OpenAI Ads ≤ 20 MB JPEG/PNG/WebP). **Video** (MP4/MOV ≤ 500 MB) chỉ Meta và TikTok: TikTok ≤ 10 MB / Meta ≤ 50 MB xong ngay; lớn hơn được **tải nền** vài phút — nói “kiểm tra video đã tải xong chưa” để AI xem tiến độ.
+- File đã tải lên đúng TKQC trước đó được **dùng lại mã media** (không tải lại) — trừ khi file trên Drive đã thay đổi. Mọi quảng cáo AI tạo đều **tạm dừng**.
+- Tệp đính kèm trong **ChatGPT bản web** cũng tải lên được (video tối đa 10 MB TikTok / 50 MB Meta — lớn hơn hãy đưa lên Google Drive).
 
 ## Khi có lỗi
 | Hiện tượng | Xử lý |
@@ -107,5 +123,9 @@ Tin do AI gửi luôn có tiêu đề “🤖 Tin từ AI · MCP <tên>”; AI k
 | Không thấy tool ghi | MCP chưa cấp quyền tương ứng (Bật/Tắt, Sửa, Sao chép…) hoặc ChatGPT Business chưa *Refresh* |
 | Lệnh dài bị ngắt sau 125 giây (lỗi 524) | Tên miền đi qua Cloudflare proxy → chia nhỏ yêu cầu, hoặc chuyển tên miền sang *DNS only* (cần chứng chỉ công khai) - xem [deploy-vps.md §9.7](deploy-vps.md#97-giới-hạn-thời-gian-125-giây-và-mcp) |
 | Claude không thêm được connector | Kiểm tra bản ghi A IPv4, chứng chỉ HTTPS, tường lửa cho dải `160.79.104.0/21` |
+| Không thấy tool `drive_*` | MCP chưa được cấp thư mục / sheet Google Drive và (link công khai tắt hoặc chưa có API key hệ thống, hoặc MCP không có quyền Tạo mới); `drive_sheet_update_rows` chỉ có khi sheet bật ghi trạng thái + MCP bật “ghi trạng thái vào Google Sheet” |
+| “Không tìm thấy file trong các thư mục được cấp” | File không nằm trong thư mục đã cấp cho MCP và không phải link công khai → kiểm tra bằng `drive_list_sources`, xem bảng lỗi trong [huong-dan-google-drive.md — Phần 8](huong-dan-google-drive.md#phần-8--xử-lý-lỗi-thường-gặp) |
+| Không thấy tool `telegram_send_message` / AI báo lỗi gửi Telegram | MCP chưa gán kết nối Telegram hoặc chưa bật **AI được gửi tin**; lỗi gửi tin / tệp: xem [huong-dan-telegram.md — Xử lý lỗi](huong-dan-telegram.md#xử-lý-lỗi-thường-gặp) |
+| Meta/TikTok báo không tải được video Drive | Tên miền đi qua Cloudflare đang challenge `/dl/*` → [deploy-vps.md §9.2 bước 10](deploy-vps.md#92-cấu-hình-cloudflare-dashboard) |
 
 Mọi lượt gọi đều được ghi ở **Nhật ký → Nhật ký MCP** (client, tool, tham số đã che bí mật, kết quả, giá trị trước → sau).

@@ -21,6 +21,7 @@ import {
   parseAmountText,
   parseIpList,
   pruneChannelsToSelectable,
+  pruneDriveSourcesToSelectable,
   pruneToSelectable,
   summarizeScopeIssues,
   toStoredMcpSettings,
@@ -163,6 +164,8 @@ describe("mcp-servers schemas", () => {
       telegram_tool: false,
       telegram_notify_writes: false,
       telegram_messages_per_hour: 20,
+      drive_public_links: true,
+      drive_sheet_writeback: true,
     })
   })
 
@@ -724,5 +727,63 @@ describe("mandatory daily caps", () => {
     v.maxDailyBudget = {}
     v.maxLifetimeBudget = { VND: "100.000.000" }
     expect(Object.keys(validateProtectionStep(v, { requiredCapCurrencies: ["VND"] }))).toEqual(["maxDailyBudget.VND"])
+  })
+})
+
+describe("Google Drive in the MCP config", () => {
+  const base = {
+    twoStepConfirm: true,
+    budgetChangeMaxPct: 50,
+    maxDailyBudget: {},
+    rateLimitPerMin: 60,
+    allowedIps: [],
+  }
+
+  it("settings: both switches default ON, explicit false kept, stored snake_case", () => {
+    const d = mcpSettingsSchema.parse(base)
+    expect([d.drivePublicLinks, d.driveSheetWriteback]).toEqual([true, true])
+    const s = toStoredMcpSettings(mcpSettingsSchema.parse({ ...base, drivePublicLinks: false, driveSheetWriteback: false }))
+    expect([s.drive_public_links, s.drive_sheet_writeback]).toEqual([false, false])
+  })
+
+  it("driveSourceIds: optional, uuids only, at most 50, de-duplicated by the form", () => {
+    const cfg = formValuesToConfig(defaultMcpFormValues())
+    expect(cfg.driveSourceIds).toEqual([])
+    const ids = mcpConfigSchema.shape.driveSourceIds
+    expect(ids.safeParse(undefined).success).toBe(true)
+    expect(ids.safeParse([CONN]).success).toBe(true)
+    expect(ids.safeParse(["x"]).success).toBe(false)
+    const many = Array.from({ length: 51 }, (_, i) => `0199a5c8-0000-7000-8000-${String(i).padStart(12, "0")}`)
+    expect(ids.safeParse(many).success).toBe(false)
+    const v = defaultMcpFormValues()
+    expect([v.driveSourceIds, v.drivePublicLinks, v.driveSheetWriteback]).toEqual([[], true, true])
+    v.driveSourceIds = [CONN, CONN]
+    v.drivePublicLinks = false
+    const out = formValuesToConfig(v)
+    expect(out.driveSourceIds).toEqual([CONN])
+    expect(out.settings.drivePublicLinks).toBe(false)
+    expect(out.settings.driveSheetWriteback).toBe(true)
+    expect(pruneDriveSourcesToSelectable(v, []).driveSourceIds).toEqual([])
+    expect(pruneDriveSourcesToSelectable(v, [{ id: CONN }])).toBe(v)
+  })
+
+  it("configToFormValues: rows saved before the feature read the switches as ON", () => {
+    const v = configToFormValues({
+      name: "x",
+      description: null,
+      platforms: [],
+      settings: { ...base },
+      expiresAt: null,
+    })
+    expect([v.driveSourceIds, v.drivePublicLinks, v.driveSheetWriteback]).toEqual([[], true, true])
+    const w = configToFormValues({
+      name: "x",
+      description: null,
+      platforms: [],
+      settings: { ...base, drivePublicLinks: false },
+      expiresAt: null,
+      driveSourceIds: [CONN],
+    })
+    expect([w.driveSourceIds, w.drivePublicLinks]).toEqual([[CONN], false])
   })
 })

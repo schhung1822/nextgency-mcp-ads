@@ -473,6 +473,7 @@ sh deploy/cloudflare/update-cloudflare-ips.sh && docker compose restart caddy
 7. **Security → Bots**: **tắt Bot Fight Mode** (gói Free). Cloudflare ghi rõ Bot Fight Mode **không thể** bỏ qua bằng WAF custom rule hay Page Rule, và có thể challenge lưu lượng API. AI client (Claude, ChatGPT, Gemini) không vượt được challenge JavaScript nên sẽ lỗi. Gói Pro trở lên dùng *Super Bot Fight Mode* và tạo rule Skip ở bước 8.
 8. **Security → WAF → Custom rules → Create rule** "Ads MCP - skip /mcp": khi `URI Path starts with /mcp/` → action **Skip** → chọn *All managed rules*, *All rate limiting rules*, *All Super Bot Fight Mode rules* (nếu có). Nội dung quảng cáo trong lệnh MCP dễ bị luật WAF nhận nhầm là tấn công; `/mcp/` đã có key 256-bit + giới hạn tốc độ riêng của app.
 9. Không bật **Under Attack Mode** cho tên miền này (mọi request MCP sẽ bị challenge).
+10. **Video từ Google Drive** (link tạm `https://mcp.congty.vn/dl/<token>/<tên file>`, chỉ dùng khi bật tính năng Google Drive): máy chủ Meta/TikTok tự tải video từ đường dẫn này nên nó cần được đối xử **giống `/mcp/`**: thêm điều kiện `or URI Path starts with /dl/` vào Configuration Rule ở bước 6 (Browser Integrity Check: Off; *Response Body Buffering* = None nếu gói có) và vào WAF custom rule **Skip** ở bước 8 (gói Pro trở lên); Bot Fight Mode (bước 7) và Under Attack Mode (bước 9) phải tắt. **Không** tạo rule "Cache Everything" cho `/dl/*` (app trả `Cache-Control: no-store`; Cache Rule ở bước 5 đã bypass). Giới hạn 100 MB của Cloudflare chỉ áp cho **request**, không cho phản hồi, nên video lớn vẫn đi qua được (chưa thử thật với video 200–500 MB). Link tạm có token 256-bit, hết hạn 60 phút, giới hạn lượt tải và luồng riêng của app.
 
 ### 9.3 Cấu hình máy chủ
 ```bash
@@ -550,6 +551,7 @@ Giữ `CADDY_CLIENT_IP=cloudflare` nhưng `CADDY_TLS=auto`. Ưu điểm: bật/t
 | 526 | Chứng chỉ origin không hợp lệ | Full (strict) với chứng chỉ sai tên miền/hết hạn, quên đặt `CADDY_TLS=cloudflare-origin` | Kiểm tra 9.3 |
 | Vòng lặp chuyển hướng | SSL mode *Flexible* | Đổi sang Full (strict) |
 | AI báo lỗi 403/challenge khi gọi MCP | Bot Fight Mode, WAF, Under Attack | 9.2 bước 6-9 |
+| AI báo Meta/TikTok không tải được video từ Google Drive (video nhỏ qua link `/dl/…`) | Bot Fight Mode, WAF, Browser Integrity Check hoặc Under Attack challenge `/dl/*` | 9.2 bước 10 |
 | Nhật ký ghi IP Cloudflare | Thiếu `CADDY_CLIENT_IP=cloudflare` | Sửa `.env` → `docker compose up -d --no-build` |
 
 **Cloudflare Tunnel (cloudflared):** đã được hỗ trợ chính thức thành **phương án D**, mục [10b](#10b-phương-án-d---cloudflare-tunnel). Tunnel đi qua Caddy của dự án (cấu hình `CADDY_CLIENT_IP=tunnel`) nên IP thật được ghi đúng; không dùng file `client-ip-cloudflare.caddy`/AOP của phương án B cho tunnel.
@@ -778,7 +780,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://mcp.congty.vn/mcp/khong-ton-tai
 ### 10b.7 Cấu hình Cloudflare cho tên miền
 Làm các bước của 9.2 **trừ** bước 1 (DNS: bản ghi CNAME đã do tunnel tạo, đừng đổi sang A) và bước 3 (không cần chứng chỉ Origin CA):
 - **SSL/TLS → Edge Certificates:** bật *Always Use HTTPS*, *Minimum TLS Version* = 1.2. Chế độ mã hoá SSL/TLS của zone không ảnh hưởng tới đường tunnel; giữ **Full (strict)**, không chọn *Flexible*.
-- Cache Rule bypass, Configuration Rule cho `/mcp/` (Rocket Loader, Email Obfuscation, Browser Integrity Check: Off; *Response Body Buffering* = None nếu gói có), tắt **Bot Fight Mode** (gói Free), WAF custom rule **Skip** cho `/mcp/`, không bật Under Attack Mode: y như 9.2 bước 5-9.
+- Cache Rule bypass, Configuration Rule cho `/mcp/` (Rocket Loader, Email Obfuscation, Browser Integrity Check: Off; *Response Body Buffering* = None nếu gói có), tắt **Bot Fight Mode** (gói Free), WAF custom rule **Skip** cho `/mcp/`, không bật Under Attack Mode: y như 9.2 bước 5-9. Dùng Google Drive: áp cả cho `/dl/` (9.2 bước 10).
 - **Không** bật Managed Transform *Remove visitor IP headers*: nó xoá `CF-Connecting-IP`, app sẽ thấy mọi khách là IP của container cloudflared và khoá đăng nhập gộp chung. Nếu bật *Pseudo IPv4*, chọn *Add header*, không chọn *Overwrite headers* (ghi đè IP thật của khách IPv6 bằng IPv4 giả).
 - Không cần AOP (9.5) hay luật `DOCKER-USER` (9.6): VPS không mở cổng nào để Cloudflare hay ai khác gọi vào.
 
@@ -788,7 +790,7 @@ Access thêm một lớp đăng nhập của Cloudflare (mã OTP qua email, Goog
 **Lợi ích:** chặn dò mật khẩu và khai thác giao diện từ người ngoài; có log truy cập của Cloudflare.
 
 **Rủi ro và giới hạn:**
-- AI client (Claude, ChatGPT, Gemini) **không đăng nhập Access được**, nên bắt buộc **Bypass** cho `/mcp/*` và `/.well-known/*` (AI client dò cấu hình OAuth ở `/.well-known/...`; bị chuyển sang trang đăng nhập Access thì kết nối MCP có thể lỗi). `/mcp/*` vẫn được bảo vệ bằng key 256 bit, giới hạn tốc độ và allowlist IP của app.
+- AI client (Claude, ChatGPT, Gemini) **không đăng nhập Access được**, nên bắt buộc **Bypass** cho `/mcp/*` và `/.well-known/*` (AI client dò cấu hình OAuth ở `/.well-known/...`; bị chuyển sang trang đăng nhập Access thì kết nối MCP có thể lỗi). `/mcp/*` vẫn được bảo vệ bằng key 256 bit, giới hạn tốc độ và allowlist IP của app. Dùng Google Drive: máy chủ Meta/TikTok cũng không đăng nhập được → **Bypass** thêm `/dl/*` (link tạm video, token 256 bit, hết hạn 60 phút).
 - Bypass tắt hoàn toàn Access cho đường dẫn đó và không ghi log Access. *Service Auth* cần service token mà AI client không gửi được.
 - Nhân viên đăng nhập 2 lần (Access rồi app). Giám sát `/api/health` từ bên ngoài cần thêm Bypass cho `/api/health`.
 - Quên Bypass = MCP ngừng hoạt động với mọi AI. Kiểm tra lại sau mỗi lần sửa policy.
@@ -797,6 +799,7 @@ Access thêm một lớp đăng nhập của Cloudflare (mã OTP qua email, Goog
 1. **Create new application → Self-hosted** (tên mới: *Self-hosted and private*) → Public hostname `mcp.congty.vn`, Path để trống → policy **Allow**, Include: *Emails ending in* `@congty.vn` (hoặc danh sách email) → lưu.
 2. Ứng dụng thứ hai, cùng hostname, Path `mcp/*` → policy action **Bypass**, Include **Everyone**.
 3. Ứng dụng thứ ba, Path `.well-known/*` → **Bypass**, **Everyone** (thêm `api/health` nếu dùng giám sát ngoài).
+4. Dùng Google Drive: ứng dụng thứ tư, Path `dl/*` → **Bypass**, **Everyone**.
 
 Đường dẫn cụ thể hơn được ưu tiên và không kế thừa policy của ứng dụng gốc. **Không** bật *Protect with Access* trong cài đặt route của tunnel (cloudflared sẽ đòi JWT của Access cho mọi request, kể cả `/mcp/`). Kiểm tra:
 ```bash
@@ -836,6 +839,7 @@ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://mcp.congty.vn/.
 | Nhật ký ghi IP `172.x.x.x` cho mọi người, mọi người bị khoá đăng nhập cùng lúc | `CADDY_CLIENT_IP` chưa là `tunnel`, hoặc bật *Remove visitor IP headers* | Sửa `.env` → `docker compose up -d --no-build`; tắt managed transform (10b.7) |
 | 524 sau khoảng 125 giây | Lệnh MCP quá dài | 9.7, 10b.9 |
 | AI báo 403 / challenge / không thêm được connector | Bot Fight Mode, WAF, Under Attack, hoặc Access chưa Bypass `/mcp/*`, `/.well-known/*` | 10b.7, 10b.8 |
+| Meta/TikTok không tải được video từ Google Drive (link `/dl/…`) | Bot Fight Mode / WAF / challenge trên `/dl/*`, hoặc Access chưa Bypass `/dl/*` | 9.2 bước 10, 10b.8 |
 | Thêm route báo *record already exists* | Còn bản ghi DNS cũ cùng tên | Xoá bản ghi cũ trong **DNS → Records** (10b.3 bước 4) |
 
 Tài liệu xử lý lỗi tunnel của Cloudflare: <https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/troubleshoot-tunnels/common-errors/>.

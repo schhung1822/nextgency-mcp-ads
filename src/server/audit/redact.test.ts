@@ -141,3 +141,45 @@ describe("redact Telegram bot token", () => {
     expect(redactString(keep)).toBe(keep)
   })
 })
+
+describe("redact Google Drive secrets", () => {
+  const relayToken = "adr_" + "Ab3_-x".repeat(7) + "q"
+  const apiKey = "AIza" + "SyA1b2C3d4E5f6G7h8I9j0K_L-M3n4O5p6Q"
+  it("redacts relay tokens in a /dl/ URL and Google API keys anywhere", () => {
+    expect(apiKey).toHaveLength(39)
+    const s = redactString(
+      `fetch https://ads.example.vn/dl/${relayToken}/video.mp4 failed; key ${apiKey}; url https://www.googleapis.com/drive/v3/files/1?key=${apiKey}&alt=media`
+    )
+    expect(s).not.toContain(relayToken.slice(4, 24))
+    expect(s).toContain("/dl/adr_…[redacted]/video.mp4")
+    expect(s).not.toContain(apiKey.slice(4, 20))
+    expect(s).toContain("AIza…[redacted]")
+    expect(redact({ note: `k=${apiKey}` })).toEqual({ note: "k=AIza…[redacted]" })
+  })
+  it("keeps ordinary text, Drive file ids and short look-alikes", () => {
+    const keep = "file 1AbCdEfGhIjKlMnOpQrStUvWxYz012345 adr_short AIzaShort Drive folder adr"
+    expect(redactString(keep)).toBe(keep)
+  })
+  it("redacts resource keys in Drive links (resourcekey= / resource_key= / resource-key=) but keeps the file id", () => {
+    const rk = "0-AbCdEfGhIjKlMnOpQrStUv"
+    for (const param of ["resourcekey", "resourceKey", "resource_key", "resource-key"]) {
+      const s = redactString(`https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrSt/view?usp=sharing&${param}=${rk}#x`)
+      expect(s, param).not.toContain(rk)
+      expect(s, param).toContain(`${param}=[redacted]#x`)
+      expect(s, param).toContain("/file/d/1AbCdEfGhIjKlMnOpQrSt/view?usp=sharing&")
+    }
+    expect(redactString(`?resourcekey=${rk}`)).toBe("?resourcekey=[redacted]")
+    expect(redact({ link: `https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrSt?resourcekey=${rk}` })).toEqual({
+      link: "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrSt?resourcekey=[redacted]",
+    })
+    // object keys holding resource keys
+    expect(redact({ resourceKey: rk, resourceKeys: rk, "X-Goog-Drive-Resource-Keys": `1AbCdEfGhIjKlMnOpQrSt/${rk}`, fileId: "1AbCdEfGhIjKlMnOpQrSt" })).toEqual({
+      resourceKey: "[redacted]",
+      resourceKeys: "[redacted]",
+      "X-Goog-Drive-Resource-Keys": "[redacted]",
+      fileId: "1AbCdEfGhIjKlMnOpQrSt",
+    })
+    // look-alike parameter names stay
+    expect(redactString("?resourcekeyword=abc&noresourcekey=1")).toBe("?resourcekeyword=abc&noresourcekey=1")
+  })
+})

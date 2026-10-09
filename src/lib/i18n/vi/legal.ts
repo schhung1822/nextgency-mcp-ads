@@ -1,7 +1,7 @@
 // Chuỗi giao diện - nhóm "legal": 3 trang công khai /privacy, /terms, /data-deletion (tiếng Việt trước, bản tiếng
 // Anh cho người duyệt app của Meta/TikTok/Google/OpenAI ở cuối trang) + khối "Liên kết cho ứng dụng" ở sidebar.
 // Nội dung phải khớp hệ thống thật (01-product-spec, 05-security, 11-meta-pages, 14-telegram-notifications,
-// services/connections.ts).
+// 15-google-drive-media, services/connections.ts).
 // Đơn vị vận hành (bên kiểm soát dữ liệu) = tổ chức tự cài đặt hệ thống; noti.vn chỉ là nhà phát triển phần mềm.
 import type { LegalInfo } from "@/lib/legal"
 
@@ -54,6 +54,9 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Người dùng cũng có thể thêm kênh thông báo Telegram (bot Telegram do chính họ tạo) để nhận tin khi trợ lý AI thay đổi quảng cáo, khi kết nối quảng cáo sắp hết hạn hoặc bị lỗi, khi có bản cập nhật phần mềm, hoặc khi trợ lý AI được phép gửi tin."
           ),
           p(
+            "Người dùng cũng có thể khai báo thư mục Google Drive và Google Sheet (bằng cách chia sẻ chúng cho tài khoản dịch vụ - service account - của Hệ thống) để trợ lý AI lấy ảnh, video quảng cáo tải lên tài khoản quảng cáo, đọc kế hoạch creative trong sheet và ghi trạng thái ngược vào sheet."
+          ),
+          p(
             "Không có đăng ký công khai: chỉ người được quản trị viên cấp tài khoản mới đăng nhập được. Hệ thống không dùng tính năng “Đăng nhập bằng Facebook”."
           ),
         ],
@@ -67,6 +70,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Thông tin truy cập nền tảng quảng cáo: access token Meta (kèm App ID, App Secret nếu người dùng nhập); access token TikTok (kèm App ID, App Secret); thông tin Google Ads (OAuth client ID, client secret và refresh token, hoặc tệp khoá JSON của service account, kèm ID tài khoản quản lý nếu có); API key OpenAI Ads. Chúng được mã hoá AES-256-GCM trước khi lưu, không bao giờ hiển thị lại (giao diện chỉ hiện 4 ký tự cuối), không được ghi vào nhật ký và không bao giờ được gửi cho trợ lý AI.",
             "Dữ liệu quảng cáo: danh sách tài khoản quảng cáo (tên, ID, tiền tệ, múi giờ, trạng thái) được lưu để phân quyền. Chiến dịch (kể cả chiến dịch video YouTube chạy qua Google Ads), nhóm quảng cáo, quảng cáo, từ khoá và chỉ số hiệu quả được lấy trực tiếp từ Meta Marketing API, TikTok API for Business, Google Ads API và OpenAI Ads API mỗi khi người dùng yêu cầu, không được lưu thành kho dữ liệu riêng.",
             "Kênh thông báo Telegram: bot token (mã hoá AES-256-GCM như trên, giao diện chỉ hiện 4 ký tự cuối, không ghi vào nhật ký, không gửi cho trợ lý AI), chat ID, tên nhóm/kênh, ID chủ đề (nếu có), tên bot và các loại sự kiện đã đăng ký. Mỗi lần gửi tin được ghi nhật ký gửi (thời gian, nguồn, loại sự kiện, trạng thái, mã lỗi và đoạn xem trước tối đa 300 ký tự đã che thông tin bí mật).",
+            "Google Drive và Google Sheet: khoá JSON của service account Google và API key Google (mã hoá AES-256-GCM như trên, giao diện chỉ hiện 4 ký tự cuối, không ghi vào nhật ký, không gửi cho trợ lý AI); email của service account (không bí mật, hiển thị để mọi người chia sẻ thư mục); danh sách thư mục / sheet đã khai báo (mã và tên trên Google Drive, phạm vi công ty / riêng, người khai báo, cấu hình cột, trạng thái kiểm tra). Nội dung file ảnh / video và các ô của sheet chỉ được đọc khi người dùng hoặc trợ lý AI yêu cầu; file được chuyển thẳng từ Google Drive tới nền tảng quảng cáo, không lưu trên máy chủ. Hệ thống lưu mã file và mã media đã tải lên tài khoản quảng cáo (để dùng lại), đường dẫn tạm cho nền tảng tải video (mã bí mật, hết hạn sau 60 phút) và trạng thái các lượt tải video ở chế độ nền. Với sheet được bật ghi, Hệ thống chỉ ghi vào các cột trạng thái / kết quả đã khai báo.",
             "Dữ liệu Trang Facebook (chỉ đọc): danh sách Trang mà token được cấp quyền (tên, ID, danh mục, ảnh đại diện, số người theo dõi) được lưu để phân quyền. Bài viết và chỉ số của Trang được đọc qua Graph API khi người dùng yêu cầu. Hệ thống không đăng, sửa, xoá bài viết và không đọc nội dung bình luận hay tin nhắn.",
             "Nhật ký: nhật ký thao tác của nhân sự (thời gian, người thực hiện, hành động, đối tượng, địa chỉ IP, thiết bị) và nhật ký từng lệnh MCP (thời gian, ứng dụng AI, địa chỉ IP, công cụ được gọi, tham số và tóm tắt kết quả, giá trị trước và sau với thao tác ghi). Thông tin bí mật được che trước khi ghi và dung lượng mỗi bản ghi có giới hạn.",
             "Dữ liệu kỹ thuật tạm thời: bộ đếm chống dò mật khẩu và giới hạn tần suất (theo email, địa chỉ IP), các thao tác đang chờ xác nhận 2 bước. Chúng tự động bị xoá khi hết hạn."
@@ -81,6 +85,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Xác thực người dùng, phân quyền và bảo vệ tài khoản.",
             "Thực hiện đúng yêu cầu của người dùng: xem báo cáo, bật/tắt, sửa, sao chép, tạo mới quảng cáo; đọc bài viết và chỉ số Trang.",
             "Gửi thông báo tới nhóm/kênh Telegram mà người dùng đã cấu hình, đúng các sự kiện họ đã bật.",
+            "Lấy ảnh, video từ Google Drive để tải lên tài khoản quảng cáo và cập nhật trạng thái trong Google Sheet theo yêu cầu của người dùng.",
             "Ghi nhật ký để kiểm soát thao tác, điều tra sự cố và phát hiện lạm dụng.",
             "Vận hành, bảo trì và cập nhật Hệ thống."
           ),
@@ -95,7 +100,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
         blocks: [
           ul(
             "Cần thiết để cung cấp công cụ mà nhân sự sử dụng trong công việc.",
-            "Sự đồng ý của người dùng: người dùng chủ động kết nối tài khoản quảng cáo, Trang, kênh Telegram và cấp quyền cho token; có thể rút lại bất cứ lúc nào (mục 8).",
+            "Sự đồng ý của người dùng: người dùng chủ động kết nối tài khoản quảng cáo, Trang, kênh Telegram, chia sẻ thư mục / sheet Google Drive và cấp quyền cho token; có thể rút lại bất cứ lúc nào (mục 8).",
             "Lợi ích chính đáng của Đơn vị vận hành trong việc bảo vệ Hệ thống và tài sản quảng cáo (nhật ký, chống dò mật khẩu).",
             "Nghĩa vụ theo quy định của pháp luật, khi có."
           ),
@@ -111,6 +116,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
           ul(
             "Meta Platforms, TikTok, Google và OpenAI: Hệ thống gọi API của họ bằng token, khoá hoặc API key của bạn, chỉ khi cần để thực hiện yêu cầu. Dữ liệu phía nền tảng tuân theo chính sách quyền riêng tư của Meta, TikTok, Google và OpenAI.",
             "Telegram: nếu bạn thêm kênh thông báo, Hệ thống gửi tin qua Telegram Bot API bằng bot token của bạn tới nhóm/kênh bạn chọn. Tin có thể chứa tên MCP, tên và ID tài khoản quảng cáo, tên đối tượng quảng cáo, thay đổi trạng thái/ngân sách, trạng thái kết nối, thông tin phiên bản phần mềm và nội dung do trợ lý AI soạn (chỉ khi bạn cho phép). Tin không bao giờ chứa token, API key hay đường dẫn MCP. Mọi thành viên của nhóm/kênh đó đều đọc được tin; tin trên Telegram tuân theo chính sách quyền riêng tư của Telegram.",
+            "Google Drive và Google Sheets (Google): Hệ thống gọi Google Drive API và Google Sheets API bằng service account hoặc API key do Đơn vị vận hành (hoặc chính bạn) tạo, chỉ với thư mục / sheet đã được chia sẻ cho service account hoặc file đã chia sẻ công khai “Bất kỳ ai có đường liên kết”. Ảnh, video được chuyển tiếp tới nền tảng quảng cáo bạn chọn (Meta, TikTok, Google, OpenAI); với video, nền tảng tải qua một đường dẫn tạm có mã bí mật trên tên miền của Hệ thống. Trợ lý AI chỉ nhận mã file, tên, kích thước và thông số - không nhận khoá, API key hay đường dẫn tạm. Dữ liệu trên Google tuân theo chính sách quyền riêng tư của Google.",
             "Trợ lý AI mà bạn kết nối (Claude, ChatGPT, Gemini…): khi bạn thêm đường dẫn MCP vào ứng dụng AI, trợ lý chỉ nhận dữ liệu bạn yêu cầu thông qua các công cụ MCP, trong phạm vi tài khoản, Trang và quyền đã cấp cho đường dẫn đó; trợ lý không bao giờ nhận token hay API key. Nội dung cuộc trò chuyện do nhà cung cấp AI xử lý theo điều khoản của họ.",
             "Máy chủ có thể tự kiểm tra bản cập nhật phần mềm (GitHub) và tải thông báo hệ thống từ noti.vn. Các yêu cầu này không gửi kèm dữ liệu người dùng hay dữ liệu quảng cáo.",
             "Cơ quan nhà nước có thẩm quyền, khi pháp luật yêu cầu."
@@ -130,7 +136,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
           ul(
             "Token, API key, khoá service account, bot token Telegram và đường dẫn MCP được mã hoá AES-256-GCM; khoá mã hoá được giữ tách khỏi cơ sở dữ liệu.",
             "Mật khẩu được băm một chiều; hỗ trợ xác thực 2 bước (TOTP); tạm khoá khi nhập sai nhiều lần.",
-            "Phân quyền theo vai trò Quản trị viên / Nhân viên; nhân viên chỉ thấy kết nối, kênh Telegram và MCP của chính mình.",
+            "Phân quyền theo vai trò Quản trị viên / Nhân viên; nhân viên chỉ thấy kết nối, kênh Telegram và MCP của chính mình; thư mục / sheet Google Drive riêng chỉ chủ sở hữu và quản trị viên thấy.",
             "Thao tác ghi do trợ lý AI đề xuất có thể yêu cầu xác nhận 2 bước và bị giới hạn ngân sách; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng.",
             "Đường dẫn MCP sai, đã tắt hoặc hết hạn không trả về dữ liệu."
           ),
@@ -149,6 +155,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Token và API key: tới khi kết nối bị xoá hoặc được thay token; khi xoá kết nối, bản mã hoá của token bị ghi đè ngay.",
             "Bot token Telegram: tới khi kênh thông báo bị xoá hoặc được thay token; khi xoá kênh, Hệ thống ngừng gửi tin và không dùng token đó nữa.",
             `Nhật ký gửi tin Telegram: giữ theo thời hạn của nhật ký MCP (${c.retentionMcpMonths} tháng), sau đó tự động bị xoá.`,
+            "Google Drive: khoá service account và API key giữ tới khi bị xoá hoặc thay; thư mục / sheet đã khai báo giữ tới khi bị xoá; đường dẫn tạm cho video hết hạn sau 60 phút và bị xoá sau 24 giờ; lượt tải video ở chế độ nền bị xoá sau 30 ngày; mã media đã tải lên giữ để dùng lại tới khi tài khoản quảng cáo bị xoá khỏi Hệ thống. File trên Google Drive không bị Hệ thống sao chép hay lưu lại.",
             "Tài khoản nhân sự: tới khi quản trị viên xoá tài khoản.",
             "Phiên đăng nhập, bộ đếm bảo mật, thao tác chờ xác nhận: tự động xoá khi hết hạn.",
             "Dữ liệu quảng cáo và Trang lấy từ nền tảng: không lưu lâu dài, ngoài danh sách tài khoản, Trang và phần tóm tắt trong nhật ký."
@@ -162,7 +169,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
           ul(
             "Xem và sửa thông tin tài khoản của mình trong trang Tài khoản; yêu cầu Đơn vị vận hành cung cấp bản sao dữ liệu về bạn.",
             `Yêu cầu xoá dữ liệu: làm theo Hướng dẫn xoá dữ liệu tại ${c.baseUrl}/data-deletion.`,
-            "Rút lại quyền truy cập: xoá kết nối trong Hệ thống, thu hồi token hoặc API key, hoặc gỡ ứng dụng khỏi tài khoản Facebook, TikTok For Business hay tài khoản Google. Sau đó Hệ thống không truy cập được dữ liệu nền tảng của bạn nữa. Với Telegram: xoá kênh thông báo trong Hệ thống và/hoặc thu hồi bot token bằng @BotFather (lệnh /revoke).",
+            "Rút lại quyền truy cập: xoá kết nối trong Hệ thống, thu hồi token hoặc API key, hoặc gỡ ứng dụng khỏi tài khoản Facebook, TikTok For Business hay tài khoản Google. Sau đó Hệ thống không truy cập được dữ liệu nền tảng của bạn nữa. Với Telegram: xoá kênh thông báo trong Hệ thống và/hoặc thu hồi bot token bằng @BotFather (lệnh /revoke). Với Google Drive: bỏ chia sẻ thư mục / sheet với email service account trên Google Drive, xoá thư mục / sheet trong Hệ thống, hoặc (quản trị viên) xoá khoá service account / API key trong Google Cloud.",
             "Phản đối hoặc yêu cầu hạn chế xử lý, khiếu nại theo quy định của pháp luật."
           ),
         ],
@@ -218,6 +225,9 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Users can also add a Telegram notification channel (a Telegram bot they create themselves) to receive messages when an AI assistant changes ads, when an ad connection is about to expire or fails, when a software update is available, or when the AI assistant is allowed to send messages."
           ),
           p(
+            "Users can also register Google Drive folders and Google Sheets (by sharing them with the System’s service account) so the AI assistant can take ad images and videos from them, upload them to ad accounts, read a creative plan in a sheet and write status back to that sheet."
+          ),
+          p(
             "There is no public sign-up: only people given an account by an administrator can sign in. The System does not use “Login with Facebook”."
           ),
         ],
@@ -231,6 +241,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Ad platform credentials: Meta access tokens (plus App ID and App Secret if entered); TikTok access tokens (plus App ID and App Secret); Google Ads credentials (OAuth client ID, client secret and refresh token, or a service account JSON key file, plus the manager account ID if any); OpenAI Ads API keys. They are encrypted with AES-256-GCM before storage, never shown again (the interface only shows the last 4 characters), never written to logs and never sent to an AI assistant.",
             "Advertising data: the list of ad accounts (name, ID, currency, time zone, status) is stored for access control. Campaigns (including YouTube video campaigns run through Google Ads), ad sets/ad groups, ads, keywords and performance metrics are fetched directly from the Meta Marketing API, the TikTok API for Business, the Google Ads API and the OpenAI Ads API whenever a user asks, and are not kept as a separate data store.",
             "Telegram notification channels: the bot token (encrypted with AES-256-GCM as above, only the last 4 characters shown, never logged, never sent to an AI assistant), chat ID, group/channel title, topic ID (if any), bot name and the subscribed event types. Each message sent is recorded in a delivery log (time, source, event type, status, error code and a preview of at most 300 characters with secrets masked).",
+            "Google Drive and Google Sheets: the Google service account JSON key and the Google API key (encrypted with AES-256-GCM as above, only the last 4 characters shown, never logged, never sent to an AI assistant); the service account email (not secret, shown so people can share folders with it); the registered folders / sheets (Google Drive ID and name, company / personal scope, who registered it, column mapping, check status). Image / video files and sheet cells are only read when a user or the AI assistant asks; files are passed straight from Google Drive to the ad platform and are not stored on the server. The System stores file IDs and the media IDs already uploaded to an ad account (for reuse), temporary links the platform uses to fetch a video (secret token, expire after 60 minutes) and the status of background video uploads. For sheets with write-back enabled, the System only writes to the declared status / result columns.",
             "Facebook Page data (read-only): the list of Pages the token can access (name, ID, category, profile picture, follower count) is stored for access control. Page posts and insights are read through the Graph API when a user asks. The System does not publish, edit or delete posts and does not read comment or message content.",
             "Logs: staff activity logs (time, actor, action, target, IP address, device) and a log of every MCP request (time, AI app, IP address, tool called, parameters and a result summary, before/after values for write actions). Secrets are masked before logging and each record has a size limit.",
             "Temporary technical data: password-guessing and rate-limit counters (by email, IP address) and actions waiting for two-step confirmation. They are deleted automatically when they expire."
@@ -245,6 +256,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Authenticating users, enforcing permissions and protecting accounts.",
             "Doing what users ask: reporting, pausing/activating, editing, copying and creating ads; reading Page posts and insights.",
             "Sending notifications to the Telegram groups/channels users configured, for the events they enabled.",
+            "Taking images and videos from Google Drive to upload them to ad accounts, and updating status in Google Sheets, when users ask.",
             "Keeping logs for accountability, incident investigation and abuse detection.",
             "Operating, maintaining and updating the System."
           ),
@@ -259,7 +271,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
         blocks: [
           ul(
             "Necessity to provide the work tool staff use in their job.",
-            "User consent: users choose to connect ad accounts, Pages and Telegram channels and to grant permissions to their token, and can withdraw at any time (section 8).",
+            "User consent: users choose to connect ad accounts, Pages and Telegram channels, to share Google Drive folders / sheets and to grant permissions to their token, and can withdraw at any time (section 8).",
             "The Operator’s legitimate interest in protecting the System and its ad assets (logs, password-guessing protection).",
             "Legal obligations, where applicable."
           ),
@@ -275,6 +287,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
           ul(
             "Meta Platforms, TikTok, Google and OpenAI: the System calls their APIs with your token, key or API key, only as needed to fulfil a request. Data on their side is governed by the privacy policies of Meta, TikTok, Google and OpenAI.",
             "Telegram: if you add a notification channel, the System sends messages through the Telegram Bot API with your bot token to the group/channel you chose. Messages may contain the MCP name, ad account names and IDs, ad object names, status/budget changes, connection status, software version information and text written by the AI assistant (only if you allow it). Messages never contain tokens, API keys or MCP links. Every member of that group/channel can read them; messages on Telegram are governed by Telegram’s privacy policy.",
+            "Google Drive and Google Sheets (Google): the System calls the Google Drive API and the Google Sheets API with a service account or API key created by the Operator (or by you), only for folders / sheets shared with that service account or files shared publicly with “Anyone with the link”. Images and videos are passed on to the ad platform you choose (Meta, TikTok, Google, OpenAI); for videos, the platform fetches them through a temporary link with a secret token on the System’s domain. The AI assistant only receives file IDs, names, sizes and dimensions - never keys, API keys or temporary links. Data on Google’s side is governed by Google’s privacy policy.",
             "The AI assistant you connect (Claude, ChatGPT, Gemini…): when you add your MCP link to an AI app, the assistant only receives the data you request through the MCP tools, within the accounts, Pages and permissions granted to that link; it never receives tokens or API keys. Conversation content is processed by the AI provider under its own terms.",
             "The server may check for software updates (GitHub) and download system notices from noti.vn. These requests do not include user or advertising data.",
             "Competent authorities, when required by law."
@@ -292,7 +305,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
           ul(
             "Tokens, API keys, service account keys, Telegram bot tokens and MCP links are encrypted with AES-256-GCM; encryption keys are kept separate from the database.",
             "Passwords are hashed; two-factor authentication (TOTP) is supported; repeated wrong attempts trigger a temporary lock.",
-            "Role-based access (Administrator / Staff); staff only see their own connections, Telegram channels and MCP servers.",
+            "Role-based access (Administrator / Staff); staff only see their own connections, Telegram channels and MCP servers; personal Google Drive folders / sheets are only visible to their owner and administrators.",
             "Write actions proposed by an AI assistant can require two-step confirmation and are subject to budget limits; newly created or copied ads always start paused.",
             "Invalid, disabled or expired MCP links return no data."
           ),
@@ -311,6 +324,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Tokens and API keys: until the connection is deleted or its token is replaced; when a connection is deleted its encrypted token is overwritten immediately.",
             "Telegram bot tokens: until the notification channel is deleted or its token is replaced; once a channel is deleted the System stops sending messages and no longer uses that token.",
             `Telegram delivery logs: kept for the MCP log retention period (${c.retentionMcpMonths} month${c.retentionMcpMonths === 1 ? "" : "s"}), then deleted automatically.`,
+            "Google Drive: service account keys and API keys until deleted or replaced; registered folders / sheets until deleted; temporary video links expire after 60 minutes and are deleted after 24 hours; background video uploads are deleted after 30 days; uploaded media IDs are kept for reuse until the ad account is removed from the System. Files on Google Drive are never copied or kept by the System.",
             "Staff accounts: until an administrator deletes the account.",
             "Sessions, security counters and pending confirmations: deleted automatically when they expire.",
             "Advertising and Page data fetched from the platforms: not stored long-term, except the account and Page lists and the summaries in logs."
@@ -324,7 +338,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
           ul(
             "View and correct your own account information on the Account page; ask the Operator for a copy of the data about you.",
             `Request deletion: follow the Data Deletion Instructions at ${c.baseUrl}/data-deletion.`,
-            "Withdraw access: delete the connection in the System, revoke the token or API key, or remove the app from your Facebook account, TikTok For Business or Google account. The System can then no longer access your platform data. For Telegram: delete the notification channel in the System and/or revoke the bot token with @BotFather (the /revoke command).",
+            "Withdraw access: delete the connection in the System, revoke the token or API key, or remove the app from your Facebook account, TikTok For Business or Google account. The System can then no longer access your platform data. For Telegram: delete the notification channel in the System and/or revoke the bot token with @BotFather (the /revoke command). For Google Drive: stop sharing the folder / sheet with the service account email in Google Drive, delete the folder / sheet in the System, or (administrators) delete the service account key / API key in Google Cloud.",
             "Object to or request restriction of processing, and lodge complaints as provided by law."
           ),
         ],
@@ -409,6 +423,7 @@ function termsVi(c: LegalInfo): LegalDoc {
             "Chỉ kết nối tài khoản quảng cáo, Trang và nhóm/kênh Telegram mà bạn hoặc đơn vị của bạn có quyền quản lý.",
             "Tuân thủ Điều khoản và Tiêu chuẩn quảng cáo của Meta, chính sách quảng cáo của TikTok và Google (gồm YouTube), điều khoản của OpenAI Ads, điều khoản của Telegram và của nhà cung cấp trợ lý AI mà bạn sử dụng.",
             "Chỉ gửi thông báo Telegram tới nhóm/kênh mà mọi thành viên đều được phép xem dữ liệu quảng cáo của đơn vị.",
+            "Chỉ chia sẻ cho Hệ thống thư mục Google Drive / Google Sheet mà bạn được phép dùng và không chứa dữ liệu nhạy cảm: mọi file trong đó trợ lý AI có thể đọc qua MCP được cấp. Không thêm email của Hệ thống vào cả một Bộ nhớ dùng chung (Shared drive).",
             "Không dùng Hệ thống cho quảng cáo trái pháp luật, lừa đảo, spam hoặc xâm phạm quyền của người khác.",
             "Không tìm cách vượt phân quyền, dò quét, tấn công hoặc làm quá tải Hệ thống.",
             "Không chia sẻ token, API key, bot token Telegram hoặc đường dẫn MCP cho người không được phép."
@@ -431,7 +446,7 @@ function termsVi(c: LegalInfo): LegalDoc {
         title: "6. Dịch vụ của bên thứ ba",
         blocks: [
           p(
-            "Meta, TikTok, Google, OpenAI, Telegram và các trợ lý AI là dịch vụ độc lập với điều khoản riêng. Đơn vị vận hành không kiểm soát việc các nền tảng này thay đổi, giới hạn hoặc gián đoạn API của họ."
+            "Meta, TikTok, Google (gồm Google Drive, Google Sheets), OpenAI, Telegram và các trợ lý AI là dịch vụ độc lập với điều khoản riêng. Đơn vị vận hành không kiểm soát việc các nền tảng này thay đổi, giới hạn hoặc gián đoạn API của họ."
           ),
         ],
       },
@@ -545,6 +560,7 @@ function termsEn(c: LegalInfo): LegalDoc {
             "Only connect ad accounts, Pages and Telegram groups/channels that you or your organisation are entitled to manage.",
             "Comply with Meta’s Terms and Advertising Standards, the TikTok and Google (including YouTube) advertising policies, the OpenAI Ads terms, Telegram’s terms and the terms of the AI assistant you use.",
             "Only send Telegram notifications to groups/channels whose members are all allowed to see the organisation’s advertising data.",
+            "Only share Google Drive folders / Google Sheets with the System that you are allowed to use and that hold no sensitive data: the AI assistant can read every file in them through the MCP servers they are granted to. Do not add the System’s email to a whole shared drive.",
             "Do not use the System for unlawful, deceptive or spam advertising or to infringe the rights of others.",
             "Do not attempt to bypass permissions, probe, attack or overload the System.",
             "Do not share tokens, API keys, Telegram bot tokens or MCP links with unauthorised people."
@@ -567,7 +583,7 @@ function termsEn(c: LegalInfo): LegalDoc {
         title: "6. Third-party services",
         blocks: [
           p(
-            "Meta, TikTok, Google, OpenAI, Telegram and AI assistants are independent services with their own terms. The Operator does not control changes, limits or outages of their APIs."
+            "Meta, TikTok, Google (including Google Drive and Google Sheets), OpenAI, Telegram and AI assistants are independent services with their own terms. The Operator does not control changes, limits or outages of their APIs."
           ),
         ],
       },
@@ -645,7 +661,7 @@ function dataDeletionVi(c: LegalInfo): LegalDoc {
   return {
     title: "Hướng dẫn xoá dữ liệu người dùng",
     intro: [
-      `Trang này hướng dẫn cách xoá dữ liệu liên quan tới tài khoản Facebook (Meta), TikTok Ads, Google Ads (gồm quảng cáo YouTube), OpenAI Ads hoặc kênh thông báo Telegram đã được kết nối vào hệ thống Ads MCP tại ${c.domain} (“Hệ thống”), do ${c.orgName} (“Đơn vị vận hành”) vận hành.`,
+      `Trang này hướng dẫn cách xoá dữ liệu liên quan tới tài khoản Facebook (Meta), TikTok Ads, Google Ads (gồm quảng cáo YouTube), OpenAI Ads, kênh thông báo Telegram hoặc thư mục Google Drive / Google Sheet đã được kết nối vào hệ thống Ads MCP tại ${c.domain} (“Hệ thống”), do ${c.orgName} (“Đơn vị vận hành”) vận hành.`,
     ],
     sections: [
       {
@@ -666,6 +682,9 @@ function dataDeletionVi(c: LegalInfo): LegalDoc {
           p(
             "Với TikTok Ads, Google Ads (gồm YouTube) và OpenAI Ads, dữ liệu tương tự gồm: thông tin truy cập (access token, App ID/App Secret, refresh token hoặc khoá service account, API key) được lưu mã hoá, danh sách tài khoản quảng cáo và nhật ký lệnh. Với kênh thông báo Telegram: bot token được lưu mã hoá, chat ID, tên nhóm/kênh, ID chủ đề và nhật ký gửi tin."
           ),
+          p(
+            "Với Google Drive / Google Sheet: khoá service account và API key Google được lưu mã hoá, danh sách thư mục / sheet đã khai báo (mã, tên, cấu hình cột), mã file và mã media đã tải lên tài khoản quảng cáo, đường dẫn tạm và trạng thái các lượt tải video. File ảnh / video không được lưu trên máy chủ của Hệ thống."
+          ),
         ],
       },
       {
@@ -679,6 +698,9 @@ function dataDeletionVi(c: LegalInfo): LegalDoc {
           ),
           p(
             "Kênh Telegram: trong mục Kết nối quảng cáo, mở chế độ xem Telegram, chọn kênh cần xoá → Xoá, rồi xác nhận. Nhân viên xoá được kết nối và kênh do mình tạo; quản trị viên xoá được mọi kết nối và kênh. Quản trị viên cũng có thể khoá hoặc xoá tài khoản nhân sự ở mục Người dùng (nút Thao tác trên dòng của người đó → Khoá tài khoản hoặc Xoá người dùng)."
+          ),
+          p(
+            "Google Drive: trong mục Kết nối quảng cáo, mở chế độ xem Google Drive, chọn thư mục / sheet → Xoá, rồi xác nhận (nguồn bị gỡ khỏi mọi MCP; file trên Google Drive không bị ảnh hưởng). Service account riêng xoá ở cùng chế độ xem; khoá service account và API key của hệ thống do quản trị viên xoá ở mục Cài đặt → Google Drive hệ thống."
           ),
         ],
       },
@@ -710,7 +732,8 @@ function dataDeletionVi(c: LegalInfo): LegalDoc {
             "TikTok Ads: đăng nhập TikTok For Business, mở phần cài đặt uỷ quyền (Business Center → Settings → Authorizations, hoặc trang quản lý ứng dụng nhà phát triển), chọn ứng dụng đã được uỷ quyền → Remove (Gỡ).",
             "Google Ads (gồm YouTube): nếu kết nối dùng OAuth + refresh token, vào Tài khoản Google → Bảo mật → Quyền truy cập của bên thứ ba (myaccount.google.com/permissions), chọn ứng dụng → Xoá quyền truy cập. Nếu kết nối dùng service account, xoá email service account khỏi Quản trị → Quyền truy cập và bảo mật → Người dùng trong Google Ads (và có thể xoá khoá của service account trong Google Cloud).",
             "OpenAI Ads: thu hồi (revoke) API key trong trang quản lý OpenAI Ads.",
-            "Telegram: mở @BotFather, gửi lệnh /revoke và chọn bot để vô hiệu hoá bot token; hoặc gỡ bot khỏi nhóm/kênh nhận thông báo."
+            "Telegram: mở @BotFather, gửi lệnh /revoke và chọn bot để vô hiệu hoá bot token; hoặc gỡ bot khỏi nhóm/kênh nhận thông báo.",
+            "Google Drive / Google Sheet: trên Google Drive mở thư mục / sheet → Chia sẻ → xoá email service account của Hệ thống; quản trị viên có thể xoá khoá của service account (Google Cloud → IAM & Admin → Service accounts → Keys) và API key (APIs & Services → Credentials)."
           ),
           p(
             "Sau khi gỡ, token không còn dùng được: Hệ thống không truy cập được dữ liệu của bạn nữa (hoặc không gửi được tin Telegram) và lần kiểm tra kế tiếp sẽ đánh dấu kết nối hoặc kênh bị lỗi. Để xoá cả dữ liệu đã lưu trong Hệ thống, làm thêm Cách 1 hoặc Cách 2."
@@ -726,7 +749,8 @@ function dataDeletionVi(c: LegalInfo): LegalDoc {
             "Tên kết nối và danh sách tài khoản quảng cáo, Trang đã đồng bộ được giữ ở trạng thái ẩn cùng bản ghi kết nối đã xoá để đối chiếu nhật ký. Khi bạn gửi yêu cầu theo Cách 2, Đơn vị vận hành xoá hẳn phần dữ liệu này.",
             `Nhật ký MCP và nhật ký nhân sự là nhật ký kiểm toán chỉ ghi thêm, được giữ tới hết thời hạn lưu (lần lượt ${c.retentionMcpMonths} và ${c.retentionStaffMonths} tháng cộng tháng hiện tại) vì lý do bảo mật và pháp lý, sau đó tự động bị xoá vĩnh viễn. Nhật ký không chứa token hay API key.`,
             "Kênh Telegram đã xoá: Hệ thống ngừng gửi tin ngay. Nhật ký gửi tin được giữ theo thời hạn của nhật ký MCP rồi tự động bị xoá.",
-            "Dữ liệu nằm trên Meta, TikTok, Google, OpenAI hoặc Telegram (kể cả tin nhắn đã gửi vào nhóm/kênh) do các nền tảng đó quản lý; xoá trong Hệ thống không xoá dữ liệu trên nền tảng."
+            "Thư mục / sheet Google Drive đã xoá: bị gỡ khỏi mọi MCP ngay, Hệ thống không đọc nữa. Khoá service account và API key bị xoá khỏi Hệ thống khi quản trị viên xoá thông tin xác thực. Đường dẫn tạm cho video bị xoá sau 24 giờ kể từ khi hết hạn, lượt tải video nền sau 30 ngày; mã media đã tải lên được giữ tới khi tài khoản quảng cáo bị xoá khỏi Hệ thống.",
+            "Dữ liệu nằm trên Meta, TikTok, Google (kể cả file trên Google Drive và nội dung Google Sheet), OpenAI hoặc Telegram (kể cả tin nhắn đã gửi vào nhóm/kênh) do các nền tảng đó quản lý; xoá trong Hệ thống không xoá dữ liệu trên nền tảng."
           ),
         ],
       },
@@ -738,7 +762,7 @@ function dataDeletionEn(c: LegalInfo): LegalDoc {
   return {
     title: "Data Deletion Instructions",
     intro: [
-      `This page explains how to delete data related to a Facebook (Meta), TikTok Ads, Google Ads (including YouTube ads) or OpenAI Ads account, or a Telegram notification channel, connected to the Ads MCP system at ${c.domain} (the “System”), operated by ${c.orgName} (the “Operator”).`,
+      `This page explains how to delete data related to a Facebook (Meta), TikTok Ads, Google Ads (including YouTube ads) or OpenAI Ads account, a Telegram notification channel, or a Google Drive folder / Google Sheet, connected to the Ads MCP system at ${c.domain} (the “System”), operated by ${c.orgName} (the “Operator”).`,
     ],
     sections: [
       {
@@ -759,6 +783,9 @@ function dataDeletionEn(c: LegalInfo): LegalDoc {
           p(
             "For TikTok Ads, Google Ads (including YouTube) and OpenAI Ads the data is similar: credentials (access token, App ID/App Secret, refresh token or service account key, API key) stored encrypted, the list of ad accounts, and request logs. For a Telegram notification channel: the bot token stored encrypted, chat ID, group/channel title, topic ID and the delivery log."
           ),
+          p(
+            "For Google Drive / Google Sheets: the Google service account key and API key stored encrypted, the list of registered folders / sheets (ID, name, column mapping), the file IDs and media IDs already uploaded to ad accounts, temporary links and the status of video uploads. Image / video files are not stored on the System’s server."
+          ),
         ],
       },
       {
@@ -772,6 +799,9 @@ function dataDeletionEn(c: LegalInfo): LegalDoc {
           ),
           p(
             "Telegram channels: in Kết nối quảng cáo (Ad connections), switch to the Telegram view, select the channel → Xoá (Delete) and confirm. Staff can delete the connections and channels they created; administrators can delete any connection or channel. Administrators can also lock or delete staff accounts under Người dùng (Users): the actions button on the person’s row → Khoá tài khoản (Lock account) or Xoá người dùng (Delete user)."
+          ),
+          p(
+            "Google Drive: in Kết nối quảng cáo (Ad connections), switch to the Google Drive view, select the folder / sheet → Xoá (Delete) and confirm (it is removed from every MCP server; files on Google Drive are not affected). Personal service accounts are deleted in the same view; the system service account key and API key are deleted by an administrator under Cài đặt (Settings) → Google Drive hệ thống (System Google Drive)."
           ),
         ],
       },
@@ -803,7 +833,8 @@ function dataDeletionEn(c: LegalInfo): LegalDoc {
             "TikTok Ads: sign in to TikTok For Business, open the authorization settings (Business Center → Settings → Authorizations, or your developer app management page), select the authorized app → Remove.",
             "Google Ads (including YouTube): if the connection uses OAuth with a refresh token, go to Google Account → Security → Third-party access (myaccount.google.com/permissions), select the app → Remove access. If it uses a service account, remove the service account email under Admin → Access and security → Users in Google Ads (and optionally delete the service account key in Google Cloud).",
             "OpenAI Ads: revoke the API key in the OpenAI Ads dashboard.",
-            "Telegram: open @BotFather, send /revoke and pick the bot to invalidate its token; or remove the bot from the notification group/channel."
+            "Telegram: open @BotFather, send /revoke and pick the bot to invalidate its token; or remove the bot from the notification group/channel.",
+            "Google Drive / Google Sheets: in Google Drive open the folder / sheet → Share → remove the System’s service account email; administrators can delete the service account key (Google Cloud → IAM & Admin → Service accounts → Keys) and the API key (APIs & Services → Credentials)."
           ),
           p(
             "Once revoked, the token stops working: the System can no longer access your data (or send Telegram messages) and the next check marks the connection or channel as failed. To also delete the data stored in the System, use Option 1 or Option 2."
@@ -819,7 +850,8 @@ function dataDeletionEn(c: LegalInfo): LegalDoc {
             "The connection name and the synced list of ad accounts and Pages are kept hidden with the deleted connection record to keep logs consistent. When you send a request under Option 2, the Operator deletes this data permanently.",
             `MCP logs and staff activity logs are append-only audit logs kept until their retention period ends (${c.retentionMcpMonths} and ${c.retentionStaffMonths} month${c.retentionStaffMonths === 1 ? "" : "s"} respectively, plus the current month) for security and legal reasons, then deleted permanently and automatically. Logs never contain tokens or API keys.`,
             "Deleted Telegram channels: the System stops sending messages immediately. The delivery log is kept for the MCP log retention period, then deleted automatically.",
-            "Data held by Meta, TikTok, Google, OpenAI or Telegram (including messages already sent to a group/channel) is managed by those platforms; deleting data in the System does not delete it on the platform."
+            "Deleted Google Drive folders / sheets: removed from every MCP server immediately and no longer read. The service account key and API key are deleted from the System when an administrator deletes the credentials. Temporary video links are deleted 24 hours after they expire and background video uploads after 30 days; uploaded media IDs are kept until the ad account is removed from the System.",
+            "Data held by Meta, TikTok, Google (including files on Google Drive and Google Sheets content), OpenAI or Telegram (including messages already sent to a group/channel) is managed by those platforms; deleting data in the System does not delete it on the platform."
           ),
         ],
       },
@@ -848,9 +880,9 @@ export const legal = {
     terms: "Điều khoản",
     dataDeletion: "Xoá dữ liệu",
   },
-  updatedAt: "08/10/2026",
-  updatedAtIso: "2026-10-08",
-  updatedAtEn: "October 8, 2026",
+  updatedAt: "09/10/2026",
+  updatedAtIso: "2026-10-09",
+  updatedAtEn: "October 9, 2026",
   /** prefilled subject of the mailto link on /data-deletion */
   deletionMailSubject: "Yêu cầu xoá dữ liệu",
   updatedLabel: { vi: "Cập nhật lần cuối", en: "Last updated" },

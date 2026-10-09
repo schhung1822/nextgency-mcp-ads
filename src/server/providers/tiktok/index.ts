@@ -12,7 +12,7 @@ import {
 } from "./credentials"
 import { tiktokExtensions } from "./extensions"
 import { tiktokLookup } from "./lookup"
-import { uploadTikTokMedia } from "./media"
+import { uploadTikTokMedia, uploadTikTokVideoChunked } from "./media"
 import { deleteTikTokObject, setTikTokStatus, updateTikTokBudget, updateTikTokObject } from "./mutate"
 import { getTikTokObject, listTikTokObjects } from "./objects"
 import { getTikTokReport } from "./report"
@@ -50,6 +50,7 @@ export const tiktokProvider: AdsProvider<TikTokCredentials> = {
   copyObject: (ctx, r, opts) => copyTikTokObject(ctx, r, opts),
   deleteObject: (ctx, level, id, opts) => deleteTikTokObject(ctx, level, id, opts),
   uploadMedia: uploadTikTokMedia,
+  uploadVideoChunked: uploadTikTokVideoChunked,
   lookup: tiktokLookup,
 }
 

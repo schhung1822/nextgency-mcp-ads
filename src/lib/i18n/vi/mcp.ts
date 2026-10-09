@@ -249,7 +249,7 @@ export const mcp = {
       "Chưa chọn kết nối Telegram nào - chọn ở bước Nền tảng nếu muốn AI gửi thông báo.",
     toolLabel: "AI được gửi tin",
     toolHelp:
-      "AI gửi báo cáo hoặc thông báo vào Telegram khi bạn yêu cầu. Tin luôn có tiêu đề \"Tin từ AI\" và có giới hạn số tin mỗi giờ.",
+      "AI gửi báo cáo hoặc thông báo vào Telegram khi bạn yêu cầu, có thể kèm 1 ảnh, video hoặc tệp (ảnh ≤ 10 MB, tệp ≤ 50 MB). Tin luôn có tiêu đề \"Tin từ AI\", dòng ghi nguồn \"Ads MCP Simple\" ở cuối và có giới hạn số tin mỗi giờ.",
     notifyLabel: "Tự báo khi AI thay đổi quảng cáo",
     notifyHelp:
       "Sau mỗi lần AI bật/tắt, đổi ngân sách, sửa, tạo, sao chép hoặc xoá thành công, hệ thống tự gửi 1 tin tóm tắt (trước → sau) vào các kết nối Telegram đã chọn.",
@@ -265,6 +265,62 @@ export const mcp = {
     summaryPerHour: "Giới hạn tin Telegram / giờ",
     summaryNone: "Không dùng",
     deletedChannel: "(kết nối đã xoá)",
+  },
+
+  /** Google Drive block of the MCP form + overview (15-google-drive-media.md §7.5, §11) */
+  drive: {
+    /** step 2 subheading separating the Drive block from the ad platforms / Telegram */
+    optionalGroup: "Ảnh, video quảng cáo (không bắt buộc)",
+    title: "Google Drive",
+    description:
+      "Chọn thư mục hoặc Google Sheet mà AI được đọc để lấy ảnh, video lên quảng cáo. Không chọn = AI chỉ dùng được link Drive công khai (nếu bật ở bước Quyền).",
+    sourcesLabel: "Thư mục / sheet Google Drive",
+    selectedCount: (n: number) => `Đã chọn ${n} nguồn`,
+    groups: {
+      company: "Của công ty",
+      mine: "Của tôi",
+      /** existing MCP of another user: that user's personal sources */
+      owner: (email: string) => `Riêng của ${email}`,
+      staff: "Của nhân viên",
+    },
+    kindFolder: "Thư mục",
+    kindSheet: "Google Sheet",
+    writeback: "ghi trạng thái",
+    ownerSuffix: (email: string) => `của ${email}`,
+    statusError: "Đang lỗi",
+    statusDisabled: "Đang tắt",
+    statusHint:
+      "Nguồn đang lỗi hoặc đang tắt: AI chưa đọc được cho tới khi nguồn hoạt động lại (kiểm tra ở trang Kết nối → Google Drive).",
+    emptyTitle: "Chưa có thư mục / sheet Google Drive",
+    emptyDescription:
+      "Khai báo thư mục ảnh/video hoặc Google Sheet ở trang Kết nối → Google Drive, rồi quay lại đây để chọn.",
+    addSource: "Thêm thư mục / sheet",
+    ownerOnlyNote: (email: string) =>
+      `MCP của ${email} chỉ dùng được nguồn của công ty và nguồn riêng của người này.`,
+    permissionsTitle: "Google Drive",
+    permissionsDescription: (n: number) =>
+      n > 0
+        ? `Áp dụng cho ${n} nguồn Google Drive đã chọn ở bước Nền tảng và link Drive công khai.`
+        : "Áp dụng cho link Drive công khai và các nguồn Google Drive chọn ở bước Nền tảng.",
+    publicLabel: "Cho phép dùng link Drive công khai",
+    publicHelp:
+      "AI được lấy ảnh, video từ link Drive đang chia sẻ \"Bất kỳ ai có đường liên kết\" mà bạn dán vào chat, kể cả thư mục chưa khai báo. Chỉ đọc được file công khai.",
+    publicUnavailable:
+      "Quản trị viên chưa lưu API key Google Drive trong Cài đặt nên link công khai chưa dùng được.",
+    writebackLabel: "Cho phép ghi trạng thái vào Google Sheet",
+    writebackHelp:
+      "Sau khi tạo quảng cáo từ một dòng trong sheet, AI ghi trạng thái, mã quảng cáo và thời gian vào dòng đó. Chỉ áp dụng cho sheet đã bật ghi trạng thái.",
+    writebackNoSheet: "Chưa chọn Google Sheet nào bật ghi trạng thái.",
+    needsCreate:
+      "AI chỉ tải được ảnh, video từ Drive lên quảng cáo khi MCP có quyền Tạo mới ở ít nhất 1 nền tảng.",
+    needsCreateSelected: (n: number) =>
+      `Đã chọn ${n} nguồn Google Drive nhưng chưa nền tảng nào có quyền Tạo mới - AI chỉ xem được file, không tải ảnh, video lên quảng cáo. Bật quyền Tạo mới ở ít nhất 1 nền tảng nếu muốn AI lên quảng cáo từ Drive.`,
+    /** source picker: a source switched off cannot be newly picked */
+    disabledLocked: "không chọn mới được khi nguồn đang tắt",
+    summarySources: "Google Drive",
+    summaryPublic: "Link Drive công khai",
+    summaryWriteback: "Ghi trạng thái vào Google Sheet",
+    summaryNone: "Không dùng",
   },
 
   success: {

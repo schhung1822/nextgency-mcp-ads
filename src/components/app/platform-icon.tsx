@@ -95,19 +95,42 @@ export function platformLabel(platform: Platform): string {
 }
 
 /**
- * Non-platform brand marks (simple-icons, CC0 1.0): YouTube (the "YouTube Ads" card - a Google Ads connection) and
- * Telegram (notification channel). Always drawn in the official colour (06-ui-design-system.md §2), like Google Ads.
+ * Non-platform brand marks (simple-icons, CC0 1.0): YouTube (badge on the Google Ads card - YouTube ads run through it),
+ * Telegram (notification channel) and Google Drive (creative source). Always drawn in the official colours
+ * (06-ui-design-system.md §2), like Google Ads. Google Drive = the simple-icons path split into its three parts
+ * (green left, yellow right, blue bottom - Google brand colours).
  */
-const BRAND_MARKS = {
-  youtube: {
-    fill: "#FF0000",
-    d: "M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z",
-  },
-  telegram: {
-    fill: "#26A5E4",
-    d: "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z",
-  },
-} as const
+const BRAND_MARKS: Record<
+  "youtube" | "telegram" | "drive",
+  readonly { fill: string; d: string }[]
+> = {
+  drive: [
+    {
+      fill: "#34A853",
+      d: "M7.25 3.215a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214z",
+    },
+    {
+      fill: "#FBBC04",
+      d: "M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574z",
+    },
+    {
+      fill: "#4285F4",
+      d: "M9.509 15.868l-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z",
+    },
+  ],
+  youtube: [
+    {
+      fill: "#FF0000",
+      d: "M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z",
+    },
+  ],
+  telegram: [
+    {
+      fill: "#26A5E4",
+      d: "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z",
+    },
+  ],
+}
 
 export type BrandMarkName = keyof typeof BRAND_MARKS
 
@@ -120,9 +143,9 @@ export interface BrandIconProps extends Omit<
   title?: string
 }
 
-/** Inline SVG brand mark for YouTube / Telegram (same sizing as PlatformIcon, default `size-4`). */
+/** Inline SVG brand mark for YouTube / Telegram / Google Drive (same sizing as PlatformIcon, default `size-4`). */
 export function BrandIcon({ brand, title, className, ...props }: BrandIconProps) {
-  const mark = BRAND_MARKS[brand]
+  const parts = BRAND_MARKS[brand]
   return (
     <svg
       viewBox="0 0 24 24"
@@ -135,7 +158,9 @@ export function BrandIcon({ brand, title, className, ...props }: BrandIconProps)
       {...props}
     >
       {title ? <title>{title}</title> : null}
-      <path d={mark.d} fill={mark.fill} />
+      {parts.map((p) => (
+        <path key={p.fill} d={p.d} fill={p.fill} />
+      ))}
     </svg>
   )
 }

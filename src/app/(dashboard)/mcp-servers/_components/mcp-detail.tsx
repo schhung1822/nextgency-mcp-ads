@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateTime } from "@/lib/format"
 import { guides as tg } from "@/lib/i18n/vi/guides"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import type { McpDriveSourceOption } from "@/lib/schemas/drive"
 import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type {
   McpDetail,
@@ -146,6 +147,8 @@ export function McpDetailView({
   mcp,
   connections,
   channels,
+  driveSources,
+  drivePublicAvailable,
   accountNames,
   twoFactorEnabled,
   initialTab,
@@ -155,6 +158,10 @@ export function McpDetailView({
   connections: SelectableConnection[]
   /** Telegram channels the MCP owner can pick (config tab) */
   channels?: McpChannelOption[]
+  /** Google Drive sources the MCP owner can pick (config tab) */
+  driveSources?: McpDriveSourceOption[]
+  /** a Drive API key is saved: public Drive links can be read */
+  drivePublicAvailable?: boolean
   /** names of picked ad accounts that are switched off now (ad account id → name), for the config warning */
   accountNames?: Record<string, string>
   twoFactorEnabled: boolean
@@ -246,6 +253,8 @@ export function McpDetailView({
             mcp={mcp}
             connections={connections}
             channels={channels}
+            driveSources={driveSources}
+            drivePublicAvailable={drivePublicAvailable}
             accountNames={accountNames}
             updateAction={actions.update}
             onDirtyChange={setConfigDirty}

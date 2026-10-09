@@ -22,6 +22,9 @@ const eslintConfig = defineConfig([
       "src/server/crypto/**/*.ts",
       "src/server/audit/redact.ts",
       "src/server/audit/cap-json.ts",
+      "src/server/drive/**",
+      "src/server/google/**",
+      "src/server/net/**",
     ],
     rules: {
       "no-restricted-imports": [

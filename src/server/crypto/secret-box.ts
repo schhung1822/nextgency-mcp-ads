@@ -87,4 +87,12 @@ export const aad = {
   connectionCredentials: (connectionId: string) => `connection:${connectionId}:credentials`,
   mcpKey: (mcpId: string) => `mcp:${mcpId}:key`,
   notificationChannelCredentials: (channelId: string) => `notification_channel:${channelId}:credentials`,
+  // Google Drive (15-google-drive-media.md §10): service account JSON, API key (system only), resource keys
+  driveCredential: (credentialId: string) => `drive_credential:${credentialId}:credentials`,
+  driveCredentialApiKey: (credentialId: string) => `drive_credential:${credentialId}:api_key`,
+  driveSourceResourceKey: (sourceId: string) => `drive_source:${sourceId}:resource_key`,
+  driveRelayResourceKey: (relayLinkId: string) => `drive_relay_link:${relayLinkId}:resource_key`,
+  // background video uploads (media_upload_jobs) + opaque drf_ refs to public Drive files handed to the AI
+  mediaUploadJobResourceKey: (jobId: string) => `media_upload_job:${jobId}:resource_key`,
+  driveFileRef: (mcpId: string) => `drive_ref:${mcpId}`,
 }

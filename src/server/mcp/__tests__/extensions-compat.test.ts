@@ -122,6 +122,8 @@ describe("real adapter extensions", () => {
       accounts: [],
       pages: [],
       notificationChannels: [],
+      driveSources: [],
+      drivePublicAvailable: false,
     }
     const req: RequestState = {
       startedAt: Date.now(),
@@ -139,7 +141,7 @@ describe("real adapter extensions", () => {
       const schema = server.toolInputSchemaJson(name)
       expect(schema, name).toBeDefined()
       expect(schema!.type, name).toBe("object")
-      expect(Object.keys((schema!.properties as object) ?? {}), name).toContain(name.startsWith("ads_list_accounts") ? "platform" : name.startsWith("ads_get_report") ? "level" : "account_id")
+      expect(Object.keys((schema!.properties as object) ?? {}), name).toContain(name.startsWith("ads_list_accounts") ? "platform" : name.startsWith("ads_get_report") ? "level" : name === "ads_get_media_upload" ? "upload_id" : "account_id")
     }
     expect(names.length).toBeLessThanOrEqual(45)
   })

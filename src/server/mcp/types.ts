@@ -1,5 +1,11 @@
 // Shared MCP types (contract between mcp-core, mcp-admin and services).
 // No imports from "next/*" under src/server/mcp.
+import type {
+  DriveSourceKind,
+  DriveSourceScope,
+  FolderSourceConfig,
+  SheetSourceConfig,
+} from "../drive/types"
 import type { Platform } from "../providers/types"
 
 export const PERMISSIONS = ["read", "status", "update", "copy", "create", "delete"] as const
@@ -37,6 +43,13 @@ export interface McpSettings {
   telegramNotifyWrites: boolean
   /** Telegram: messages per hour (sliding window) telegram_send_message may send for this MCP, 1–200 */
   telegramMessagesPerHour: number
+  /**
+   * Google Drive: public "Anyone with the link" Drive links (files / folders) may be used, read with the system API
+   * key (15-google-drive-media.md G6). Default ON - a missing key (MCPs saved before the feature) reads as true.
+   */
+  drivePublicLinks: boolean
+  /** Google Drive: the MCP may write status / result columns of sheets that enabled write-back. Default ON. */
+  driveSheetWriteback: boolean
 }
 
 /** Bounds of McpSettings.telegramMessagesPerHour */
@@ -58,6 +71,8 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   telegramTool: false,
   telegramNotifyWrites: false,
   telegramMessagesPerHour: TELEGRAM_MESSAGES_PER_HOUR.default,
+  drivePublicLinks: true,
+  driveSheetWriteback: true,
 }
 
 /** An ad account the MCP may act on (already filtered: enabled, connection active, owner rules applied). */
@@ -100,6 +115,31 @@ export interface GrantChannel {
   hasThread: boolean
 }
 
+/**
+ * A Google Drive folder / Google Sheet tab the MCP may use (mcp_drive_scopes ⋈ live drive_sources, status ≠ disabled,
+ * ⋈ live usable drive_credentials; staff-owned MCP: company sources + the owner's personal sources only).
+ * Never carries a secret (credentials and resource keys are loaded / decrypted by drive-access.ts when needed).
+ */
+export interface GrantDriveSource {
+  /** drive_sources.id */
+  id: string
+  kind: DriveSourceKind
+  scope: DriveSourceScope
+  /** display name (typed by a user: untrusted text) */
+  name: string
+  /** folder id / spreadsheet id */
+  googleId: string
+  /** sheet tab id, null for folders */
+  sheetGid: number | null
+  credentialId: string
+  ownerId: string
+  status: "active" | "error"
+  /** shared drive id of a folder (listing with corpora=drive), null for My Drive */
+  sharedDriveId: string | null
+  /** normalised config: folder → FolderSourceConfig, sheet → SheetSourceConfig */
+  config: FolderSourceConfig | SheetSourceConfig
+}
+
 /** Everything a request to /mcp/<key> is allowed to do. Loaded once per request. */
 export interface McpGrant {
   mcpId: string
@@ -115,6 +155,10 @@ export interface McpGrant {
   pages: GrantPage[]
   /** Telegram channels in scope (telegram_* tools + notifications after writes); independent of ad platforms */
   notificationChannels: GrantChannel[]
+  /** Google Drive folders / sheets in scope (drive_* tools, ads_upload_media drive_file) */
+  driveSources: GrantDriveSource[]
+  /** the system Drive credential is live (not disabled) AND has an API key: public "Anyone with the link" files readable */
+  drivePublicAvailable: boolean
 }
 
 export function grantAllows(grant: McpGrant, platform: Platform, permission: Permission): boolean {

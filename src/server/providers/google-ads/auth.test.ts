@@ -5,6 +5,7 @@ import { __clearTokenCache, getAccessToken, signServiceAccountJwt } from "./auth
 import { mockFetch, oauthCredentials, saCredentials, testKeyPair } from "./__fixtures__/mock-fetch"
 import { ProviderError } from "../errors"
 import type { ServiceAccountCredentials } from "./credentials"
+import { getGoogleAccessToken } from "../../google/service-account"
 
 function decode(part: string) {
   return JSON.parse(Buffer.from(part, "base64url").toString("utf8"))
@@ -113,5 +114,38 @@ describe("token errors", () => {
     const err = (await getAccessToken(saCredentials(), { connectionId: "e2" }).catch((e) => e)) as ProviderError
     expect(err.code).toBe("auth_invalid")
     expect(err.userMessageVi).toContain("service account")
+  })
+})
+
+describe("shared service-account helper", () => {
+  it("never shares a token between the adwords scope and the Drive scopes of the same key", async () => {
+    const m = mockFetch()
+    const creds = saCredentials() as ServiceAccountCredentials
+    const ads = await getAccessToken(creds, { connectionId: "c1" })
+    const sa = { clientEmail: creds.client_email, privateKey: creds.private_key, privateKeyId: creds.private_key_id, projectId: creds.project_id }
+    const drive = await getGoogleAccessToken(sa, ["https://www.googleapis.com/auth/drive.readonly"], { cacheKey: "c1" })
+    expect(drive).not.toBe(ads)
+    const scopes = m.tokenCalls().map((c) => decode((c.body as Record<string, string>).assertion.split(".")[1]!).scope)
+    expect(scopes).toEqual(["https://www.googleapis.com/auth/adwords", "https://www.googleapis.com/auth/drive.readonly"])
+    expect(await getAccessToken(creds, { connectionId: "c1" })).toBe(ads)
+    expect(m.tokenCalls()).toHaveLength(2)
+  })
+
+  it("maps a network failure of the token endpoint to upstream_error (retryable)", async () => {
+    const m = mockFetch()
+    m.on((c) => c.url.startsWith("https://oauth2.googleapis.com/token"), () => {
+      throw new TypeError("fetch failed")
+    })
+    const err = (await getAccessToken(saCredentials(), { connectionId: "n" }).catch((e) => e)) as ProviderError
+    expect(err).toBeInstanceOf(ProviderError)
+    expect(err.code).toBe("upstream_error")
+    expect(err.retryable).toBe(true)
+  })
+
+  it("reports the token exchange as an upstream event", async () => {
+    mockFetch()
+    const events: { url: string; status: number }[] = []
+    await getAccessToken(saCredentials(), { connectionId: "u", onUpstream: (e) => events.push(e) })
+    expect(events).toEqual([expect.objectContaining({ platform: "google_ads", method: "POST", url: "https://oauth2.googleapis.com/token", status: 200 })])
   })
 })

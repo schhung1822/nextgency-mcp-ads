@@ -19,7 +19,7 @@ vi.mock("next/headers", async () => (await import("@/server/__tests__/people/har
 
 import { and, eq, sql } from "drizzle-orm"
 
-import { __setKeyRing, aad, encryptSecret } from "@/server/crypto/secret-box"
+import { __setKeyRing, aad, decryptSecret, encryptSecret } from "@/server/crypto/secret-box"
 import { db } from "@/server/db/client"
 import { account, activityLogs, connections, session as sessionTable, twoFactor, user, verification } from "@/server/db/schema"
 import { lockoutIpKey, lockoutKey, recordLoginFailure } from "@/server/auth/lockout"
@@ -321,6 +321,111 @@ describe.skipIf(!hasDb)("CLI (DB)", () => {
           .where(and(eq(activityLogs.action, "connection.update"), eq(activityLogs.actorRole, "cli")))
         expect(logs.length).toBe(before + 1)
         expect(logs.some((l) => (l.metadata as { failed?: number; count?: number }).failed === 1 && (l.metadata as { count?: number }).count === 1)).toBe(true)
+      } finally {
+        __setKeyRing(undefined)
+      }
+    })
+    it("mã hoá lại bí mật Google Drive (service account, API key, resource key nguồn + link tạm + lượt tải video) và ghi nhật ký", async () => {
+      const schema = await import("@/server/db/schema")
+      const { encryptServiceAccount } = await import("@/server/drive/store")
+      const owner = await createTestUser(P, "drive", { role: "staff" })
+      await db.delete(connections) // the previous test leaves an undecryptable row on purpose
+      const k1 = Buffer.alloc(32, 1).toString("base64")
+      const k2 = Buffer.alloc(32, 2).toString("base64")
+      __setKeyRing(`1:${k1}`)
+      try {
+        const sa = {
+          clientEmail: "sa@p.iam.gserviceaccount.com",
+          privateKey: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----",
+          privateKeyId: null,
+          projectId: null,
+        }
+        const credId = crypto.randomUUID()
+        await db.insert(schema.driveCredentials).values({
+          id: credId,
+          kind: "system",
+          ownerId: null,
+          credentialsEncrypted: encryptServiceAccount(credId, sa),
+          apiKeyEncrypted: encryptSecret("AIza-test-key", aad.driveCredentialApiKey(credId)),
+          clientEmail: sa.clientEmail,
+        })
+        const srcId = crypto.randomUUID()
+        await db.insert(schema.driveSources).values({
+          id: srcId,
+          kind: "folder",
+          scope: "company",
+          ownerId: owner.id,
+          credentialId: credId,
+          googleId: `${P}-folder`,
+          resourceKeyEncrypted: encryptSecret("0-src", aad.driveSourceResourceKey(srcId)),
+          name: "f",
+        })
+        const mcpId = crypto.randomUUID()
+        await db.insert(schema.mcpServers).values({ id: mcpId, ownerId: owner.id, name: `${P} mcp`, keyHash: `h-${mcpId}`, keyPrefix: "amcp_x", keyEncrypted: encryptSecret("amcp_k", aad.mcpKey(mcpId)) })
+        const connId = crypto.randomUUID()
+        await db.insert(connections).values({ id: connId, ownerId: owner.id, platform: "meta", name: `${P} drive conn`, credentialsEncrypted: encryptSecret("{}", aad.connectionCredentials(connId)) })
+        const [acc] = await db
+          .insert(schema.adAccounts)
+          .values({ connectionId: connId, platform: "meta", externalId: `act_${P}`, name: "a", currency: "VND", timezone: "Asia/Ho_Chi_Minh" })
+          .returning({ id: schema.adAccounts.id })
+        const relayId = crypto.randomUUID()
+        await db.insert(schema.driveRelayLinks).values({
+          id: relayId,
+          tokenHash: `${P}-hash`,
+          mcpId,
+          adAccountId: acc!.id,
+          driveFileId: "f1",
+          contentKey: "md5:a:1",
+          access: "api_key",
+          resourceKeyEncrypted: encryptSecret("0-relay", aad.driveRelayResourceKey(relayId)),
+          fileName: "v.mp4",
+          contentType: "video/mp4",
+          sizeBytes: 1,
+          maxFetches: 30,
+          expiresAt: new Date(Date.now() + 3600_000),
+        })
+        const jobId = crypto.randomUUID()
+        await db.insert(schema.mediaUploadJobs).values({
+          id: jobId,
+          mcpId,
+          adAccountId: acc!.id,
+          platform: "meta",
+          driveFileId: "f2",
+          contentKey: "md5:b:1",
+          access: "api_key",
+          resourceKeyEncrypted: encryptSecret("0-job", aad.mediaUploadJobResourceKey(jobId)),
+          fileName: "big.mp4",
+          contentType: "video/mp4",
+          sizeBytes: 1,
+        })
+        __setKeyRing(`2:${k2},1:${k1}`)
+        const dry = await cli(["reencrypt", "--dry-run"])
+        expect(dry.code).toBe(0)
+        expect(dry.out).toMatch(/5 bí mật Google Drive/)
+        const real = await cli(["reencrypt"])
+        expect(real.code).toBe(0)
+        expect(real.out).not.toContain("AIza-test-key")
+        const [cred] = await db.select().from(schema.driveCredentials).where(eq(schema.driveCredentials.id, credId))
+        const [src] = await db.select().from(schema.driveSources).where(eq(schema.driveSources.id, srcId))
+        const [relay] = await db.select().from(schema.driveRelayLinks).where(eq(schema.driveRelayLinks.id, relayId))
+        expect(cred!.credentialsEncrypted.startsWith("v2.")).toBe(true)
+        expect(cred!.apiKeyEncrypted!.startsWith("v2.")).toBe(true)
+        expect(src!.resourceKeyEncrypted!.startsWith("v2.")).toBe(true)
+        expect(relay!.resourceKeyEncrypted!.startsWith("v2.")).toBe(true)
+        const [job] = await db.select().from(schema.mediaUploadJobs).where(eq(schema.mediaUploadJobs.id, jobId))
+        expect(job!.resourceKeyEncrypted!.startsWith("v2.")).toBe(true)
+        expect(decryptSecret(job!.resourceKeyEncrypted!, aad.mediaUploadJobResourceKey(jobId))).toBe("0-job")
+        expect(decryptSecret(cred!.apiKeyEncrypted!, aad.driveCredentialApiKey(credId))).toBe("AIza-test-key")
+        expect(decryptSecret(src!.resourceKeyEncrypted!, aad.driveSourceResourceKey(srcId))).toBe("0-src")
+        expect(decryptSecret(relay!.resourceKeyEncrypted!, aad.driveRelayResourceKey(relayId))).toBe("0-relay")
+        expect(JSON.parse(decryptSecret(cred!.credentialsEncrypted, aad.driveCredential(credId))).clientEmail).toBe(sa.clientEmail)
+        for (const action of ["drive_credential.update", "drive_source.update"] as const) {
+          const logs = await db
+            .select()
+            .from(activityLogs)
+            .where(and(eq(activityLogs.action, action), eq(activityLogs.actorRole, "cli")))
+          expect(logs.length, action).toBe(1)
+        }
       } finally {
         __setKeyRing(undefined)
       }

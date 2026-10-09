@@ -21,7 +21,7 @@ import { createInterface } from "node:readline"
 import { pathToFileURL } from "node:url"
 import { parseArgs } from "node:util"
 import { hashPassword } from "better-auth/crypto"
-import { and, count, eq, like } from "drizzle-orm"
+import { and, count, eq, isNotNull, like } from "drizzle-orm"
 
 import { generateTempPassword } from "@/lib/schemas/users"
 import { safeErrorForLog } from "@/server/audit/safe-error"
@@ -32,7 +32,11 @@ import { db, pool } from "@/server/db/client"
 import {
   account,
   connections,
+  driveCredentials,
+  driveRelayLinks,
+  driveSources,
   mcpServers,
+  mediaUploadJobs,
   notificationChannels,
   session,
   twoFactor,
@@ -69,7 +73,8 @@ Cách dùng: node dist/cli.mjs <lệnh> [tham số]   (dev: pnpm cli <lệnh>)
       Mở khoá tài khoản đã bị quản trị viên khoá (Người dùng → Khoá tài khoản). Không đổi mật khẩu, không đổi 2FA.
       Khác với "unlock" (gỡ khoá do nhập sai mật khẩu nhiều lần).
   reencrypt [--dry-run]
-      Mã hoá lại credential kết nối và key MCP chưa dùng khoá ENCRYPTION_KEYS đang hoạt động.
+      Mã hoá lại credential kết nối, key MCP, bot token Telegram và bí mật Google Drive (service account, API key,
+      resource key) chưa dùng khoá ENCRYPTION_KEYS đang hoạt động.
   google:refresh-token --client-id <id> [--client-secret-stdin] [--port 8085] [--host 127.0.0.1]
       Lấy refresh token Google Ads (gồm quảng cáo YouTube) bằng OAuth client loại Desktop, redirect
       http://127.0.0.1:<port>. Không cần developer token (Google bỏ yêu cầu từ 09/09/2026).
@@ -365,7 +370,11 @@ async function unban(args: string[]) {
   out(`✔ Đã mở khoá tài khoản ${email}. Người dùng đăng nhập lại bằng mật khẩu hiện tại.`)
 }
 
-type ReencryptFailure = { kind: "connection" | "mcp" | "notification_channel"; id: string; reason: string }
+type ReencryptFailure = {
+  kind: "connection" | "mcp" | "notification_channel" | "drive_credential" | "drive_api_key" | "drive_source" | "drive_relay_link" | "media_upload_job"
+  id: string
+  reason: string
+}
 
 /**
  * Re-encrypt every row of one table that is not under the active key. Row by row: a row that cannot be decrypted
@@ -458,7 +467,132 @@ async function reencrypt(args: string[]) {
     dry,
     failures
   )
+  // Google Drive: service account JSON + API key (drive_credentials), resource keys (drive_sources, drive_relay_links)
+  const driveCredRows = await db
+    .select({ id: driveCredentials.id, enc: driveCredentials.credentialsEncrypted })
+    .from(driveCredentials)
+  const driveCreds = await reencryptRows(
+    "drive_credential",
+    driveCredRows,
+    aad.driveCredential,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(driveCredentials)
+          .set({ credentialsEncrypted: next })
+          .where(and(eq(driveCredentials.id, id), eq(driveCredentials.credentialsEncrypted, prev)))
+          .returning({ id: driveCredentials.id })
+      ).length === 1,
+    dry,
+    failures
+  )
+  const driveKeyRows = await db
+    .select({ id: driveCredentials.id, enc: driveCredentials.apiKeyEncrypted })
+    .from(driveCredentials)
+    .where(isNotNull(driveCredentials.apiKeyEncrypted))
+  const driveKeys = await reencryptRows(
+    "drive_api_key",
+    driveKeyRows.map((r) => ({ id: r.id, enc: r.enc! })),
+    aad.driveCredentialApiKey,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(driveCredentials)
+          .set({ apiKeyEncrypted: next })
+          .where(and(eq(driveCredentials.id, id), eq(driveCredentials.apiKeyEncrypted, prev)))
+          .returning({ id: driveCredentials.id })
+      ).length === 1,
+    dry,
+    failures
+  )
+  const driveSourceRows = await db
+    .select({ id: driveSources.id, enc: driveSources.resourceKeyEncrypted })
+    .from(driveSources)
+    .where(isNotNull(driveSources.resourceKeyEncrypted))
+  const driveSrc = await reencryptRows(
+    "drive_source",
+    driveSourceRows.map((r) => ({ id: r.id, enc: r.enc! })),
+    aad.driveSourceResourceKey,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(driveSources)
+          .set({ resourceKeyEncrypted: next })
+          .where(and(eq(driveSources.id, id), eq(driveSources.resourceKeyEncrypted, prev)))
+          .returning({ id: driveSources.id })
+      ).length === 1,
+    dry,
+    failures
+  )
+  const relayRows = await db
+    .select({ id: driveRelayLinks.id, enc: driveRelayLinks.resourceKeyEncrypted })
+    .from(driveRelayLinks)
+    .where(isNotNull(driveRelayLinks.resourceKeyEncrypted))
+  const relays = await reencryptRows(
+    "drive_relay_link",
+    relayRows.map((r) => ({ id: r.id, enc: r.enc! })),
+    aad.driveRelayResourceKey,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(driveRelayLinks)
+          .set({ resourceKeyEncrypted: next })
+          .where(and(eq(driveRelayLinks.id, id), eq(driveRelayLinks.resourceKeyEncrypted, prev)))
+          .returning({ id: driveRelayLinks.id })
+      ).length === 1,
+    dry,
+    failures
+  )
+  // background video uploads (media_upload_jobs.resource_key_encrypted, short-lived)
+  const jobRows = await db
+    .select({ id: mediaUploadJobs.id, enc: mediaUploadJobs.resourceKeyEncrypted })
+    .from(mediaUploadJobs)
+    .where(isNotNull(mediaUploadJobs.resourceKeyEncrypted))
+  const jobs = await reencryptRows(
+    "media_upload_job",
+    jobRows.map((r) => ({ id: r.id, enc: r.enc! })),
+    aad.mediaUploadJobResourceKey,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(mediaUploadJobs)
+          .set({ resourceKeyEncrypted: next })
+          .where(and(eq(mediaUploadJobs.id, id), eq(mediaUploadJobs.resourceKeyEncrypted, prev)))
+          .returning({ id: mediaUploadJobs.id })
+      ).length === 1,
+    dry,
+    failures
+  )
+  const driveCount = driveCreds.count + driveKeys.count + driveSrc.count + relays.count + jobs.count
   if (!dry) {
+    if (driveCreds.count + driveKeys.count > 0 || driveCreds.failed + driveKeys.failed > 0)
+      await insertActivity({
+        actor: CLI_ACTOR,
+        action: "drive_credential.update",
+        target: { type: "drive_credential", id: null, label: "reencrypt" },
+        metadata: {
+          via: "cli",
+          op: "reencrypt",
+          count: driveCreds.count,
+          apiKeys: driveKeys.count,
+          failed: driveCreds.failed + driveKeys.failed,
+        },
+      })
+    // relay links / upload jobs are short-lived: counted with the sources, no row of their own
+    if (driveSrc.count + relays.count + jobs.count > 0 || driveSrc.failed + relays.failed + jobs.failed > 0)
+      await insertActivity({
+        actor: CLI_ACTOR,
+        action: "drive_source.update",
+        target: { type: "drive_source", id: null, label: "reencrypt" },
+        metadata: {
+          via: "cli",
+          op: "reencrypt",
+          count: driveSrc.count,
+          relayLinks: relays.count,
+          uploadJobs: jobs.count,
+          failed: driveSrc.failed + relays.failed + jobs.failed,
+        },
+      })
     if (channels.count > 0 || channels.failed > 0)
       await insertActivity({
         actor: CLI_ACTOR,
@@ -483,13 +617,22 @@ async function reencrypt(args: string[]) {
   }
   out(
     dry
-      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram (chạy lại không có --dry-run để thực hiện).`
-      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP và ${channels.count} kết nối Telegram bằng khoá đang hoạt động.`
+      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive (chạy lại không có --dry-run để thực hiện).`
+      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram và ${driveCount} bí mật Google Drive bằng khoá đang hoạt động.`
   )
   // ids + a redacted error message only - never ciphertext or plaintext
-  const kindLabel = { connection: "kết nối", mcp: "MCP", notification_channel: "kết nối Telegram" } as const
+  const kindLabel = {
+    connection: "kết nối",
+    mcp: "MCP",
+    notification_channel: "kết nối Telegram",
+    drive_credential: "service account Google Drive",
+    drive_api_key: "API key Google Drive",
+    drive_source: "thư mục / sheet Google Drive",
+    drive_relay_link: "link tạm Google Drive",
+    media_upload_job: "lượt tải video Google Drive",
+  } as const
   for (const f of failures) process.stderr.write(`✖ ${kindLabel[f.kind]} ${f.id}: ${f.reason}\n`)
-  const raced = conn.raced + mcp.raced + channels.raced
+  const raced = conn.raced + mcp.raced + channels.raced + driveCreds.raced + driveKeys.raced + driveSrc.raced + relays.raced + jobs.raced
   if (raced > 0) out(`  ${raced} bản ghi vừa được thay đổi trong lúc chạy - chạy lại lệnh để mã hoá nốt.`)
   if (failures.length > 0) {
     throw new CliError(

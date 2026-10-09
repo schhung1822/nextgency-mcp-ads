@@ -2,8 +2,12 @@
 // JobDefinition (no "next/*" / "server-only" imports) and append it to JOBS below.
 import { accountsSyncJob } from "./accounts-sync"
 import { authCleanupJob } from "./auth-cleanup"
+import { driveCleanupJob } from "./drive-cleanup"
+import { driveHealthJob } from "./drive-health"
 import { logsMaintainJob } from "./logs-maintain"
 import { logsRollupJob } from "./logs-rollup"
+import { mediaUploadSweepJob } from "./media-upload-sweep"
+import { mediaVideoUploadJob } from "./media-video-upload"
 import { noticesFetchJob } from "./notices-fetch"
 import { notificationsCleanupJob } from "./notifications-cleanup"
 import { notificationsSweepJob } from "./notifications-sweep"
@@ -26,6 +30,10 @@ export const JOBS: JobDefinition<any>[] = [
   notifyTelegramJob,
   notificationsSweepJob,
   notificationsCleanupJob,
+  driveHealthJob,
+  driveCleanupJob,
+  mediaVideoUploadJob,
+  mediaUploadSweepJob,
 ]
 
 export {

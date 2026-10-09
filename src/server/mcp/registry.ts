@@ -6,6 +6,7 @@ import { grantPlatformsWith, type McpGrant } from "./types"
 import type { ToolContext } from "./tool"
 import * as copyObject from "./tools/common/copy-object"
 import * as deleteObject from "./tools/common/delete-object"
+import * as getMediaUpload from "./tools/common/get-media-upload"
 import * as getObject from "./tools/common/get-object"
 import * as getReport from "./tools/common/get-report"
 import * as listAccounts from "./tools/common/list-accounts"
@@ -15,6 +16,7 @@ import * as setStatus from "./tools/common/set-status"
 import * as updateBudget from "./tools/common/update-budget"
 import * as updateObject from "./tools/common/update-object"
 import * as uploadMedia from "./tools/common/upload-media"
+import { driveToolsAllowed, registerDriveTools } from "./tools/drive"
 import { registerExtensions } from "./tools/extensions"
 import { metaPagesAllowed, registerMetaPageTools } from "./tools/meta-pages"
 import { registerTelegramTools, telegramToolsAllowed } from "./tools/telegram"
@@ -54,6 +56,16 @@ export const TOOLSETS: ToolsetDef[] = [
   common(uploadMedia, "create"),
   common(deleteObject, "delete"),
   {
+    // background (large Drive video) uploads of ads_upload_media: a READ tool offered whenever ads_upload_media is
+    name: getMediaUpload.NAME,
+    permission: "read",
+    isAllowed: (grant) => grantPlatformsWith(grant, "create").length > 0,
+    register: (server, ctx, taken) => {
+      taken.add(getMediaUpload.NAME)
+      getMediaUpload.register(server, ctx)
+    },
+  },
+  {
     // Facebook Pages (read only): needs Meta "read" + at least one Page in the MCP scope
     name: "meta_pages",
     permission: "read",
@@ -68,6 +80,13 @@ export const TOOLSETS: ToolsetDef[] = [
     register: (server, ctx, taken) => registerTelegramTools(server, ctx, taken),
   },
   {
+    // Google Drive / Sheets (15-google-drive-media.md §7): ≥ 1 source in scope or public Drive links usable
+    name: "drive",
+    permission: "read",
+    isAllowed: (grant) => driveToolsAllowed(grant),
+    register: (server, ctx, taken) => registerDriveTools(server, ctx, taken),
+  },
+  {
     name: "platform_extensions",
     permission: "read",
     isAllowed: (grant) => grantPlatformsWith(grant, "read").length > 0,
@@ -77,7 +96,7 @@ export const TOOLSETS: ToolsetDef[] = [
 
 /** Names of the common tools (for docs / UI). */
 export const COMMON_TOOL_PERMISSIONS: Record<string, Permission> = Object.fromEntries(
-  TOOLSETS.filter((t) => t.name !== "platform_extensions" && t.name !== "meta_pages" && t.name !== "telegram").map((t) => [
+  TOOLSETS.filter((t) => t.name !== "platform_extensions" && t.name !== "meta_pages" && t.name !== "telegram" && t.name !== "drive").map((t) => [
     t.name,
     t.permission,
   ])

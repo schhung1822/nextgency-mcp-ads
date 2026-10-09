@@ -1,16 +1,21 @@
 // Access-token minting for Google Ads without google-auth-library:
-//  - service account: self-signed JWT (RS256, node:crypto) → jwt-bearer grant. No `sub` claim
-//    (Google Ads accepts service accounts directly, no domain-wide delegation).
+//  - service account: shared helper src/server/google/service-account.ts (self-signed RS256 JWT → jwt-bearer grant,
+//    scope adwords). No `sub` claim (Google Ads accepts service accounts directly, no domain-wide delegation).
 //  - OAuth: refresh_token grant.
-// Tokens are cached in memory until 5 minutes before expiry, keyed by connection + credential identity.
-import { createSign } from "node:crypto"
+// Tokens are cached in memory until 5 minutes before expiry, keyed by connection + credential identity (+ scope).
+import {
+  __clearGoogleTokenCache,
+  getGoogleAccessTokenInfo,
+  GoogleAuthError,
+  invalidateGoogleAccessTokens,
+  signGoogleJwt,
+} from "../../google/service-account"
 import { ProviderError } from "../errors"
 import { httpJson } from "../http"
 import type { UpstreamEvent } from "../types"
-import { ADWORDS_SCOPE, GOOGLE_TOKEN_URL, credentialIdentity, type GoogleAdsCredentials, type ServiceAccountCredentials } from "./credentials"
+import { ADWORDS_SCOPE, GOOGLE_TOKEN_URL, credentialIdentity, type GoogleAdsCredentials, type OAuthRefreshTokenCredentials, type ServiceAccountCredentials } from "./credentials"
 
 const EARLY_REFRESH_MS = 5 * 60_000
-const JWT_LIFETIME_S = 3600
 
 interface CachedToken {
   accessToken: string
@@ -29,10 +34,6 @@ export interface TokenOptions {
   now?: () => number
 }
 
-function b64url(input: Buffer | string): string {
-  return Buffer.from(input).toString("base64url")
-}
-
 export interface JwtClaims {
   iss: string
   scope: string
@@ -43,28 +44,59 @@ export interface JwtClaims {
 
 /** Build and sign the service-account assertion. `aud` is always Google's token endpoint (never token_uri from the JSON). */
 export function signServiceAccountJwt(sa: Pick<ServiceAccountCredentials, "client_email" | "private_key" | "private_key_id">, nowMs = Date.now()): string {
-  const iat = Math.floor(nowMs / 1000)
-  const header: Record<string, string> = { alg: "RS256", typ: "JWT" }
-  if (sa.private_key_id) header.kid = sa.private_key_id
-  const claims: JwtClaims = { iss: sa.client_email, scope: ADWORDS_SCOPE, aud: GOOGLE_TOKEN_URL, iat, exp: iat + JWT_LIFETIME_S }
-  const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`
-  let signature: string
   try {
-    const signer = createSign("RSA-SHA256")
-    signer.update(signingInput)
-    signer.end()
-    signature = signer.sign(sa.private_key.replace(/\\n/g, "\n")).toString("base64url")
+    return signGoogleJwt({ clientEmail: sa.client_email, privateKey: sa.private_key, privateKeyId: sa.private_key_id }, [ADWORDS_SCOPE], nowMs)
   } catch (e) {
-    throw new ProviderError({
-      platform: "google_ads",
-      code: "auth_invalid",
-      message: "Cannot sign service account JWT (invalid private_key)",
-      userMessageVi: "Không ký được JWT: private_key trong file JSON của service account không hợp lệ.",
-      hint: "Tải lại khóa JSON mới cho service account và dán lại toàn bộ nội dung.",
-      cause: e,
-    })
+    throw invalidKeyError(e)
   }
-  return `${signingInput}.${signature}`
+}
+
+function invalidKeyError(cause: unknown): ProviderError {
+  return new ProviderError({
+    platform: "google_ads",
+    code: "auth_invalid",
+    message: "Cannot sign service account JWT (invalid private_key)",
+    userMessageVi: "Không ký được JWT: private_key trong file JSON của service account không hợp lệ.",
+    hint: "Tải lại khóa JSON mới cho service account và dán lại toàn bộ nội dung.",
+    cause,
+  })
+}
+
+/** cache key of the shared service-account token cache (the helper adds key identity + scope) */
+function saCacheKey(connectionId?: string): string {
+  return `google_ads:${connectionId ?? "-"}`
+}
+
+/** Service accounts: shared helper (scope adwords); its neutral errors mapped to ProviderError as before. */
+async function serviceAccountToken(creds: ServiceAccountCredentials, opts: TokenOptions): Promise<CachedToken> {
+  try {
+    return await getGoogleAccessTokenInfo(
+      { clientEmail: creds.client_email, privateKey: creds.private_key, privateKeyId: creds.private_key_id, projectId: creds.project_id },
+      [ADWORDS_SCOPE],
+      {
+        cacheKey: saCacheKey(opts.connectionId),
+        signal: opts.signal,
+        forceRefresh: opts.forceRefresh,
+        now: opts.now,
+        onExchange: opts.onUpstream
+          ? (e) => opts.onUpstream!({ platform: "google_ads", method: e.method, url: e.url, status: e.status, durationMs: e.durationMs, requestId: e.requestId })
+          : undefined,
+      }
+    )
+  } catch (e) {
+    if (!(e instanceof GoogleAuthError)) throw e
+    if (e.code === "invalid_json") throw invalidKeyError(e)
+    if (e.code === "network")
+      throw new ProviderError({
+        platform: "google_ads",
+        code: e.timedOut ? "timeout" : "upstream_error",
+        message: `POST ${GOOGLE_TOKEN_URL} failed: ${e.message}`,
+        userMessageVi: e.timedOut ? "Nền tảng quảng cáo phản hồi quá chậm (hết thời gian chờ)." : "Không kết nối được tới nền tảng quảng cáo.",
+        retryable: true,
+        cause: e,
+      })
+    throw tokenError(creds, e.httpStatus ?? 0, { error: e.oauthError ?? undefined, error_description: e.detail ?? undefined }, e.requestId)
+  }
 }
 
 function cacheKey(creds: GoogleAdsCredentials, connectionId?: string): string {
@@ -78,6 +110,7 @@ export async function getAccessToken(creds: GoogleAdsCredentials, opts: TokenOpt
 }
 
 export async function getToken(creds: GoogleAdsCredentials, opts: TokenOptions = {}): Promise<CachedToken> {
+  if (creds.auth_type === "service_account") return serviceAccountToken(creds, opts)
   const now = opts.now ?? Date.now
   const key = cacheKey(creds, opts.connectionId)
   if (!opts.forceRefresh) {
@@ -99,13 +132,15 @@ export async function getToken(creds: GoogleAdsCredentials, opts: TokenOptions =
 }
 
 export function invalidateToken(creds: GoogleAdsCredentials, connectionId?: string) {
-  cache.delete(cacheKey(creds, connectionId))
+  if (creds.auth_type === "service_account") invalidateGoogleAccessTokens(saCacheKey(connectionId))
+  else cache.delete(cacheKey(creds, connectionId))
 }
 
 /** test helper */
 export function __clearTokenCache() {
   cache.clear()
   inflight.clear()
+  __clearGoogleTokenCache()
 }
 
 interface TokenResponse {
@@ -116,17 +151,13 @@ interface TokenResponse {
   error_description?: string
 }
 
-async function mint(creds: GoogleAdsCredentials, opts: TokenOptions, now: () => number): Promise<CachedToken> {
+/** OAuth refresh_token grant (service accounts go through serviceAccountToken). */
+async function mint(creds: OAuthRefreshTokenCredentials, opts: TokenOptions, now: () => number): Promise<CachedToken> {
   const body = new URLSearchParams()
-  if (creds.auth_type === "service_account") {
-    body.set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-    body.set("assertion", signServiceAccountJwt(creds, now()))
-  } else {
-    body.set("grant_type", "refresh_token")
-    body.set("client_id", creds.client_id)
-    body.set("client_secret", creds.client_secret)
-    body.set("refresh_token", creds.refresh_token)
-  }
+  body.set("grant_type", "refresh_token")
+  body.set("client_id", creds.client_id)
+  body.set("client_secret", creds.client_secret)
+  body.set("refresh_token", creds.refresh_token)
   const res = await httpJson<TokenResponse>({
     platform: "google_ads",
     method: "POST",

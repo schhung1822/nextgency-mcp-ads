@@ -26,6 +26,8 @@ const SECRET_EXACT = new Set([
   "mcpkey",
   "xapikey",
   "apikey",
+  "resourcekeys", // Google Drive resource keys (resourceKey is caught by the last word)
+  "xgoogdriveresourcekeys",
 ])
 
 /** Last word of a key that marks it as a secret (developer_token, client_secret, newPassword, secret_key…). */
@@ -52,9 +54,9 @@ export function isSecretKeyName(k: string): boolean {
   return SECRET_LAST_WORD.has(w[w.length - 1]!)
 }
 
-/** query parameters whose values are secrets (signed URLs, OAuth codes, tokens); also a bare form body "client_secret=…&…" */
+/** query parameters whose values are secrets (signed URLs, OAuth codes, tokens, Drive resource keys); also a bare form body "client_secret=…&…" */
 const SECRET_QUERY_PARAM =
-  /((?:^|[?&])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|[a-z_-]*_token|appsecret_proof|client_secret|secret|key|api[_-]?key|code|sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)=)[^&#\s"']+/gi
+  /((?:^|[?&])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|[a-z_-]*_token|appsecret_proof|client_secret|secret|key|api[_-]?key|resource[_-]?key|code|sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)=)[^&#\s"']+/gi
 
 const VALUE_PATTERNS: [RegExp, string][] = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted-private-key]"],
@@ -69,6 +71,8 @@ const VALUE_PATTERNS: [RegExp, string][] = [
   [/\bbot\d{5,16}:[A-Za-z0-9_-]+/g, "bot[redacted]"], // Telegram token in a Bot API URL path (/bot<token>/sendMessage)
   [/\b\d{5,16}:[A-Za-z0-9_-]{30,}\b/g, "[redacted-telegram-token]"], // Telegram bot token "<bot id>:<secret>"
   [/\bct_[A-Za-z0-9_-]{24,}/g, "ct_…[redacted]"], // confirm tokens
+  [/\badr_[A-Za-z0-9_-]{20,}/g, "adr_…[redacted]"], // Drive relay link tokens (/dl/<token>/<name>)
+  [/\bAIza[0-9A-Za-z_-]{35}/g, "AIza…[redacted]"], // Google API keys
   [/\b[a-f0-9]{40}\b/g, "[redacted-hex40]"], // 40-hex tokens (heuristic)
   // NOTE: no bare 32-hex pattern - Meta image_hash values are 32-hex and must stay readable
   [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/@]+@/gi, "$1[redacted]@"], // URL userinfo password (postgres://user:pass@host)

@@ -121,6 +121,8 @@ describe("grant checks", () => {
       },
     ],
     notificationChannels: [{ id: "ch1", name: "Nhóm A", chatTitle: "Team", hasThread: false }],
+    driveSources: [],
+    drivePublicAvailable: false,
   }
   it("accepts a granted Page and refuses others / an MCP without Meta read", () => {
     expect(assertPageGrant(grant, "111").id).toBe("p1")

@@ -7,7 +7,10 @@ import { db } from "../db/client"
 import {
   adAccounts,
   connections,
+  driveCredentials,
+  driveSources,
   mcpAccountScopes,
+  mcpDriveScopes,
   mcpNotificationScopes,
   mcpPageScopes,
   mcpPlatformPermissions,
@@ -16,6 +19,8 @@ import {
   notificationChannels,
   user,
 } from "../db/schema"
+import { loadBlockedFolderIds, sourceIsBlocked } from "../drive/blocked"
+import { normalizeFolderConfig, normalizeSheetConfig } from "../drive/store"
 import { PLATFORMS, type Platform } from "../providers/types"
 import { denied } from "./errors"
 import { parseMcpSettings } from "./settings"
@@ -24,6 +29,7 @@ import {
   grantAllows,
   type GrantAccount,
   type GrantChannel,
+  type GrantDriveSource,
   type GrantPage,
   type McpGrant,
   type Permission,
@@ -354,7 +360,93 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
     accounts,
     pages,
     notificationChannels: notificationChannelsInScope,
+    driveSources: await loadGrantDriveSources(m.id, m.ownerId, ownerIsAdmin),
+    drivePublicAvailable: await systemDriveApiKeyAvailable(),
   }
+}
+
+/**
+ * Google Drive sources of an MCP (15-google-drive-media.md §5): scope rows ⋈ live sources (status ≠ disabled) ⋈ live
+ * credentials (status ≠ disabled). Defence in depth on top of the service rules: a staff-owned MCP only reaches
+ * company sources and the owner's personal sources (an admin's MCP: any source, G4); a company source must use the
+ * system credential and a personal credential only serves its own owner's sources. A staff-owned MCP also loses a
+ * source that is (or now sits inside) another user's live personal folder (stored ancestor_ids ∩ the owner's blocked
+ * folders - security review T-2), e.g. a company folder moved into a staff member's personal folder.
+ */
+async function loadGrantDriveSources(mcpId: string, ownerId: string, ownerIsAdmin: boolean): Promise<GrantDriveSource[]> {
+  const rows = await db
+    .select({
+      id: driveSources.id,
+      kind: driveSources.kind,
+      scope: driveSources.scope,
+      name: driveSources.name,
+      googleId: driveSources.googleId,
+      sheetGid: driveSources.sheetGid,
+      credentialId: driveSources.credentialId,
+      ownerId: driveSources.ownerId,
+      status: driveSources.status,
+      sharedDriveId: driveSources.sharedDriveId,
+      config: driveSources.config,
+      ancestorIds: driveSources.ancestorIds,
+    })
+    .from(mcpDriveScopes)
+    .innerJoin(driveSources, eq(driveSources.id, mcpDriveScopes.sourceId))
+    .innerJoin(driveCredentials, eq(driveCredentials.id, driveSources.credentialId))
+    .where(
+      and(
+        eq(mcpDriveScopes.mcpId, mcpId),
+        isNull(driveSources.deletedAt),
+        ne(driveSources.status, "disabled"),
+        isNull(driveCredentials.deletedAt),
+        ne(driveCredentials.status, "disabled"),
+        or(
+          and(eq(driveSources.scope, "company"), eq(driveCredentials.kind, "system")),
+          and(
+            eq(driveSources.scope, "personal"),
+            or(eq(driveCredentials.kind, "system"), eq(driveCredentials.ownerId, driveSources.ownerId))
+          )
+        ),
+        ownerIsAdmin ? undefined : or(eq(driveSources.scope, "company"), eq(driveSources.ownerId, ownerId))
+      )
+    )
+  const blocked =
+    ownerIsAdmin || rows.length === 0 ? new Set<string>() : await loadBlockedFolderIds({ id: ownerId, role: "staff" })
+  return rows
+    .filter((r) => (r.kind === "folder" || r.kind === "sheet") && (r.kind === "sheet") === (r.sheetGid !== null))
+    .filter((r) => !sourceIsBlocked(r, blocked))
+    .map(
+      (r): GrantDriveSource => ({
+        id: r.id,
+        kind: r.kind as GrantDriveSource["kind"],
+        scope: r.scope === "company" ? "company" : "personal",
+        name: r.name,
+        googleId: r.googleId,
+        sheetGid: r.sheetGid,
+        credentialId: r.credentialId,
+        ownerId: r.ownerId,
+        status: r.status === "active" ? "active" : "error",
+        sharedDriveId: r.sharedDriveId,
+        config: r.kind === "sheet" ? normalizeSheetConfig(r.config) : normalizeFolderConfig(r.config),
+      })
+    )
+    .sort((a, b) => (a.scope === b.scope ? 0 : a.scope === "company" ? -1 : 1) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+}
+
+/** Public "Anyone with the link" Drive files are readable: the live, not disabled system credential has an API key. */
+async function systemDriveApiKeyAvailable(): Promise<boolean> {
+  const [row] = await db
+    .select({ id: driveCredentials.id })
+    .from(driveCredentials)
+    .where(
+      and(
+        eq(driveCredentials.kind, "system"),
+        isNull(driveCredentials.deletedAt),
+        ne(driveCredentials.status, "disabled"),
+        sql`${driveCredentials.apiKeyEncrypted} is not null`
+      )
+    )
+    .limit(1)
+  return !!row
 }
 
 // ---------------------------------------------------------------------------

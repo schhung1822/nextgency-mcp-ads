@@ -84,3 +84,59 @@ describe("uploadMetaMedia", () => {
   })
 })
 
+
+describe("uploadMetaMedia - Drive inputs (fileName, maxWaitMs, processing)", () => {
+  it("image bytes do not need an http(s) URL (informational only)", async () => {
+    const m = mockGraph([["POST", "act_1001/adimages", () => json({ images: { bytes: { hash: "h3", url: null } } })]])
+    const ref = await uploadMetaMedia(providerCtx(), { type: "image", url: "drive:1AbC", bytes: PNG, contentType: "image/png", fileName: "a.png" })
+    expect(ref).toEqual({ type: "image", id: "h3", url: null })
+    expect(m.calls).toHaveLength(1)
+  })
+
+  it("video still requires an http(s) URL", async () => {
+    const m = mockGraph([])
+    await expect(uploadMetaMedia(providerCtx(), { type: "video", url: "drive:1AbC" })).rejects.toMatchObject({ code: "invalid_request" })
+    expect(m.calls).toHaveLength(0)
+  })
+
+  it("video: falls back to fileName for the library name", async () => {
+    const m = mockGraph([
+      ["POST", "act_1001/advideos", () => json({ id: "556" })],
+      ["GET", "556", () => json({ status: { video_status: "ready" } })],
+    ])
+    await uploadMetaMedia(providerCtx(), { type: "video", url: "https://app.example.com/dl/adr_x/clip.mp4", fileName: "clip.mp4" })
+    expect(m.calls[0].params).toMatchObject({ file_url: "https://app.example.com/dl/adr_x/clip.mp4", name: "clip.mp4" })
+  })
+
+  it("video: honours maxWaitMs and returns processing: true when Meta is still processing", async () => {
+    META_TIMINGS.videoMaxWaitMs = 60_000
+    META_TIMINGS.pollIntervalMs = 10
+    const m = mockGraph([
+      ["POST", "act_1001/advideos", () => json({ id: "557" })],
+      ["GET", "557", () => json({ status: { video_status: "processing" } })],
+    ])
+    const started = Date.now()
+    const ref = await uploadMetaMedia(providerCtx(), { type: "video", url: "https://cdn.example.com/v.mp4", maxWaitMs: 50 })
+    expect(Date.now() - started).toBeLessThan(1_000)
+    expect(ref).toEqual({ type: "video", id: "557", url: null, processing: true })
+    expect(m.calls.filter((c) => c.method === "GET").length).toBeGreaterThanOrEqual(2)
+  })
+
+  it("video: maxWaitMs <= 0 skips polling", async () => {
+    const m = mockGraph([["POST", "act_1001/advideos", () => json({ id: "558" })]])
+    const ref = await uploadMetaMedia(providerCtx(), { type: "video", url: "https://cdn.example.com/v.mp4", maxWaitMs: 0 })
+    expect(ref).toEqual({ type: "video", id: "558", url: null, processing: true })
+    expect(m.calls).toHaveLength(1)
+  })
+
+  it("video: default budget (META_TIMINGS.videoMaxWaitMs) when maxWaitMs is omitted", async () => {
+    META_TIMINGS.videoMaxWaitMs = 30
+    META_TIMINGS.pollIntervalMs = 10
+    mockGraph([
+      ["POST", "act_1001/advideos", () => json({ id: "559" })],
+      ["GET", "559", () => json({ status: { video_status: "processing" } })],
+    ])
+    const ref = await uploadMetaMedia(providerCtx(), { type: "video", url: "https://cdn.example.com/v.mp4" })
+    expect(ref.processing).toBe(true)
+  })
+})

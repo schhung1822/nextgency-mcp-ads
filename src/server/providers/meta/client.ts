@@ -67,8 +67,10 @@ export interface GraphRequest {
   pageAccessToken?: string
   /** do not treat insights "too much data" (code 1) as retryable */
   insights?: boolean
-  /** send POST params as multipart/form-data (large payloads such as base64 image bytes) */
+  /** send POST params as multipart/form-data (large payloads such as base64 image bytes); Blob/File params are sent as file parts */
   multipart?: boolean
+  /** called with the raw Graph error object before it is mapped and thrown (e.g. resumable upload error_data offsets) */
+  onGraphError?: (err: GraphErrorBody) => void
 }
 
 export function appSecretProof(accessToken: string, appSecret: string): string {
@@ -120,6 +122,8 @@ export interface GraphErrorBody {
   error_user_msg?: string
   fbtrace_id?: string
   is_transient?: boolean
+  /** extra data (object or JSON string), e.g. resumable upload offsets */
+  error_data?: unknown
 }
 
 const THROTTLE_CODES = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80008, 80009, 80014])
@@ -364,6 +368,10 @@ export async function graph<T = Record<string, unknown>>(ctx: MetaCallContext, r
     const form = req.multipart ? new FormData() : new URLSearchParams()
     for (const [k, v] of Object.entries(params)) {
       if (v === undefined || v === null) continue
+      if (v instanceof Blob && form instanceof FormData) {
+        form.set(k, v)
+        continue
+      }
       form.set(k, encodeParam(v))
     }
     for (const [k, v] of Object.entries(auth)) form.set(k, v)
@@ -405,6 +413,7 @@ export async function graph<T = Record<string, unknown>>(ctx: MetaCallContext, r
   const waitMs = applyUsageHeaders(res.headers, key)
   const err = extractError(res.body)
   if (err || res.status >= 400) {
+    if (err) req.onGraphError?.(err)
     if (err && isThrottleCode(err.code)) {
       const ms = waitMs || 60_000
       coolDown(key, ms)

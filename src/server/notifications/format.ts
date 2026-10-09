@@ -8,10 +8,15 @@ import { redactString } from "@/server/audit/redact"
 import { stripMediaUrlQueries, stripUrlQueries } from "@/server/mcp/log-args"
 import type { FieldChange, Platform } from "@/server/providers/types"
 
+import { TELEGRAM_CAPTION_TEXT_MAX } from "./media"
 import { htmlToPlainText } from "./telegram"
+
+export { creditFooter, TELEGRAM_CREDIT_URL, type CreditFooter } from "./credit"
 
 /** Telegram hard limit for a message text (after entity parsing). */
 export const TELEGRAM_MAX_MESSAGE = 4096
+/** Telegram hard limit for a photo / video / document caption (after entity parsing). */
+export const TELEGRAM_MAX_CAPTION = 1024
 /** Budget for the dynamic part of a message (before escaping; the rest is our fixed template). */
 export const MAX_DYNAMIC_TEXT = 3500
 export const PREVIEW_MAX = 300
@@ -47,19 +52,21 @@ export function previewOf(html: string): string {
 }
 
 /**
- * Final guard: a message longer than Telegram's limit is converted to plain text, cut and re-escaped (cutting HTML
- * could leave an open tag). Always returns valid HTML for parse_mode HTML. Builders stay far below the limit.
+ * Final guard. Telegram counts characters AFTER entity parsing: the text without tags, entities decoded (measured
+ * here with .length = UTF-16 units, never fewer than Telegram's count). That text + `reserveChars` (the credit
+ * footer appended at send time, §10.1) must fit `max` (4096 text / 1024 caption); otherwise the message is
+ * converted to plain text, cut and re-escaped (cutting HTML could leave an open tag). Always returns valid HTML for
+ * parse_mode HTML. Builders stay far below the limit.
  */
-export function fitMessage(html: string): string {
-  if (html.length <= TELEGRAM_MAX_MESSAGE) return html
+export function fitMessage(
+  html: string,
+  reserveChars = 0,
+  max = TELEGRAM_MAX_MESSAGE
+): string {
+  const budget = Math.max(1, max - reserveChars)
   const plain = htmlToPlainText(html)
-  let n = TELEGRAM_MAX_MESSAGE - 96
-  let out = escapeHtml(truncateText(plain, n))
-  while (out.length > TELEGRAM_MAX_MESSAGE && n > 100) {
-    n = Math.floor(n * 0.8)
-    out = escapeHtml(truncateText(plain, n))
-  }
-  return out
+  if (plain.length <= budget) return html
+  return escapeHtml(truncateText(plain, budget))
 }
 
 /** an http(s) URL inside free text: scheme + host + path kept, query / fragment dropped */
@@ -359,11 +366,26 @@ export function buildMcpWriteMessage(args: {
 
 /**
  * telegram_send_message: fixed title (AI cannot fake it) + escaped text (AI cannot inject HTML). The AI text is
- * redacted first (a token / key the AI copied never reaches the chat); links keep their query (UTM links).
+ * scrubbed first (scrubText: a token / key the AI copied never reaches the chat, and links keep scheme + host + path
+ * but lose their query / fragment - a signed URL pasted into the text is never posted nor stored in the preview).
  */
 export function buildAiMessage(args: {
   mcpName: string
   text: string
 }): string {
-  return `<b>${escapeHtml(m.messages.aiMessage.title(truncateText(redactString(args.mcpName), 100)))}</b>\n\n${esc(redactString(args.text), MAX_DYNAMIC_TEXT)}`
+  return `<b>${escapeHtml(m.messages.aiMessage.title(truncateText(scrubText(args.mcpName), 100)))}</b>\n\n${esc(scrubText(args.text), MAX_DYNAMIC_TEXT)}`
+}
+
+/**
+ * Caption of a telegram_send_message attachment: the same fixed title (MCP name ≤ 60) + the scrubbed (redacted, URL
+ * queries dropped), escaped AI text (≤ TELEGRAM_CAPTION_TEXT_MAX, optional) - with the credit footer it stays under
+ * the 1024-character caption.
+ */
+export function buildAiCaption(args: {
+  mcpName: string
+  text?: string | null
+}): string {
+  const title = `<b>${escapeHtml(m.messages.aiMessage.title(truncateText(scrubText(args.mcpName), 60)))}</b>`
+  const text = args.text?.trim() ? scrubText(args.text) : ""
+  return text ? `${title}\n\n${esc(text, TELEGRAM_CAPTION_TEXT_MAX)}` : title
 }

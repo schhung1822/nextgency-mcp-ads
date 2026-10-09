@@ -10,6 +10,7 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  InputGroupTextarea,
 } from "@/components/ui/input-group"
 import { common } from "@/lib/i18n/vi/common"
 
@@ -28,6 +29,11 @@ export interface CopyFieldProps {
   /** toast text; default "Đã sao chép" */
   toastMessage?: string
   onCopied?: () => void
+  /**
+   * long values that must stay readable on a phone (e.g. a service account email): the text wraps onto more lines
+   * instead of being cut off (a read-only auto-sized textarea, still a labelled form control)
+   */
+  wrap?: boolean
   className?: string
 }
 
@@ -41,23 +47,47 @@ export function CopyField({
   iconOnly,
   toastMessage,
   onCopied,
+  wrap,
   className,
 }: CopyFieldProps) {
   const autoId = React.useId()
   const inputId = id ?? autoId
   const { copied, copy } = useCopy({ toastMessage })
   return (
-    <InputGroup className={cn("h-10 bg-card", className)}>
-      <InputGroupInput
-        id={inputId}
-        readOnly
-        value={value}
-        aria-label={label}
-        spellCheck={false}
-        autoComplete="off"
-        onFocus={(e) => e.currentTarget.select()}
-        className={cn("truncate", mono && "font-mono text-[13px]")}
-      />
+    <InputGroup
+      className={cn(
+        "bg-card",
+        wrap ? "min-h-10 pointer-coarse:min-h-12" : "h-10 pointer-coarse:h-12",
+        className
+      )}
+    >
+      {wrap ? (
+        <InputGroupTextarea
+          id={inputId}
+          readOnly
+          rows={1}
+          value={value}
+          aria-label={label}
+          spellCheck={false}
+          autoComplete="off"
+          onFocus={(e) => e.currentTarget.select()}
+          className={cn(
+            "min-h-0 [field-sizing:content] py-2.5 leading-5 break-all",
+            mono && "font-mono text-[13px]"
+          )}
+        />
+      ) : (
+        <InputGroupInput
+          id={inputId}
+          readOnly
+          value={value}
+          aria-label={label}
+          spellCheck={false}
+          autoComplete="off"
+          onFocus={(e) => e.currentTarget.select()}
+          className={cn("truncate", mono && "font-mono text-[13px]")}
+        />
+      )}
       <InputGroupAddon align="inline-end">
         <InputGroupButton
           size={iconOnly ? "icon-sm" : "sm"}
@@ -66,7 +96,12 @@ export function CopyField({
           onClick={async () => {
             if (await copy(value)) onCopied?.()
           }}
-          className={cn(!iconOnly && "h-8 px-3")}
+          className={cn(
+            !iconOnly && "h-8 px-3",
+            // touch: a 40px target (the group grows to 48px around it)
+            "pointer-coarse:h-10",
+            iconOnly && "pointer-coarse:w-10"
+          )}
         >
           <HugeiconsIcon
             icon={copied ? Tick02Icon : Copy01Icon}

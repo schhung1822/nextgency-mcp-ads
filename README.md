@@ -12,7 +12,7 @@
 
 Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm lần lượt từng bước, mỗi lệnh chỉ cần **sao chép và dán**. Toàn bộ mất khoảng 30-45 phút.
 
-Sau khi cài, đội của bạn dán token để kết nối **Meta, TikTok Ads, Google Ads (gồm quảng cáo YouTube) và OpenAI Ads**, rồi tạo link MCP cho Claude, ChatGPT, Gemini. Có thể thêm **bot Telegram** để nhận cảnh báo kết nối, thông báo thay đổi do AI thực hiện và tin nhắn từ AI ngay trong nhóm chat.
+Sau khi cài, đội của bạn dán token để kết nối **Meta, TikTok Ads, Google Ads (gồm quảng cáo YouTube) và OpenAI Ads**, rồi tạo link MCP cho Claude, ChatGPT, Gemini. Có thể thêm **bot Telegram** để nhận cảnh báo kết nối, thông báo thay đổi do AI thực hiện và tin nhắn từ AI ngay trong nhóm chat, và khai báo **thư mục Google Drive / Google Sheet** để AI lấy ảnh, video lên quảng cáo (xem [docs/huong-dan-google-drive.md](docs/huong-dan-google-drive.md)). Hướng dẫn dùng: [kết nối AI](docs/ket-noi-ai.md) · [Telegram](docs/huong-dan-telegram.md) · [Google Drive / Google Sheet](docs/huong-dan-google-drive.md).
 
 > [!TIP]
 > Bạn kết nối tài khoản GitHub chứa repo này với ChatGPT, Claude hoặc Gemini → cho AI đọc repo và hướng dẫn bạn deploy chi tiết nhé. Bạn cung cấp chi tiết cho AI biết là sẽ deploy trên đâu (VPS hay mini PC chạy Ubuntu Server), dùng bằng cách trỏ IP về VPS hay là Cloudflare Tunnel, trỏ IP về VPS thì có dùng Cloudflare và bật DNS only hay không. Bạn cung cấp đầy đủ ngữ cảnh để AI hướng dẫn chi tiết, gặp phần nào khó thì chụp ảnh màn hình xong gửi vào AI để nó hướng dẫn tiếp nhé.

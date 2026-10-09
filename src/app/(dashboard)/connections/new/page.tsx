@@ -17,7 +17,7 @@ export default async function NewConnectionPage({
 }) {
   await requireUser()
   const sp = await searchParams
-  // ?platform=youtube = the Google Ads form with the YouTube explanation (YouTube ads live in Google Ads)
+  // ?platform=youtube (links from the former "YouTube Ads" card) = the Google Ads form (YouTube ads live in Google Ads)
   const youtube = sp.platform === "youtube"
   // TikTok advertiser authorization redirects here with ?auth_code=…: open the TikTok "Đổi auth_code" form. Only
   // the flag goes to the client component; it reads the one-time code from the address bar and removes it.
@@ -28,7 +28,7 @@ export default async function NewConnectionPage({
   return (
     <div className="flex w-full flex-col">
       <PageHeader title={m.new.title} description={m.new.description} backHref="/connections" />
-      <NewConnectionWizard specs={getPlatformFormSpecs()} initialPlatform={initial.success ? initial.data : null} initialYoutube={youtube} authCodeRedirect={authCodeRedirect} />
+      <NewConnectionWizard specs={getPlatformFormSpecs()} initialPlatform={initial.success ? initial.data : null} authCodeRedirect={authCodeRedirect} />
     </div>
   )
 }

@@ -14,6 +14,7 @@ import {
   TelegramError,
   type FetchLike,
 } from "./telegram"
+import { creditFooter } from "./credit"
 
 const TOKEN = "123456789:AAEhBP0av28dfjdk3rn4kbhfh2-8sdjfskdjfh"
 
@@ -299,7 +300,10 @@ describe("sendMessage / sendTelegramText", () => {
     })
     const second = JSON.parse(String(f.mock.calls[1]![1].body))
     expect(second.parse_mode).toBeUndefined()
-    expect(second.text).toBe("A & B")
+    // the credit footer follows in its plain form (link spelled out)
+    expect(second.text).toBe(`A & B${creditFooter().plain}`)
+    const first = JSON.parse(String(f.mock.calls[0]![1].body))
+    expect(first.text).toBe(`<b>A &amp; B</b>${creditFooter().html}`)
   })
 
   it("nhóm nâng cấp supergroup → gửi lại 1 lần tới chat id mới và báo lại id mới", async () => {

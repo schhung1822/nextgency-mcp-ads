@@ -1,7 +1,7 @@
 // Sending one message to one channel + bookkeeping (channel status / last_sent_at / migrated chat id, delivery row).
 // Shared by the `notify.telegram` worker job, the "Gửi tin thử" action and the MCP tool telegram_send_message.
 // The bot token is decrypted here only, used for one request and dropped. No "next/*" imports.
-import { and, eq, isNull } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 
 import { notifications as m } from "@/lib/i18n/vi/notifications"
 import type {
@@ -19,10 +19,26 @@ import {
   type TelegramChannelConfig,
 } from "@/server/db/schema"
 
-import { fitMessage, previewOf } from "./format"
+import { creditFooter } from "./credit"
+import {
+  fitMessage,
+  PREVIEW_MAX,
+  previewOf,
+  TELEGRAM_MAX_CAPTION,
+  TELEGRAM_MAX_MESSAGE,
+  truncateText,
+} from "./format"
+import {
+  mediaPreviewLabel,
+  type OutgoingMedia,
+  type OutgoingMediaKind,
+} from "./media"
 import {
   isTelegramError,
+  sendTelegramMedia,
   sendTelegramText,
+  type SendMediaResult,
+  type SendTextResult,
   type TelegramCallOptions,
   type TelegramErrorKind,
 } from "./telegram"
@@ -79,7 +95,13 @@ export async function loadChannel(
 }
 
 export type SendOutcome =
-  | { ok: true; messageId: number; sentAsPlainText: boolean }
+  | {
+      ok: true
+      messageId: number
+      sentAsPlainText: boolean
+      /** media sends only: what Telegram received */
+      sentAs?: OutgoingMediaKind
+    }
   | {
       ok: false
       kind: TelegramErrorKind | "credentials"
@@ -100,7 +122,12 @@ export type ChannelPatch = Partial<typeof notificationChannels.$inferInsert>
 type SendOptions = Pick<
   TelegramCallOptions,
   "fetchImpl" | "signal" | "baseUrl" | "timeoutMs"
-> & { disableNotification?: boolean; now?: Date }
+> & {
+  disableNotification?: boolean
+  now?: Date
+  /** upload this file with `html` as its caption (sendChannelMessageNow only - the queue sends text) */
+  media?: OutgoingMedia | null
+}
 
 /** Applies the bookkeeping of attemptSend (no-op for null), on `exec` = db or the caller's transaction. */
 export async function applyChannelPatch(
@@ -119,6 +146,7 @@ export async function applyChannelPatch(
  * One send attempt (no retry), WITHOUT touching the DB: returns the outcome and the channel patch to apply.
  * success → last_sent_at (+ new chat id after a group migration; an `error` channel becomes `active` again);
  * token/chat/thread/rights error → status `error` + Vietnamese status_message; any other error → last_error_at.
+ * Every message gets the credit footer here (§10.1), once: queued rows, test messages and MCP messages alike.
  */
 export async function attemptSend(
   row: ChannelRow,
@@ -147,17 +175,25 @@ export async function attemptSend(
       patch: null,
     }
   }
-  const fitted = fitMessage(html)
+  const { media = null, ...callOpts } = opts
+  // the content is fitted so that content + footer stay within Telegram's limit (4096 text / 1024 caption); the
+  // plain form of the footer (parse-entities fallback) is the longer one, so it sets the reserve
+  const footer = creditFooter()
+  const fitted = fitMessage(
+    html,
+    footer.plain.length,
+    media ? TELEGRAM_MAX_CAPTION : TELEGRAM_MAX_MESSAGE
+  )
   try {
-    const r = await sendTelegramText(
-      token,
-      { chatId: cfg.chatId, messageThreadId: cfg.messageThreadId },
-      fitted,
-      {
-        ...opts,
-        botUsername: cfg.botUsername || null,
-      }
-    )
+    const target = { chatId: cfg.chatId, messageThreadId: cfg.messageThreadId }
+    const sendOpts = {
+      ...callOpts,
+      footer,
+      botUsername: cfg.botUsername || null,
+    }
+    const r: SendTextResult & Partial<Pick<SendMediaResult, "sentAs">> = media
+      ? await sendTelegramMedia(token, target, media, fitted, sendOpts)
+      : await sendTelegramText(token, target, fitted, sendOpts)
     const now = opts.now ?? new Date()
     const patch: ChannelPatch = {
       lastSentAt: now,
@@ -177,6 +213,7 @@ export async function attemptSend(
         ok: true,
         messageId: r.messageId,
         sentAsPlainText: r.sentAsPlainText,
+        ...(r.sentAs ? { sentAs: r.sentAs } : {}),
       },
       patch,
     }
@@ -247,24 +284,94 @@ export type SendNowResult =
       messageId: number
       /** channel status after this send */
       channelStatus: NotificationChannelStatus
+      /** set when `dedupeKey` matched a delivery Telegram already received: nothing was sent again */
+      duplicate?: true
+      /** media sends only: what Telegram received (a refused photo goes out as a document) */
+      sentAs?: OutgoingMediaKind
     }
   | {
       ok: false
       deliveryId: string | null
       error: string
-      kind: TelegramErrorKind | "credentials" | "channel_unavailable"
+      kind:
+        | TelegramErrorKind
+        | "credentials"
+        | "channel_unavailable"
+        | "duplicate"
       /** channel status after this attempt (null: channel not found) */
       channelStatus: NotificationChannelStatus | null
+      /** kind "duplicate": the delivery with this dedupe key is still pending - not sent again */
+      duplicate?: true
     }
+
+export type DeliveryRef = {
+  id: string
+  status: string
+  telegramMessageId: number | null
+}
+
+/** The delivery holding this dedupe key on this channel (a failed one gives its key up on the next attempt). */
+export async function findDeliveryByDedupeKey(
+  channelId: string,
+  dedupeKey: string,
+  exec: Tx | typeof db = db
+): Promise<DeliveryRef | null> {
+  const rows = await exec
+    .select({
+      id: notificationDeliveries.id,
+      status: notificationDeliveries.status,
+      telegramMessageId: notificationDeliveries.telegramMessageId,
+    })
+    .from(notificationDeliveries)
+    .where(
+      and(
+        eq(notificationDeliveries.channelId, channelId),
+        eq(notificationDeliveries.dedupeKey, dedupeKey)
+      )
+    )
+    .limit(1)
+  return rows[0] ?? null
+}
+
+/** the earlier delivery with the same dedupe key: its outcome when sent, otherwise "still being sent" (never "sent") */
+function duplicateResult(
+  row: ChannelRow,
+  d: DeliveryRef | null
+): SendNowResult {
+  const channelStatus = row.status as NotificationChannelStatus
+  if (d && d.status === "sent")
+    return {
+      ok: true,
+      duplicate: true,
+      deliveryId: d.id,
+      messageId: d.telegramMessageId ?? 0,
+      channelStatus,
+    }
+  return {
+    ok: false,
+    duplicate: true,
+    deliveryId: d?.id ?? null,
+    error: m.errors.duplicateDelivery,
+    kind: "duplicate",
+    channelStatus,
+  }
+}
 
 /**
  * Synchronous send (no queue, no retry) that is still recorded in notification_deliveries: "Gửi tin thử" (source
- * test) and the MCP tool telegram_send_message (source mcp_tool, waits at most 10 s for Telegram). The caller has
- * already checked that the actor / MCP may use the channel. `html` must be built with format.ts (escaped).
+ * test) and the MCP tool telegram_send_message (source mcp_tool, waits at most 10 s for Telegram - 30 s for an
+ * upload). The caller has already checked that the actor / MCP may use the channel. `html` must be built with
+ * format.ts (escaped); with `media` it is the caption (fitted to 1024 characters incl. the credit footer).
  *
+ * - `media`: upload this file (sendPhoto / sendVideo / sendDocument) with `html` as its caption; the delivery
+ *   preview is "[Ảnh|Video|Tệp: <name> · <size>] <caption…>".
+ * - `dedupeKey`: unique per channel; a second call with the same key sends NOTHING and returns the earlier
+ *   delivery (`duplicate: true`; ok with its telegram message id when it was sent, kind "duplicate" while it is
+ *   pending). A FAILED earlier delivery never blocks: its key is retired (`<key>:failed:<id>`) and this call sends.
  * - `reserve(tx)`: runs in the transaction that inserts the pending delivery, BEFORE the insert (and before the
  *   channel-availability verdict) - e.g. take an advisory lock + check an hourly quota, throw to refuse. The
- *   pending row is visible to the next caller once that transaction commits.
+ *   pending row is visible to the next caller once that transaction commits. Not called for a duplicate found
+ *   before the transaction.
  * - `onSettled(tx, result)`: runs in ONE transaction with the channel bookkeeping (status / last_sent_at /
  *   migrated chat id) - e.g. the activity log of "Gửi tin thử"; if it throws, the channel change rolls back too
  *   (the delivery row, already updated, still tells what Telegram did). Called exactly once.
@@ -278,12 +385,29 @@ export async function sendChannelMessageNow(args: {
   disableNotification?: boolean
   /** "Gửi tin thử" also works on an `error` channel (it is the final check); the MCP tool requires `active` */
   allowErrorStatus?: boolean
+  media?: OutgoingMedia | null
+  dedupeKey?: string | null
+  /** per Telegram request (default 10 s text / 30 s upload) - the MCP tool passes what is left of its budget */
+  timeoutMs?: number
+  /** aborts the Telegram request (client cancelled / overall deadline) */
+  signal?: AbortSignal
   fetchImpl?: TelegramCallOptions["fetchImpl"]
   now?: Date
   reserve?: (tx: Tx) => Promise<void>
   onSettled?: (tx: Tx, result: SendNowResult) => Promise<void>
 }): Promise<SendNowResult> {
+  const settleOnly = async (result: SendNowResult) => {
+    const settle = args.onSettled
+    if (settle) await db.transaction((tx) => settle(tx, result))
+    return result
+  }
   const row = await loadChannel(args.channelId)
+  const dedupeKey = args.dedupeKey ? args.dedupeKey.slice(0, 200) : null
+  if (row && dedupeKey) {
+    const earlier = await findDeliveryByDedupeKey(row.id, dedupeKey)
+    if (earlier && earlier.status !== "failed")
+      return settleOnly(duplicateResult(row, earlier))
+  }
   const blocked = !row
     ? m.errors.notFound
     : row.status === "disabled"
@@ -292,11 +416,33 @@ export async function sendChannelMessageNow(args: {
         ? m.telegram.skippedError(row.statusMessage ?? "")
         : null
   const now = args.now ?? new Date()
+  const media = args.media ?? null
+  const preview = media
+    ? truncateText(
+        `${mediaPreviewLabel(media)} ${previewOf(args.html)}`.trim(),
+        PREVIEW_MAX
+      )
+    : previewOf(args.html)
   let deliveryId: string | null = null
   if (args.reserve || (row && blocked === null)) {
-    deliveryId = await db.transaction(async (tx) => {
+    const inserted = await db.transaction(async (tx) => {
       if (args.reserve) await args.reserve(tx)
       if (!row || blocked !== null) return null
+      if (dedupeKey) {
+        // a failed attempt with this key is retried: its row keeps a retired key (still readable in the log)
+        await tx
+          .update(notificationDeliveries)
+          .set({
+            dedupeKey: sql`${notificationDeliveries.dedupeKey} || ':failed:' || ${notificationDeliveries.id}::text`,
+          })
+          .where(
+            and(
+              eq(notificationDeliveries.channelId, row.id),
+              eq(notificationDeliveries.dedupeKey, dedupeKey),
+              eq(notificationDeliveries.status, "failed")
+            )
+          )
+      }
       const [delivery] = await tx
         .insert(notificationDeliveries)
         .values({
@@ -304,32 +450,46 @@ export async function sendChannelMessageNow(args: {
           source: args.source,
           eventType: args.eventType,
           mcpId: args.mcpId ?? null,
+          dedupeKey,
           status: "pending",
           attempts: 1,
-          preview: previewOf(args.html),
+          preview,
           message: null,
           createdAt: now,
         })
+        .onConflictDoNothing({
+          target: [
+            notificationDeliveries.channelId,
+            notificationDeliveries.dedupeKey,
+          ],
+        })
         .returning({ id: notificationDeliveries.id })
-      return delivery!.id
+      if (delivery) return { id: delivery.id }
+      // a concurrent call with the same dedupe key inserted first: nothing is sent
+      return {
+        duplicateOf: await findDeliveryByDedupeKey(row.id, dedupeKey!, tx),
+      }
     })
+    if (inserted && "duplicateOf" in inserted)
+      return settleOnly(duplicateResult(row!, inserted.duplicateOf ?? null))
+    deliveryId = inserted?.id ?? null
   }
   if (!row || blocked !== null || deliveryId === null) {
-    const result: SendNowResult = {
+    return settleOnly({
       ok: false,
       deliveryId: null,
       error: blocked ?? m.errors.notFound,
       kind: "channel_unavailable",
       channelStatus: row ? (row.status as NotificationChannelStatus) : null,
-    }
-    const settle = args.onSettled
-    if (settle) await db.transaction((tx) => settle(tx, result))
-    return result
+    })
   }
   const { outcome: out, patch } = await attemptSend(row, args.html, {
     fetchImpl: args.fetchImpl,
     disableNotification: args.disableNotification,
+    media,
     now,
+    ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
+    ...(args.signal ? { signal: args.signal } : {}),
   })
   let result: SendNowResult
   if (out.ok) {
@@ -346,6 +506,7 @@ export async function sendChannelMessageNow(args: {
       deliveryId,
       messageId: out.messageId,
       channelStatus: (patch?.status ?? row.status) as NotificationChannelStatus,
+      ...(out.sentAs ? { sentAs: out.sentAs } : {}),
     }
   } else {
     await db

@@ -389,7 +389,10 @@ export interface CopyResult {
 
 export interface MediaUploadRequest {
   type: "image" | "video"
-  /** public http(s) URL - caller must already have passed the SSRF guard */
+  /**
+   * public http(s) URL - caller must already have passed the SSRF guard. When `bytes` is present it is only
+   * informational (never fetched, never required to be http(s)).
+   */
   url: string
   name?: string
   /**
@@ -399,6 +402,41 @@ export interface MediaUploadRequest {
   bytes?: Uint8Array
   /** sniffed MIME type of `bytes` */
   contentType?: string
+  /**
+   * Sanitised file name (with extension, no path) of the media - used where the platform needs one (TikTok
+   * `file_name` base, multipart part filename). Optional: adapters fall back to `name` / the URL path.
+   */
+  fileName?: string
+  /**
+   * Video processing wait budget (ms) after the upload call: Meta status / TikTok info polling stop at this
+   * budget and return the id with `processing: true`. Omitted = the adapter default (60 s); <= 0 = do not wait.
+   */
+  maxWaitMs?: number
+  /**
+   * Absolute deadline (epoch ms) for the WHOLE call: the upload request timeout is min(own timeout, deadlineAt - now)
+   * and processing polling stops at it (→ processing: true). Wins over maxWaitMs when both are set.
+   */
+  deadlineAt?: number
+}
+
+/** Chunked (resumable) video upload driven by the server (background job) - Meta upload_phase, TikTok file/*upload. */
+export interface ChunkedVideoUploadRequest {
+  /** sanitised file name with extension */
+  fileName: string
+  sizeBytes: number
+  /** lowercase hex MD5 of the whole file when known (Drive md5Checksum), else null */
+  md5: string | null
+  /** video/mp4 | video/quicktime */
+  contentType: string
+  /** library name (defaults to fileName) */
+  name?: string
+  /** read bytes [start, endExclusive) of the file (Drive Range read); may be called again for a retried chunk */
+  readChunk(start: number, endExclusive: number, signal?: AbortSignal): Promise<Buffer>
+  /** absolute epoch ms: stop waiting for processing after it (→ processing: true) */
+  deadlineAt?: number
+  /** progress callback (bytes acknowledged by the platform) */
+  onProgress?(uploadedBytes: number): void
+  signal?: AbortSignal
 }
 
 export interface MediaRef {
@@ -406,6 +444,8 @@ export interface MediaRef {
   /** Meta image_hash / video_id, OpenAI file_id */
   id: string
   url?: string | null
+  /** video only: true when the wait budget ended before the platform finished processing (id still usable later) */
+  processing?: boolean
 }
 
 export const LOOKUP_KINDS = [
@@ -552,6 +592,8 @@ export interface AdsProvider<C = unknown> {
     opts?: MutationOptions
   ): Promise<MutationResult>
   uploadMedia(ctx: ProviderContext<C>, r: MediaUploadRequest): Promise<MediaRef>
+  /** server-driven chunked video upload (Meta, TikTok); absent = not supported */
+  uploadVideoChunked?(ctx: ProviderContext<C>, r: ChunkedVideoUploadRequest): Promise<MediaRef>
   lookup(
     ctx: ProviderContext<C>,
     kind: LookupKind,

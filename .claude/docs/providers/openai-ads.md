@@ -1,6 +1,6 @@
 # OpenAI Ads (ChatGPT Ads) Advertiser API — tài liệu tham chiếu
 
-> Research ngày 2026-10-02 từ tài liệu chính thức https://developers.openai.com/ads (đọc toàn bộ `llms-full.txt`); rà lại 2026-10-02 sau review adapter (list params, insights fields/ngày, conversions exclusive end, objective/billing_event_type, daily_spend_limit, oCPC, idempotency) + OpenAPI spec chính thức **đã lưu tại [openai-ads.openapi.json](openai-ads.openapi.json)** (OpenAPI 3.1, `info.version` 2.3.0, 73 path). Khi implement: **grep spec đó để lấy schema chính xác**, không đoán.
+> Research ngày 2026-10-02 từ tài liệu chính thức https://developers.openai.com/ads (đọc toàn bộ `llms-full.txt`); rà lại 2026-10-02 sau review adapter (list params, insights fields/ngày, conversions exclusive end, objective/billing_event_type, daily_spend_limit, oCPC, idempotency) + OpenAPI spec chính thức **đã lưu tại [openai-ads.openapi.json](openai-ads.openapi.json)** (OpenAPI 3.1, `info.version` 2.3.0, 73 path; **tải lại 2026-10-09: không đổi**, rà phần upload ảnh multipart — mục "Upload ảnh"). Khi implement: **grep spec đó để lấy schema chính xác**, không đoán.
 > Mỗi trang doc có bản markdown: `https://developers.openai.com/ads/<slug>.md`; tổng hợp: `https://developers.openai.com/ads/llms-full.txt`.
 
 ## 1. Tổng quan
@@ -57,7 +57,7 @@ Giới hạn self-serve: 5.000 campaign / 5.000 ad group / 5.000 ad mỗi accoun
 | Campaign | `GET /campaigns` (`limit` 1–500, `after/before`, `order`, `name` (lọc theo tên), `include[]=serving_issues`) · `POST /campaigns` · `GET/POST /campaigns/{id}` (**update dùng POST**) · `POST /campaigns/{id}/activate|pause|archive` |
 | Ad group | `GET /ad_groups` (`campaign_id` **tuỳ chọn** theo spec 2.3.0, `name`, phân trang) · `POST /ad_groups` · `GET/POST /ad_groups/{id}` (`include[]=bid_too_low`) · `/activate|pause|archive` |
 | Ad | `GET /ads` (`ad_group_id` **tuỳ chọn** theo spec 2.3.0, `name`) · `POST /ads` · `GET/POST /ads/{id}` · `POST /ads/{id}/preview` (hết hạn 24h) · `/activate|pause|archive` |
-| Upload | `POST /upload` JSON `{image_url}` hoặc multipart `file` (JPEG/PNG/WebP ≥640×640) → `file_id` |
+| Upload | `POST /upload` JSON `{image_url}` hoặc multipart `file` (JPEG/PNG/WebP ≥640×640) → `file_id` — chi tiết mục "Upload ảnh" cuối file |
 | Geo | `GET /geo_lookup/search?q=` |
 | Insights | `GET /ad_account/insights`, `/campaigns/{id}/insights`, `/ad_groups/{id}/insights`, `/ads/{id}/insights` |
 | Conversion report | `POST /conversions/insights` |
@@ -142,10 +142,18 @@ Giới hạn self-serve: 5.000 campaign / 5.000 ad group / 5.000 ad mỗi accoun
 | `ads_update_object` | GET → merge → `POST /{type}/{id}` (cảnh báo creative sẽ duyệt lại) |
 | `ads_copy_object` | §6 |
 | `ads_delete_object` | `/archive` |
-| `ads_upload_media` | `POST /upload` (`image_url`) |
+| `ads_upload_media` | `POST /upload` — multipart `file` khi có bytes (Drive), JSON `image_url` khi không |
 | `ads_lookup` | `/geo_lookup/search`, `/conversions/event_settings` |
 | `openai_ads_get_conversions` | `POST /conversions/insights` |
 | `openai_ads_create_campaign` / `_create_ad_group` / `_create_ad` | §3, paused + Idempotency-Key |
+
+## Upload ảnh (rà 2026-10-09)
+- Nguồn: https://developers.openai.com/ads/openapi.json (`info.version` **2.3.0**, 73 path — **trùng khớp hoàn toàn** với bản đã lưu `openai-ads.openapi.json`), mục "Files" + "Request formats" trong https://developers.openai.com/ads/llms-full.txt.
+- `POST /upload` (UploadImageMethod) nhận `application/json` **hoặc** `multipart/form-data` cùng schema `UploadImageBody` {`image_url`?, `file`? (binary), `purpose`? enum chỉ `account_favicon`} → `UploadImageResource` {`file_id`}. Ảnh creative: **không gửi `purpose`** (chỉ dùng cho icon thương hiệu).
+- **Kích thước favicon — tài liệu chính thức mâu thuẫn (rà 2026-10-09)**: mục "Account Details & Branding → Upload an advertiser icon" ghi "JPEG, PNG, or WebP with dimensions of at least **256 × 256** pixels"; mục "Files → Upload an account favicon" và "Brand review → Add a brand favicon" ghi "at least **128 × 128** pixels" (cùng https://developers.openai.com/ads/llms-full.txt). → Khuyến nghị dùng icon **≥ 256×256** (thoả cả hai). App hiện không upload favicon. Ví dụ chính thức: `curl -F "file=@workspace-planner-card.png"`.
+- `POST /uploads` (số nhiều) là endpoint KHÁC — file CSV/TXT custom audience (`purpose=custom_audience`), không dùng cho ảnh.
+- Yêu cầu ảnh: ≥ 640×640 [H] ("Your First Campaign" + "Ads & Creative → Upload an image"). Định dạng **JPEG/PNG/WebP**: câu chính thức nằm ngay sau "Alternatively, send JSON containing `image_url`…" nên chỉ chắc chắn cho nhánh JSON `image_url`; áp cho nhánh multipart `file` là **suy luận [L]** (cùng endpoint, cùng schema `UploadImageBody`) — chưa test thật. Spec không có enum MIME/định dạng. **Dung lượng tối đa: không có trong tài liệu — UNVERIFIED**; adapter tự giới hạn `OPENAI_IMAGE_MAX_BYTES` = 20 MB và đổi HTTP 413 thành thông báo "Ảnh quá lớn".
+- Adapter: có `MediaUploadRequest.bytes` → multipart (một part `file`, tên file đã làm sạch + đuôi theo magic bytes; không bao giờ tải URL; kết quả `url: null`); không có bytes → JSON `image_url` như cũ. Upload không có Idempotency-Key → không retry mù sau 5xx/timeout (429 thì gửi lại cùng body). Video: `unsupported`.
 
 ## Nguồn
 https://developers.openai.com/ads · /ads/api-overview · /ads/api-quickstart · /ads/api-reference/authentication · /ads/api-reference/insights · /ads/reporting · /ads/bulk-api · /ads/conversions-api · /ads/openapi.json · /ads/llms-full.txt · Tham khảo MCP cộng đồng: github.com/HYPD-AI/openai-ads-mcp, github.com/devaimani/openai-ads-mcp

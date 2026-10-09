@@ -353,6 +353,12 @@ function codeInfo(code: number, message: string): CodeInfo {
     case 40912:
     case 40913:
       return { code: "invalid_request", vi: "TikTok không tải được file từ URL đã cung cấp.", retryable: true }
+    case 40900:
+      return {
+        code: "invalid_request",
+        vi: "Mã kiểm tra MD5 (signature) không khớp với dữ liệu file đã gửi.",
+        retryable: true,
+      }
     case 40904:
     case 40906:
     case 40907:

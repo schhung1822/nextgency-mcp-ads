@@ -126,13 +126,10 @@ function platformCardLabel(p: Platform): string {
 export function NewConnectionWizard({
   specs,
   initialPlatform,
-  initialYoutube = false,
   authCodeRedirect = false,
 }: {
   specs: PlatformFormSpec[]
   initialPlatform: Platform | null
-  /** ?platform=youtube: open the Google Ads form with the YouTube explanation */
-  initialYoutube?: boolean
   /** TikTok redirected back with ?auth_code=…: open "Đổi auth_code", prefilled from the address bar */
   authCodeRedirect?: boolean
 }) {
@@ -145,10 +142,6 @@ export function NewConnectionWizard({
       : null
   const [step, setStep] = React.useState(preselected ? 1 : 0)
   const [platform, setPlatform] = React.useState<Platform | null>(preselected)
-  // "YouTube Ads" card: same Google Ads form + an explanation (YouTube ads live in a Google Ads account)
-  const [youtube, setYoutube] = React.useState(
-    preselected === "google_ads" && initialYoutube
-  )
   const startWithAuthCode =
     authCodeRedirect &&
     specs.some(
@@ -173,15 +166,16 @@ export function NewConnectionWizard({
   } | null>(null)
 
   const spec = specs.find((s) => s.platform === platform) ?? null
-  // step 2 shows the provider's own "how to get the token" guide in the right-hand Guide panel
+  // step 2 shows the provider's own "how to get the token" guide in the right-hand Guide panel;
+  // Google Ads also explains YouTube (YouTube ads live in a Google Ads account - no separate connection)
   const credentialsGuide = React.useMemo<GuideDef | null>(
     () =>
       spec
-        ? youtube && spec.platform === "google_ads"
+        ? spec.platform === "google_ads"
           ? {
+              title: m.new.guideTitle(PLATFORM_LABELS[spec.platform]),
               ...spec.guide,
-              title: m.new.youtube.guideTitle,
-              summary: `${m.new.youtube.guideSummary} ${spec.guide.summary}`,
+              summary: `${spec.guide.summary} ${m.new.youtube.guideSummary}`,
               warnings: [m.new.youtube.guideWarning, ...(spec.guide.warnings ?? [])],
             }
           : {
@@ -189,7 +183,7 @@ export function NewConnectionWizard({
               ...spec.guide,
             }
         : null,
-    [spec, youtube]
+    [spec]
   )
   const form = useForm<FormValues>({
     defaultValues: {
@@ -224,7 +218,7 @@ export function NewConnectionWizard({
       ? authCodeError.message
       : null
 
-  const choosePlatform = (p: Platform, opts: { youtube?: boolean } = {}) => {
+  const choosePlatform = (p: Platform) => {
     if (p !== platform) {
       const next = specs.find((s) => s.platform === p)
       // never carry secrets across platforms
@@ -237,7 +231,6 @@ export function NewConnectionWizard({
       setAuthCodeError(null)
       setPlatform(p)
     }
-    setYoutube(p === "google_ads" && opts.youtube === true)
     setStep(1)
   }
 
@@ -347,40 +340,33 @@ export function NewConnectionWizard({
                 {m.new.groupAdsHint}
               </p>
             </div>
-            {/* released platforms first (YouTube Ads right after Google Ads), upcoming ones (disabled, "Sắp ra mắt") last */}
+            {/* released platforms first (Google Ads also covers YouTube), upcoming ones (disabled, "Sắp ra mắt") last */}
             <div className="grid gap-4 sm:grid-cols-2">
-            {specs.flatMap((s) => {
-              const card = (
-                <ChoiceCard
-                  key={s.platform}
-                  label={platformCardLabel(s.platform)}
-                  pressed={platform === s.platform && !youtube}
-                  onClick={() => choosePlatform(s.platform)}
-                  icon={
-                    <PlatformIcon
-                      platform={s.platform}
-                      colored
-                      className="size-5"
-                    />
-                  }
-                  description={s.guide.summary}
-                />
-              )
-              if (s.platform !== "google_ads") return [card]
-              return [
-                card,
-                <ChoiceCard
-                  key="youtube"
-                  label={m.new.youtube.label}
-                  pressed={platform === "google_ads" && youtube}
-                  onClick={() =>
-                    choosePlatform("google_ads", { youtube: true })
-                  }
-                  icon={<BrandIcon brand="youtube" className="size-5" />}
-                  description={m.new.youtube.card}
-                />,
-              ]
-            })}
+            {specs.map((s) => (
+              <ChoiceCard
+                key={s.platform}
+                label={platformCardLabel(s.platform)}
+                pressed={platform === s.platform}
+                onClick={() => choosePlatform(s.platform)}
+                icon={
+                  <PlatformIcon
+                    platform={s.platform}
+                    colored
+                    className="size-5"
+                  />
+                }
+                iconBadge={
+                  s.platform === "google_ads" ? (
+                    <BrandIcon brand="youtube" className="size-3" />
+                  ) : undefined
+                }
+                description={
+                  s.platform === "google_ads"
+                    ? `${s.guide.summary} ${m.new.youtube.cardNote}`
+                    : s.guide.summary
+                }
+              />
+            ))}
             {UPCOMING_PLATFORMS.map((p) => (
               <button
                 key={p}
@@ -432,6 +418,28 @@ export function NewConnectionWizard({
               />
             </div>
           </div>
+          <div
+            role="group"
+            aria-labelledby="choose-group-creative"
+            className="flex flex-col gap-3"
+          >
+            <div>
+              <h3 id="choose-group-creative" className="text-sm font-semibold">
+                {m.new.groupCreative}
+              </h3>
+              <p className="text-[13px] text-muted-foreground">
+                {m.new.groupCreativeHint}
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ChoiceCard
+                label={m.new.drive.label}
+                href="/connections/drive/new"
+                icon={<BrandIcon brand="drive" className="size-5" />}
+                description={m.new.drive.card}
+              />
+            </div>
+          </div>
           <Dialog
             open={notReady !== null}
             onOpenChange={(open) => !open && setNotReady(null)}
@@ -465,21 +473,13 @@ export function NewConnectionWizard({
               <CardHeader>
                 <StepOverline step={1} />
                 <CardTitle className="flex items-center gap-2">
-                  {youtube ? (
-                    <BrandIcon brand="youtube" />
-                  ) : (
-                    <PlatformIcon platform={spec.platform} colored />
-                  )}
-                  {m.new.formTitle(
-                    youtube
-                      ? m.new.youtube.label
-                      : PLATFORM_LABELS[spec.platform]
-                  )}
+                  <PlatformIcon platform={spec.platform} colored />
+                  {m.new.formTitle(platformCardLabel(spec.platform))}
                 </CardTitle>
                 <CardDescription>{m.new.formDescription}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-5">
-                {youtube && (
+                {spec.platform === "google_ads" && (
                   <Alert>
                     <HugeiconsIcon
                       icon={InformationCircleIcon}
@@ -649,6 +649,7 @@ function ChoiceCard({
   label,
   description,
   icon,
+  iconBadge,
   pressed,
   onClick,
   href,
@@ -656,6 +657,8 @@ function ChoiceCard({
   label: string
   description: string
   icon: React.ReactNode
+  /** small decorative mark on the logo tile's corner (e.g. YouTube on the Google Ads card) */
+  iconBadge?: React.ReactNode
   /** omitted for cards that navigate away (no selected state) */
   pressed?: boolean
   onClick?: () => void
@@ -671,8 +674,13 @@ function ChoiceCard({
       <Card className="h-full transition-colors group-hover:border-brand-red/40 group-aria-pressed:border-brand-red/60">
         <CardHeader>
           <CardTitle className="flex items-center gap-3 text-base">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
+            <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
               {icon}
+              {iconBadge && (
+                <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-card ring-1 ring-border">
+                  {iconBadge}
+                </span>
+              )}
             </span>
             <span id={labelId} className="flex-1">
               {label}

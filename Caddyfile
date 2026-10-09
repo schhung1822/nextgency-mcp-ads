@@ -11,7 +11,8 @@
 # ở phương án B, container cloudflared trong mạng Docker nội bộ ở phương án D).
 {
 	email {$ACME_EMAIL}
-	# Log mặc định (gồm http.log.error khi upstream lỗi/timeout): cũng che key MCP trong path, Referer
+	# Log mặc định (gồm http.log.error khi upstream lỗi/timeout): cũng che key MCP và token link tạm video
+	# (/dl/<token>/…) trong path, Referer
 	# và nội dung lỗi — access log bên dưới đã có bộ lọc riêng. Cũng che auth_code (mã uỷ quyền TikTok dùng
 	# 1 lần, TikTok chuyển hướng về /connections/new?auth_code=…): mỗi trường chỉ có 1 bộ lọc nên gộp 2 mẫu
 	# trong 1 regexp (nhóm không khớp thay bằng chuỗi rỗng).
@@ -20,12 +21,12 @@
 		format filter {
 			wrap json
 			fields {
-				request>uri regexp "^(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
-				request>headers>Referer regexp "(/mcp/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
+				request>uri regexp "^(/mcp/|/dl/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
+				request>headers>Referer regexp "(/mcp/|/dl/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
 				request>headers>Authorization delete
 				request>headers>Cookie delete
-				error regexp "(/mcp/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
-				msg regexp "(/mcp/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
+				error regexp "(/mcp/|/dl/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
+				msg regexp "(/mcp/|/dl/)[^/?#\s\"]+|([?&]auth_code=)[^&#\s\"]*" "${1}${2}[redacted]"
 			}
 		}
 	}
@@ -41,12 +42,12 @@
 {$CADDY_SITE_SCHEME}{$APP_DOMAIN} {
 	import /etc/caddy/deploy/tls-{$CADDY_TLS:auto}.caddy
 
-	# Access log: che key MCP trong path và auth_code TikTok trong query (cả trong Referer), xoá header nhạy cảm.
+	# Access log: che key MCP + token link tạm video (/dl/) trong path và auth_code TikTok trong query (cả trong Referer), xoá header nhạy cảm.
 	log {
 		output stdout
 		format filter {
-			request>uri regexp "^(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
-			request>headers>Referer regexp "(/mcp/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
+			request>uri regexp "^(/mcp/|/dl/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
+			request>headers>Referer regexp "(/mcp/|/dl/)[^/?#]+|([?&]auth_code=)[^&#]*" "${1}${2}[redacted]"
 			request>headers>Authorization delete
 			request>headers>Cookie delete
 			resp_headers>Set-Cookie delete
@@ -76,6 +77,25 @@
 			max_size 1MB
 		}
 		# Profile "scale": đổi thành `reverse_proxy mcp:3000` (xem docker-compose.yml)
+		reverse_proxy web:3000 {
+			flush_interval -1
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	# Link tạm cho video Google Drive (/dl/<token>/<tên file>, .claude/docs/15-google-drive-media.md §8): Meta/TikTok
+	# tải video (có thể hàng trăm MB) - không nén (Range phải đúng byte), đẩy dữ liệu ngay, không timeout upstream,
+	# chỉ GET/HEAD nên body nhỏ. Không chuyển hướng, không cache.
+	@relay path /dl/*
+	handle @relay {
+		header {
+			Referrer-Policy "no-referrer"
+			Cache-Control "no-store"
+			defer
+		}
+		request_body {
+			max_size 1KB
+		}
 		reverse_proxy web:3000 {
 			flush_interval -1
 			header_up X-Forwarded-For {client_ip}

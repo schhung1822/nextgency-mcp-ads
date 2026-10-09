@@ -64,7 +64,7 @@ Index: `(owner_id)`, `(platform)`, `(status) where deleted_at is null`.
 | key_encrypted | text | AES-GCM, AAD `mcp:<id>:key` — phục vụ "xem lại link" (D1) |
 | status | text CHECK (`active`,`disabled`) | hết hạn tính theo `expires_at` |
 | expires_at | timestamptz null | |
-| settings | jsonb | `{"two_step_confirm": true, "budget_change_max_pct": 50, "max_daily_budget": {"VND": 5000000}, "max_lifetime_budget": {"VND": 100000000}, "max_bid": {"VND": 50000}, "rate_limit_per_min": 60, "write_rate_limit_per_10min": 20, "allowed_ips": []}` — snake_case, tiền theo **đơn vị chính**; ghi bằng `toStoredMcpSettings` (zod `mcpSettingsSchema`, `src/lib/schemas/mcp-servers.ts`), đọc bằng `parseMcpSettings` (`src/server/mcp/settings.ts`: từng trường sai → mặc định an toàn, `allowed_ips` hỏng → không IP nào khớp). Khoá thiếu (bản ghi cũ) → mặc định: `max_lifetime_budget`/`max_bid` = `{}`, `write_rate_limit_per_10min` = 20. `money_caps_required: true` được ghi ở **mọi lần tạo/lưu** từ bản cập nhật bảo mật sau v1.0.1 (không phải input của client): MCP có quyền ghi tiền phải có `max_daily_budget` cho mọi loại tiền trong phạm vi (04-mcp-design.md §6). Bản ghi v1.0.1 **không có** khoá này → MCP "cũ": vẫn chạy, chỉ cảnh báo; image cũ bỏ qua khoá (không cần migration) |
+| settings | jsonb | `{"two_step_confirm": true, "budget_change_max_pct": 50, "max_daily_budget": {"VND": 5000000}, "max_lifetime_budget": {"VND": 100000000}, "max_bid": {"VND": 50000}, "rate_limit_per_min": 60, "write_rate_limit_per_10min": 20, "allowed_ips": []}` — snake_case, tiền theo **đơn vị chính**; ghi bằng `toStoredMcpSettings` (zod `mcpSettingsSchema`, `src/lib/schemas/mcp-servers.ts`), đọc bằng `parseMcpSettings` (`src/server/mcp/settings.ts`: từng trường sai → mặc định an toàn, `allowed_ips` hỏng → không IP nào khớp). Khoá thiếu (bản ghi cũ) → mặc định: `max_lifetime_budget`/`max_bid` = `{}`, `write_rate_limit_per_10min` = 20. `money_caps_required: true` được ghi ở **mọi lần tạo/lưu** từ bản cập nhật bảo mật sau v1.0.1 (không phải input của client): MCP có quyền ghi tiền phải có `max_daily_budget` cho mọi loại tiền trong phạm vi (04-mcp-design.md §6). Bản ghi v1.0.1 **không có** khoá này → MCP "cũ": vẫn chạy, chỉ cảnh báo; image cũ bỏ qua khoá (không cần migration). Khoá Telegram: `14-telegram-notifications.md` §2. **Google Drive** (`15-google-drive-media.md` §7.5): `drive_public_links`, `drive_sheet_writeback` (bool) — đọc bằng `!== false` nên **thiếu khoá ⇒ true** (MCP tạo trước bản Drive cũng bật, không cần migration dữ liệu; ghi vào release notes) |
 | last_used_at | timestamptz | cập nhật thưa (≤1 lần/phút) |
 | last_client | text | vd "claude-ai 1.0" |
 | key_rotated_at, created_at, updated_at, deleted_at | timestamptz | |
@@ -141,6 +141,61 @@ Index `(channel_id, created_at DESC)`, `(mcp_id, created_at)` (FK + hạn mức 
 
 ### `mcp_notification_scopes`
 `(mcp_id → mcp_servers CASCADE, channel_id → notification_channels CASCADE)` PK kép; index `channel_id`. Xoá kênh (mềm) → xoá luôn các dòng scope trong cùng transaction; kênh tắt giữ scope (grant tự lọc theo `status`).
+
+### `drive_credentials` - xác thực Google Drive (migration `0007_drive_media`, thiết kế `15-google-drive-media.md`)
+Bảng thường (không partition). Google Drive **không** phải nền tảng QC (không dùng enum `platform`, không đọc credential của `connections`).
+| Cột | Kiểu | Ghi chú |
+|---|---|---|
+| id | uuid PK default `uuidv7()` | app sinh trước khi insert (làm AAD) |
+| kind | text | CHECK `system`·`personal` |
+| owner_id | text null → user.id RESTRICT | CHECK `(kind = 'system') = (owner_id is null)`: hệ thống không có chủ, riêng thì bắt buộc |
+| name | text default `''` | |
+| credentials_encrypted | text | JSON `GoogleServiceAccount` đã chuẩn hoá `{clientEmail, privateKey, privateKeyId, projectId}` (không lưu nguyên file tải về), AAD `drive_credential:<id>:credentials` (`src/server/drive/store.ts` là nơi duy nhất mã hoá/giải mã) |
+| api_key_encrypted | text null | API key Google (đọc file công khai), AAD `drive_credential:<id>:api_key`; CHECK `api_key_encrypted is null or kind = 'system'` |
+| api_key_hint | text null | 4 ký tự cuối API key |
+| client_email | text | email service account - **không bí mật** (hiện cho mọi người để chia sẻ thư mục) |
+| credential_hint | text default `''` | 4 ký tự cuối `private_key_id` |
+| status | text default `active` | CHECK `active`·`error`·`disabled` |
+| status_message, last_checked_at, created_at, updated_at, deleted_at | | xoá mềm |
+Index `(owner_id)`; **unique một phần** `drive_credentials_one_system_uq` trên `(kind) WHERE kind = 'system' AND deleted_at IS NULL` (một bản hệ thống còn sống).
+
+### `drive_sources` - thư mục / tab Google Sheet đã khai báo
+| Cột | Kiểu | Ghi chú |
+|---|---|---|
+| id | uuid PK default `uuidv7()` | |
+| kind | text | CHECK `folder`·`sheet` |
+| scope | text | CHECK `company`·`personal` (`company` ⇒ credential hệ thống + admin - kiểm tra ở service) |
+| owner_id | text → user.id RESTRICT | người tạo (company: admin tạo) |
+| credential_id | uuid → drive_credentials RESTRICT | |
+| google_id | text | folder id / spreadsheet id |
+| sheet_gid | int null | tab (`#gid=`); CHECK `(kind = 'sheet') = (sheet_gid is not null)` |
+| resource_key_encrypted | text null | AAD `drive_source:<id>:resource_key` |
+| name | text | tên hiển thị |
+| google_name | text null | tên trên Drive ở lần kiểm tra gần nhất |
+| shared_drive_id | text null | |
+| ancestor_ids | text[] default `{}` | (migration `0008_drive_security_jobs`) id các thư mục cha nhìn thấy được (gần nhất trước), lưu khi tạo, làm mới khi "Kiểm tra lại" và job `drive.health`; dùng để từ chối khai báo một thư mục **chứa** thư mục riêng của người khác (H1) và cho `loadBlockedFolderIds` |
+| config | jsonb default `{}` | camelCase: thư mục `FolderSourceConfig {recursiveDepth 0–3}`; sheet `SheetSourceConfig {headerRow, columns, writeback}` (đọc qua `normalizeFolderConfig` / `normalizeSheetConfig`) |
+| status | text default `active` | CHECK `active`·`error`·`disabled` |
+| status_message, last_checked_at, created_at, updated_at, deleted_at | | xoá mềm |
+Index `(owner_id)`, `(credential_id)`, GIN `drive_sources_ancestor_ids_gin (ancestor_ids)` (truy vấn `ancestor_ids @> array[<id>]`); **unique một phần** `drive_sources_live_uq` trên `(credential_id, google_id, coalesce(sheet_gid, -1)) WHERE deleted_at IS NULL` (chống "nhận vơ": người khai báo đầu tiên là chủ; xoá mềm giải phóng chỗ).
+Quy tắc ở service (`drive-sources.ts`, đăng ký tuần tự bằng `pg_advisory_xact_lock(hashtext('drive_source:registry'))`): một Google Sheet được nhận **cả file** (tab khác chỉ cùng người khai báo + cùng phạm vi - M1); từ chối khi một thư mục riêng (còn sống) của người khác là tổ tiên **hoặc hậu duệ** (`ancestor_ids`) của link mới (H1); nhân viên nhận **một** thông báo chung cho không tìm thấy / sai loại / thùng rác / đã có người khai báo / liên quan thư mục riêng của người khác (L6).
+
+### `mcp_drive_scopes`
+`(mcp_id → mcp_servers CASCADE, source_id → drive_sources CASCADE)` PK kép; index `source_id`. Xoá nguồn (mềm) → xoá các dòng scope trong cùng transaction.
+
+### `drive_media_uploads` - tái sử dụng mã media
+`id uuid PK` · `ad_account_id → ad_accounts CASCADE` · `drive_file_id text` · `content_key text` (`md5:<md5>:<size>` | `rev:<headRevisionId>:<size>` | `ver:<version>`) · `size_bytes bigint null` · `media_type` CHECK `image|video` · `media_id text` · `media_url text null` · `source_id uuid null → drive_sources SET NULL` · `first_mcp_id uuid null → mcp_servers SET NULL` · `created_at` · `last_used_at` (cập nhật khi tái dùng / upload lại).
+**Unique** `(ad_account_id, drive_file_id, content_key)` (upsert khi `force_reupload`); index `(drive_file_id)` ("Đã dùng ở TKQC"), `(source_id)`, `(first_mcp_id)`.
+
+### `drive_relay_links` - link tạm `/dl/<token>/<tên>` cho video
+`id uuid PK` · `token_hash text` (**unique**, SHA-256 hex của token `adr_…`; token không bao giờ lưu/ghi log) · `mcp_id → mcp_servers CASCADE` · `ad_account_id → ad_accounts CASCADE` · `drive_file_id` · `content_key` (route kiểm tra lại trước khi stream) · `access` CHECK `service_account|api_key` · `credential_id uuid null → drive_credentials CASCADE` (CHECK `(access = 'service_account') = (credential_id is not null)`) · `resource_key_encrypted` (AAD `drive_relay_link:<id>:resource_key`) · `file_name` · `content_type` · `size_bytes bigint` · `fetch_count int default 0` · `max_fetches int` · `expires_at` (giờ DB: `now() + 60 phút`) · `created_at`.
+`source_id uuid null → drive_sources SET NULL` (migration `0008`; nguồn đã dùng để tìm file, NULL = link công khai - route kiểm tra lại nguồn còn sống và còn trong scope MCP).
+Index `(expires_at)`, `(mcp_id)`, `(ad_account_id)`, `(credential_id)`, `(source_id)`. Dùng được khi chưa hết hạn, `fetch_count < max_fetches`, MCP `active`/chưa xoá/chưa hết hạn và chủ MCP không bị khoá; GET đếm lượt bằng một `UPDATE … SET fetch_count = fetch_count + 1 WHERE … RETURNING` (không vượt giới hạn khi tải song song), HEAD không đếm. Job `drive.cleanup` xoá dòng hết hạn > 24 giờ.
+
+### `media_upload_jobs` - tải video lớn lên nền tảng chạy nền (migration `0008_drive_security_jobs`)
+Video Drive vượt ngưỡng relay (TikTok > 10 MB, Meta > 50 MB) được tải lên theo từng phần bởi worker (job pg-boss `media.video_upload`); helper `src/server/drive/upload-jobs.ts`.
+`id uuid PK` (sinh trước khi insert - nằm trong AAD) · `mcp_id → mcp_servers CASCADE` · `ad_account_id → ad_accounts CASCADE` · `platform` (enum `platform`) · `drive_file_id` · `content_key` (worker kiểm tra lại trước khi tải) · `source_id uuid null → drive_sources SET NULL` · `access` CHECK `service_account|api_key` · `credential_id uuid null → drive_credentials CASCADE` (CHECK `(access = 'service_account') = (credential_id is not null)`) · `resource_key_encrypted text null` (AAD `media_upload_job:<id>:resource_key`, chỉ worker giải mã) · `file_name` · `content_type` · `size_bytes bigint` · `md5 text null` · `name text null` (tên trong thư viện media) · `status` CHECK `queued|uploading|processing|done|failed` (default `queued`) · `uploaded_bytes bigint default 0` · `media_id text null` · `error_code text null` · `error_message text null` (tiếng Việt, ≤ 500 ký tự, không bí mật) · `attempts int default 0` · `created_at` · `updated_at` · `finished_at null` (đặt khi `done`/`failed`). CHECK `size_bytes >= 0 and uploaded_bytes >= 0`.
+**Unique một phần** `media_upload_jobs_active_uq (ad_account_id, drive_file_id, content_key) WHERE status in ('queued','uploading','processing')` (một lượt tải đang chạy cho mỗi phiên bản file / TKQC - `createUploadJob` trả lượt đang chạy với `existing: true`); index `(mcp_id, created_at DESC)`, `(status, updated_at)`, `(ad_account_id)`, `(source_id)`, `(credential_id)`. Job `media.upload_sweep` (10 phút/lần) và `drive.cleanup`: `failStaleUploadJobs(30 phút)` (đang tải/xử lý mà không cập nhật → `failed`/`stale`; `queued` quá 24 giờ → `failed`/`expired`) + `deleteOldUploadJobs(30 ngày)`. CLI `reencrypt` mã hoá lại cả `resource_key_encrypted`.
 
 ### `system_update_requests` - yêu cầu cập nhật hệ thống (migration `0002_system_update_requests` + `0003_system_update_requests_target_strict`)
 Hợp đồng giữa web và service `updater` (`10-update-system.md` §3). Web chỉ **INSERT** dòng `pending`; `updater` nhận việc, chạy và ghi kết quả. Không partition.
@@ -237,7 +292,8 @@ SELECT app_ensure_monthly_partitions('mcp_call_logs', 3), app_ensure_monthly_par
 - Postgres chạy với `-c default_toast_compression=lz4`.
 
 ## 4. Danh mục `activity_logs.action`
-`setup.first_admin` · `auth.login.success` · `auth.login.failure` · `auth.logout` · `auth.2fa.enable` · `auth.2fa.disable` · `auth.2fa.backup_codes.regenerate` · `auth.password.change` · `user.create` · `user.update` · `user.role.change` · `user.ban` · `user.unban` · `user.delete` · `user.password.reset` · `user.2fa.reset` · `user.sessions.revoke` · `connection.create` · `connection.update` · `connection.delete` · `connection.test` · `connection.accounts.toggle` · `connection.pages.toggle` · `notification_channel.create` · `notification_channel.update` · `notification_channel.delete` · `notification_channel.disable` · `notification_channel.enable` · `notification_channel.test` · `notification_channel.token.replace` · `mcp.create` · `mcp.update` · `mcp.enable` · `mcp.disable` · `mcp.delete` · `mcp.key.rotate` · `mcp.key.reveal` · `settings.update` · `logs.export` · `system.update_check` · `system.update_requested` · `system.update_succeeded` · `system.update_failed` · `system.update_rolled_back`
+`setup.first_admin` · `auth.login.success` · `auth.login.failure` · `auth.logout` · `auth.2fa.enable` · `auth.2fa.disable` · `auth.2fa.backup_codes.regenerate` · `auth.password.change` · `user.create` · `user.update` · `user.role.change` · `user.ban` · `user.unban` · `user.delete` · `user.password.reset` · `user.2fa.reset` · `user.sessions.revoke` · `connection.create` · `connection.update` · `connection.delete` · `connection.test` · `connection.accounts.toggle` · `connection.pages.toggle` · `notification_channel.create` · `notification_channel.update` · `notification_channel.delete` · `notification_channel.disable` · `notification_channel.enable` · `notification_channel.test` · `notification_channel.token.replace` · `drive_credential.create` · `drive_credential.update` · `drive_credential.test` · `drive_credential.delete` · `drive_source.create` · `drive_source.update` · `drive_source.delete` · `mcp.create` · `mcp.update` · `mcp.enable` · `mcp.disable` · `mcp.delete` · `mcp.key.rotate` · `mcp.key.reveal` · `settings.update` · `logs.export` · `system.update_check` · `system.update_requested` · `system.update_succeeded` · `system.update_failed` · `system.update_rolled_back`
+Nhóm `drive_credential` / `drive_source` (Google Drive, `15-google-drive-media.md` §10): service account + API key hệ thống / service account riêng, và thư mục / sheet khai báo; `reencrypt` (CLI) ghi `drive_credential.update` / `drive_source.update` với `via: cli`. Sửa MCP: diff nguồn Drive + 2 khoá settings nằm trong `mcp.update`.
 Nhóm `system` = hệ thống cập nhật: web ghi `system.update_check` (admin bấm "Kiểm tra ngay"; job tự chạy KHÔNG ghi) và `system.update_requested` (cùng transaction với dòng `system_update_requests`); `updater` ghi 3 action còn lại cùng transaction với việc đổi trạng thái (actor = `requested_by`).
 Sự kiện đăng nhập/2FA lấy từ `hooks.after` của Better Auth (`/sign-in/email`, `/two-factor/*`, `/sign-out`) + `databaseHooks.session.create.after`.
 

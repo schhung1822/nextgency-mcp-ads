@@ -110,6 +110,23 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     listTelegramDeliveriesAction: "any",
     listMcpChannelOptionsAction: "any",
   },
+  "@/server/actions/drive": {
+    saveSystemDriveCredentialAction: "admin",
+    testSystemDriveCredentialAction: "admin",
+    deleteSystemDriveCredentialAction: "admin",
+    createPersonalDriveCredentialAction: "any",
+    testPersonalDriveCredentialAction: "any",
+    deletePersonalDriveCredentialAction: "any",
+    previewDriveSourceAction: "any",
+    createDriveSourceAction: "any",
+    updateDriveSourceAction: "any",
+    recheckDriveSourceAction: "any",
+    driveSourceUsageAction: "any",
+    deleteDriveSourceAction: "any",
+    listDriveSourceFilesAction: "any",
+    previewDriveSheetRowsAction: "any",
+    listMcpDriveSourceOptionsAction: "any",
+  },
 }
 
 // Pure expectation model (the documented rules of requireUserForAction):

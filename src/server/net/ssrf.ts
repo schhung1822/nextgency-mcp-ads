@@ -4,6 +4,10 @@
 //   metadata 169.254.169.254, ULA, multicast, documentation, 6to4/Teredo/NAT64 embeddings…)
 // - safeFetch() pins the vetted address at connect time (custom `lookup`), so DNS rebinding between
 //   check and connect is impossible; redirects are followed manually and re-checked; size/time capped.
+// - every request uses an explicit agent: with NODE_USE_ENV_PROXY + HTTP(S)_PROXY (Node 24 built-in proxy support,
+//   docker-compose passes them through) the GLOBAL agents tunnel through the proxy, which resolves the host itself -
+//   that would bypass the pinned lookup. Guarded downloads therefore always connect directly.
+// - one overall deadline (totalTimeoutMs) covers the DNS checks of the first URL and of every redirect too.
 // - fetchMediaBytes() downloads a media file ONCE through safeFetch so adapters never fetch
 //   AI-supplied URLs themselves (no second, unguarded DNS resolution).
 import { lookup as dnsLookup } from "node:dns/promises"
@@ -69,8 +73,40 @@ function reject(reason: string): never {
   throw invalid("url_not_allowed", `URL không được phép: ${reason}`, "Chỉ dùng URL http/https công khai (không dùng địa chỉ nội bộ).")
 }
 
-/** Validate scheme/host/port and resolve DNS: every address must be public. Returns the parsed URL. */
-export async function assertSafeUrl(raw: string, resolver: typeof dnsLookup = dnsLookup): Promise<URL> {
+export interface UrlGuardOptions {
+  /** only https: URLs (every redirect hop too) */
+  httpsOnly?: boolean
+  /** aborts the DNS check (overall deadline / cancelled call) → media_timeout */
+  signal?: AbortSignal
+}
+
+const timedOut = () => invalid("media_timeout", "Tải URL quá thời gian chờ.")
+
+/** settle with `p` unless `signal` aborts first (the DNS query itself cannot be cancelled; its answer is dropped) */
+function untilAborted<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p
+  return new Promise<T>((resolve, rejectP) => {
+    const onAbort = () => rejectP(timedOut())
+    if (signal.aborted) return onAbort()
+    signal.addEventListener("abort", onAbort, { once: true })
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort)
+        resolve(v)
+      },
+      (e: unknown) => {
+        signal.removeEventListener("abort", onAbort)
+        rejectP(e)
+      }
+    )
+  })
+}
+
+/**
+ * Static part of the guard (no DNS): scheme, credentials, port, internal host names, non-public IP literals.
+ * `ipLiteral`: the host is an IP address (already checked) - nothing to resolve.
+ */
+export function assertPublicUrlSyntax(raw: string, o: UrlGuardOptions = {}): { url: URL; host: string; ipLiteral: boolean } {
   let url: URL
   try {
     url = new URL(raw)
@@ -78,6 +114,7 @@ export async function assertSafeUrl(raw: string, resolver: typeof dnsLookup = dn
     reject("không đúng định dạng")
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") reject("chỉ hỗ trợ http/https")
+  if (o.httpsOnly && url.protocol !== "https:") reject("chỉ hỗ trợ https")
   if (url.username || url.password) reject("không được chứa thông tin đăng nhập")
   if (!ALLOWED_PORTS.has(url.port)) reject("cổng không được phép")
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "")
@@ -87,12 +124,21 @@ export async function assertSafeUrl(raw: string, resolver: typeof dnsLookup = dn
   }
   if (isIP(host) !== 0 || normalizeIp(host)) {
     if (isBlockedAddress(host)) reject("địa chỉ IP nội bộ")
-    return url
+    return { url, host, ipLiteral: true }
   }
+  return { url, host, ipLiteral: false }
+}
+
+/** Validate scheme/host/port and resolve DNS: every address must be public. Returns the parsed URL. */
+export async function assertSafeUrl(raw: string, resolver: typeof dnsLookup = dnsLookup, o: UrlGuardOptions = {}): Promise<URL> {
+  const { url, host, ipLiteral } = assertPublicUrlSyntax(raw, o)
+  if (o.signal?.aborted) throw timedOut()
+  if (ipLiteral) return url
   let addrs: { address: string; family: number }[]
   try {
-    addrs = await resolver(host, { all: true, verbatim: true })
+    addrs = await untilAborted(resolver(host, { all: true, verbatim: true }), o.signal)
   } catch {
+    if (o.signal?.aborted) throw timedOut()
     reject("không phân giải được tên miền")
   }
   if (addrs.length === 0) reject("không phân giải được tên miền")
@@ -133,10 +179,21 @@ export interface SafeFetchOptions {
   signal?: AbortSignal
   /** overall deadline for all hops incl. body (the socket `timeoutMs` is an idle timeout) */
   totalTimeoutMs?: number
+  /** refuse http: (first URL and every redirect) */
+  httpsOnly?: boolean
+  /** DNS resolver of the pre-connect check (tests); the connect-time pinned lookup always uses the system resolver */
+  resolver?: typeof dnsLookup
+}
+
+/** Direct agents (no env proxy - see the header), no keep-alive: one guarded connection per request. */
+const directAgents = {
+  http: new http.Agent({ keepAlive: false }),
+  https: new https.Agent({ keepAlive: false }),
 }
 
 function requestOnce(url: URL, o: SafeFetchOptions): Promise<SafeFetchResult> {
-  const mod = url.protocol === "https:" ? https : http
+  const isHttps = url.protocol === "https:"
+  const mod = isHttps ? https : http
   const maxBytes = o.maxBytes ?? 10 * 1024 * 1024
   return new Promise((resolve, reject) => {
     const req = mod.request(
@@ -144,13 +201,16 @@ function requestOnce(url: URL, o: SafeFetchOptions): Promise<SafeFetchResult> {
       {
         method: o.method ?? "GET",
         headers: { "user-agent": "ads-mcp-noti/1.0 (+media-fetch)", ...o.headers },
+        agent: isHttps ? directAgents.https : directAgents.http,
         lookup: url.hostname && isIP(url.hostname.replace(/^\[|\]$/g, "")) ? undefined : guardedLookup,
         timeout: o.timeoutMs ?? 15_000,
         signal: o.signal,
       },
       (res) => {
-        const base = { status: res.statusCode ?? 0, headers: res.headers, finalUrl: url.toString() }
-        if (!o.readBody || (o.method ?? "GET") === "HEAD") {
+        const status = res.statusCode ?? 0
+        const base = { status, headers: res.headers, finalUrl: url.toString() }
+        // only a 2xx body is ever buffered: error pages and redirect bodies are drained, never kept in memory
+        if (!o.readBody || (o.method ?? "GET") === "HEAD" || status < 200 || status >= 300) {
           res.resume()
           req.destroy()
           return resolve({ ...base, body: null })
@@ -177,10 +237,13 @@ function requestOnce(url: URL, o: SafeFetchOptions): Promise<SafeFetchResult> {
 
 /** Fetch a public URL with the SSRF guard on every hop. */
 export async function safeFetch(raw: string, o: SafeFetchOptions = {}): Promise<SafeFetchResult> {
-  let url = await assertSafeUrl(raw)
-  const maxRedirects = o.maxRedirects ?? 3
+  // the deadline starts BEFORE the first DNS check: resolution of every hop is inside the same budget
   const deadline = o.totalTimeoutMs ? AbortSignal.timeout(o.totalTimeoutMs) : null
   const signal = deadline ? (o.signal ? AbortSignal.any([o.signal, deadline]) : deadline) : o.signal
+  const guard: UrlGuardOptions = { httpsOnly: o.httpsOnly, signal }
+  const resolver = o.resolver ?? dnsLookup
+  let url = await assertSafeUrl(raw, resolver, guard)
+  const maxRedirects = o.maxRedirects ?? 3
   for (let hop = 0; ; hop++) {
     let res: SafeFetchResult
     try {
@@ -194,7 +257,13 @@ export async function safeFetch(raw: string, o: SafeFetchOptions = {}): Promise<
     }
     if (res.status >= 300 && res.status < 400 && res.headers.location) {
       if (hop >= maxRedirects) throw invalid("too_many_redirects", "URL chuyển hướng quá nhiều lần.")
-      url = await assertSafeUrl(new URL(res.headers.location, url).toString())
+      let next: string
+      try {
+        next = new URL(res.headers.location, url).toString()
+      } catch {
+        reject("chuyển hướng không hợp lệ")
+      }
+      url = await assertSafeUrl(next, resolver, guard)
       continue
     }
     return res

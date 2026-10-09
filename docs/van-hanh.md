@@ -146,7 +146,10 @@ Khi nghi lộ khoá, khi nhân sự giữ khoá nghỉ việc, hoặc định k�
   docker compose exec db psql -U adsmcp -d adsmcp -c "select pg_size_pretty(pg_database_size('adsmcp'));"
   df -h /var/lib/docker
   ```
-- Log container (stdout) được Docker xoay vòng: tối đa 5 file × 20 MB mỗi service. Access log của Caddy đã che `/mcp/<key>` và bỏ header `Authorization`/`Cookie`.
+- Log container (stdout) được Docker xoay vòng: tối đa 5 file × 20 MB mỗi service. Access log của Caddy đã che `/mcp/<key>`, token link tạm video `/dl/<token>` và bỏ header `Authorization`/`Cookie`.
+- Link tạm video Google Drive (`/dl/…`) hết hạn sau 60 phút; job `drive.cleanup` (03:50 hằng ngày) xoá bản ghi đã hết hạn quá 24 giờ. Job `drive.health` (phút 40, mỗi 6 giờ) kiểm tra lại service account và các thư mục / sheet đã khai báo - trạng thái hiện ở **Kết nối → Google Drive**.
+- Video lớn từ Google Drive (Meta > 50 MB, TikTok > 10 MB) được **worker** tải lên ở nền (job `media.video_upload`, mỗi lần một video, có thể mất vài phút); AI xem tiến độ bằng `ads_get_media_upload`. Nếu container worker dừng, lượt tải nằm chờ; lượt tải bị treo (không báo tiến độ 30 phút) được job `media.upload_sweep` đánh dấu lỗi - chỉ cần yêu cầu AI tải lại.
+- Video tải qua link tạm đi Drive → máy chủ → nền tảng: tốn băng thông VPS cả chiều vào lẫn ra (không ghi đĩa).
 
 ## Giám sát
 - **Healthcheck**: `docker compose ps` — `web` phải `healthy`. Giám sát từ ngoài (UptimeRobot, Better Stack…): kiểm tra `https://<tên-miền>/api/health` trả HTTP 200 mỗi 1–5 phút.
@@ -164,6 +167,7 @@ Làm theo [deploy-vps.md §9](deploy-vps.md#9-phương-án-b---cloudflare): `CAD
 - Cloudflare cắt request khi origin im lặng quá **125 giây** (lỗi 524) → lệnh MCP rất dài cần chia nhỏ.
 - Thiếu cấu hình IP thật thì app thấy mọi khách là IP Cloudflare: khoá đăng nhập, rate limit và allowlist IP áp sai.
 - Cập nhật dải IP Cloudflare định kỳ: `sh deploy/cloudflare/update-cloudflare-ips.sh && docker compose restart caddy`.
+- **Video từ Google Drive** (link tạm `https://<tên-miền>/dl/…`, Meta/TikTok tự tải về): **không** bật Bot Fight Mode, challenge, Under Attack Mode hay Browser Integrity Check cho `/dl/*` (gói Pro trở lên: thêm `/dl/` vào rule WAF Skip như `/mcp/`), và **không** tạo rule "Cache Everything" cho `/dl/*`. Nếu bị chặn, nền tảng báo không tải được video.
 
 ## Bảo mật máy chủ
 - Chỉ mở cổng 22, 80, 443: `ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443 && ufw enable`. Lưu ý Docker bỏ qua ufw với cổng được publish - compose này chỉ publish 80/443 của Caddy ra Internet; web chỉ publish ra `127.0.0.1`; Postgres không publish.

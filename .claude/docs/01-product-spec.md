@@ -9,6 +9,7 @@ Web app source-available (chỉ đơn vị được noti.vn cấp quyền mới 
 3. Từ AI, user ra lệnh: **kéo toàn bộ chỉ số theo ngày yêu cầu**, **sửa**, **bật/tắt**, **sao chép**, **tạo mới** chiến dịch/nhóm/quảng cáo, (tuỳ quyền) **xoá/lưu trữ**.
 4. **Ghi log chi tiết** mọi hoạt động MCP và mọi thao tác của nhân sự; lưu **3 tháng mặc định** (admin chỉnh được số tháng).
 5. **Kênh thông báo Telegram** (2026-10-08, `14-telegram-notifications.md`): gửi tin vào nhóm/kênh Telegram khi AI yêu cầu, khi AI thay đổi quảng cáo qua MCP, và khi có sự kiện hệ thống (kết nối sắp hết hạn/lỗi/hoạt động lại; bản cập nhật).
+6. **Google Drive / Google Sheet làm nguồn creative** (2026-10-09, `15-google-drive-media.md`, §3b): AI lấy ảnh/video trong thư mục Drive đã khai báo hoặc link Drive công khai, tải lên thư viện media của TKQC (server tự lấy file — không lưu file trên VPS), đọc Google Sheet kế hoạch creative và ghi trạng thái ngược vào sheet.
 
 Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **tiếng Việt**.
 
@@ -30,6 +31,12 @@ Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **t
 | Dùng kết nối khi tạo MCP | mọi kết nối | **chỉ kết nối của mình** |
 | Kênh thông báo Telegram: tạo/sửa/xoá/tắt/gửi thử/thay token | ✔ tất cả (thấy "Người tạo"; tuỳ chọn "Nhận cảnh báo của mọi kết nối"; sự kiện "Cập nhật hệ thống") | ✔ **chỉ của mình** (chỉ sự kiện kết nối của mình) |
 | Gán kênh Telegram cho MCP | **chỉ kênh của chủ MCP** (MCP của admin: kênh của admin đó; sửa MCP của nhân viên: kênh của nhân viên đó) | **chỉ kênh của mình** |
+| Google Drive hệ thống (service account + API key) | ✔ tạo/sửa/kiểm tra/xoá (lưu/xoá cần xác thực lại) | ✘ (chỉ thấy email hệ thống để chia sẻ) |
+| Thư mục / sheet Google Drive **công ty** | ✔ tạo/sửa/xoá | ✔ xem danh sách + duyệt file, gán cho MCP của mình (chỉ đọc file) |
+| Thư mục / sheet Google Drive **riêng** | ✔ tất cả (thấy "Người tạo") | ✔ **chỉ của mình** (của người khác: 404) |
+| Service account Google riêng (nâng cao) | ✔ tất cả | ✔ **chỉ của mình** |
+| Gán thư mục / sheet cho MCP | MCP của admin: mọi nguồn; MCP của nhân viên: nguồn công ty + nguồn riêng của chủ MCP | nguồn công ty + nguồn riêng của mình |
+| Công tắc "link Drive công khai" / "ghi trạng thái vào Google Sheet" của MCP | ✔ | ✔ MCP của mình |
 | MCP: tạo/sửa/tắt/xoá/xoay key | ✔ tất cả (thấy "Người tạo") | ✔ **chỉ của mình** |
 | Xem lại link MCP (reveal) | ✔ (ghi log) | ✔ của mình (ghi log, cần nhập lại mật khẩu/OTP) |
 | Nhật ký MCP | ✔ tất cả | ✔ chỉ MCP của mình |
@@ -44,7 +51,7 @@ Mọi kiểm tra quyền thực hiện **phía server** (server action / route /
 - Trường credential theo nền tảng (chi tiết trong `providers/*.md`):
   - **Meta**: access token (System User), app_id/app_secret (tuỳ chọn), business_id (tuỳ chọn).
   - **TikTok**: access token + app_id + secret; hoặc chế độ **Đổi auth_code** (dán `auth_code` vừa nhận sau khi advertiser uỷ quyền app → hệ thống đổi ngay lấy access token; `auth_code` sống ≤ 1 giờ, dùng 1 lần) — có ở cả wizard và "Thay token". Token advertiser không hết hạn (mất khi bị thu hồi).
-  - **Google Ads** (gồm YouTube): kiểu xác thực **Service account JSON** (khuyên dùng) hoặc **OAuth** client_id + client_secret + refresh_token (lấy bằng CLI `google:refresh-token`), login_customer_id (MCC, tuỳ chọn). **Không cần developer token** (Google bỏ từ 2026-09-09; giá trị cũ đã lưu vẫn đọc được nhưng không gửi). Quảng cáo **YouTube** = chiến dịch Video / Demand Gen trong tài khoản Google Ads (không có API riêng): thẻ "YouTube Ads" ở bước 1 mở form kết nối Google Ads kèm giải thích; chiến dịch Video chỉ xem được.
+  - **Google Ads** (gồm YouTube): kiểu xác thực **Service account JSON** (khuyên dùng) hoặc **OAuth** client_id + client_secret + refresh_token (lấy bằng CLI `google:refresh-token`), login_customer_id (MCC, tuỳ chọn). **Không cần developer token** (Google bỏ từ 2026-09-09; giá trị cũ đã lưu vẫn đọc được nhưng không gửi). Quảng cáo **YouTube** = chiến dịch Video / Demand Gen trong tài khoản Google Ads (không có API riêng): bước 1 chỉ có **một** thẻ "Google Ads (gồm YouTube)" (logo Google Ads + dấu YouTube nhỏ), form Google Ads luôn kèm giải thích YouTube (link cũ `?platform=youtube` vẫn mở form này); chiến dịch Video chỉ xem được.
   - **OpenAI Ads**: API key (1 key = 1 tài khoản QC).
 - Credential **mã hoá AES-256-GCM** trước khi lưu; UI chỉ hiện 4 ký tự cuối. Không bao giờ trả credential về trình duyệt sau khi lưu (sửa = nhập lại).
 - **Kiểm tra định kỳ** (job hằng ngày): xác thực lại, cập nhật danh sách tài khoản, đánh dấu sắp hết hạn (Meta token 60 ngày, Google refresh token khi consent screen ở "Testing" 7 ngày) → cảnh báo trên Tổng quan (và Telegram nếu có kênh đăng ký `connection_health`).
@@ -58,10 +65,21 @@ Mọi kiểm tra quyền thực hiện **phía server** (server action / route /
 - Trang `/connections/telegram/[id]`: sửa tên/chat/thread/sự kiện, Gửi tin thử, Kiểm tra lại, Thay token (xác thực lại như thay token kết nối QC), Tắt/Bật, Xoá (gõ tên; cảnh báo MCP đang dùng), 50 lần gửi gần nhất.
 - Tin gửi khi: AI yêu cầu (`telegram_send_message`), AI thay đổi quảng cáo thành công qua MCP (MCP bật "Tự báo khi AI thay đổi quảng cáo"), sự kiện hệ thống. Gửi qua hàng đợi pg-boss, chống trùng bằng `dedupe_key`; lỗi Telegram không bao giờ làm hỏng thao tác quảng cáo.
 
+### 3b. Google Drive / Google Sheet (chi tiết: `15-google-drive-media.md`, bản thực tế §18; hướng dẫn: `docs/huong-dan-google-drive.md`)
+- Không phải nền tảng quảng cáo (không có thẻ ở `/connections/new`, bảng riêng `drive_*`). Không "Đăng nhập Google": hệ thống đọc bằng **service account** — người dùng **chia sẻ** thư mục / sheet cho email của nó.
+- **Cài đặt → Google Drive hệ thống** (admin): dán service account JSON (bắt buộc) + API key giới hạn Google Drive API (tuỳ chọn — cần cho link Drive công khai); Kiểm tra / Lưu / Xoá (lưu và xoá cần xác thực lại); hiện email service account + nút sao chép, trạng thái, lần kiểm tra cuối, hướng dẫn 5 bước tạo trên Google Cloud. Bí mật mã hoá AES-256-GCM, chỉ hiện 4 ký tự cuối.
+- **Kết nối → tab "Google Drive"**: email hệ thống (sao chép) + trạng thái link công khai; bảng thư mục / sheet (Tên, Loại, Phạm vi Công ty/Riêng, Người tạo (admin), Trạng thái, Kiểm tra lần cuối, số MCP); khối **Service account riêng** (nâng cao: nhân viên dán khoá JSON của chính mình, chỉ dùng cho nguồn của họ).
+- **Thêm thư mục / sheet** (`/connections/drive/new`, 3 bước): (1) loại (thư mục | Google Sheet) + phạm vi (Công ty — chỉ admin | Riêng của tôi) → (2) email dùng để chia sẻ (email hệ thống hoặc service account riêng) + hướng dẫn chia sẻ (thư mục: **Người xem**; sheet: **Người chỉnh sửa** nếu muốn ghi trạng thái) → dán link (sheet phải có `#gid=` của đúng tab) → **Kiểm tra** (tên thật, số ảnh/video/thư mục con, Shared drive; sheet: số dòng, dòng tiêu đề, quyền ghi) → (3) tên hiển thị, số cấp thư mục con AI được duyệt (0–3); sheet: dòng tiêu đề, **ánh xạ cột** (gợi ý theo tên cột mẫu), bật "Cho phép AI ghi trạng thái vào sheet" (cần quyền Người chỉnh sửa + cột Trạng thái) → Lưu.
+- **Chống "nhận vơ"**: người khai báo đầu tiên là chủ; một Google Sheet được nhận theo cả file; không khai báo được thư mục nằm trong **hoặc chứa** thư mục riêng của người khác (admin khai báo thư mục công ty cũng bị chặn nếu nó chứa thư mục riêng của nhân viên). Nhân viên bị từ chối nhận **một** thông báo chung (không dò được thư mục của người khác).
+- **Chi tiết** `/connections/drive/[id]`: thông tin, MCP đang dùng, Kiểm tra lại / Sửa cài đặt / Xoá (gỡ khỏi mọi MCP; file trên Drive không bị ảnh hưởng). Thư mục: lưới file chỉ đọc có ảnh thu nhỏ, lọc ảnh/video, duyệt thư mục con, "Đã dùng ở N TKQC". Sheet: 20 dòng đầu theo ánh xạ cột + thống kê trạng thái.
+- **Link Drive công khai** ("Bất kỳ ai có link"): không cần khai báo, đọc bằng API key (không bao giờ bằng service account); công tắc theo từng MCP, **mặc định bật** (cả MCP đã có trước bản này).
+- **Dùng trong MCP**: AI liệt kê nguồn / file, đọc sheet (dòng "Chờ lên"), `ads_upload_media` với `drive_file` (file đã tải lên đúng TKQC trước đó → trả mã cũ, không tải lại). Ảnh: cả 4 nền tảng. Video: chỉ Meta + TikTok — video nhỏ (TikTok ≤ 10 MB, Meta ≤ 50 MB) nền tảng tự tải qua link tạm `/dl/…` trong lượt gọi; video lớn hơn (≤ 500 MB) tải nền (vài phút), AI xem tiến độ bằng `ads_get_media_upload`. Sau khi tạo quảng cáo, AI ghi `Trạng thái` / `Mã media` / `Mã quảng cáo` / `Ghi chú hệ thống` / `Cập nhật lúc` vào đúng dòng (chỉ các cột hệ thống, dạng chữ — không chạy công thức; dòng bị chèn/xoá/sắp xếp → bỏ qua).
+- Job `drive.health` (6 giờ/lần) kiểm tra lại service account + mọi nguồn (trạng thái Hoạt động / Lỗi / Đã tắt).
+
 ## 4. Tạo MCP
 Wizard 4 bước (đúng thứ tự yêu cầu của chủ dự án):
 1. **Đặt tên** (bắt buộc) + mô tả (tuỳ chọn).
-2. **Chọn nền tảng** dùng trong MCP (Meta / TikTok / Google Ads / OpenAI Ads — chỉ hiện nền tảng mà user có kết nối) → với mỗi nền tảng chọn **kết nối** và **tài khoản QC** (mặc định "tất cả tài khoản **đang bật** trong kết nối", hoặc chọn từng tài khoản). Tài khoản mới phát hiện sau này ở trạng thái tắt nên không tự lọt vào phạm vi "tất cả" (§3). Với kết nối Meta có thêm **Trang Facebook** (chỉ đọc bài viết & chỉ số): "Không dùng Trang" / "Tất cả Trang đang bật" / "Chọn từng Trang" (`11-meta-pages.md`). Khối **Telegram (gửi thông báo)**: chọn kênh **của chủ MCP** (kể cả admin - MCP không dùng kênh của người khác); không có kênh → hướng dẫn "Thêm kết nối Telegram".
+2. **Chọn nền tảng** dùng trong MCP (Meta / TikTok / Google Ads / OpenAI Ads — chỉ hiện nền tảng mà user có kết nối) → với mỗi nền tảng chọn **kết nối** và **tài khoản QC** (mặc định "tất cả tài khoản **đang bật** trong kết nối", hoặc chọn từng tài khoản). Tài khoản mới phát hiện sau này ở trạng thái tắt nên không tự lọt vào phạm vi "tất cả" (§3). Với kết nối Meta có thêm **Trang Facebook** (chỉ đọc bài viết & chỉ số): "Không dùng Trang" / "Tất cả Trang đang bật" / "Chọn từng Trang" (`11-meta-pages.md`). Khối **Telegram (gửi thông báo)**: chọn kênh **của chủ MCP** (kể cả admin - MCP không dùng kênh của người khác); không có kênh → hướng dẫn "Thêm kết nối Telegram". Khối **Google Drive** ("Ảnh, video quảng cáo — không bắt buộc"): chọn thư mục / sheet theo nhóm Của công ty / Của tôi / Của nhân viên (admin); không chọn = AI chỉ dùng được link Drive công khai.
 3. **Chọn quyền theo từng nền tảng** (checkbox, có mô tả dễ hiểu):
    - **Xem** (`read`) — danh sách tài khoản/chiến dịch, toàn bộ chỉ số theo ngày. *Luôn bật nếu chọn nền tảng.*
    - **Bật/Tắt** (`status`) — chạy/tạm dừng chiến dịch, nhóm, quảng cáo.
@@ -70,6 +88,7 @@ Wizard 4 bước (đúng thứ tự yêu cầu của chủ dự án):
    - **Tạo mới** (`create`) — tạo chiến dịch/nhóm/quảng cáo, tải ảnh/video (luôn tạo ở trạng thái tạm dừng).
    - **Xoá / Lưu trữ** (`delete`) — *mặc định tắt*, hiện cảnh báo đỏ "không hoàn tác".
    - Hàng **Telegram** (khi đã chọn kênh ở bước 2): công tắc **AI được gửi tin** (`telegram_tool`, mặc định tắt) và **Tự báo khi AI thay đổi quảng cáo** (`telegram_notify_writes`, mặc định tắt).
+   - Khối **Google Drive**: **Cho phép dùng link Drive công khai** (`drive_public_links`, mặc định bật; cần API key hệ thống) và **Cho phép ghi trạng thái vào Google Sheet** (`drive_sheet_writeback`, mặc định bật; chỉ với sheet đã bật ghi). Tải ảnh/video từ Drive cần quyền **Tạo mới** ở ít nhất 1 nền tảng; mỗi lần ghi sheet tính vào giới hạn thao tác ghi / 10 phút.
 4. **Bảo vệ** (có giá trị mặc định an toàn, người mới có thể bấm Tiếp):
    - Xác nhận 2 bước cho thao tác ghi (mặc định **bật**) — xem `04-mcp-design.md` §6.
    - Giới hạn thay đổi ngân sách mỗi lần (mặc định ±50%; cũng áp dụng **cộng dồn trong 24 giờ**).
@@ -99,6 +118,8 @@ Sau khi tạo: trang chi tiết MCP gồm Tổng quan (lượt gọi, lỗi, l�
 - "Báo cáo chiến dịch YouTube tuần qua: lượt xem, CPV, tỉ lệ xem hết" → `ads_get_report` (Google Ads, lọc kênh YouTube/Video, bộ chỉ số video).
 - "Thêm từ khoá 'khoá học excel' (cụm từ) vào nhóm quảng cáo Search X" → `google_ads_add_keywords`.
 - "Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team" → `ads_get_report` → `telegram_send_message`.
+- "Lên quảng cáo TikTok (tạm dừng) với video mới nhất trong thư mục Creative tuần 41" → `drive_list_sources` → `drive_list_files` → `ads_upload_media(drive_file)` → `tiktok_create_*`.
+- "Lên các dòng 'Chờ lên' trong sheet Kế hoạch creative rồi ghi trạng thái" → `drive_sheet_read` → `ads_upload_media` → tool tạo quảng cáo → `drive_sheet_update_rows`.
 Danh mục tool đầy đủ: `04-mcp-design.md`.
 
 ## 6. Nhật ký (Logs)
@@ -107,7 +128,7 @@ Một trang `/logs` với **2 tab tách biệt**:
 Mỗi request tới `/mcp/<key>` = 1 dòng: thời gian, MCP (tên + người tạo), client (Claude/ChatGPT/Gemini… từ `clientInfo`/User-Agent), IP, method (`tools/list`, `tools/call`…), tên tool, nền tảng, tài khoản QC, ID đối tượng tác động, loại (đọc/ghi), tham số (đã che bí mật), kết quả tóm tắt, **giá trị trước → sau** với thao tác ghi, trạng thái (thành công / lỗi / bị từ chối quyền / vượt giới hạn / chờ xác nhận), mã lỗi + request id phía nền tảng, thời gian xử lý.
 Bộ lọc: khoảng thời gian, MCP, người tạo, nền tảng, tài khoản, tool, trạng thái, chỉ thao tác ghi. Click dòng → ngăn chi tiết JSON. Xuất CSV.
 ### Tab "Nhật ký nhân sự"
-Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất bại), đăng xuất, bật/tắt/đặt lại 2FA, đổi mật khẩu, tạo/sửa/khoá user, tạo/sửa/xoá/kiểm tra kết nối, tạo/sửa/xoá/tắt/gửi thử/thay token kênh Telegram, tạo/sửa/tắt/xoá/xoay key/xem lại link MCP, đổi cài đặt, xuất log. Mỗi dòng: thời gian, người thực hiện (email + role), hành động, đối tượng, IP, thiết bị, chi tiết thay đổi (diff trước/sau, đã che bí mật), kết quả.
+Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất bại), đăng xuất, bật/tắt/đặt lại 2FA, đổi mật khẩu, tạo/sửa/khoá user, tạo/sửa/xoá/kiểm tra kết nối, tạo/sửa/xoá/tắt/gửi thử/thay token kênh Telegram, tạo/sửa/kiểm tra/xoá thông tin xác thực Google Drive, tạo/sửa/xoá thư mục / sheet Google Drive, tạo/sửa/tắt/xoá/xoay key/xem lại link MCP, đổi cài đặt, xuất log. Mỗi dòng: thời gian, người thực hiện (email + role), hành động, đối tượng, IP, thiết bị, chi tiết thay đổi (diff trước/sau, đã che bí mật), kết quả.
 ### Lưu trữ
 - Mặc định **3 tháng**; Admin chỉnh trong Cài đặt (1–24 tháng, riêng cho log MCP và log nhân sự). Job hằng ngày xoá phần cũ (drop partition theo tháng) — dữ liệu được giữ **ít nhất** N tháng.
 - Log là append-only: không có UI sửa/xoá từng dòng.
@@ -116,16 +137,17 @@ Mọi thao tác của Admin & Nhân viên: đăng nhập (thành công/thất b�
 Sidebar trái (kiểu Shopify admin): **Tổng quan · Kết nối quảng cáo · MCP · Nhật ký · Mẹo chạy tự động · Người dùng (Admin) · Cài đặt (Admin)**; góc dưới: tài khoản của tôi, giao diện Sáng/Tối, đăng xuất.
 - `/login`, `/login/2fa`, `/setup`, `/account` (hồ sơ, đổi mật khẩu, 2FA, phiên đăng nhập, hoạt động của tôi)
 - `/` Tổng quan: thẻ số liệu (kết nối, tài khoản QC, MCP hoạt động, lượt gọi 24h, tỉ lệ lỗi), biểu đồ lượt gọi 7/30 ngày theo nền tảng, cảnh báo token, hoạt động gần đây.
-- `/connections`, `/connections/new`, `/connections/[id]`, `/connections/telegram/new`, `/connections/telegram/[id]`
+- `/connections`, `/connections/new`, `/connections/[id]`, `/connections/telegram/new`, `/connections/telegram/[id]`, `/connections?tab=drive` (`/connections/drive` chuyển về đây), `/connections/drive/new`, `/connections/drive/[id]`
+- Công khai, không cần phiên: `/dl/<token>/<tên file>` (link tạm để Meta/TikTok tải video Drive; token 60 phút); cần phiên: `/api/drive/thumb/<sourceId>/<fileId>` (ảnh thu nhỏ cho lưới file)
 - `/mcp-servers`, `/mcp-servers/new`, `/mcp-servers/[id]` (KHÔNG dùng `/mcp/*` — đó là endpoint MCP)
 - `/logs?tab=mcp|staff`
 - `/automation-tips` Mẹo chạy tự động (mọi vai trò, chỉ nội dung tĩnh — 2026-10-07): cách cho Claude / ChatGPT / Gemini tự chạy theo lịch qua MCP (tác vụ hẹn giờ của chính ứng dụng AI; app **không** tự gửi lệnh cho AI). Bộ soạn quy tắc "tắt quảng cáo khi CPA vượt ngưỡng" (`src/lib/automation-prompt.ts`) xuất câu lệnh đầy đủ + `SKILL.md`; 2 chế độ Chỉ báo cáo / Tự tắt (MCP riêng: Xem + Bật/Tắt, tắt xác nhận 2 bước, trần thấp, giới hạn ghi nhỏ). Nội dung từng ứng dụng AI kiểm tra ngày 2026-10-07 — tính năng thay đổi nhanh, rà lại định kỳ. Điện thoại: mục nằm trong sheet Menu của thanh dưới.
-- `/users` (Admin), `/settings` (Admin)
+- `/users` (Admin), `/settings` (Admin; có thẻ **Google Drive hệ thống**)
 - **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / TikTok for Developers / màn hình đồng ý OAuth của Google Cloud / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; noti.vn chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
 Yêu cầu UX: dễ hiểu cho người không rành kỹ thuật — mỗi trang có tiêu đề + 1 câu mô tả, trạng thái trống có hướng dẫn + nút hành động chính, form có helper text, xác nhận trước thao tác nguy hiểm, toast phản hồi bằng tiếng Việt.
 
 ## 8. Ngoài phạm vi v1 (ghi nhận để làm sau)
-OAuth mode cho MCP (cho Gemini app / workspace dùng chung) · gửi email (quên mật khẩu, cảnh báo) · Conversions API · Google PMax / Demand Gen tạo mới · tải video lên YouTube (resumable upload) · chia sẻ kết nối giữa nhân viên · đa ngôn ngữ UI (cấu trúc i18n sẵn, chỉ có `vi`) · kênh thông báo Zalo/email (Telegram đã có — §3a).
+OAuth mode cho MCP (cho Gemini app / workspace dùng chung) · gửi email (quên mật khẩu, cảnh báo) · Conversions API · Google PMax / Demand Gen tạo mới · tải video lên YouTube (resumable upload) · chia sẻ kết nối giữa nhân viên · đa ngôn ngữ UI (cấu trúc i18n sẵn, chỉ có `vi`) · kênh thông báo Zalo/email (Telegram đã có — §3a) · Google Drive (§3b): "Đăng nhập Google" bằng OAuth (scope `drive.readonly` bị Google xếp Restricted), lưu/đệm file creative trên VPS (thư viện media — đã bỏ 2026-10-09), gửi ảnh thu nhỏ cho AI, mẫu sheet tạo bản sao một chạm, Google Docs/Slides/PDF làm creative, video lên Google Ads/OpenAI Ads từ Drive (Google cần video YouTube; OpenAI chỉ nhận ảnh), `telegram_send_message` nhận `drive_file`, ảnh do ChatGPT/Gemini tự tạo (AI không chuyển được file nhị phân).
 
 ## 9. Quyết định mặc định (chủ dự án có thể đổi)
 | # | Quyết định | Mặc định đã chọn |

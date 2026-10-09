@@ -7,8 +7,13 @@ import { TELEGRAM_BOT_TOKEN_RE } from "@/lib/schemas/notifications"
 import { redactString } from "@/server/audit/redact"
 import { isSafeTelegramBaseUrl } from "@/server/env"
 
+import { creditFooter, withFooter, type CreditFooter } from "./credit"
+import type { OutgoingMedia, OutgoingMediaKind } from "./media"
+
 export const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
 export const TELEGRAM_TIMEOUT_MS = 10_000
+/** multipart uploads (photo / video / document ≤ 50 MB) */
+export const TELEGRAM_UPLOAD_TIMEOUT_MS = 30_000
 
 /**
  * `TELEGRAM_API_BASE_URL` (optional, env only): unset/empty = https://api.telegram.org. Must be https (http only for
@@ -39,6 +44,7 @@ export type TelegramErrorKind =
   | "migrated" // 400 group upgraded to supergroup (parameters.migrate_to_chat_id)
   | "rate_limited" // 429 (parameters.retry_after)
   | "bad_request" // any other 4xx
+  | "file_too_large" // 413 Request Entity Too Large (upload)
   | "server" // 5xx
   | "network" // no response (DNS, refused, reset…)
   | "timeout" // no response within TELEGRAM_TIMEOUT_MS
@@ -110,6 +116,30 @@ function botLabel(botUsername?: string | null): string {
   return botUsername ? `@${botUsername}` : "bot"
 }
 
+/** photo refused by Telegram (size / ratio / format): worth one resend as a document */
+const PHOTO_REJECTED_RE =
+  /photo_[a-z_]*invalid|image_process_failed|photo_save_file_invalid|dimensions/i
+
+/** media 400s: the file / its URL could not be used */
+function isMediaRejection(d: string): boolean {
+  return (
+    PHOTO_REJECTED_RE.test(d) ||
+    d.includes("wrong file") ||
+    d.includes("failed to get http url content") ||
+    d.includes("wrong type of the web page content") ||
+    d.includes("wrong remote file")
+  )
+}
+
+/** sendPhoto refused the image itself (PHOTO_INVALID_DIMENSIONS, IMAGE_PROCESS_FAILED…): nothing was posted. */
+export function isPhotoRejected(e: unknown): boolean {
+  return (
+    isTelegramError(e) &&
+    e.kind === "bad_request" &&
+    PHOTO_REJECTED_RE.test(e.description ?? "")
+  )
+}
+
 /** Telegram error body → TelegramError (pure, exported for tests). */
 export function mapTelegramError(
   httpStatus: number,
@@ -138,6 +168,14 @@ export function mapTelegramError(
       description,
       retryAfterSec,
       userMessageVi: m.telegram.rateLimited(retryAfterSec),
+    })
+  }
+  if (code === 413 || d.includes("request entity too large")) {
+    return new TelegramError({
+      kind: "file_too_large",
+      code,
+      description,
+      userMessageVi: m.telegram.fileTooLarge,
     })
   }
   if (code === 401 || code === 404) {
@@ -229,6 +267,14 @@ export function mapTelegramError(
         userMessageVi: m.telegram.forbidden(bot),
       })
     }
+    if (isMediaRejection(d)) {
+      return new TelegramError({
+        kind: "bad_request",
+        code,
+        description,
+        userMessageVi: m.telegram.mediaRejected,
+      })
+    }
   }
   return new TelegramError({
     kind: "bad_request",
@@ -271,6 +317,48 @@ export async function callTelegram<T>(
   payload: Record<string, unknown>,
   opts: TelegramCallOptions = {}
 ): Promise<T> {
+  return postTelegram<T>(
+    token,
+    method,
+    {
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    opts,
+    m.telegram.timeout
+  )
+}
+
+/**
+ * POST multipart/form-data to one Bot API method (file uploads: sendPhoto / sendVideo / sendDocument). The
+ * content-type (with its boundary) is set by fetch from the FormData - never by hand. Same token hygiene as
+ * callTelegram; default timeout TELEGRAM_UPLOAD_TIMEOUT_MS.
+ */
+export async function callTelegramMultipart<T>(
+  token: string,
+  method: string,
+  form: FormData,
+  opts: TelegramCallOptions = {}
+): Promise<T> {
+  return postTelegram<T>(
+    token,
+    method,
+    { headers: { accept: "application/json" }, body: form },
+    { ...opts, timeoutMs: opts.timeoutMs ?? TELEGRAM_UPLOAD_TIMEOUT_MS },
+    m.telegram.uploadTimeout
+  )
+}
+
+async function postTelegram<T>(
+  token: string,
+  method: string,
+  req: { headers: Record<string, string>; body: string | FormData },
+  opts: TelegramCallOptions,
+  timeoutMessageVi: string
+): Promise<T> {
   if (!TELEGRAM_BOT_TOKEN_RE.test(token)) {
     throw new TelegramError({
       kind: "invalid_token",
@@ -300,11 +388,8 @@ export async function callTelegram<T>(
   try {
     res = await (opts.fetchImpl ?? fetch)(`${base}/bot${token}/${method}`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-      },
-      body: JSON.stringify(payload),
+      headers: req.headers,
+      body: req.body,
       signal: ac.signal,
       // a redirect would carry the token to another URL
       redirect: "error",
@@ -314,7 +399,7 @@ export async function callTelegram<T>(
     // never forward the fetch error: its message / cause may include the URL (= the token)
     throw new TelegramError(
       timedOut
-        ? { kind: "timeout", userMessageVi: m.telegram.timeout }
+        ? { kind: "timeout", userMessageVi: timeoutMessageVi }
         : { kind: "network", userMessageVi: m.telegram.unavailable }
     )
   } finally {
@@ -508,20 +593,29 @@ export interface SendTextResult {
   sentAsPlainText: boolean
 }
 
+/** extra options of sendTelegramText / sendTelegramMedia */
+export interface TelegramSendOptions extends TelegramCallOptions {
+  disableNotification?: boolean
+  /** credit line appended to the text / caption (§10.1); default creditFooter(), null = none */
+  footer?: CreditFooter | null
+}
+
 /**
  * sendMessage with the two one-shot recoveries of the spec: "can't parse entities" → resend once as plain text;
  * group migrated → resend once to `migrate_to_chat_id`. No retry for anything else (429 / 5xx / network are the
- * caller's decision: the worker re-queues, the MCP tool reports).
+ * caller's decision: the worker re-queues, the MCP tool reports). The credit footer is appended here (HTML, or its
+ * plain form in the fallback): the caller fits `html` so that html + footer stay within 4096 characters.
  */
 export async function sendTelegramText(
   token: string,
   target: { chatId: string; messageThreadId: number | null },
   html: string,
-  opts: TelegramCallOptions & { disableNotification?: boolean } = {}
+  opts: TelegramSendOptions = {}
 ): Promise<SendTextResult> {
+  const footer = opts.footer === undefined ? creditFooter() : opts.footer
   let chatId = target.chatId
   let parseMode: "HTML" | null = "HTML"
-  let text = html
+  let text = withFooter(html, footer?.html)
   let migratedChatId: string | null = null
   let migrated = false
   let plain = false
@@ -554,7 +648,92 @@ export async function sendTelegramText(
       if (isTelegramError(e) && e.kind === "parse_entities" && !plain) {
         plain = true
         parseMode = null
-        text = htmlToPlainText(html)
+        text = withFooter(htmlToPlainText(html), footer?.plain)
+        continue
+      }
+      throw e
+    }
+  }
+}
+
+export interface SendMediaResult extends SendTextResult {
+  /** what Telegram received: a photo it refused is resent once as a document */
+  sentAs: OutgoingMediaKind
+}
+
+const MEDIA_METHODS = {
+  photo: { method: "sendPhoto", field: "photo" },
+  video: { method: "sendVideo", field: "video" },
+  document: { method: "sendDocument", field: "document" },
+} as const
+
+/**
+ * Upload one file (multipart) with a caption: sendPhoto / sendVideo (supports_streaming) / sendDocument. Same
+ * one-shot recoveries as sendTelegramText (migrated chat, plain caption on "can't parse entities") plus: a photo
+ * Telegram refuses (dimensions / processing) is resent once as a document - safe, a refused photo was not posted.
+ * The caller fits `captionHtml` so that caption + footer stay within 1024 characters. No other retry.
+ */
+export async function sendTelegramMedia(
+  token: string,
+  target: { chatId: string; messageThreadId: number | null },
+  media: OutgoingMedia,
+  captionHtml: string,
+  opts: TelegramSendOptions = {}
+): Promise<SendMediaResult> {
+  const footer = opts.footer === undefined ? creditFooter() : opts.footer
+  // one immutable Blob reused by every attempt (Buffer.concat / Buffer.from bytes are ArrayBuffer-backed)
+  const file = new Blob([media.bytes as Uint8Array<ArrayBuffer>], {
+    type: media.mime,
+  })
+  let chatId = target.chatId
+  let kind: OutgoingMediaKind = media.kind
+  let migratedChatId: string | null = null
+  let migrated = false
+  let plain = false
+  for (;;) {
+    const { method, field } = MEDIA_METHODS[kind]
+    const caption = plain
+      ? withFooter(htmlToPlainText(captionHtml), footer?.plain)
+      : withFooter(captionHtml, footer?.html)
+    const form = new FormData()
+    form.append("chat_id", chatId)
+    if (target.messageThreadId && target.messageThreadId > 1)
+      form.append("message_thread_id", String(target.messageThreadId))
+    if (caption) {
+      form.append("caption", caption)
+      if (!plain) form.append("parse_mode", "HTML")
+    }
+    if (opts.disableNotification) form.append("disable_notification", "true")
+    if (kind === "video") form.append("supports_streaming", "true")
+    form.append(field, file, media.fileName)
+    try {
+      const r = await callTelegramMultipart<{ message_id?: unknown }>(
+        token,
+        method,
+        form,
+        opts
+      )
+      const id = Number(r?.message_id)
+      return {
+        messageId: Number.isFinite(id) ? id : 0,
+        migratedChatId,
+        sentAsPlainText: plain,
+        sentAs: kind,
+      }
+    } catch (e) {
+      if (!isTelegramError(e)) throw e
+      if (e.kind === "migrated" && e.migrateToChatId && !migrated) {
+        migrated = true
+        chatId = e.migrateToChatId
+        migratedChatId = e.migrateToChatId
+        continue
+      }
+      if (e.kind === "parse_entities" && !plain) {
+        plain = true
+        continue
+      }
+      if (kind === "photo" && isPhotoRejected(e)) {
+        kind = "document"
         continue
       }
       throw e

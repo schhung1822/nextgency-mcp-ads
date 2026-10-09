@@ -22,7 +22,7 @@ Mục tiêu: **nhìn là hiểu, bấm là làm được** — bố cục kiểu
 | `--background` | trắng ấm `oklch(0.985 0.004 30)` | `oklch(0.16 0.01 30)` | nền |
 ⚠️ `#ED3C47` với chữ trắng chỉ đạt 3.93:1 → **không** dùng làm nền nút có chữ; gradient nút chính dùng cặp `#D6303C → #CC4A0E`. Gradient `#ED3C47 → #F26A1B` chỉ cho logo/wordmark/viền/biểu đồ.
 
-Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `#000`/trắng ở dark; Google Ads logo 3 màu `#FBBC04`/`#4285F4`/`#34A853`, TikTok `#000`/trắng ở dark (+ `#FE2C55` điểm nhấn), YouTube (thẻ "YouTube Ads" — thực chất là kết nối Google Ads) `#FF0000`, Telegram `#26A5E4`. Icon thương hiệu là SVG inline (simple-icons, CC0) trong `components/app/platform-icon.tsx`.
+Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `#000`/trắng ở dark; Google Ads logo 3 màu `#FBBC04`/`#4285F4`/`#34A853`, TikTok `#000`/trắng ở dark (+ `#FE2C55` điểm nhấn), YouTube (dấu nhỏ ở góc logo trên thẻ "Google Ads (gồm YouTube)") `#FF0000`, Telegram `#26A5E4`, Google Drive 3 màu (path simple-icons tách 3 phần: trái `#34A853`, phải `#FBBC04`, đáy `#4285F4` - `<BrandIcon brand="drive">`, dùng ở tab Google Drive, thẻ "Kho creative", khối Email hệ thống, wizard, khối Google Drive của MCP). Icon thương hiệu là SVG inline (simple-icons, CC0) trong `components/app/platform-icon.tsx`.
 
 ## 3. Liquid Glass — quy tắc
 - **Glass chỉ cho "khung" nổi trên nội dung**: top bar, sidebar (floating), menu/popover/dropdown, dialog/sheet, thanh hành động hàng loạt nổi, thanh "Có thay đổi chưa lưu", toast, thẻ KPI ở Tổng quan, màn hình đăng nhập.
@@ -132,16 +132,39 @@ Responsive: ≥1024 sidebar mở; 768–1023 sidebar thu icon; <768 sidebar thà
 ### Kết nối quảng cáo `/connections`
 ```
 [Kết nối quảng cáo]  Dán token từ app developer của bạn để kết nối tài khoản QC.  [+ Thêm kết nối]
-Tabs: Tất cả · Meta · TikTok · Google Ads · OpenAI Ads · Telegram   [Tìm kiếm...] [Trạng thái ▾]
+Tabs (3, không cuộn ngang): [🔌 Quảng cáo 25] · [Telegram 3] · [Google Drive 7]   (icon ẩn < sm; ?tab=all|telegram|drive)
+Tab Quảng cáo: [Tìm kiếm...] [+ Nền tảng ▾ (Meta · TikTok · Google Ads · OpenAI Ads, đếm từng nền tảng, chọn nhiều)] [+ Trạng thái ▾]
+  (link cũ ?platform=meta / ?platform=youtube → chọn sẵn bộ lọc Nền tảng; lọc đúng 1 nền tảng chưa có kết nối → Empty "Chưa có kết nối X" + [Thêm kết nối X])
+Mô tả PageHeader đổi theo tab: Quảng cáo "Dán token từ app developer…" · Telegram "Thêm bot Telegram để nhận cảnh báo…" · Google Drive "Khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo."
 | Tên            | Nền tảng | Người tạo* | TKQC | Trạng thái        | Hạn token  | Kiểm tra lúc |
 | BM chính       | (f) Meta | Thắng      | 12   | ● Hoạt động       | Không hạn  | 5 phút trước |
 | OpenAI Shop    | (◎)      | Lan        | 1    | ● Sắp hết hạn     | 07/10/2026 | 1 giờ trước  |
 (* cột Người tạo chỉ hiện với Admin)    Empty: "Chưa có kết nối nào — Thêm kết nối đầu tiên để bắt đầu."
 ```
+### Google Drive (`/connections?tab=drive`, `/connections/drive/new`, `/connections/drive/[id]` — 2026-10-09, `15-google-drive-media.md` §11/§18)
+Chuỗi: `src/lib/i18n/vi/drive-ui.ts` (+ panel Hướng dẫn `driveUi.guides`). Theo khuôn trang Telegram; nút chính `brand` "Thêm thư mục / sheet".
+```
+Tab Google Drive:
+┌ Email hệ thống (đầu Card danh sách) ──────────────────────────────────────────────┐
+│ ads-mcp@project.iam.gserviceaccount.com [Sao chép]  (admin) Đọc link Drive công khai: đã bật │
+│ Chia sẻ thư mục (Người xem) hoặc sheet (Người chỉnh sửa nếu muốn ghi trạng thái)…  │
+└────────────────────────────────────────────────────────────────────────────────────┘
+  (chưa cấu hình → Alert: admin "Mở Cài đặt" / nhân viên "liên hệ quản trị viên"; credential lỗi → Alert đỏ)
+| Tên            | Loại        | Phạm vi | Người tạo* | Trạng thái  | Kiểm tra lần cuối | MCP        |
+| Creative T10   | Thư mục     | Công ty | Thắng      | ● Hoạt động | 5 phút trước      | 3 MCP      |
+| Kế hoạch QC    | Google Sheet| Riêng   | Lan        | ● Lỗi       | 1 giờ trước       | Chưa gán MCP|
+Khối "Service account riêng" [Nâng cao]: danh sách + Thêm (Dialog dán JSON) / Kiểm tra / Xoá
+```
+- Bảng: tên xuống tối đa 2 dòng (`line-clamp-2`), cột "Kiểm tra lần cuối" chỉ hiện từ @4xl; lỗi trạng thái 2 dòng. Email hệ thống dùng `CopyField wrap` (xuống dòng trên điện thoại, không bị cắt). Nhân viên xem nguồn đọc bằng email hệ thống: gợi ý sửa chỉ dành cho admin (tạo khoá JSON, bật API…) được thay bằng "Báo quản trị viên kiểm tra Cài đặt → Google Drive hệ thống" (`driveStatusText`, chỉ ở UI).
+- **Thêm** `/connections/drive/new` (Stepper 3 bước, panel Hướng dẫn theo bước `driveUi.guides.newSteps[step]` - bước 2 có danh sách lỗi thường gặp; lỗi định dạng link nằm dưới ô link, lỗi quyền / service account / Google là Alert đỏ): ① Loại (thẻ Thư mục | Google Sheet) + Phạm vi (Công ty — chỉ admin | Riêng của tôi) → ② "Chia sẻ cho email nào?" (Email hệ thống — khuyên dùng | Service account riêng) + CopyField email + các bước chia sẻ + ô link (sheet: link có `#gid=`) + nút **Kiểm tra** → kết quả (tên trên Drive, "12 ảnh · 3 video · 2 thư mục con", Shared drive; sheet: tab, số dòng, dòng tiêu đề, quyền của email) → ③ Tên hiển thị, số cấp thư mục con (Select 0–3); sheet: dòng tiêu đề + **ánh xạ cột** (Cột AI đọc: Link Drive (bắt buộc), Tên creative, Nền tảng, Tài khoản QC, Nội dung, Tiêu đề, Link đích → Switch "Cho phép AI ghi trạng thái vào sheet" (tắt kèm gợi ý khi email chỉ là Người xem) → Collapsible "Cột ghi trạng thái (nâng cao)": Trạng thái (bắt buộc khi bật ghi), Mã media, Mã quảng cáo, Ghi chú hệ thống, Cập nhật lúc - tự mở và khoá mở khi bật ghi trạng thái) → [Lưu thư mục / sheet]. Sửa thông tin sau khi Kiểm tra → "bấm Kiểm tra lại".
+- **Chi tiết** `/connections/drive/[id]`: PageHeader (Kiểm tra lại · Sửa cài đặt (Dialog) · Xoá (ConfirmDialog liệt kê MCP bị ảnh hưởng)); Card Thông tin + "Đang dùng trong MCP"; thư mục: lưới file **Card đặc** (ảnh thu nhỏ từ `/api/drive/thumb/…`, tên, dung lượng, badge "Đã dùng ở N TKQC"), lọc Tất cả / Ảnh / Video, breadcrumb thư mục con, "Tải thêm", dòng "N file khác được bỏ qua"; sheet: bảng 20 dòng đầu theo ánh xạ cột + badge thống kê trạng thái. Info "Ánh xạ cột" chia 2 nhóm "AI đọc" / "AI ghi". Chip trạng thái sheet có màu (Chờ lên vàng · Đang xử lý xanh dương · Đã lên xanh lá · Lỗi đỏ · "Chưa có trạng thái" trung tính). Lỗi Google khi đọc danh sách → Alert + ghi chú "Trạng thái ở đầu trang là kết quả của lần kiểm tra trước (…)" + **một** nút: người quản lý "Kiểm tra lại" (kiểm tra nguồn + tải lại danh sách, giống nút ở PageHeader), người chỉ xem "Tải lại". `/connections/drive` chuyển về `?tab=drive`.
+- **Cài đặt → Google Drive hệ thống** (admin): Card đặc — trạng thái (Hoạt động / Lỗi / Chưa cấu hình), email + Sao chép, project, mã khoá, API key (`…abcd` hoặc "Chưa có - link công khai tắt"), kiểm tra lần cuối, số nguồn đang dùng; SecretInput nhiều dòng cho service account JSON (write-only, trống = giữ), SecretInput API key (chỉ hiện hint) + Checkbox "Xoá API key"; nút Kiểm tra / Lưu thông tin xác thực (`outline`, thành `brand` khi đã nhập gì đó - trang Cài đặt không có nút brand ở header) / Xoá (Lưu, Xoá mở hộp xác thực lại). Form 1 cột `max-w-3xl`; 5 bước "cách tạo service account" + link Google Cloud nằm trong panel Hướng dẫn của trang (`guides.settings`, mục "Google Drive hệ thống"), không dựng aside trong thẻ.
+- **Khối Google Drive trong MCP** (`mcp-servers/_components/drive-sections.tsx`, wizard + tab Cấu hình + Tổng quan): bước ② tiêu đề nhóm "Ảnh, video quảng cáo (không bắt buộc)" → Card "Google Drive" với Checkbox nguồn theo nhóm Của công ty / Của tôi / Của nhân viên (admin), badge loại + trạng thái, nguồn lỗi/tắt có cảnh báo, trống → EmptyState + "Thêm thư mục / sheet"; bước ② nguồn "Đang tắt" không chọn mới được (Checkbox vô hiệu, vẫn bỏ chọn được nếu đã chọn); bước ③ Card "Google Drive": Switch "Cho phép dùng link Drive công khai" (mặc định bật - mô tả hiển thị nổi bằng `font-medium text-warning-strong`; vô hiệu + gợi ý khi chưa có API key) và "Cho phép ghi trạng thái vào Google Sheet" (mặc định bật) + ghi chú cần quyền Tạo mới (đã chọn nguồn Drive mà không nền tảng nào có Tạo mới → Alert vàng nhẹ); Tổng quan: 3 dòng tóm tắt (Google Drive · Link Drive công khai · Ghi trạng thái vào Google Sheet).
+
 ### Thêm kết nối `/connections/new` (wizard 3 bước)
 ```
 ① Chọn nền tảng  ② Nhập thông tin  ③ Kiểm tra & chọn tài khoản
-Bước 1: lưới 2 cột thẻ lớn có logo + mô tả 1 dòng — nhóm "Quảng cáo": Meta · TikTok Ads · Google Ads · YouTube Ads (mở form Google Ads kèm giải thích "YouTube chạy qua Google Ads") · OpenAI Ads; nhóm "Kênh thông báo": Telegram (→ `/connections/telegram/new`). Thẻ "Sắp ra mắt" (nét đứt, mờ, popup "chưa sẵn sàng") chỉ hiện khi `UPCOMING_PLATFORMS` khác rỗng.
+Bước 1: lưới 2 cột thẻ lớn có logo + mô tả 1 dòng — nhóm "Quảng cáo": Meta · TikTok Ads · Google Ads (gồm YouTube) (một thẻ duy nhất: logo Google Ads + dấu YouTube nhỏ ở góc, mô tả thêm câu "Quảng cáo YouTube (chiến dịch Video, Demand Gen) cũng chạy qua kết nối này."; form luôn kèm Alert "YouTube Ads chạy qua Google Ads" và khung Hướng dẫn có phần YouTube; link cũ `?platform=youtube` vẫn mở form này) · OpenAI Ads; nhóm "Kênh thông báo": Telegram (→ `/connections/telegram/new`); nhóm "Kho creative" ("Khai báo thư mục hoặc Google Sheet để AI lấy ảnh, video lên quảng cáo."): Google Drive (→ `/connections/drive/new`). Thẻ "Sắp ra mắt" (nét đứt, mờ, popup "chưa sẵn sàng") chỉ hiện khi `UPCOMING_PLATFORMS` khác rỗng.
         TikTok bước 2 có SegmentedControl "Dán access token | Đổi auth_code"; Google Ads có chọn kiểu xác thực "Service account (khuyên dùng) | OAuth refresh token"
 Bước 2: ┌ Form (Card đặc) ─────────────┐ ┌ Panel Hướng dẫn: "Cách lấy token Meta" ─┐
         │Tên kết nối*                  │ │1. Vào Business Settings → ...      │
@@ -153,7 +176,7 @@ Bước 3: spinner "Đang kiểm tra..." → ✔ Token hợp lệ (hạn, scope)
 ### Tạo MCP `/mcp-servers/new` (wizard 4 bước — đúng thứ tự yêu cầu)
 ```
 ① Tên  ② Nền tảng & tài khoản  ③ Quyền  ④ Bảo vệ
-② Mỗi nền tảng 1 card có công tắc bật; bật → chọn kết nối (multi) → "Tất cả tài khoản" hoặc chọn từng TKQC
+② Mỗi nền tảng 1 card có công tắc bật; bật → chọn kết nối (multi) → "Tất cả tài khoản" hoặc chọn từng TKQC; dưới cùng khối Telegram và khối Google Drive (chọn thư mục / sheet)
 ③ Mỗi nền tảng đã bật 1 hàng checkbox: [✔ Xem (luôn bật)] [ ] Bật/Tắt [ ] Sửa [ ] Sao chép [ ] Tạo mới [ ] Xoá/Lưu trữ ⚠
    Nút nhanh: "Chỉ xem" · "Vận hành (xem + bật/tắt + sửa)" · "Toàn quyền (trừ xoá)"
 ④ Xác nhận 2 bước [bật] · Giới hạn đổi ngân sách mỗi lần [50]% · Trần ngân sách/ngày (theo tiền tệ) · Hết hạn [không] · Giới hạn lệnh/phút [60] · IP cho phép
@@ -177,7 +200,7 @@ Click dòng → Sheet phải: tóm tắt + bảng "Trước → Sau" + JsonViewe
 ### Người dùng `/users` (Admin)
 Bảng: Tên · Email · Vai trò · 2FA · Trạng thái · Đăng nhập cuối. Nút chính "Thêm người dùng" (Dialog: tên, email, vai trò, mật khẩu tạm — có nút sinh ngẫu nhiên + sao chép). Hành động dòng: Đổi vai trò · Đặt lại mật khẩu · Đặt lại 2FA · Khoá/Mở khoá · Xem phiên · Xoá.
 ### Cài đặt `/settings` (Admin)
-Card: Lưu trữ nhật ký (số tháng MCP / nhân sự, 1–24) · Bảo mật (bắt buộc 2FA cho mọi người, thời lượng phiên) · Mặc định khi tạo MCP · Phiên bản API nền tảng (chỉ đọc + cảnh báo khi sắp hết hạn) · Thông tin hệ thống (version app, dung lượng log).
+Card: Lưu trữ nhật ký (số tháng MCP / nhân sự, 1–24) · Bảo mật (bắt buộc 2FA cho mọi người, thời lượng phiên) · Mặc định khi tạo MCP · Phiên bản API nền tảng (chỉ đọc + cảnh báo khi sắp hết hạn) · **Google Drive hệ thống** (xem mục Google Drive ở trên) · Thông tin hệ thống (version app, dung lượng log).
 ### Đăng nhập `/login`, `/login/2fa`, `/setup`
 Nền gradient ấm + 1 glass card giữa màn: logo, "Đăng nhập Ads MCP", email, mật khẩu, nút `brand` "Đăng nhập". 2FA: `InputOTP` 6 ô (tự submit khi đủ), link "Dùng mã dự phòng". Không có link "Đăng ký".
 

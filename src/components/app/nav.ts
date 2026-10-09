@@ -1,6 +1,7 @@
 // Navigation config + pure helpers (no React, no icon imports - icons live in nav-icons.ts so tests stay light).
 
 import { common } from "@/lib/i18n/vi/common"
+import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import { notifications } from "@/lib/i18n/vi/notifications"
 
 export type AppRole = "admin" | "staff"
@@ -48,6 +49,12 @@ export const NAV_MAIN: NavItem[] = [
       "youtube",
       "openai",
       "telegram",
+      "google drive",
+      "drive",
+      "google sheet",
+      "sheet",
+      "thu muc",
+      "creative",
     ],
   },
   {
@@ -91,7 +98,7 @@ export const NAV_ADMIN: NavItem[] = [
     href: "/settings",
     icon: "settings",
     adminOnly: true,
-    keywords: ["settings", "cai dat"],
+    keywords: ["settings", "cai dat", "google drive", "service account"],
   },
 ]
 
@@ -186,6 +193,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   dev: common.nav.crumbDev,
   ui: common.nav.crumbDevUi,
   telegram: notifications.ui.crumb,
+  drive: driveUi.ui.crumb,
 }
 
 /**

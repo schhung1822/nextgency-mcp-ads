@@ -43,6 +43,9 @@ export const notifications = {
     channelNotUsable:
       "Có kết nối Telegram không tồn tại hoặc bạn không có quyền dùng.",
     tooManyChannels: "Chọn tối đa 20 kết nối Telegram.",
+    /** sendChannelMessageNow: same dedupe key, earlier delivery still pending (ChatGPT calling the tool twice with one file) */
+    duplicateDelivery:
+      "Tin này đang được một lần gọi trước gửi đi (chưa có kết quả) - không gửi thêm lần nữa.",
   },
 
   /** Lỗi/cảnh báo Bot API - luôn kèm cách sửa. `bot` = "@username" khi đã biết, ngược lại "bot". */
@@ -91,6 +94,13 @@ export const notifications = {
     skippedError: (reason: string) => `Kết nối Telegram đang lỗi, không gửi: ${reason}`,
     expired: "Quá thời gian chờ gửi (1 giờ), đã bỏ qua.",
     retryUnavailable: "Không xếp lịch gửi lại được.",
+    /** media (sendPhoto / sendVideo / sendDocument) */
+    fileTooLarge:
+      "Telegram từ chối tệp vì quá lớn (tối đa 50 MB, ảnh tối đa 10 MB). Hãy dùng tệp nhỏ hơn.",
+    mediaRejected:
+      "Telegram không xử lý được tệp này (định dạng hoặc kích thước ảnh không hợp lệ). Thử gửi dạng tệp hoặc dùng tệp khác.",
+    uploadTimeout:
+      "Telegram không phản hồi kịp khi tải tệp lên - tin có thể đã được gửi, hãy kiểm tra nhóm trước khi gửi lại. Nếu chưa có, thử tệp nhỏ hơn hoặc thử lại sau.",
   },
 
   /** Nội dung tin Telegram (HTML do format.ts ghép; mọi giá trị động được escape ở đó). */
@@ -157,6 +167,82 @@ export const notifications = {
     aiMessage: {
       title: (mcp: string) => `🤖 Tin từ AI · MCP ${mcp}`,
     },
+    /** dòng ghi nguồn cuối MỌI tin (§10.1): chỉ "<a>linkLabel</a>" (chữ nghiêng) */
+    credit: {
+      linkLabel: "Ads MCP Simple",
+    },
+  },
+
+  /** Tệp đính kèm tin Telegram (ảnh / video / tệp - media.ts). Không bao giờ chứa URL. */
+  media: {
+    kinds: { photo: "Ảnh", video: "Video", document: "Tệp" },
+    /** notification_deliveries.preview: "[Ảnh: a.jpg · 1,2 MB]" */
+    previewLabel: (kind: string, name: string, size: string) =>
+      `[${kind}: ${name} · ${size}]`,
+    /** tên tệp khi không có tên: tep-20261009-1430 */
+    fallbackFileStem: "tep",
+    errors: {
+      telegram_file_fetch_failed: {
+        message: "Không tải được tệp từ đường dẫn.",
+        hint: "Dùng link công khai tải trực tiếp được tệp (không cần đăng nhập), hoặc đính kèm tệp vào cuộc trò chuyện.",
+      },
+      telegram_file_too_large: {
+        message: "Tệp vượt quá 50 MB - giới hạn gửi tệp của Telegram.",
+        hint: "Dùng tệp nhỏ hơn (ảnh ≤ 10 MB, tệp ≤ 50 MB) hoặc gửi link tải trong nội dung tin.",
+      },
+      telegram_file_type_not_allowed: {
+        message: "Loại tệp này không được phép gửi.",
+        hint: "Chỉ gửi được ảnh JPG/PNG/WebP/GIF, video MP4/MOV, PDF, Word/Excel/PowerPoint (DOCX/XLSX/PPTX, không có macro) và tệp chữ CSV/TSV/TXT/MD/JSON.",
+      },
+      telegram_file_timeout: {
+        message:
+          "Tải tệp quá thời gian chờ - tệp quá lớn hoặc máy chủ nguồn chậm.",
+        hint: "Thử tệp nhỏ hơn hoặc link khác.",
+      },
+      telegram_file_invalid: {
+        message: "Tệp rỗng hoặc bị hỏng.",
+        hint: "Kiểm tra lại tệp rồi gửi lại.",
+      },
+      telegram_busy: {
+        message: "Máy chủ đang gửi tệp khác, chưa nhận thêm được.",
+        hint: "Thử lại sau vài giây.",
+      },
+      url_not_allowed: {
+        message: "Đường dẫn tệp không được phép.",
+        hint: "Chỉ dùng link https công khai (không dùng địa chỉ nội bộ).",
+      },
+    },
+    fetchFailedStatus: (status: number) =>
+      `Máy chủ chứa tệp trả về lỗi HTTP ${status}.`,
+    tooManyRedirects: "Đường dẫn tệp chuyển hướng quá nhiều lần.",
+    emptyFile: "Tệp tải về rỗng.",
+    httpsOnly: "Đường dẫn tệp phải dùng https://.",
+    photoTooLarge: "Ảnh lớn hơn 10 MB nên không gửi dạng ảnh được.",
+    notPhoto: "Tệp không phải ảnh nên không gửi dạng ảnh được.",
+    notVideo: "Chỉ video MP4 mới gửi dạng video được.",
+    sendAsHint: 'Dùng send_as "auto" hoặc "document" để gửi dạng tệp.',
+    macro: "Tệp Office có macro (VBA) không được phép gửi.",
+    macroHint: "Lưu lại dạng DOCX/XLSX/PPTX không có macro rồi gửi lại.",
+    officeEmbedded:
+      "Tệp Office chứa đối tượng nhúng (OLE, ActiveX, tệp nhị phân hoặc tệp chạy được) nên không được phép gửi.",
+    officeEmbeddedHint:
+      "Xoá đối tượng nhúng rồi lưu lại, hoặc xuất ra PDF rồi gửi.",
+    /** one media send per MCP at a time */
+    busyMcp:
+      "MCP này đang gửi một tệp khác vào Telegram - chưa gửi thêm tệp được.",
+    busyMcpHint: "Đợi lần gửi trước xong (tối đa khoảng 1 phút) rồi thử lại.",
+    /** the upload was cut by the deadline: Telegram may still have posted it */
+    uploadUncertain:
+      "Quá thời gian chờ khi tải tệp lên Telegram - tệp có thể đã được gửi, kiểm tra nhóm trước khi gửi lại.",
+    uploadUncertainHint:
+      "Mở nhóm Telegram xem tin đã có chưa; chỉ gửi lại khi chưa có (nên dùng tệp nhỏ hơn).",
+    markup: "Tệp HTML/SVG/XML không được phép gửi.",
+    textTooLarge: "Nội dung tệp chữ vượt quá 256 KB.",
+    textTooLargeHint: "Rút gọn nội dung hoặc chia thành nhiều tệp.",
+    textInvalid:
+      "Tệp chữ phải là UTF-8 hợp lệ, không rỗng và không chứa ký tự NUL.",
+    textExtension: "Tệp chữ phải có đuôi .csv, .tsv, .txt, .md hoặc .json.",
+    textExtensionHint: 'Đặt file_name có đuôi phù hợp, vd "bao-cao.csv".',
   },
 
   // ---------------------------------------------------------------------------

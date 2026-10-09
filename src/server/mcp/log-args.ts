@@ -2,12 +2,17 @@
 // fragments are dropped because they often carry signatures (S3/GCS signed URLs, CDN tokens). Applied on top of the
 // key-based redaction in logging.ts. Framework-free (MCP layer: no `next/*`).
 import { redactString } from "../audit/redact"
+import { isDriveFileRef } from "../drive/file-ref"
+import { parseDriveLink } from "../drive/links"
 
 /** Deep copy limit: anything nested deeper is replaced, never logged as-is. */
 export const MAX_LOG_ARGS_DEPTH = 8
 const DEPTH_MARKER = "[depth-limit]"
 
 const HTTP_URL = /^https?:\/\//i
+
+/** Keys whose values are bearer links logged as "[redacted]" whole (ChatGPT file `download_url`). */
+const SECRET_URL_KEY = /^download_url$/i
 
 /** Keys whose values are media URLs (image_url, video_url, thumbnail_url, file_url, url…). */
 const MEDIA_URL_KEY = /(^|_)(image|video|thumbnail|media|file)_url$|^url$/i
@@ -37,10 +42,11 @@ function walk(v: unknown, depth: number, strip: (key: string | null, s: string) 
 
 /**
  * Deep copy where every http(s) URL string keeps scheme + host + path and loses its query / fragment
- * (`?[redacted]`). Other strings are untouched. Used for arguments the SDK rejected before any tool ran.
+ * (`?[redacted]`); a `download_url` (ChatGPT file, signed) becomes "[redacted]". Other strings are untouched.
+ * Used for arguments the SDK rejected before any tool ran.
  */
 export function stripUrlQueries(v: unknown, depth = 0): unknown {
-  return walk(v, depth, (_k, s) => stripQuery(s, false), null)
+  return walk(v, depth, (k, s) => (k !== null && SECRET_URL_KEY.test(k) ? "[redacted]" : stripQuery(s, false)), null)
 }
 
 /**
@@ -51,4 +57,14 @@ export function stripUrlQueries(v: unknown, depth = 0): unknown {
 export function stripMediaUrlQueries(args: Record<string, unknown>): Record<string, unknown> {
   const out = walk(args, 0, (k, s) => (k !== null && MEDIA_URL_KEY.test(k) ? stripQuery(s, true) : s), null)
   return out && typeof out === "object" && !Array.isArray(out) ? (out as Record<string, unknown>) : {}
+}
+
+/**
+ * A Google Drive reference (bare file id or Drive / Docs link) as logged: the file id only - the resource key and
+ * every other query parameter are dropped. An opaque `drf_` ref (it carries an encrypted resource key) is logged as
+ * "drf_[redacted]". Anything unparsable becomes "[invalid drive ref]".
+ */
+export function driveRefForLog(ref: string): string {
+  if (isDriveFileRef(String(ref ?? "").trim())) return "drf_[redacted]"
+  return parseDriveLink(ref)?.id ?? "[invalid drive ref]"
 }

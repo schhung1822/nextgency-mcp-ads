@@ -3,6 +3,7 @@
 // Jobs are registered from the registry in src/server/jobs/index.ts; schedules use pg-boss cron with tz.
 import { PgBoss } from "pg-boss"
 
+import { shutdownMcpLogWriter } from "@/server/audit/mcp-log-writer"
 import { redactString } from "@/server/audit/redact"
 import { safeErrorForLog } from "@/server/audit/safe-error"
 import { assertKeyRing } from "@/server/crypto/secret-box"
@@ -83,6 +84,8 @@ async function main() {
     abort.abort()
     try {
       await boss.stop({ graceful: true, timeout: STOP_TIMEOUT_MS })
+      // background upload jobs write audit rows (mcp_call_logs) - flush what is still buffered
+      await shutdownMcpLogWriter()
       await pool().end()
       log("stopped")
       process.exit(0)

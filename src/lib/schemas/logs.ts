@@ -24,6 +24,8 @@ export const ACTIVITY_GROUPS = [
   "user",
   "connection",
   "notification_channel",
+  "drive_credential",
+  "drive_source",
   "mcp",
   "settings",
   "logs",

@@ -242,7 +242,7 @@ Lỗi hạ tầng dùng `google.rpc.ErrorInfo` (vd `CREDENTIALS_MISSING`, `SERVI
 | `GOOGLE_ADS_API_VERSION` | `v25` |
 
 ## 9. YouTube Ads
-YouTube **không có API quảng cáo riêng**: quảng cáo YouTube được quản lý trong **Google Ads** → là một phần của kết nối Google Ads (UI có thẻ "YouTube Ads" mở form kết nối Google Ads kèm giải thích).
+YouTube **không có API quảng cáo riêng**: quảng cáo YouTube được quản lý trong **Google Ads** → là một phần của kết nối Google Ads (UI: một thẻ "Google Ads (gồm YouTube)" ở bước 1 trang Thêm kết nối; form Google Ads luôn kèm giải thích YouTube).
 
 | Loại chiến dịch | Báo cáo / danh sách | Bật-tắt / ngân sách / giá thầu | Sửa / xoá | Tạo mới |
 |---|---|---|---|---|

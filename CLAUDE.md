@@ -1,6 +1,6 @@
 # Ads MCP by: noti.vn
 
-Web app **source-available** (giấy phép riêng của noti.vn — chỉ đơn vị được cấp quyền mới được dùng, xem `LICENSE`), tự host (VPS + Docker + PostgreSQL), cho phép đội marketing **dán token từ app developer** để kết nối tài khoản quảng cáo **Meta, TikTok Ads, Google Ads (gồm YouTube), OpenAI Ads** và **kênh thông báo Telegram**, rồi tạo **MCP server** (`https://<domain>/mcp/<key>`) để điều khiển quảng cáo từ **Claude, ChatGPT, Gemini**: kéo chỉ số theo ngày, sửa, bật/tắt, sao chép, tạo mới. Có phân quyền Admin/Nhân viên, 2FA, nhật ký chi tiết (MCP + nhân sự) lưu N tháng.
+Web app **source-available** (giấy phép riêng của noti.vn — chỉ đơn vị được cấp quyền mới được dùng, xem `LICENSE`), tự host (VPS + Docker + PostgreSQL), cho phép đội marketing **dán token từ app developer** để kết nối tài khoản quảng cáo **Meta, TikTok Ads, Google Ads (gồm YouTube), OpenAI Ads**, **kênh thông báo Telegram** và **Google Drive / Google Sheet** (nguồn ảnh/video creative), rồi tạo **MCP server** (`https://<domain>/mcp/<key>`) để điều khiển quảng cáo từ **Claude, ChatGPT, Gemini**: kéo chỉ số theo ngày, sửa, bật/tắt, sao chép, tạo mới. Có phân quyền Admin/Nhân viên, 2FA, nhật ký chi tiết (MCP + nhân sự) lưu N tháng.
 
 ## Trạng thái hiện tại
 **Đang triển khai** (chủ dự án đã cho phép bắt đầu ngày 2026-10-02). Làm theo thứ tự trong `.claude/docs/08-roadmap.md`, cập nhật checklist ở đó sau mỗi phần việc.
@@ -25,6 +25,7 @@ Next.js 16 khác dữ liệu huấn luyện — trước khi dùng API Next, đ�
 | `.claude/docs/12-platform-rollout.md` | Bật/tắt nền tảng (`src/lib/platforms.ts`) + checklist phát hành nền tảng mới (Google Ads, TikTok Ads đã phát hành 2026-10-08) |
 | `.claude/docs/13-system-notices.md` | Thông báo hệ thống (webhook noti.vn 1 giờ/lần → chạy chữ top bar web); kết quả MCP không kèm thông báo |
 | `.claude/docs/14-telegram-notifications.md` | Kênh thông báo Telegram: bảng, gửi tin (Bot API), hàng đợi, sự kiện, tool MCP `telegram_*`, UI, bảo mật |
+| `.claude/docs/15-google-drive-media.md` | Google Drive & Google Sheet làm nguồn creative (thư mục công ty/riêng, link công khai, đọc + ghi ngược sheet, video nhỏ qua link tạm `/dl`, video lớn tải nền) — **đã triển khai 2026-10-09**; **§18 = bản thực tế** (tham chiếu chính khi sửa code Drive), hướng dẫn người dùng `docs/huong-dan-google-drive.md` |
 
 ## Stack (chi tiết + version: 02-architecture.md)
 Next.js 16.3.8 App Router · React 19 · TypeScript strict · Tailwind v4 · shadcn/ui (Radix, style `radix-maia`, icon Hugeicons) · Better Auth 1.7.7 (email/password, 2FA TOTP, admin) · Drizzle 0.45 + PostgreSQL 18 · pg-boss (worker) · MCP TS SDK v2 `@modelcontextprotocol/server` · Caddy · pnpm · Node 24 · Vitest + Playwright.
@@ -44,7 +45,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build  
 ## Quy tắc bắt buộc
 1. **Bảo mật trước hết** — app giữ token có toàn quyền chi tiền:
    - Mọi server action / route / tool MCP: `requireUser()` + kiểm tra role + **kiểm tra owner** (staff chỉ thấy/dùng tài nguyên của mình). Layout không phải ranh giới bảo mật.
-   - Credential nền tảng & key MCP: mã hoá AES-256-GCM (có AAD), **không bao giờ** trả về client, đưa cho AI, hay ghi log. Redact trước khi log.
+   - Credential nền tảng & key MCP (cả service account / API key / resource key Google Drive, token link tạm `adr_`): mã hoá AES-256-GCM (có AAD), **không bao giờ** trả về client, đưa cho AI, hay ghi log. Redact trước khi log.
    - `auth.api.createUser` (và mọi API admin của Better Auth) **phải** kèm `headers: await headers()`.
    - MCP: key sai/tắt/hết hạn → **404, không bao giờ 401**. Mỗi tool tự kiểm tra lại platform/account/quyền theo grant.
 2. **An toàn thao tác quảng cáo**: object tạo mới/bản sao luôn **tạm dừng**; thao tác ghi qua luồng xác nhận 2 bước khi MCP bật; tôn trọng guardrail ngân sách; xoá không hoàn tác → luôn xác nhận.

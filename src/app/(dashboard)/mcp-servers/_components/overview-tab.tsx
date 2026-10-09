@@ -51,6 +51,8 @@ import type {
   SelectableConnection,
 } from "@/server/services/mcp-servers"
 
+import { DriveSummaryRows } from "./drive-sections"
+
 const o = t.overview
 
 const chartConfig = {
@@ -297,9 +299,13 @@ export function OverviewTab({
           className="max-sm:p-4"
           label={o.lastUsed}
           value={
-            <span className="text-base sm:text-xl">
+            // "khoảng 2 giờ trước" wraps inside a narrow 4-up KPI tile instead of running out of the card
+            <span className="block text-base text-balance break-words sm:text-xl">
               {mcp.lastUsedAt ? (
-                <RelativeTime value={mcp.lastUsedAt} />
+                <RelativeTime
+                  value={mcp.lastUsedAt}
+                  className="whitespace-normal"
+                />
               ) : (
                 o.neverUsed
               )}
@@ -501,6 +507,14 @@ export function OverviewTab({
                   )}
                 </>
               )}
+              <DriveSummaryRows
+                sources={mcp.driveSources ?? []}
+                drivePublicLinks={mcp.settings.drivePublicLinks}
+                driveSheetWriteback={mcp.settings.driveSheetWriteback}
+                Row={SummaryRow}
+                on={o.on}
+                off={o.off}
+              />
             </dl>
           </CardContent>
         </Card>

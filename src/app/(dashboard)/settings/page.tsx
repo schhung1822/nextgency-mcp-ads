@@ -19,11 +19,13 @@ import { updates as tu } from "@/lib/i18n/vi/updates"
 import { displayVersion } from "@/lib/version"
 import { requireAdmin } from "@/server/auth/session"
 import { env } from "@/server/env"
+import { getSystemDriveCredential } from "@/server/services/drive-credentials"
 import { getPublicLegalInfo } from "@/server/services/legal"
 import { getLogStorageInfo, type LogTableInfo } from "@/server/services/logs"
 import { getAllSettings } from "@/server/services/settings"
 import { getVersionBadge } from "@/server/services/updates"
 
+import { DriveSettingsCard } from "./_components/drive-settings-card"
 import { SettingsForm } from "./_components/settings-form"
 
 export const metadata: Metadata = { title: ts.title }
@@ -73,12 +75,15 @@ function partitionLabel(name: string): string {
 
 export default async function SettingsPage() {
   const { user } = await requireAdmin()
-  const [settings, storage, version, legalInfo] = await Promise.all([
-    getAllSettings(),
-    getLogStorageInfo(user),
-    getVersionBadge("admin"),
-    getPublicLegalInfo(),
-  ])
+  const [settings, storage, version, legalInfo, driveCredential] =
+    await Promise.all([
+      getAllSettings(),
+      getLogStorageInfo(user),
+      getVersionBadge("admin"),
+      getPublicLegalInfo(),
+      // DTO only (email, project, last 4 chars) - the key / API key never leave the server
+      getSystemDriveCredential(user),
+    ])
   const e = env()
   const now = new Date()
   const versions: { platform: ApiPlatform; envVar: string; version: string }[] =
@@ -120,11 +125,17 @@ export default async function SettingsPage() {
         actorTwoFactor={user.twoFactorEnabled}
         legalDomain={legalInfo.domain}
         after={
-          <SystemCard
-            storage={storage}
-            timezone={e.APP_TIMEZONE}
-            appVersion={version.current}
-          />
+          <>
+            <DriveSettingsCard
+              credential={driveCredential}
+              actorTwoFactor={user.twoFactorEnabled}
+            />
+            <SystemCard
+              storage={storage}
+              timezone={e.APP_TIMEZONE}
+              appVersion={version.current}
+            />
+          </>
         }
       >
         <Card>

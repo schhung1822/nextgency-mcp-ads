@@ -68,6 +68,8 @@ export const MCP_LIMITS = {
   telegramMessagesPerHour: { min: 1, max: 200 },
   /** Telegram channels per MCP (same bound as mcpChannelIdsSchema) */
   telegramChannelsMax: 20,
+  /** Google Drive sources per MCP (mcp_drive_scopes) */
+  driveSourcesMax: 50,
 } as const
 
 const msg = {
@@ -99,6 +101,7 @@ const msg = {
   expiresAt: "Ngày hết hạn không hợp lệ.",
   expiresFuture: "Ngày hết hạn phải sau thời điểm hiện tại.",
   id: "Mã không hợp lệ.",
+  tooManyDriveSources: `Tối đa ${MCP_LIMITS.driveSourcesMax} thư mục / sheet Google Drive cho mỗi MCP.`,
 } as const
 export const MCP_SCHEMA_MESSAGES = msg
 
@@ -190,6 +193,12 @@ export const mcpSettingsSchema = z.object({
     .min(MCP_LIMITS.telegramMessagesPerHour.min, msg.telegramPerHour)
     .max(MCP_LIMITS.telegramMessagesPerHour.max, msg.telegramPerHour)
     .default(20),
+  /**
+   * Google Drive (15-google-drive-media.md §7.5) - optional on input, default ON (owner decision G6): public
+   * "Anyone with the link" Drive links; status write-back into sheets that enabled it.
+   */
+  drivePublicLinks: z.boolean().default(true),
+  driveSheetWriteback: z.boolean().default(true),
 })
 export type McpSettingsInput = z.infer<typeof mcpSettingsSchema>
 
@@ -205,6 +214,8 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
   telegramTool: false,
   telegramNotifyWrites: false,
   telegramMessagesPerHour: 20,
+  drivePublicLinks: true,
+  driveSheetWriteback: true,
 }
 
 /** Shape stored in `mcp_servers.settings` (snake_case, as documented in 03-database-schema.md). */
@@ -222,6 +233,8 @@ export interface StoredMcpSettings {
   telegram_tool: boolean
   telegram_notify_writes: boolean
   telegram_messages_per_hour: number
+  drive_public_links: boolean
+  drive_sheet_writeback: boolean
 }
 
 function sortedCaps(r: Record<string, number>): Record<string, number> {
@@ -245,6 +258,8 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     telegram_tool: s.telegramTool,
     telegram_notify_writes: s.telegramNotifyWrites,
     telegram_messages_per_hour: s.telegramMessagesPerHour,
+    drive_public_links: s.drivePublicLinks,
+    drive_sheet_writeback: s.driveSheetWriteback,
   }
 }
 
@@ -323,6 +338,14 @@ export const mcpConfigSchema = z.object({
   notificationChannelIds: z
     .array(z.uuid(msg.id))
     .max(MCP_LIMITS.telegramChannelsMax, notificationsVi.errors.tooManyChannels)
+    .optional(),
+  /**
+   * Google Drive sources (drive_sources ids) the MCP may use. Omitted = keep the stored scope on update (none on
+   * create); [] = no source.
+   */
+  driveSourceIds: z
+    .array(z.uuid(msg.id))
+    .max(MCP_LIMITS.driveSourcesMax, msg.tooManyDriveSources)
     .optional(),
 })
 
@@ -430,6 +453,10 @@ export type McpFormValues = {
   telegramTool: boolean
   telegramNotifyWrites: boolean
   telegramMessagesPerHour: string
+  /** Google Drive sources in scope (drive_sources ids) */
+  driveSourceIds: string[]
+  drivePublicLinks: boolean
+  driveSheetWriteback: boolean
 }
 
 export const PERMISSION_PRESETS = {
@@ -481,6 +508,9 @@ export function defaultMcpFormValues(): McpFormValues {
     telegramTool: DEFAULT_SETTINGS_INPUT.telegramTool,
     telegramNotifyWrites: DEFAULT_SETTINGS_INPUT.telegramNotifyWrites,
     telegramMessagesPerHour: String(DEFAULT_SETTINGS_INPUT.telegramMessagesPerHour),
+    driveSourceIds: [],
+    drivePublicLinks: DEFAULT_SETTINGS_INPUT.drivePublicLinks,
+    driveSheetWriteback: DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
   }
 }
 
@@ -578,9 +608,12 @@ export function formValuesToConfig(
       telegramTool: v.telegramTool,
       telegramNotifyWrites: v.telegramNotifyWrites,
       telegramMessagesPerHour: Number(v.telegramMessagesPerHour),
+      drivePublicLinks: v.drivePublicLinks ?? DEFAULT_SETTINGS_INPUT.drivePublicLinks,
+      driveSheetWriteback: v.driveSheetWriteback ?? DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
     },
     expiresAt: v.expiresOn ? expiryDateToIso(v.expiresOn) : null,
     notificationChannelIds: [...new Set(v.notificationChannelIds)],
+    driveSourceIds: [...new Set(v.driveSourceIds ?? [])],
   }
 }
 
@@ -604,6 +637,7 @@ export function configToFormValues(config: {
   settings: z.input<typeof mcpSettingsSchema>
   expiresAt: Date | string | null
   notificationChannelIds?: string[]
+  driveSourceIds?: string[]
 }): McpFormValues {
   const v = defaultMcpFormValues()
   v.name = config.name
@@ -652,7 +686,25 @@ export function configToFormValues(config: {
     config.settings.telegramMessagesPerHour ??
       DEFAULT_SETTINGS_INPUT.telegramMessagesPerHour
   )
+  v.driveSourceIds = [...(config.driveSourceIds ?? [])]
+  // missing on rows saved before the feature → ON (same default as the runtime parser)
+  v.drivePublicLinks = config.settings.drivePublicLinks ?? DEFAULT_SETTINGS_INPUT.drivePublicLinks
+  v.driveSheetWriteback =
+    config.settings.driveSheetWriteback ?? DEFAULT_SETTINGS_INPUT.driveSheetWriteback
   return v
+}
+
+/** Keep only Google Drive sources the owner can still pick (deleted / no longer usable ones are dropped on save). */
+export function pruneDriveSourcesToSelectable(
+  values: McpFormValues,
+  options: readonly { id: string }[]
+): McpFormValues {
+  const ids = new Set(options.map((o) => o.id))
+  const current = values.driveSourceIds ?? []
+  const kept = current.filter((id) => ids.has(id))
+  return kept.length === current.length
+    ? values
+    : { ...values, driveSourceIds: kept }
 }
 
 /** Keep only Telegram channels the owner can still pick (deleted channels / other owners are dropped on save). */

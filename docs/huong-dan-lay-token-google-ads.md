@@ -88,7 +88,7 @@ Là **ID của tài khoản MCC (Manager) dùng để xác thực** — 10 chữ
 
 ## YouTube Ads
 
-YouTube **không có API quảng cáo riêng** — quảng cáo YouTube nằm trong **Google Ads**. Chỉ cần kết nối Google Ads như trên (thẻ “YouTube Ads” trong trang Thêm kết nối mở đúng form Google Ads).
+YouTube **không có API quảng cáo riêng** — quảng cáo YouTube nằm trong **Google Ads**. Chỉ cần kết nối Google Ads như trên: ở trang Thêm kết nối chọn thẻ “Google Ads (gồm YouTube)” — không có thẻ YouTube riêng.
 
 | Loại chiến dịch                     | AI xem số liệu                                                | AI bật/tắt, đổi ngân sách, sửa         | AI tạo mới  |
 | ----------------------------------- | ------------------------------------------------------------- | -------------------------------------- | ----------- |

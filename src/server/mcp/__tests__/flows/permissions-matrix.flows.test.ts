@@ -50,6 +50,8 @@ function expectedTools(grant: Partial<Record<Platform, Permission[]>>): string[]
   for (const [tool, perm] of Object.entries(COMMON_TOOLS)) {
     if (entries.some(([, perms]) => perms.includes(perm))) out.push(tool)
   }
+  // background upload status: a read tool served together with ads_upload_media (create somewhere)
+  if (entries.some(([, perms]) => perms.includes("create"))) out.push("ads_get_media_upload")
   for (const [p, perms] of entries) {
     for (const [tool, perm] of Object.entries(platformTools(p))) if (perms.includes(perm)) out.push(tool)
   }

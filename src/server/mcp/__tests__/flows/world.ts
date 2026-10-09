@@ -110,6 +110,10 @@ export const DEFAULT_SETTINGS: McpSettingsInput = {
   telegramTool: false,
   telegramNotifyWrites: false,
   telegramMessagesPerHour: 20,
+  // off in the shared fixture: a system Drive API key created by the Drive flows (same test DB, files run in
+  // parallel) must not add drive_* tools to the exact tool lists other flows assert; drive.flows turns it on
+  drivePublicLinks: false,
+  driveSheetWriteback: true,
 }
 
 export class World {

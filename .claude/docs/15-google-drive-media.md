@@ -1,0 +1,375 @@
+# Google Drive & Google Sheet làm nguồn creative quảng cáo
+
+> Thiết kế 2026-10-09 (chủ dự án yêu cầu, chốt qua 3 vòng hỏi đáp). **Đã triển khai 2026-10-09** (chưa commit / phát hành; còn thử thật — 08-roadmap.md). **§18 là bản thực tế**: khi §1–§17 khác §18 thì §18 đúng (một số mục bên dưới đã ghi chú "→ §18").
+> Thay thế ý tưởng thư viện media (đã bỏ 2026-10-09): **không lưu file trên VPS**, server lấy file từ Drive đúng lúc cần và đẩy thẳng lên nền tảng.
+> Dữ kiện API Google ở §12 đã đọc từ tài liệu chính thức ngày 2026-10-09; mục ghi **UNVERIFIED** phải thử thật trước khi code phần phụ thuộc.
+
+## 1. Mục tiêu & bài toán
+
+- AI (ChatGPT/Claude/Gemini) **không chuyển được file nhị phân** giữa các connector/MCP (endpoint MCP giới hạn 1 MB, base64 do model viết chỉ vài chục KB). Server phải tự lấy file — AI chỉ truyền **mã file / link / tên**.
+- Đội marketing lưu creative (ảnh + video) trên Google Drive theo 3 cách thực tế:
+  1. **Thư mục công ty** (bộ phận media bỏ file vào, mọi nhân viên dùng).
+  2. **Thư mục riêng** của từng nhân viên.
+  3. **Link Drive công khai** ("Bất kỳ ai có link") gửi qua chat hoặc điền vào **Google Sheet**.
+- Kết quả cần có: nhân viên nói với AI _"lên quảng cáo TikTok với video X trong thư mục Tuần 41"_ hoặc _"lên các dòng 'Chờ lên' trong sheet Creative"_ → AI liệt kê/đọc → `ads_upload_media` lấy mã media → tool tạo quảng cáo (đã có, đều **tạm dừng**) → ghi trạng thái ngược vào sheet.
+
+## 2. Quyết định
+
+### Đã chốt với chủ dự án (2026-10-09)
+
+| #   | Quyết định                                                                                                                                                                                                                                                      |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | **Cách A — tham chiếu, không sao chép**: chỉ lưu danh tính file + mã media đã upload; nội dung file đi Drive → server → nền tảng mỗi lần dùng (có tái sử dụng mã media, §7.4).                                                                                  |
+| G2  | Có **cả** thư mục dùng chung công ty **và** thư mục riêng từng nhân viên. Nhân viên được dùng thư mục công ty trong MCP của mình, **chỉ đọc**.                                                                                                                  |
+| G3  | Có **ảnh và video**. Chấp nhận giới hạn nền tảng: Google Ads chỉ ảnh (video phải là YouTube), OpenAI Ads chỉ ảnh; video dùng cho Meta + TikTok.                                                                                                                 |
+| G4  | **Admin thấy tất cả** (kể cả thư mục/sheet riêng của nhân viên).                                                                                                                                                                                                |
+| G5  | Nhân viên kết nối Drive riêng mặc định bằng cách **chia sẻ thư mục cho email hệ thống** (service account của công ty); tuỳ chọn nâng cao: dán service account JSON riêng. Không làm OAuth "Đăng nhập Google" (scope `drive.readonly` bị Google xếp Restricted). |
+| G6  | Nhận **link Drive công khai** (file + thư mục) — **công tắc theo từng MCP, mặc định bật**.                                                                                                                                                                      |
+| G7  | Có **tool đọc Google Sheet** theo mẫu cột + **ghi ngược trạng thái** vào sheet ngay bản đầu.                                                                                                                                                                    |
+
+### Mặc định đề xuất (chủ dự án có thể đổi)
+
+| #   | Mặc định                                                                                                                                                       | Lý do                                                                                                    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| GD1 | **Ảnh gửi bytes** lên nền tảng (Meta, Google như hiện tại; thêm nhánh upload file cho TikTok + OpenAI). **Video dùng link tạm** (relay, §8) cho Meta + TikTok. **Đổi 2026-10-09**: video nhỏ (TikTok ≤ 10 MB, Meta ≤ 50 MB) qua link tạm, video lớn hơn **tải nền theo từng phần** (worker) — §18.2. | Ảnh nhỏ → không cần lộ link công khai; video tới 500 MB không được giữ trong RAM (web `mem_limit` 1 GB). |
+| GD2 | Ghi ngược sheet **không** qua xác nhận 2 bước, nhưng **chỉ ghi vào các cột trạng thái/kết quả đã khai báo**, kiểu `RAW`, có ghi log trước/sau.                 | Không đụng tiền/quảng cáo; giới hạn cột nên không phá dữ liệu của bộ phận media.                         |
+| GD3 | Giao diện: tab **"Google Drive"** trong trang Kết nối (cạnh tab Telegram) + thẻ **"Google Drive hệ thống"** trong Cài đặt (admin).                             | Theo tiền lệ Telegram.                                                                                   |
+| GD4 | Bản đầu **không** gửi ảnh thu nhỏ cho AI xem; chỉ trả tên, kích thước, độ phân giải, thời lượng.                                                               | Giảm dung lượng kết quả MCP; làm sau nếu cần.                                                            |
+| GD5 | Link tạm sống **60 phút**, tối đa **30 lượt tải**, gắn với đúng 1 file + 1 phiên bản.                                                                          | Meta/TikTok tải video bất đồng bộ, có thể tải nhiều lần/Range.                                           |
+
+## 3. Tổng quan luồng
+
+```
+Thư mục công ty / riêng (chia sẻ cho email hệ thống)      Link Drive công khai / dòng trong Sheet
+            │  service account token (drive.readonly)              │  API key ẩn danh (chỉ đọc được file công khai)
+            ▼                                                       ▼
+   drive_list_files / drive_sheet_read  ──►  AI chọn file  ──►  ads_upload_media(drive_file=…)
+                                                                    │
+            ┌────────────────────── ảnh ─────────────────────┬──── video (Meta/TikTok) ────┐
+            ▼                                                │                              ▼
+   tải bytes (≤ giới hạn nền tảng) → upload trực tiếp        │     tạo link tạm /dl/<token>/<tên> → nền tảng tự tải
+            └──────────────────────────► mã media (image_hash / video_id / image_id / asset / file_id)
+                                                     │  lưu vào drive_media_uploads (tái sử dụng)
+                                                     ▼
+                       meta_create_ad / tiktok_create_ads / openai_ads_create_ad … (đã có, tạo TẠM DỪNG)
+                                                     ▼
+                              drive_sheet_update_rows → "Đã lên QC", mã quảng cáo
+```
+
+> Bản thực tế (§18.2): video chỉ đi link tạm khi ≤ 10 MB (TikTok) / ≤ 50 MB (Meta); lớn hơn → `ads_upload_media` trả `status: "queued"` + `upload_id`, worker (`media.video_upload`) tải từng phần Drive → nền tảng, AI xem tiến độ bằng `ads_get_media_upload`. Trạng thái ghi vào sheet là `Đã lên` (`SHEET_STATUS`).
+
+## 4. Xác thực Google
+
+### 4.1 Thông tin xác thực hệ thống (admin, 1 bộ cho cả công ty)
+
+- **Service account JSON** (bắt buộc): đọc thư mục/sheet được chia sẻ cho `client_email`; ghi sheet. Scope xin khi ký JWT: `https://www.googleapis.com/auth/drive.readonly` + `https://www.googleapis.com/auth/spreadsheets`.
+- **API key** (bắt buộc nếu bật link công khai): Google Cloud → Credentials → API key, **giới hạn chỉ Drive API**. Dùng cho mọi truy cập link công khai (§6) — không bao giờ dùng token service account cho link công khai.
+- Project Google Cloud phải bật `drive.googleapis.com` + `sheets.googleapis.com`. Có thể dùng chung project/service account với kết nối Google Ads, nhưng lưu **riêng** (không đọc credential của bảng `connections`).
+- `client_email` **không bí mật**: hiển thị cho mọi người dùng (kèm nút sao chép) để họ chia sẻ thư mục.
+- Kiểm tra khi lưu: ký JWT lấy token (lỗi `invalid_grant` / API chưa bật → thông báo tiếng Việt) rồi gọi `files.list` (pageSize 1). API key: kiểm tra định dạng `AIza…`; cách gọi thử không cần file công khai mẫu là **UNVERIFIED** → nếu không có, báo lỗi rõ ràng ở lần dùng link công khai đầu tiên (403 key sai / API chưa bật). **Bản thực tế**: khi lưu chỉ kiểm tra định dạng `^AIza[0-9A-Za-z_-]{35}$`; lỗi key / API chưa bật hiện ở lần dùng link công khai đầu tiên (`api_key_invalid`, `api_disabled`). Lưu / xoá credential hệ thống cần **xác thực lại** (mật khẩu + TOTP).
+
+### 4.2 Thông tin xác thực riêng của nhân viên (tuỳ chọn nâng cao)
+
+- Nhân viên dán service account JSON của mình → chỉ dùng cho nguồn của chính họ. Không có API key riêng (link công khai luôn đi bằng API key hệ thống).
+
+### 4.3 Mã nguồn
+
+- Tách phần ký JWT trong `src/server/providers/google-ads/auth.ts` thành helper dùng chung `src/server/google/service-account.ts` nhận **scope** làm tham số; khoá cache token phải gồm scope (`<owner>|<credentialIdentity>|<scopes>`). Google Ads giữ hành vi cũ (`ADWORDS_SCOPE`).
+- Module mới `src/server/drive/**` (không import `next/*`): `client.ts` (REST Drive v3 + Sheets v4 qua `fetch`, host cố định `www.googleapis.com` / `sheets.googleapis.com`, retry backoff cho 429/403 rate limit/5xx), `links.ts` (phân tích URL), `files.ts`, `sheets.ts`, `relay.ts`. **Không thêm dependency** (không dùng `googleapis`).
+
+## 5. Nguồn Drive & phân quyền
+
+### 5.1 Loại nguồn
+
+| Loại                        | Ai tạo/sửa/xoá                | Ai thấy                  | Ai gán cho MCP                                                                   | Đọc bằng                                                       |
+| --------------------------- | ----------------------------- | ------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Thư mục / Sheet **công ty** | Admin                         | Mọi người                | Mọi MCP (staff: chỉ đọc file; sheet: ghi cột trạng thái nếu sheet bật ghi ngược) | Service account hệ thống                                       |
+| Thư mục / Sheet **riêng**   | Chủ sở hữu (staff hoặc admin) | Chủ + **mọi admin** (G4) | MCP của chủ; admin gán được cho MCP của admin (giống quy tắc kết nối quảng cáo)  | Service account hệ thống (mặc định) hoặc service account riêng |
+| **Link công khai**          | — (không đăng ký)             | —                        | MCP có công tắc `drive_public_links` bật (G6)                                    | API key ẩn danh                                                |
+
+### 5.2 Chống "nhận vơ" (bắt buộc)
+
+Service account hệ thống đọc được **mọi** thư mục nhân viên đã chia sẻ cho nó, nên:
+
+1. **Đăng ký lần đầu là chủ**: duy nhất `(credential_id, google_id, sheet_gid)` trong các nguồn chưa xoá. Người sau đăng ký trùng → lỗi "Thư mục này đã được người khác khai báo — liên hệ admin" (không tiết lộ là ai với staff). **Bản thực tế (M1)**: một Google Sheet được nhận theo **cả file** (spreadsheet) — tab khác của cùng file chỉ được khai báo bởi cùng người + cùng phạm vi; đăng ký tuần tự bằng advisory lock.
+2. **Kiểm tra tổ tiên khi đăng ký**: đi ngược `parents` (tối đa 10 cấp, chỉ những cấp service account thấy được); nếu gặp một nguồn **riêng** của người khác → từ chối. Thư mục con của thư mục công ty → cho phép (vốn đã dùng chung). **Bản thực tế (H1)**: kiểm tra cả **hậu duệ** — mỗi nguồn lưu `ancestor_ids` (làm mới khi "Kiểm tra lại" và job `drive.health`); thư mục mới **chứa** thư mục riêng (còn sống) của người khác cũng bị từ chối, kể cả khi admin khai báo thư mục công ty (thông báo nêu số thư mục riêng bị ảnh hưởng, không có nút bỏ qua). Phòng thủ thêm khi dùng: thư mục riêng của người khác nằm trong thư mục được cấp bị **chặn** (`loadBlockedFolderIds` + `findAncestorIn({ blocked })`), không liệt kê, không duyệt qua (MCP của admin: không chặn — G4).
+3. **Kiểm tra mỗi lần dùng file theo mã**: file phải là hậu duệ (≤ 10 cấp) của **một nguồn được cấp cho MCP**; không thì báo "không tìm thấy" (giống 404). Kiểm tra lại cả `trashed`, shortcut (đi theo `shortcutDetails.targetId`, rồi kiểm tra lại đích).
+4. Link công khai **không bao giờ** dùng token service account → không thể dùng link để lấy file riêng tư của người khác (file không công khai → API key nhận 404).
+5. **Thông báo chung cho nhân viên (L6)**: không tìm thấy / sai loại / thùng rác / đã có người khai báo / liên quan thư mục riêng của người khác → **một** câu chung (không làm "oracle" dò thư mục); admin thấy thông báo chi tiết.
+
+### 5.3 Ma trận quyền (bổ sung vào 01-product-spec §2 khi triển khai)
+
+| Chức năng                                                            | Admin                       | Nhân viên                                          |
+| -------------------------------------------------------------------- | --------------------------- | -------------------------------------------------- |
+| Thông tin xác thực Google Drive hệ thống (service account + API key) | ✔ tạo/sửa/kiểm tra/xoá      | ✘ (chỉ thấy `client_email` để chia sẻ)             |
+| Nguồn Drive/Sheet công ty                                            | ✔ tạo/sửa/xoá               | ✔ xem danh sách + duyệt file, gán cho MCP của mình |
+| Nguồn Drive/Sheet riêng                                              | ✔ tất cả (thấy "Người tạo") | ✔ chỉ của mình                                     |
+| Service account riêng                                                | ✔ tất cả                    | ✔ chỉ của mình                                     |
+| Công tắc link công khai trong MCP                                    | ✔                           | ✔ MCP của mình                                     |
+| Gán nguồn cho MCP                                                    | ✔ mọi nguồn cho MCP của admin (G4); MCP của nhân viên: nguồn công ty + nguồn riêng của chủ MCP | ✔ nguồn công ty + nguồn riêng của mình |
+
+## 6. Link Drive công khai
+
+- **Phân tích link** (`links.ts`, định dạng quan sát thực tế — **UNVERIFIED** trong tài liệu Google, viết test đủ biến thể): `drive.google.com/file/d/<id>/…`, `/open?id=`, `/uc?id=…&export=download`, `/drive/folders/<id>`, `/drive/u/<n>/folders/<id>`, `drive.usercontent.google.com/download?id=`; tham số `resourcekey=` (không phân biệt hoa thường). Link `docs.google.com/spreadsheets/d/<id>…#gid=` → Sheet (§9). Docs/Slides → lỗi "không phải ảnh/video". Mã file: `[A-Za-z0-9_-]{10,}`, luôn xác nhận bằng `files.get`.
+- **Truy cập**: `files.get?key=<API key>&supportsAllDrives=true` (+ header `X-Goog-Drive-Resource-Keys: <fileId>/<resourceKey>` nếu link có) — đây là cách Google ghi rõ để đọc file "Anyone with the link". File riêng tư / chỉ trong tên miền công ty → 404 → báo: "File chưa chia sẻ công khai 'Bất kỳ ai có link'. Nếu công ty chỉ chia sẻ trong tên miền, hãy thêm email hệ thống vào thư mục và khai báo thư mục đó."
+- **Thư mục công khai**: liệt kê con bằng API key — **UNVERIFIED**, thử thật trước; nếu không được → chỉ hỗ trợ link file, link thư mục báo hướng dẫn khai báo thư mục. **Bản thực tế**: đã làm (`drive_list_files` với `folder_link` công khai, không đệ quy) — vẫn chưa thử với Google thật.
+- **Resource key không bao giờ tới AI (L1)**: file công khai cần resource key được trả cho AI dưới dạng mã mờ `drf_…` (AES-256-GCM, AAD `drive_ref:<mcpId>`, hạn 24 giờ, chỉ giải mã được trong đúng MCP) thay cho link có `resourcekey=`; mọi input `drive_file` / `folder_link` nhận lại mã này.
+- Tải nội dung: `files.get?alt=media&key=…` (cũng bằng API key). Quota tính vào project của API key.
+- Công tắc `drive_public_links` tắt → tool từ chối mọi link Drive không thuộc nguồn đã cấp.
+
+## 7. MCP
+
+Prefix mới `drive_` (cập nhật `.claude/rules/mcp-server.md`). Tool chỉ đăng ký khi MCP có ít nhất 1 nguồn Drive/Sheet được cấp hoặc bật link công khai. Mỗi tool tự kiểm tra lại quyền theo grant (§5.2), không tin dữ liệu từ AI.
+
+### 7.1 `drive_list_files` (đọc)
+
+- Vào: `source_id` (nguồn được cấp) **hoặc** `folder_link` (link công khai, cần G6), `subfolder` (đường dẫn tương đối, tuỳ chọn), `type` (`image|video|all`), `name_contains`, `modified_after`, `recursive` (mặc định false, tối đa 3 cấp), `cursor`.
+- Ra mỗi file: `file_id`, `name`, `type`, `mime`, `size_mb`, `width×height`, `duration_s` (video, có thể chưa có ngay sau khi tải lên Drive), `modified_at`, `path`, `uploaded_to` (danh sách `{platform, account_id, media_id}` đã có trong `drive_media_uploads`). **Không** trả `webContentLink`, `thumbnailLink`, resource key.
+- Bỏ qua file Google Docs/Sheets/Slides và loại không phải ảnh/video; trả `skipped` đếm theo lý do.
+- Cursor ký HMAC như `mcp/cursor.ts` (gắn `mcpId`, tool, nguồn).
+- Thêm tool đọc `drive_list_sources` (rẻ, không gọi Google): trả `source_id`, tên, loại (thư mục/sheet), phạm vi (công ty/riêng), trạng thái, sheet có bật ghi ngược không — để AI biết chọn nguồn nào.
+
+### 7.2 `ads_upload_media` (mở rộng, tương thích ngược)
+
+- Thêm input `drive_file` (mã file hoặc link Drive) — **đúng một** trong `url` | `drive_file`. Nếu `url` là link Drive → tự chuyển sang nhánh Drive (không tải kiểu link thường: Drive chèn trang cảnh báo virus/giới hạn tải).
+- Thứ tự: xác định file (§5.2 hoặc §6) → kiểm tra loại theo `mimeType` **và** magic bytes khi tải → tra `drive_media_uploads` (§7.4): có rồi → trả luôn `reused: true` (vẫn ghi log, không cần xác nhận 2 bước vì không ghi gì lên nền tảng) → chưa có → luồng xác nhận 2 bước như hiện tại (preview: tên file, nguồn, dung lượng, độ phân giải/thời lượng).
+- **Ảnh** (GD1): tải bytes qua Drive API (giới hạn: Meta 30 MB, Google 5 MB JPEG/PNG/GIF, TikTok/OpenAI theo `providers/*.md`), semaphore 2 lượt/tiến trình như Telegram media. **Bản thực tế**: Meta ≤ 30 MB JPG/PNG/GIF/WebP, Google ≤ 5 MB JPEG/PNG/GIF, TikTok ≤ 30 MB JPG/PNG (`UPLOAD_BY_FILE`; cảnh báo > 10 MB vì TikTok timeout 10 s, > 3.686.400 px), OpenAI ≤ 20 MB JPEG/PNG/WebP (multipart, cảnh báo < 640×640). Adapter mới cần: TikTok `UPLOAD_BY_FILE` (multipart + `image_signature` MD5), OpenAI `POST /upload` multipart `file` — chạy `/provider-api-check tiktok` và `openai-ads` trước khi code.
+- **Video** (Meta, TikTok): tạo link tạm (§8) → `file_url` (Meta) / `video_url` (TikTok). Google/OpenAI + video → lỗi rõ ràng (G3). **Bản thực tế** (quyết định chủ dự án 2026-10-09): link tạm chỉ cho video ≤ 10 MB (TikTok) / ≤ 50 MB (Meta); lớn hơn → tải nền (§18.2).
+- **Ngân sách thời gian**: ChatGPT cắt lệnh gọi tool ở ~60 s → giữ tổng ≤ 50 s như Telegram media. Video: chờ xử lý tối đa phần còn lại rồi trả `media_id` + `processing: true` (hành vi hiện tại của adapter khi hết giờ chờ); AI dùng `video_id` được ngay hoặc gọi lại để xem trạng thái.
+- `logArgs`: link Drive chỉ giữ mã file, bỏ `resourcekey` và mọi query.
+
+### 7.3 Sheet: `drive_sheet_read` (đọc) + `drive_sheet_update_rows` (ghi, GD2)
+
+Xem §9.
+
+### 7.4 Tái sử dụng mã media
+
+- Khoá: `(ad_account_id, drive_file_id, content_key)`, `content_key` = `md5Checksum` (file nhị phân) hoặc `headRevisionId`, kèm `size`. File trên Drive bị thay nội dung → khoá mới → upload lại.
+- Không xác minh mã media còn tồn tại trên nền tảng mỗi lần (tốn quota); nếu tool tạo quảng cáo báo lỗi media không tồn tại → AI gọi lại `ads_upload_media` với `force_reupload: true`.
+
+### 7.5 Cài đặt MCP (`mcp_servers.settings`, parser hiện có, mặc định an toàn)
+
+| Khoá                    | Kiểu | Mặc định      | Ý nghĩa                                                                       |
+| ----------------------- | ---- | ------------- | ----------------------------------------------------------------------------- |
+| `drive_public_links`    | bool | **true** (G6) | Cho dùng link Drive công khai (file/thư mục)                                  |
+| `drive_sheet_writeback` | bool | true          | Cho MCP ghi trạng thái vào sheet (chỉ có tác dụng với sheet đã bật ghi ngược) |
+
+Lưu ý parser hiện coi boolean là true chỉ khi `=== true` → MCP cũ chưa có khoá sẽ đọc là **false**; migration dữ liệu đặt `drive_public_links = true` cho MCP hiện có **hoặc** parser dùng mặc định riêng cho khoá này — chọn khi triển khai, ghi rõ trong release notes. **Đã chọn**: parser `!== false` (thiếu khoá ⇒ true, không cần migration dữ liệu) cho **cả hai** khoá → MCP đã có trước bản này cũng **bật** link công khai + ghi sheet (vẫn chỉ có tác dụng khi có API key hệ thống / sheet bật ghi + quyền create) — **phải ghi vào release notes**.
+
+## 8. Link tạm cho video (relay)
+
+- Route công khai `GET|HEAD /dl/<token>/<tên-file.ext>` (route handler `runtime="nodejs"`). Token ngẫu nhiên 256-bit, tiền tố `adr_`, DB chỉ lưu **SHA-256** (so sánh hằng thời gian). Sai/hết hạn/hết lượt/MCP bị tắt/chủ bị khoá → **404 text, không chuyển hướng**.
+- Nội dung: stream từ Drive (`alt=media`, chuyển tiếp header `Range` → 206/416), **không đệm toàn bộ, không ghi đĩa**. Kiểm tra lại `content_key` khi bắt đầu stream (file đổi nội dung → 404).
+- Header: `Content-Type` theo loại đã kiểm tra, `Content-Length`, `Accept-Ranges: bytes`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Cross-Origin-Resource-Policy: cross-origin`, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`.
+- Giới hạn: TTL 60 phút, tối đa 30 lượt tải (GD5); 4 stream đồng thời/token, 16/IP (IPv6 gom /64) → 429 `Retry-After: 5`. **Bản thực tế** (§18.3): 8 stream/token, 16/IP, 32/tiến trình; mỗi stream tối đa 30 phút; chỉ GET không Range hoặc Range từ byte 0 tính 1 lượt, tổng byte phát ≤ 3 × dung lượng; token lạ bị đếm theo IP; mỗi GET kiểm tra lại grant MCP.
+- Hạ tầng (rút kinh nghiệm thư viện media đã bỏ):
+  - `src/proxy.ts`: thêm `dl/` vào danh sách loại trừ matcher (không thì bị đẩy về /login).
+  - Caddy: khối `@relay path /dl/*` — không `encode`, `reverse_proxy` với `flush_interval -1`; thêm `/dl/` vào regex che log (token nằm trong URL). Nginx mẫu: `proxy_buffering off`.
+  - Cloudflare: không bật Bot Fight Mode / challenge cho `/dl/*` (crawler của Meta/TikTok sẽ bị chặn).
+  - Thêm mẫu `adr_[A-Za-z0-9_-]{20,}` + API key Google `AIza[0-9A-Za-z_-]{35}` vào `audit/redact.ts`.
+- Domain phải truy cập được từ Internet (đã đúng vì MCP chạy trên đó). Cài đặt chạy sau Cloudflare Tunnel vẫn được (phản hồi không bị giới hạn 100 MB như request).
+
+## 9. Google Sheet
+
+### 9.1 Khai báo sheet
+
+- Dán link `docs.google.com/spreadsheets/d/<id>/edit#gid=<gid>` → lưu `spreadsheet_id` + `sheet_gid` (gid ổn định khi đổi tên tab; mỗi lần đọc lấy lại tên tab qua `spreadsheets.get?fields=sheets.properties(sheetId,title)`).
+- Sheet phải được chia sẻ cho email hệ thống: **Người xem** (chỉ đọc) hoặc **Người chỉnh sửa** (bật ghi ngược). Khi bật ghi ngược, kiểm tra quyền ghi bằng Drive `files.get?fields=capabilities.canEdit` (không ghi thử vào sheet).
+- Dòng tiêu đề (mặc định dòng 1) + **ánh xạ cột theo tên tiêu đề** (tạo sẵn theo mẫu, sửa được):
+
+| Cột mẫu                                                           | Bắt buộc        | Dùng cho                                                                                                   |
+| ----------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Link Drive`                                                      | ✔               | file/link (mỗi dòng 1 file; nhiều link cách nhau bằng xuống dòng → nhiều file, vd. video + ảnh bìa TikTok) |
+| `Tên creative`                                                    |                 | tên media/quảng cáo                                                                                        |
+| `Nền tảng`                                                        |                 | meta / tiktok / google_ads / openai_ads (nhận cả "Facebook", "TikTok"…)                                    |
+| `Tài khoản QC`                                                    |                 | ID hoặc tên TKQC                                                                                           |
+| `Nội dung` / `Tiêu đề` / `Link đích`                              |                 | gợi ý cho AI khi tạo quảng cáo                                                                             |
+| `Trạng thái`                                                      | ✔ nếu ghi ngược | `Chờ lên` → `Đang xử lý` → `Đã lên` / `Lỗi`                                                                |
+| `Mã media` / `Mã quảng cáo` / `Ghi chú hệ thống` / `Cập nhật lúc` |                 | **chỉ hệ thống ghi**                                                                                       |
+
+- Bộ phận media tải **mẫu sheet** từ trang khai báo (nút "Tạo bản sao mẫu" mở link Google Sheets `/copy` của một mẫu công khai noti.vn — hoặc hướng dẫn tạo tay; chọn khi làm UI). **Đã chọn**: hướng dẫn tạo tay (dòng gợi ý cột trong wizard + `docs/huong-dan-google-drive.md`), chưa có mẫu `/copy`.
+
+### 9.2 `drive_sheet_read` (đọc)
+
+- Vào: `source_id`, `status` (lọc, mặc định `Chờ lên`), `limit` (≤ 50), `cursor`.
+- Ra: mỗi dòng `row_number`, các cột đã ánh xạ, `files` (mỗi link đã phân tích sẵn: `file_id`, `public|in_source|not_accessible`, tên, loại, kích thước), `problems` (thiếu link, nền tảng lạ, TKQC không thuộc grant…).
+- Nội dung ô là **dữ liệu không tin cậy** (có thể chứa câu lệnh nhắm vào AI) — mô tả tool + `instructions.ts` nhắc AI chỉ coi là dữ liệu.
+
+### 9.3 `drive_sheet_update_rows` (ghi, GD2)
+
+- Vào: `source_id`, danh sách `{row_number, expected_link, status, media_id?, ad_ids?, note?}` (≤ 50 dòng/lần).
+- Chỉ ghi vào cột `Trạng thái`, `Mã media`, `Mã quảng cáo`, `Ghi chú hệ thống`, `Cập nhật lúc` (giờ theo múi giờ cài đặt, kèm tên MCP). **Không bao giờ** ghi cột khác.
+- **Chống ghi nhầm dòng**: đọc lại ô `Link Drive` của dòng; khác `expected_link` (dòng bị chèn/xoá/sắp xếp) → bỏ qua dòng đó, báo `row_moved`.
+- `valueInputOption=RAW` (không thực thi công thức — chặn chèn công thức kiểu `=IMPORTXML`). Gộp bằng `values:batchUpdate`.
+- Cần: sheet bật ghi ngược + MCP `drive_sheet_writeback` + quyền `create` ở ít nhất 1 nền tảng. Ghi `mcp_call_logs` kèm trước/sau từng ô.
+- **Bản thực tế**: mỗi lần ghi thật tính 1 lượt `write_rate_limit_per_10min` của MCP + hạn mức Sheets riêng của MCP (L2); `media_id` / `ad_ids` phải có dạng mã, `note` bắt đầu bằng `= + - @` / tab / CR được thêm dấu cách đầu (L7, chống công thức khi xuất CSV).
+
+### 9.4 Quota Sheets (quan trọng)
+
+Google giới hạn **60 lượt đọc + 60 lượt ghi / phút / người dùng / project**, 300/phút/project. Cả hệ thống dùng **một** service account = một "người dùng" → mọi MCP chia chung 60/phút. Biện pháp: `batchGet`/`batchUpdate`, cache đọc 30 s theo `(sheet, range)`, bộ hạn mức trong tiến trình (≤ 50/phút mỗi loại) → vượt thì báo "Google Sheet đang bận, thử lại sau ít phút". 429 → backoff. **Bản thực tế**: thêm hạn mức riêng mỗi MCP **20 đọc + 20 ghi / phút** (nằm trong 50 chung) để một MCP không ăn hết quota (L2).
+
+## 10. Dữ liệu (migration Drizzle mới, bảng thường — không partition)
+
+### `drive_credentials`
+
+`id uuid` · `kind text` CHECK `system|personal` · `owner_id → user` (NULL khi `system`) · `name` · `credentials_encrypted` (SA JSON, AAD `drive_credential:<id>:credentials`) · `api_key_encrypted` (chỉ `system`, AAD `drive_credential:<id>:api_key`) · `client_email` (không bí mật) · `credential_hint` · `status` active|error|disabled · `status_message` · `last_checked_at` · `created_at` · `updated_at` · `deleted_at`.
+Unique một bản `system` chưa xoá (partial index). Index `owner_id`.
+
+### `drive_sources`
+
+`id uuid` · `kind` CHECK `folder|sheet` · `scope` CHECK `company|personal` · `owner_id → user` (người tạo; với `company` = admin tạo) · `credential_id → drive_credentials` · `google_id` (folder id / spreadsheet id) · `sheet_gid int NULL` · `resource_key_encrypted NULL` · `name` (tên hiển thị) · `google_name` · `shared_drive_id NULL` · `config jsonb` (thư mục: `recursive_depth`; sheet: `header_row`, `columns`, `writeback`) · `status` · `status_message` · `last_checked_at` · `created_at` · `updated_at` · `deleted_at`.
+Unique `(credential_id, google_id, coalesce(sheet_gid,-1))` WHERE `deleted_at IS NULL` (§5.2-1). CHECK `scope='company'` ⇒ `credential.kind='system'` (kiểm tra ở service).
+
+### `mcp_drive_scopes`
+
+`mcp_id → mcp_servers` (cascade) · `source_id → drive_sources` (cascade) · PK `(mcp_id, source_id)`. Khi lưu MCP: staff chỉ gắn được nguồn `company` + `personal` của chính chủ MCP; MCP của admin gắn được mọi nguồn (G4); id không còn hợp lệ bị lược khi sửa (giống `channelIdsForUpdate`).
+
+### `drive_media_uploads`
+
+`id` · `ad_account_id → ad_accounts` (cascade) · `drive_file_id` · `content_key` · `size_bytes` · `media_type` image|video · `media_id` · `media_url NULL` · `source_id NULL → drive_sources` (set null) · `first_mcp_id NULL` · `created_at` · `last_used_at`. Unique `(ad_account_id, drive_file_id, content_key)`.
+
+### `drive_relay_links`
+
+`id` · `token_hash` (unique) · `mcp_id` · `ad_account_id` · `drive_file_id` · `content_key` · `access` CHECK `service_account|api_key` · `credential_id NULL` · `resource_key_encrypted NULL` · `file_name` · `content_type` · `size_bytes` · `fetch_count` · `max_fetches` · `expires_at` · `created_at`. Job dọn bản hết hạn > 24 h.
+
+**Bản thực tế** (migration `0007_drive_media` + `0008_drive_security_jobs`, chi tiết cột: 03-database-schema.md §2): thêm `drive_credentials.api_key_hint`; `drive_sources.ancestor_ids text[]` (+ GIN, H1); `drive_relay_links.source_id` (L4); bảng mới `media_upload_jobs` (tải video nền, §18.2).
+
+### Activity log mới (cùng transaction)
+
+`drive_credential.create|update|test|delete`, `drive_source.create|update|delete`; sửa MCP: diff `drive_sources` + 2 khoá settings trong `mcp.update` hiện có.
+
+## 11. Giao diện
+
+- **Cài đặt → Google Drive hệ thống** (admin): dán SA JSON, API key (ô mật khẩu, chỉ hiện 4 ký tự cuối), nút Kiểm tra, hiển thị `client_email` + Sao chép; hướng dẫn từng bước (tạo project, bật 2 API, tạo service account + khoá JSON, tạo API key giới hạn Drive API). Tài liệu người dùng `docs/huong-dan-google-drive.md`.
+- **Kết nối → tab "Google Drive"**: danh sách nguồn (Tên, Loại thư mục/sheet, Phạm vi công ty/riêng, Người tạo (admin), Trạng thái, Kiểm tra lần cuối). Nút chính `brand` "Thêm thư mục / sheet".
+  - Thêm nguồn: bước 1 chọn loại + phạm vi (staff chỉ "riêng") → bước 2 hiện email hệ thống + "Chia sẻ thư mục cho email này (quyền Người xem; sheet cần Người chỉnh sửa nếu muốn ghi trạng thái)" → dán link → Kiểm tra (tên thật, số file ảnh/video, quyền) → bước 3 (sheet) ánh xạ cột → Lưu.
+  - Chi tiết thư mục: lưới file chỉ đọc (ảnh thu nhỏ qua route có phiên đăng nhập `/api/drive/thumb/<sourceId>/<fileId>`, kiểm tra quyền như tool), lọc ảnh/video, cột "Đã dùng ở TKQC".
+- **MCP wizard / tab Cấu hình**: khối "Google Drive" — chọn nguồn (nhóm Công ty / Của tôi / (admin) Của nhân viên), công tắc "Cho phép dùng link Drive công khai" (mặc định bật), "Cho phép ghi trạng thái vào Google Sheet".
+- Chuỗi tiếng Việt trong `src/lib/i18n/vi/drive.ts`; glass chỉ cho khung, lưới file dùng card đặc; kiểm tra sáng/tối 390/1440.
+
+## 12. Tham chiếu API Google (đọc 2026-10-09)
+
+| Việc                                   | API                                                                                                                             | Ghi chú                                                                                                                                                                                                                                                           |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lấy thông tin file                     | `GET https://www.googleapis.com/drive/v3/files/{id}?fields=…&supportsAllDrives=true`                                            | Trường: `id,name,mimeType,size,md5Checksum,headRevisionId,modifiedTime,parents,trashed,imageMediaMetadata(width,height),videoMediaMetadata(width,height,durationMillis),shortcutDetails,capabilities(canDownload,canEdit),resourceKey`                            |
+| Tải nội dung                           | `files.get?alt=media`                                                                                                           | Hỗ trợ `Range`. File Docs/Sheets → `fileNotDownloadable`. File bị gắn cờ độc hại: chỉ chủ file tải được → báo lỗi, không retry.                                                                                                                                   |
+| Liệt kê thư mục                        | `GET /drive/v3/files?q='<id>' in parents and trashed=false&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true` | `nextPageToken`; file con kế thừa quyền thư mục cha.                                                                                                                                                                                                              |
+| Resource key                           | header `X-Goog-Drive-Resource-Keys: <fileId>/<key>[,…]`                                                                         | Cần cho link công khai cũ (cập nhật bảo mật 2021) khi người dùng chưa từng mở file.                                                                                                                                                                               |
+| File công khai                         | `files.get?key=<API key>` không token                                                                                           | Google: API key để "anonymously access … files shared using 'Anyone on the Internet with this link'".                                                                                                                                                             |
+| Liệt kê thư mục công khai bằng API key | —                                                                                                                               | **UNVERIFIED** — thử thật.                                                                                                                                                                                                                                        |
+| Chia sẻ chỉ trong tên miền Workspace   | —                                                                                                                               | Service account **không** đọc được (không thuộc tên miền).                                                                                                                                                                                                        |
+| Quyền                                  | `permissions.list`                                                                                                              | Người xem **không** đọc được danh sách quyền → không dùng để kiểm tra công khai.                                                                                                                                                                                  |
+| Đọc sheet                              | `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values:batchGet?ranges=…`                                               | Tên tab có dấu cách → `'Tên tab'!A:Z`.                                                                                                                                                                                                                            |
+| Ghi sheet                              | `POST …/values:batchUpdate` `{valueInputOption:"RAW", data:[…]}`                                                                | Request nguyên tử; timeout 180 s.                                                                                                                                                                                                                                 |
+| Quota Drive                            | 1.000.000 đơn vị/phút/project; `files.get`=5, `files.list`=100, tải=200 (?)                                                     | `alt=media` tính 5 hay 200 — **UNVERIFIED**. Lỗi 403 `userRateLimitExceeded`/`rateLimitExceeded`, 429 → backoff. Google dự kiến tính phí vượt quota cuối 2026.                                                                                                    |
+| Quota Sheets                           | 60/phút/người dùng, 300/phút/project (đọc và ghi riêng)                                                                         | Xem §9.4.                                                                                                                                                                                                                                                         |
+| Phân loại scope                        | `drive.readonly` Restricted, `spreadsheets` Sensitive                                                                           | Service account không có màn hình đồng ý; Google miễn xét duyệt cho "service-owned data". Việc file người dùng chia sẻ cho SA có bị coi là "dữ liệu người dùng" về chính sách — **UNVERIFIED**, rủi ro diễn giải thấp vì mỗi khách tự host bằng project của mình. |
+
+Nguồn: developers.google.com/workspace/drive/api (reference files/get, files/list, guides manage-downloads, shortcuts, search-files, resource-keys, ref-roles, manage-sharing, limits, handle-errors, api-specific-auth), developers.google.com/workspace/guides/create-credentials + enable-apis, developers.google.com/workspace/sheets/api (guides/concepts, limits, scopes), cloud.google.com/iam/docs/service-account-overview, support.google.com/cloud/answer/13464323.
+
+## 13. Bảo mật (bổ sung 05-security khi triển khai)
+
+- SA JSON, API key, resource key: AES-256-GCM có AAD; **không bao giờ** trả về client, đưa cho AI, ghi log. AI chỉ thấy `file_id`, tên, thông số.
+- Mọi gọi Google đi tới host cố định (không theo URL do AI đưa) → không cần SSRF guard cho Drive, nhưng không follow redirect ra ngoài `*.googleapis.com` / `*.googleusercontent.com`. **Bản thực tế (L5/L9)**: token service account chỉ gửi tới host ghim (`www.googleapis.com`, `sheets.googleapis.com`, `lh3–lh6.googleusercontent.com`, `drive-thirdparty.googleusercontent.com`) — redirect sang host khác thì bỏ header; API key + resource key chỉ gửi tới 2 host API; tải nội dung luôn `Accept-Encoding: identity`.
+- Loại file: chỉ ảnh JPEG/PNG/GIF/WebP (theo nền tảng) và video MP4/MOV; kiểm tra magic bytes với ảnh; video kiểm tra `mimeType` + 12 byte đầu (`ftyp`).
+- Tên file, nội dung ô sheet, tên thư mục: dữ liệu không tin cậy → cắt độ dài, bỏ ký tự điều khiển, không dùng làm đường dẫn.
+- Link tạm: §8. Token chỉ xuất hiện trong lời gọi tới nền tảng, không trả về AI, không ghi log.
+- Mọi tool kiểm tra grant + chủ sở hữu nguồn tại thời điểm gọi (nguồn bị xoá/đổi chủ/credential lỗi → từ chối).
+
+## 14. Kiểm thử
+
+- Unit: phân tích link (mọi biến thể + resourcekey), §5.2 (nhận vơ, tổ tiên, hậu duệ, shortcut, trashed), khoá tái sử dụng, token relay (hết hạn/hết lượt/Range), ánh xạ cột + `row_moved` + RAW, hạn mức Sheets, settings mặc định.
+- Integration (mock Google): luồng `ads_upload_media` ảnh/video × 4 nền tảng, staff không dùng được nguồn riêng của người khác qua mã file lẫn link, API key 404 với file riêng tư.
+- E2E: tab Google Drive, thêm nguồn thư mục/sheet, khối Drive trong wizard MCP.
+- **Thử thật trước khi phát hành** (TKQC thử nghiệm): thư mục My Drive + Shared Drive, link công khai có/không resource key, thư mục công khai bằng API key, video 200–500 MB lên Meta + TikTok qua relay (sau Caddy và sau Cloudflare Tunnel), sheet đọc/ghi ngược, ChatGPT ≤ 60 s.
+- Rà soát: `security-reviewer` (relay, phân quyền nguồn, redact), `ads-api-reviewer` (TikTok UPLOAD_BY_FILE, OpenAI multipart, Meta file_url).
+
+## 15. Ưu / nhược (đã trao đổi với chủ dự án)
+
+- **Ưu**: giải quyết việc AI không chuyển được file; không tốn ổ VPS/backup; đội làm việc trên Drive quen thuộc; ít rủi ro SSRF hơn link tuỳ ý; không thêm dependency; tái dùng tool tạo quảng cáo sẵn có.
+- **Nhược**: video lớn tốn băng thông VPS (vào + ra) và chậm; phụ thuộc quota Google (Sheets 60/phút cho cả hệ thống); thêm khái niệm tài nguyên dùng chung (đổi ma trận quyền); 2 kiểu xác thực → nhiều UI/hướng dẫn/test hơn; link công khai làm lộ creative chưa chạy (khuyên dùng thư mục công ty).
+
+## 16. Tài liệu & file cần cập nhật khi triển khai
+
+01 (§2 ma trận, §8 bỏ dòng ngoài phạm vi liên quan), 02 (cây thư mục `src/server/drive`, `src/server/google`), 03 (§2 bảng mới, §4 action log), 04 (§4 danh mục tool `drive_*`, `ads_upload_media`), 05 (§3, §5 redact, §8 checklist), 06 (tab Drive, lưới file), 07 (Caddy/nginx `/dl/`, Cloudflare), 08 (checklist), `.claude/rules/mcp-server.md`, `CLAUDE.md` (bảng tài liệu), `docs/huong-dan-google-drive.md`, `legal.ts` (Google Drive/Sheets là bên xử lý dữ liệu), `instructions.ts`. **Đã cập nhật 2026-10-09** (cả `docs/ket-noi-ai.md`, `docs/deploy-vps.md`, `docs/van-hanh.md`, `guides.ts`).
+
+## 17. Liên quan tính năng Telegram gửi ảnh/video/tệp (rà soát 2026-10-09)
+Tính năng Telegram media (14-telegram-notifications.md §10, chưa commit/phát hành lúc rà soát) **không đổi** quyết định G1–G7; có mấy điểm dùng lại / lưu ý khi triển khai:
+- **Dùng lại, không viết mới**: `detectFileType` (magic bytes JPG/PNG/WebP/GIF/MP4/MOV — `notifications/media.ts`), `sanitizeFileName`, ngân sách thời gian `MEDIA_CALL_BUDGET_MS` / `downloadBudgetMs` (`mcp/tools/telegram/attachment.ts`), `ToolSpec.meta` (`_meta` của tool), `stripUrlQueries` (đã che `download_url`), `ssrf.ts` (`httpsOnly`, agent trực tiếp ghim IP — dùng cho nhánh `url` thường, không cho Drive).
+- **Chung một bể semaphore tải media**: `withMediaSlot` hiện ném `TelegramMediaError("telegram_busy")` → tách phần chung ra `src/server/net/media-slots.ts` (lỗi trung tính, mỗi bên tự đổi sang lỗi của mình) để Telegram + Drive cùng giới hạn RAM (web `mem_limit` 1 GB). Các hàm nhận diện file nên chuyển cùng chỗ (`src/server/net/media-type.ts`) vì không còn riêng Telegram.
+- **Thứ tự làm**: phát hành Telegram media trước (commit riêng) rồi mới làm Drive — hai việc cùng sửa `ssrf.ts`, `log-args.ts`, `tool.ts`, `instructions.ts`, `audit/redact.ts`.
+- **Mở rộng tuỳ chọn (chưa chốt)**: `ads_upload_media` nhận thêm `file` (tệp người dùng đính kèm trong ChatGPT web, `openai/fileParams`) như Telegram — bổ sung cho Drive, không thay thế; ảnh do ChatGPT/Gemini tự tạo vẫn không gửi được. Sau này `telegram_send_message` cũng có thể nhận `drive_file`.
+- Gộp thẻ YouTube vào "Google Ads (gồm YouTube)": không ảnh hưởng (Drive không phải nền tảng quảng cáo, không thêm thẻ ở `/connections/new`; vào từ tab "Google Drive" — GD3).
+## 18. Bản thực tế 2026-10-09
+
+Đã code xong toàn bộ tính năng (chưa commit / phát hành). Mục này ghi **cái đã làm** và **chỗ khác thiết kế** (phần lớn do quyết định chủ dự án về video và các vòng rà soát `security-reviewer` H1/M1/L1–L9, `ads-api-reviewer` #4–#7). Tài liệu chi tiết: bảng — 03 §2/§4; tool — 04 §4; bảo mật — 05 §3/§5/§8; giao diện — 06 §7; `/dl` + job — 07 §4b; hướng dẫn người dùng — `docs/huong-dan-google-drive.md`.
+
+### 18.1 Mã nguồn
+
+| Phần                                   | File                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google auth dùng chung                 | `src/server/google/service-account.ts` (ký JWT RS256, scope là tham số, cache theo scope; `providers/google-ads/auth.ts` dùng lại)                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Drive / Sheets (không import `next/*`) | `src/server/drive/`: `client.ts` (host ghim, redirect ≤ 3, map lỗi → `DriveError`), `links.ts`, `files.ts` (metadata, liệt kê, tải stream / Range ≤ 32 MB, tổ tiên, thumbnail), `sheets.ts`, `rate-limit.ts`, `store.ts` (nơi duy nhất mã hoá / giải mã), `blocked.ts` (H1), `file-ref.ts` (`drf_`), `media-uploads.ts`, `relay-links.ts` / `relay-serve.ts` / `relay-limits.ts` / `relay-guard.ts` (link tạm), `access-recheck.ts`, `upload-jobs.ts` / `upload-queue.ts` (tải nền), `health.ts`, `errors.ts`, `types.ts` (`DRIVE_LIMITS`, cột mẫu, `SHEET_STATUS`) |
+| Media dùng chung với Telegram          | `src/server/net/media-type.ts` (magic bytes), `src/server/net/media-slots.ts` (semaphore 2/tiến trình, chung Telegram + Drive)                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Service / action                       | `src/server/services/drive-credentials.ts`, `drive-sources.ts`, `src/server/actions/drive.ts`, `src/lib/schemas/drive.ts`; MCP form: `driveSourceIds`, `drivePublicLinks`, `driveSheetWriteback` trong `src/lib/schemas/mcp-servers.ts`                                                                                                                                                                                                                                                                                                                             |
+| MCP                                    | `src/server/mcp/drive-access.ts`, `src/server/mcp/tools/drive/` (4 tool `drive_*`), `tools/common/upload-media.ts` (mở rộng), `tools/common/get-media-upload.ts` (mới)                                                                                                                                                                                                                                                                                                                                                                                              |
+| Route                                  | `src/app/dl/[token]/[name]/route.ts` (link tạm, công khai), `src/app/api/drive/thumb/[sourceId]/[fileId]/route.ts` (ảnh thu nhỏ, cần phiên)                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Job                                    | `src/server/jobs/drive-health.ts`, `drive-cleanup.ts`, `media-video-upload.ts`, `media-upload-sweep.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Giao diện                              | `src/app/(dashboard)/connections/drive/**` (`new`, `[id]`), `connections/_components/drive-sources-table.tsx`, `settings/_components/drive-settings-card.tsx`, `mcp-servers/_components/drive-sections.tsx`                                                                                                                                                                                                                                                                                                                                                         |
+| Chuỗi tiếng Việt                       | `src/lib/i18n/vi/drive.ts` (lỗi `DriveError`), `drive-ui.ts` (service + UI + panel hướng dẫn), `drive-jobs.ts` (lỗi tải nền), `mcp.ts` (khối MCP)                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| DB                                     | `drizzle/0007_drive_media.sql`, `drizzle/0008_drive_security_jobs.sql`, `src/server/db/schema/drive.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Dev                                    | `scripts/dev-seed-drive.ts` (chỉ dev, credential giả), `tests/e2e/drive.spec.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+Không thêm dependency (Drive v3 / Sheets v4 gọi bằng `fetch`).
+
+### 18.2 Video: hai đường (quyết định chủ dự án 2026-10-09, thay GD1 phần video)
+
+- **Nhỏ → link tạm** `/dl/<adr_token>/<tên>` (§8), nền tảng tự tải trong cùng lượt gọi: **TikTok ≤ 10 MB** (tài liệu TikTok: `UPLOAD_BY_URL` "better within 10MB", timeout 10 s), **Meta ≤ 50 MB** (`RELAY_VIDEO_MAX_BYTES`). Adapter nhận `deadlineAt` (= hạn của lượt gọi − 8 s): timeout POST + dừng chờ xử lý → `processing: true` (mã media vẫn dùng được).
+- **Lớn hơn → tải nền theo từng phần**: bản đã tải trước (reuse) → job đang chạy cho cùng file + TKQC trả ngay `{status: "queued", upload_id, existing: true}` (không xác nhận) → còn lại xác nhận 2 bước (preview ghi rõ tải nền, vài phút) → `createUploadJob` (bảng `media_upload_jobs`, unique một phần chống trùng job đang chạy) + `enqueueVideoUpload` (pg-boss `media.video_upload`, không thử lại, hết hạn 2 giờ). Worker: kiểm tra lại grant MCP + nguồn Drive + `content_key` → `provider.uploadVideoChunked` (Meta `advideos` `upload_phase` start/transfer/finish; TikTok `/file/start|transfer|finish/upload/` + `UPLOAD_BY_FILE_ID`; đọc Drive bằng Range ≤ 32 MB/lần, mỗi lúc chỉ giữ 1 đoạn trong RAM — TikTok 20 MB, Meta theo offset Meta yêu cầu, tối đa 64 MB; gửi lại đúng đoạn lỗi ≤ 2 lần, không tự tải lại từ đầu) → `drive_media_uploads` + `done`, hoặc `failed` + thông báo tiếng Việt (`drive-jobs.ts`). Chờ xử lý tối đa 10 phút sau khi tải xong (còn đang xử lý → vẫn `done` với mã media).
+- Tool mới **`ads_get_media_upload`** (đọc; đăng ký cùng `ads_upload_media`): 1 job theo `upload_id` hoặc 10 job gần nhất của MCP (trạng thái, % tiến độ, `media_id`, lỗi).
+- **Tệp đính kèm ChatGPT** (`file`, `openai/fileParams`): ảnh tải về rồi gửi bytes; video dùng cùng ngưỡng 10/50 MB, lớn hơn → lỗi gợi ý đưa video lên Google Drive.
+- Job `media.upload_sweep` (10 phút/lần) đánh dấu `failed` lượt tải không báo tiến độ 30 phút (worker chết); `drive.cleanup` làm lại việc này hằng ngày + xoá job đã xong > 30 ngày, job `queued` > 24 giờ → `failed`.
+
+### 18.3 Link tạm `/dl` (khác §8)
+
+8 stream/token (nền tảng mở nhiều Range song song), 16/IP (IPv6 /64), **32/tiến trình**; mỗi stream bị cắt sau **30 phút**; chỉ GET không Range hoặc Range bắt đầu từ byte 0 tính 1 lượt (tối đa 30), mọi Range khác giới hạn bởi **ngân sách byte 3 × dung lượng**/link; token sai / lạ (GET + HEAD) đếm theo IP — quá 20 lần/10 phút thì chỉ token của link còn sống (tập hash trong bộ nhớ, `relay-guard.ts`) mới tới DB, còn lại 429; mỗi GET **kiểm tra lại grant** (MCP còn dùng được, TKQC + quyền create, nguồn `source_id` còn được cấp — hoặc công tắc link công khai còn bật với link `api_key`) và metadata Drive (`content_key`, không trong thùng rác). HEAD không tính lượt, trả từ DB. Hạ tầng: 07 §4b.
+
+### 18.4 Ảnh
+
+Bytes cho **cả 4 nền tảng** trên nhánh Drive / ChatGPT (Meta ≤ 30 MB JPG/PNG/GIF/WebP; Google ≤ 5 MB JPEG/PNG/GIF; TikTok ≤ 30 MB JPG/PNG — `UPLOAD_BY_FILE` + `image_signature` MD5, cảnh báo > 10 MB và > 3.686.400 px; OpenAI ≤ 20 MB JPEG/PNG/WebP — multipart, cảnh báo < 640×640). Kiểm tra magic bytes; semaphore chung 2/tiến trình + 1/MCP. URL media hết hạn của nền tảng (Meta adimages `url`, TikTok `image_url`/`preview_url`) không trả AI, không lưu. Kết quả `processing: true` không ghi vào `drive_media_uploads` (job nền ghi khi xong).
+
+### 18.5 Bảo mật (sau rà soát)
+
+- **H1**: `ancestor_ids` + kiểm tra hậu duệ khi khai báo (§5.2-2) + chặn thư mục riêng của người khác khi dùng (`blocked.ts`).
+- **M1**: sheet nhận theo cả spreadsheet (§5.2-1).
+- **L1**: mã mờ `drf_` thay cho link có `resourcekey` (§6); log args ghi `drf_[redacted]`; redact thêm tham số `resource[_-]?key=`, khoá `resourcekeys`, `adr_…`, `AIza…`.
+- **L2**: ghi sheet tính vào `write_rate_limit_per_10min` + hạn mức Sheets riêng 20/20 mỗi phút mỗi MCP.
+- **L3/L4**: giới hạn token lạ, giới hạn tiến trình / thời gian stream, kiểm tra lại grant khi phục vụ `/dl` (§18.3).
+- **L5/L9**: token Google chỉ gửi tới host ghim; `Accept-Encoding: identity` (§13).
+- **L6**: một thông báo chung cho nhân viên khi khai báo bị từ chối (§5.2-5).
+- **L7**: chống chèn công thức ở `note`, kiểm tra dạng mã (§9.3).
+- Lưu / xoá credential hệ thống cần **xác thực lại**; action gọi Google giới hạn 20 lần/phút/người (`drive-verify`), duyệt file 60/phút (`drive-browse`), ảnh thu nhỏ 600/phút (`drive-thumb`); CLI `reencrypt` phủ 6 cột mã hoá mới.
+
+### 18.6 Khác thiết kế (khác)
+
+- Settings `drive_public_links` / `drive_sheet_writeback`: thiếu khoá ⇒ **true** (MCP cũ cũng bật) — **ghi vào release notes** (§7.5).
+- API key chỉ kiểm tra định dạng khi lưu (§4.1).
+- Thư mục công khai liệt kê được bằng API key (không đệ quy) — chưa thử thật (§6).
+- Không có mẫu sheet `/copy`; chỉ gợi ý cột + hướng dẫn (§9.1).
+- Ảnh thu nhỏ chỉ có trên giao diện (route có phiên, kiểm tra quyền như service, `Cache-Control: private, max-age=300`); AI vẫn không nhận ảnh thu nhỏ (GD4).
+- Job: `drive.health` (`40 */6 * * *`), `drive.cleanup` (`50 3 * * *`), `media.video_upload` (theo yêu cầu, worker), `media.upload_sweep` (`*/10 * * * *`).
+- Thư mục trong Shared drive: liệt kê bằng `corpora=drive&driveId=…`; **khuyến nghị không thêm email hệ thống làm thành viên cả Shared drive** (service account đọc được mọi thứ trong đó, ai cũng khai báo được thư mục bất kỳ) — chỉ chia sẻ từng thư mục (`docs/huong-dan-google-drive.md`).
+
+### 18.6b Rà soát bảo mật vòng 2 (đã sửa)
+
+- **Trần lượt tải nền** (M-1): tối đa 3 lượt đang chạy / MCP, 5 / chủ MCP, 30 lượt chờ toàn hệ thống (khoá advisory theo chủ MCP trong `createUploadJob`); vượt trần → `upload_limit_reached` (rate_limited), báo ngay ở bước preview.
+- **Kiểm tra lại vị trí file lúc chạy** (T-1): worker và `/dl` (lượt được tính) đi lại cây thư mục — file đã bị chuyển khỏi nguồn hoặc vào thư mục riêng người khác → job lỗi `drive_not_in_scope` / 404.
+- **Nguồn nằm trong thư mục riêng của người khác bị ẩn** (T-2): grant của MCP nhân viên và trang duyệt file bỏ nguồn có `google_id` hoặc `ancestor_ids` thuộc tập bị chặn; đăng ký, `Kiểm tra lại` và `drive.health` tính tổ tiên bằng cả credential của nguồn lẫn credential hệ thống, nguồn mới bị đưa vào thư mục riêng của người khác → trạng thái lỗi.
+- **Nhịp sống job** (T-3): worker ghi `updated_at` 60 s/lần; mọi lần ghi trạng thái chỉ áp khi job còn `uploading/processing` — job đã bị sweep đánh lỗi thì không ghi đè.
+- **Chunk Meta ≤ 64 MB** (T-4), ghép `File` từ các mẩu không sao chép.
+- **Ngân sách Sheets theo chủ MCP** (T-5): 25 đọc + 25 ghi / phút / người, bên cạnh 20 + 20 / phút / MCP và 50 + 50 toàn tiến trình.
+- **Xoá resource key mã hoá khi job kết thúc** (T-6); **không lộ id job của MCP khác** (T-7); **mỗi lượt tải nền ghi 1 dòng `mcp_call_logs`** (tool `media.video_upload`, T-8, worker flush log khi dừng); **cursor `drive_list_files` bỏ thư mục mới bị chặn** (T-9).
+
+### 18.7 Chưa kiểm chứng (cần làm trước khi phát hành)
+
+Thử thật với Google + nền tảng: My Drive + Shared drive, link công khai có / không resource key, thư mục công khai bằng API key, chi phí quota `alt=media`, sheet đọc + ghi ngược; video nhỏ qua link tạm (sau Caddy, Cloudflare proxy, Cloudflare Tunnel) và video lớn 200–500 MB tải nền lên Meta + TikTok (TKQC thử nghiệm); ChatGPT ≤ 60 s; build image + smoke test production (migrate 0007/0008, worker có 4 job mới). Danh sách theo dõi: 08-roadmap.md mục Google Drive.

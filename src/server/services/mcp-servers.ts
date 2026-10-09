@@ -50,6 +50,7 @@ import {
   connections,
   mcpAccountScopes,
   mcpCallStatsHourly,
+  mcpDriveScopes,
   mcpNotificationScopes,
   mcpPageScopes,
   mcpPlatformPermissions,
@@ -68,6 +69,14 @@ import {
   channelsUsableForMcp,
   NotificationServiceError,
 } from "@/server/services/notification-channels"
+import {
+  assertDriveSourcesUsableForMcp,
+  driveSourcesUsableForMcp,
+  DriveServiceError,
+  loadMcpDriveSourceRefs,
+  type DriveMcpOwner,
+} from "@/server/services/drive-sources"
+import type { McpDriveSourceRef } from "@/lib/schemas/drive"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import { parseMcpSettings } from "@/server/mcp/settings"
 import type { McpSettings, Permission } from "@/server/mcp/types"
@@ -183,6 +192,8 @@ export interface McpDetail extends McpListItem {
   ownerRole: "admin" | "staff"
   /** Telegram channels in scope (incl. disabled / deleted ones, flagged) */
   notificationChannels: McpChannelRef[]
+  /** Google Drive sources in scope that the MCP may still use (others are pruned on the next save) */
+  driveSources: McpDriveSourceRef[]
   maskedUrl: string
   /** + moneyCapsRequired: false = legacy MCP (created before daily caps became mandatory) */
   settings: McpSettingsInput & Pick<McpSettings, "moneyCapsRequired">
@@ -378,6 +389,62 @@ async function writeChannelScopes(tx: Tx, mcpId: string, channelIds: string[]) {
     await tx
       .insert(mcpNotificationScopes)
       .values(channelIds.map((channelId) => ({ mcpId, channelId })))
+}
+
+/**
+ * Google Drive source ids an MCP owned by `owner` may use (company + owner's personal; admin MCP: any live source,
+ * G4) - undefined passes through ("keep the stored scope"). An unusable id → McpServiceError invalid on
+ * `driveSourceIds`.
+ */
+async function usableDriveSourceIds(
+  owner: DriveMcpOwner,
+  ids: string[] | undefined,
+  tx: Tx | typeof db = db
+): Promise<string[] | undefined> {
+  if (ids === undefined) return undefined
+  try {
+    return (await assertDriveSourcesUsableForMcp(owner, ids, tx)).sort()
+  } catch (e) {
+    if (e instanceof DriveServiceError)
+      throw invalid(e.message, { driveSourceIds: e.message })
+    throw e
+  }
+}
+
+/** Like channelIdsForUpdate: omitted = keep; stored ids no longer usable are pruned; NEW unusable ids are refused. */
+async function driveSourceIdsForUpdate(
+  tx: Tx,
+  owner: DriveMcpOwner,
+  requested: string[] | undefined,
+  stored: string[]
+): Promise<string[]> {
+  const wanted = [...new Set(requested ?? stored)]
+  const storedSet = new Set(stored)
+  await usableDriveSourceIds(
+    owner,
+    wanted.filter((id) => !storedSet.has(id)),
+    tx
+  )
+  return (await driveSourcesUsableForMcp(owner, wanted, tx)).sort()
+}
+
+async function loadDriveSourceIds(
+  tx: Tx | typeof db,
+  mcpId: string
+): Promise<string[]> {
+  const rows = await tx
+    .select({ sourceId: mcpDriveScopes.sourceId })
+    .from(mcpDriveScopes)
+    .where(eq(mcpDriveScopes.mcpId, mcpId))
+  return rows.map((r) => r.sourceId).sort()
+}
+
+async function writeDriveScopes(tx: Tx, mcpId: string, sourceIds: string[]) {
+  await tx.delete(mcpDriveScopes).where(eq(mcpDriveScopes.mcpId, mcpId))
+  if (sourceIds.length)
+    await tx
+      .insert(mcpDriveScopes)
+      .values(sourceIds.map((sourceId) => ({ mcpId, sourceId })))
 }
 
 /** Channels in scope that belong to the MCP owner (another person's channel is ignored by the grant and pruned on save). */
@@ -686,6 +753,8 @@ interface ConfigSummary {
   expiresAt: string | null
   /** Telegram channel ids in scope (sorted) */
   channels: string[]
+  /** Google Drive source ids in scope (sorted) */
+  driveSources: string[]
 }
 
 /** Settings as compared/logged in activity diffs (the internal `moneyCapsRequired` marker is left out). */
@@ -728,6 +797,7 @@ function summarize(data: {
   settings: DiffSettings
   expiresAt: Date | null
   channels: string[]
+  driveSources: string[]
 }): ConfigSummary {
   const platforms: ConfigSummary["platforms"] = {}
   for (const p of [...data.platforms].sort((a, b) =>
@@ -759,6 +829,7 @@ function summarize(data: {
     settings: data.settings,
     expiresAt: iso(data.expiresAt),
     channels: [...new Set(data.channels)].sort(),
+    driveSources: [...new Set(data.driveSources)].sort(),
   }
 }
 
@@ -1084,6 +1155,10 @@ export async function getMcpServer(
   const stats = await loadStats(r.id)
   const missing = await capsMissingFor([r])
   const notificationChannelRefs = await loadChannelRefs(r.id, r.ownerId)
+  const driveSourceRefs = await loadMcpDriveSourceRefs(r.id, {
+    id: r.ownerId,
+    role: roleOf(r.ownerRole),
+  })
   return {
     id: r.id,
     name: r.name,
@@ -1112,6 +1187,7 @@ export async function getMcpServer(
     stats,
     capsMissing: missing.get(r.id) ?? [],
     notificationChannels: notificationChannelRefs,
+    driveSources: driveSourceRefs,
   }
 }
 
@@ -1185,6 +1261,12 @@ export async function createMcpServer(
   const channelIds =
     (await usableChannelIds({ id: actor.id }, data.notificationChannelIds)) ??
     []
+  // Google Drive sources: company + the creator's personal ones (admin creator: any live source)
+  const driveSourceIds =
+    (await usableDriveSourceIds(
+      { id: actor.id, role: actor.role },
+      data.driveSourceIds
+    )) ?? []
   const id = randomUUID()
   const { key, columns } = newKeyColumns(id)
   const reauthLog = { action: "mcp.create" as const, target: { type: "mcp", id: null, label: data.name } }
@@ -1203,6 +1285,7 @@ export async function createMcpServer(
     })
     await writeScopes(tx, id, data.platforms)
     await writeChannelScopes(tx, id, channelIds)
+    await writeDriveScopes(tx, id, driveSourceIds)
     await logActivity(
       {
         actor: actorOf(actor),
@@ -1215,6 +1298,7 @@ export async function createMcpServer(
               toStoredMcpSettings(data.settings)
             ),
             channels: channelIds,
+            driveSources: driveSourceIds,
           }),
           keyPrefix: columns.keyPrefix,
         },
@@ -1264,6 +1348,14 @@ export async function updateMcpServer(
       data.notificationChannelIds,
       beforeChannels
     )
+    const beforeDrive = await loadDriveSourceIds(tx, row.id)
+    // Drive sources usable by the MCP OWNER (staff MCP: company + own; admin MCP: any live source); omitted = keep
+    const driveSourceIds = await driveSourceIdsForUpdate(
+      tx,
+      { id: row.ownerId, role: ownerRole },
+      data.driveSourceIds,
+      beforeDrive
+    )
     const before = summarize({
       name: row.name,
       description: row.description,
@@ -1271,11 +1363,13 @@ export async function updateMcpServer(
       settings: normalizeSettingsForDiff(row.settings),
       expiresAt: row.expiresAt,
       channels: beforeChannels,
+      driveSources: beforeDrive,
     })
     const after = summarize({
       ...data,
       settings: normalizeSettingsForDiff(toStoredMcpSettings(data.settings)),
       channels: channelIds,
+      driveSources: driveSourceIds,
     })
     const diff = diffSummaries(before, after)
     if (Object.keys(diff.after).length === 0) {
@@ -1315,6 +1409,8 @@ export async function updateMcpServer(
       .where(eq(mcpServers.id, row.id))
     if ("platforms" in diff.after) await writeScopes(tx, row.id, data.platforms)
     if ("channels" in diff.after) await writeChannelScopes(tx, row.id, channelIds)
+    if ("driveSources" in diff.after)
+      await writeDriveScopes(tx, row.id, driveSourceIds)
     await logActivity(
       {
         actor: actorOf(actor),

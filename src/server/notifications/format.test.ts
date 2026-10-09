@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  buildAiCaption,
   buildAiMessage,
   buildConnectionHealthMessage,
   buildMcpWriteMessage,
@@ -16,6 +17,7 @@ import {
   TELEGRAM_MAX_MESSAGE,
   truncateText,
 } from "./format"
+import { htmlToPlainText } from "./telegram"
 
 /** tags left after removing the ones our templates may emit */
 function foreignTags(html: string): string[] {
@@ -256,25 +258,43 @@ describe("secrets never leave through Telegram (redact + URL queries, before tru
     expect(scrubText(null)).toBe("")
   })
 
-  it("tin AI: nội dung và tên MCP được redact; link UTM giữ nguyên", () => {
+  it("tin AI: nội dung và tên MCP được redact; link giữ host + path, bỏ query / fragment (link ký)", () => {
     const html = buildAiMessage({
       mcpName: `MCP ${META}`,
-      text: `Báo cáo: ${TG} ${OPENAI} https://shop.vn/p?utm_source=fb`,
+      text: `Báo cáo: ${TG} ${OPENAI} https://shop.vn/p?utm_source=fb xem https://cdn.vn/a.pdf?X-Amz-Signature=SIGSECRET#top`,
     })
     expect(html).not.toContain(TG.slice(10))
     expect(html).not.toContain(OPENAI.slice(8))
     expect(html).not.toContain(META.slice(3, 20))
-    expect(html).toContain("https://shop.vn/p?utm_source=fb")
+    expect(html).toContain("https://shop.vn/p?[redacted]")
+    expect(html).toContain("https://cdn.vn/a.pdf?[redacted]")
+    expect(html).not.toContain("utm_source")
+    expect(html).not.toContain("SIGSECRET")
+    expect(previewOf(html)).not.toContain("SIGSECRET")
+  })
+
+  it("chú thích tệp AI: cũng bỏ query / fragment của link và redact", () => {
+    const html = buildAiCaption({
+      mcpName: "Báo cáo",
+      text: `Tệp gốc: https://files.vn/x.png?token=SIGSECRET&e=1 ${TG}`,
+    })
+    expect(html).toContain("https://files.vn/x.png?[redacted]")
+    expect(html).not.toContain("SIGSECRET")
+    expect(html).not.toContain(TG.slice(10))
   })
 })
 
 describe("fitMessage / previewOf", () => {
   it("tin quá 4096 ký tự → chuyển plain text đã escape, không vượt giới hạn, không còn thẻ", () => {
-    const html = `<b>tiêu đề</b>\n${"&amp;".repeat(2000)}`
+    // Telegram counts the text AFTER entity parsing: "&amp;" is 1 character
+    const html = `<b>tiêu đề</b>\n${"a&amp;".repeat(2100)}`
     const out = fitMessage(html)
-    expect(out.length).toBeLessThanOrEqual(TELEGRAM_MAX_MESSAGE)
+    expect(htmlToPlainText(out).length).toBeLessThanOrEqual(TELEGRAM_MAX_MESSAGE)
     expect(out).not.toContain("<b>")
     expect(fitMessage("<b>ngắn</b>")).toBe("<b>ngắn</b>")
+    // long HTML whose parsed text fits is kept as is (formatting preserved)
+    const entities = `<b>tiêu đề</b>\n${"&amp;".repeat(2000)}`
+    expect(fitMessage(entities)).toBe(entities)
   })
 
   it("preview là text thuần ≤ 300 ký tự và đã redact", () => {

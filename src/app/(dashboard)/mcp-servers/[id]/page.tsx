@@ -18,6 +18,8 @@ import {
   type McpDetail,
   type SelectableConnection,
 } from "@/server/services/mcp-servers"
+import { getDriveSystemInfo } from "@/server/services/drive-credentials"
+import { listDriveSourcesForMcpScope } from "@/server/services/drive-sources"
 import { listChannelsForMcpScope } from "@/server/services/notification-channels"
 
 import { parseDetailTab } from "../_components/detail-tabs"
@@ -88,13 +90,16 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
   const actor = { id: user.id, email: user.email, role: user.role } as const
   const mcp = await getMcpServer(actor, id)
   if (!mcp) notFound()
-  const [connections, channels] = await Promise.all([
+  const [connections, channels, driveSources, driveInfo] = await Promise.all([
     listSelectableConnections(actor, {
       id: mcp.ownerId,
       role: mcp.ownerRole,
     }),
     // Telegram channels of the MCP OWNER only (what the service accepts on save) - admins included
     listChannelsForMcpScope({ id: mcp.ownerId }),
+    // Drive sources usable by the MCP OWNER (company + the owner's; admin-owned MCP: any live source)
+    listDriveSourcesForMcpScope(actor, { id: mcp.ownerId, role: mcp.ownerRole }),
+    getDriveSystemInfo(),
   ])
   const accountNames = await switchedOffAccountNames(actor, mcp, connections)
   const initialTab = parseDetailTab(sp.tab)
@@ -103,6 +108,8 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
       mcp={mcp}
       connections={connections}
       channels={channels}
+      driveSources={driveSources}
+      drivePublicAvailable={driveInfo.hasApiKey}
       accountNames={accountNames}
       twoFactorEnabled={user.twoFactorEnabled}
       initialTab={initialTab}

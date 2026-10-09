@@ -88,6 +88,11 @@ export const guides = {
             "Meta, TikTok, Google Ads (gồm YouTube) hoặc OpenAI Ads. Hướng dẫn lấy token đúng nền tảng sẽ hiện ở bước tiếp theo.",
         },
         {
+          title: "Kênh thông báo và kho creative",
+          detail:
+            "Telegram: bot gửi cảnh báo, thông báo vào nhóm / kênh.\nGoogle Drive: khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo. Hai mục này mở trang khai báo riêng.",
+        },
+        {
           title: "Chuẩn bị app developer",
           detail:
             "Bạn cần một app/tài khoản developer của nền tảng đó và quyền truy cập vào tài khoản quảng cáo cần dùng.",
@@ -223,6 +228,11 @@ export const guides = {
             detail:
               "Tick kết nối Telegram mà MCP được dùng để gửi thông báo. Chỉ hiện kết nối do chính chủ MCP tạo (kể cả quản trị viên) - MCP không dùng được kết nối Telegram của người khác. Chưa có? Bấm Thêm kết nối Telegram rồi quay lại.",
           },
+          {
+            title: "Google Drive (tuỳ chọn)",
+            detail:
+              "Tick thư mục ảnh / video hoặc Google Sheet kế hoạch creative mà AI được đọc (nhóm Của công ty, Của tôi; quản trị viên thấy thêm Của nhân viên). MCP của nhân viên chỉ dùng được nguồn công ty và nguồn riêng của chủ MCP. Không chọn: AI chỉ dùng được link Drive công khai. Chưa có? Khai báo ở Kết nối → Google Drive rồi quay lại.",
+          },
         ],
         tips: [
           "Nên bắt đầu hẹp (ít tài khoản) rồi mở rộng sau trong tab Cấu hình.",
@@ -249,7 +259,12 @@ export const guides = {
           {
             title: "Telegram (khi đã chọn kết nối)",
             detail:
-              "AI được gửi tin: AI gửi báo cáo vào Telegram khi bạn yêu cầu.\nTự báo khi AI thay đổi quảng cáo: mỗi thao tác ghi thành công gửi 1 tin tóm tắt trước → sau.",
+              "AI được gửi tin: AI gửi báo cáo vào Telegram khi bạn yêu cầu, có thể kèm 1 ảnh, video hoặc tệp (link công khai, tệp bạn đính kèm trong ChatGPT, hoặc tệp CSV/TXT do AI viết).\nTự báo khi AI thay đổi quảng cáo: mỗi thao tác ghi thành công gửi 1 tin tóm tắt trước → sau.\nMọi tin đều có dòng ghi nguồn \"Ads MCP Simple\" ở cuối.",
+          },
+          {
+            title: "Google Drive",
+            detail:
+              "Cho phép dùng link Drive công khai (mặc định bật): AI lấy được ảnh, video từ link \"Bất kỳ ai có đường liên kết\" bạn dán vào chat - cần quản trị viên đã lưu API key.\nCho phép ghi trạng thái vào Google Sheet (mặc định bật): sau khi lên quảng cáo, AI ghi trạng thái, mã quảng cáo vào đúng dòng của sheet đã bật ghi; mỗi lần ghi tính vào giới hạn thao tác ghi / 10 phút.\nAI chỉ tải được ảnh, video lên khi MCP có quyền Tạo mới ở nền tảng đó. Video lớn (TikTok > 10 MB, Meta > 50 MB) được tải ở chế độ nền vài phút.",
           },
         ],
         tips: [
@@ -364,6 +379,11 @@ export const guides = {
           title: "Telegram",
           detail:
             "Chọn kết nối Telegram ở khung Nền tảng, bật AI được gửi tin / Tự báo khi AI thay đổi quảng cáo ở khung Quyền, giới hạn tin/giờ ở khung Bảo vệ.",
+        },
+        {
+          title: "Google Drive",
+          detail:
+            "Chọn thư mục / sheet ở khung Nền tảng (khối Google Drive); bật hoặc tắt Cho phép dùng link Drive công khai và Cho phép ghi trạng thái vào Google Sheet ở khung Quyền. Nguồn không còn dùng được bị loại khỏi MCP khi bạn lưu.",
         },
       ],
       warnings: [
@@ -495,12 +515,40 @@ export const guides = {
           "Tên đơn vị vận hành và email liên hệ quyền riêng tư, hiển thị trên các trang công khai /privacy, /terms, /data-deletion (dán vào Meta App Dashboard, TikTok for Developers, màn hình đồng ý OAuth của Google Cloud / OpenAI). Để trống sẽ dùng tên miền.",
       },
       {
+        title: "Google Drive hệ thống",
+        detail:
+          "1. Tạo hoặc chọn project Google Cloud (dùng chung project với Google Ads được).\n2. Bật Google Drive API và Google Sheets API (APIs & Services → Library).\n3. IAM & Admin → Service accounts → Create; mở service account → Keys → Add key → JSON (không cần cấp vai trò).\n4. Tuỳ chọn - để AI đọc link Drive công khai: Credentials → Create credentials → API key, giới hạn chỉ Google Drive API.\n5. Dán JSON (và API key) vào thẻ Google Drive hệ thống rồi bấm Lưu thông tin xác thực. Mọi người thấy email service account ở Kết nối → Google Drive để chia sẻ thư mục.",
+        link: {
+          label: "Mở Service accounts",
+          url: "https://console.cloud.google.com/iam-admin/serviceaccounts",
+        },
+      },
+      {
         title: "Lưu thay đổi",
         detail: "Thanh Có thay đổi chưa lưu hiện ra khi bạn sửa; bấm Lưu để áp dụng.",
       },
     ],
     tips: [
       "Phiên bản API nền tảng chỉ đọc; đổi bằng biến môi trường rồi khởi động lại.",
+      "Thẻ Google Drive hệ thống lưu riêng (nút Lưu thông tin xác thực), không đi theo thanh Có thay đổi chưa lưu.",
+    ],
+    links: [
+      {
+        label: "Google Cloud: tạo project",
+        url: "https://console.cloud.google.com/projectcreate",
+      },
+      {
+        label: "Google Cloud: bật Google Drive API",
+        url: "https://console.cloud.google.com/apis/library/drive.googleapis.com",
+      },
+      {
+        label: "Google Cloud: bật Google Sheets API",
+        url: "https://console.cloud.google.com/apis/library/sheets.googleapis.com",
+      },
+      {
+        label: "Google Cloud: Credentials (API key)",
+        url: "https://console.cloud.google.com/apis/credentials",
+      },
     ],
     warnings: [
       "Giảm số tháng lưu trữ sẽ xoá phần nhật ký cũ, không thể hoàn tác.",

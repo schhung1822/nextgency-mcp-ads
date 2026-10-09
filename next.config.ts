@@ -36,14 +36,27 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   // Dev logs print Server Function arguments verbatim (tokens, app secrets, passwords) — never allow that.
-  // …and the dev request log prints the full URL: /mcp/<key> would put live MCP keys into terminals / pasted logs.
-  logging: { serverFunctions: false, incomingRequests: { ignore: [/\/mcp\//] } },
+  // …and the dev request log prints the full URL: /mcp/<key> (and /dl/<relay token>) would put live secrets into
+  // terminals / pasted logs.
+  logging: { serverFunctions: false, incomingRequests: { ignore: [/\/mcp\//, /\/dl\//] } },
   images: { unoptimized: true },
   serverExternalPackages: ["pg", "pg-boss"],
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
       { source: "/mcp/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "no-store" }] },
+      // Temporary video links /dl/<token>/<name> (15-google-drive-media.md §8): the token is in the path, the body is a
+      // video the ad platforms download. STRICTER than the app CSP and no referrer. Must live here: Next never lets a
+      // route handler override a header that next.config already set (send-response.js only adds missing headers);
+      // a later entry overrides the same key of "/:path*". The other relay headers come from the route.
+      {
+        source: "/dl/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "default-src 'none'; sandbox" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
     ]
   },
 }

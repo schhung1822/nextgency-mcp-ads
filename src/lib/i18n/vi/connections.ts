@@ -8,8 +8,18 @@ export const connections = {
     metaTitle: "Kết nối quảng cáo",
     description:
       "Dán token từ app developer để kết nối tài khoản quảng cáo, và thêm bot Telegram để nhận thông báo.",
+    /** per top tab (Quảng cáo · Telegram · Google Drive) */
+    descriptionAds:
+      "Dán token từ app developer để kết nối tài khoản quảng cáo cho AI xem chỉ số và điều khiển chiến dịch.",
+    descriptionTelegram:
+      "Thêm bot Telegram để nhận cảnh báo kết nối, thay đổi do AI thực hiện và tin nhắn từ AI.",
+    descriptionDrive:
+      "Khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo.",
     add: "Thêm kết nối",
     tabAll: "Tất cả nền tảng",
+    /** top tab of the ad connections (the platform is a filter inside it) */
+    tabAds: "Quảng cáo",
+    filterPlatform: "Nền tảng",
     searchPlaceholder: "Tìm theo tên kết nối…",
     searchLabel: "Tìm kết nối",
     filterStatus: "Trạng thái",
@@ -37,7 +47,7 @@ export const connections = {
     emptyFilteredTitle: "Không có kết nối phù hợp",
     emptyFilteredDescription: "Thử đổi từ khoá tìm kiếm hoặc bỏ bớt bộ lọc.",
     openDetail: (name: string) => `Mở kết nối ${name}`,
-    tabsLabel: "Lọc theo nền tảng",
+    tabsLabel: "Loại kết nối",
   },
 
   new: {
@@ -78,22 +88,27 @@ export const connections = {
     groupAdsHint: "Kết nối tài khoản quảng cáo để AI xem chỉ số và điều khiển chiến dịch.",
     groupNotify: "Kênh thông báo",
     groupNotifyHint: "Nhận cảnh báo kết nối, thay đổi do AI thực hiện và tin nhắn từ AI.",
+    groupCreative: "Kho creative",
+    groupCreativeHint: "Khai báo thư mục hoặc Google Sheet để AI lấy ảnh, video lên quảng cáo.",
     /** Google Ads card label: YouTube ads run through a Google Ads connection */
     googleWithYoutube: "Google Ads (gồm YouTube)",
+    /** YouTube ads run through the Google Ads connection (one card, one form) */
     youtube: {
-      label: "YouTube Ads",
-      card: "Chạy qua tài khoản Google Ads (chiến dịch Video, Demand Gen)",
+      cardNote: "Quảng cáo YouTube (chiến dịch Video, Demand Gen) cũng chạy qua kết nối này.",
       noteTitle: "YouTube Ads chạy qua Google Ads",
       note: "Quảng cáo YouTube được quản lý trong tài khoản Google Ads, nên bạn chỉ cần tạo một kết nối Google Ads. Chiến dịch Video (YouTube) chỉ xem được qua API (báo cáo, danh sách); chiến dịch Demand Gen xem và điều chỉnh được (bật/tắt, ngân sách).",
-      guideTitle: "Cách kết nối YouTube Ads (qua Google Ads)",
       guideSummary:
-        "YouTube không có API quảng cáo riêng: chiến dịch YouTube nằm trong tài khoản Google Ads. Làm theo các bước lấy thông tin Google Ads bên dưới.",
+        "YouTube không có API quảng cáo riêng: chiến dịch YouTube nằm trong tài khoản Google Ads, nên kết nối này dùng được cho cả quảng cáo YouTube.",
       guideWarning:
         "Chiến dịch Video (YouTube) chỉ xem được qua API - muốn sửa hãy vào Google Ads. Chiến dịch Demand Gen bật/tắt và đổi ngân sách được từ AI.",
     },
     telegram: {
       label: "Telegram",
       card: "Bot gửi cảnh báo và thông báo vào nhóm, kênh hoặc chat riêng",
+    },
+    drive: {
+      label: "Google Drive",
+      card: "Thư mục ảnh, video hoặc Google Sheet kế hoạch creative - AI lấy file từ đây khi lên quảng cáo",
     },
     modeLabel: "Cách nhập",
     modeToken: "Dán access token",
