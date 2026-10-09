@@ -15,6 +15,9 @@ Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm l�
 Sau khi cài, đội của bạn dán token để kết nối **Meta, TikTok Ads, Google Ads (gồm quảng cáo YouTube) và OpenAI Ads**, rồi tạo link MCP cho Claude, ChatGPT, Gemini. Có thể thêm **bot Telegram** để nhận cảnh báo kết nối, thông báo thay đổi do AI thực hiện và tin nhắn từ AI ngay trong nhóm chat, và khai báo **thư mục Google Drive / Google Sheet** để AI lấy ảnh, video lên quảng cáo (xem [docs/huong-dan-google-drive.md](docs/huong-dan-google-drive.md)). Hướng dẫn dùng: [kết nối AI](docs/ket-noi-ai.md) · [Telegram](docs/huong-dan-telegram.md) · [Google Drive / Google Sheet](docs/huong-dan-google-drive.md).
 
 > [!TIP]
+> **Cài nhanh bằng 1 lệnh (khuyến nghị cho VPS Ubuntu 22.04/24.04, Debian 12/13 mới):** chép file `install-ads-mcp.sh` noti.vn gửi (hoặc `scripts/install-ads-mcp.sh` trong repo) lên VPS rồi chạy `sudo bash install-ads-mcp.sh`. Chỉ cần chuẩn bị tên miền, tài khoản GitHub đã được cấp quyền và **1 token** (PAT classic tích cả `repo` + `read:packages`); script hỏi lần lượt, tự cài Docker, tải phần mềm, tạo cấu hình, khởi chạy và in **mã cài đặt** để tạo admin. Chi tiết: [docs/deploy-vps.md mục 0](docs/deploy-vps.md#0-cài-nhanh-bằng-script-khuyến-nghị). Các bước dưới đây là cách cài tay.
+
+> [!TIP]
 > Bạn kết nối tài khoản GitHub chứa repo này với ChatGPT, Claude hoặc Gemini → cho AI đọc repo và hướng dẫn bạn deploy chi tiết nhé. Bạn cung cấp chi tiết cho AI biết là sẽ deploy trên đâu (VPS hay mini PC chạy Ubuntu Server), dùng bằng cách trỏ IP về VPS hay là Cloudflare Tunnel, trỏ IP về VPS thì có dùng Cloudflare và bật DNS only hay không. Bạn cung cấp đầy đủ ngữ cảnh để AI hướng dẫn chi tiết, gặp phần nào khó thì chụp ảnh màn hình xong gửi vào AI để nó hướng dẫn tiếp nhé.
 
 ## Mục lục
@@ -61,6 +64,9 @@ Trong hướng dẫn, thay các giá trị mẫu bằng thông tin của bạn:
 
 ## Bước 1. Chuẩn bị quyền GitHub
 
+> [!NOTE]
+> Cài bằng script (xem đầu trang) chỉ cần **1 token** tích cả `repo` và `read:packages`. Cài tay theo các bước dưới đây có thể dùng 2 token như mô tả, hoặc cùng 1 token đó cho cả 2 chỗ.
+
 noti.vn thêm **tài khoản GitHub của bạn** vào kho phần mềm với quyền **chỉ đọc (Read)**. Bạn tạo **2 token** (2 "mật khẩu riêng") từ tài khoản đó, mỗi token chỉ làm **đúng 1 việc**:
 
 | Token       | Dùng để                                                                   | Tích đúng 1 ô   |
@@ -92,7 +98,7 @@ Làm lại đúng như 1.1, chỉ khác:
 > Không gửi token cho người khác, không dán vào chat/email. Token hết hạn thì phần mềm vẫn chạy bình thường, chỉ không tải hoặc kiểm tra được bản mới: tạo token mới rồi làm lại bước 4.2 (Token A) hoặc 6.2 (Token B).
 
 > [!IMPORTANT]
-> **Đã cài theo hướng dẫn cũ** (1 token tích cả `repo` và `read:packages`, có chạy lệnh `git config --global credential.helper store`)? Làm lần lượt trên VPS bằng user `deploy`:
+> **Đã cài theo hướng dẫn cũ** (có chạy lệnh `git config --global credential.helper store`, token nằm dạng chữ thường trên VPS)? Làm lần lượt trên VPS bằng user `deploy`:
 >
 > 1. Tạo Token A và Token B mới (bước 1.1, 1.2).
 > 2. Xoá token cũ đang lưu trên VPS: `rm -f ~/.git-credentials && git config --global --unset credential.helper`. Từ giờ `git pull` sẽ hỏi `Username` (tên GitHub) và `Password` (dán Token B).

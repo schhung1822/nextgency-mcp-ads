@@ -1,5 +1,6 @@
 # Ads MCP by: noti.vn - chạy production trên 1 VPS bằng IMAGE DỰNG SẴN trên GHCR (hướng dẫn đầy đủ: docs/deploy-vps.md).
-#   1) docker login ghcr.io   (image riêng tư: PAT classic chỉ quyền read:packages)
+# Cài nhanh: sudo bash scripts/install-ads-mcp.sh (tự làm mọi bước dưới đây). Cài tay:
+#   1) docker login ghcr.io   (image riêng tư: PAT classic quyền repo + read:packages - cùng token với UPDATE_GITHUB_TOKEN)
 #   2) tạo .env:  node scripts/gen-env.mjs --domain mcp.congty.vn --email it@congty.vn
 #                 (VPS không có Node: sh scripts/gen-secrets.sh --domain … --email …)
 #   3) docker compose pull && docker compose up -d --no-build

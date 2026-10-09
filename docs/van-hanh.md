@@ -44,7 +44,7 @@ Trang công khai cho app Meta/TikTok/Google/OpenAI (không cần đăng nhập):
 ### Tự động (admin bấm nút trong web)
 Service `updater` (bật bằng `COMPOSE_PROFILES=updater` + `HOST_PROJECT_DIR` trong `.env`; cài mới có sẵn). Một lần cập nhật: sao lưu `backups/pre-update-<thời gian>.dump` (giữ lại) → tải image `ghcr.io/notivn/ads-mcp-simple:<bản mới>` và xác minh chữ ký số (cosign, do GitHub Actions của noti.vn ký cho đúng tag; cần ra Internet tới Sigstore) → chạy migration bằng image mới → ghi `APP_VERSION` vào `.env` (bản gốc ở `.env.bak`) → thay `web`/`worker` → kiểm tra sức khoẻ; lỗi thì tự quay về bản cũ. Web gián đoạn khoảng 1-2 phút. Theo dõi: trang Cập nhật trong web, hoặc `docker compose logs -f updater`.
 - Updater báo "chưa bật": `docker compose ps updater`, `docker compose logs updater` (thường do `HOST_PROJECT_DIR` sai hoặc chưa `up -d` sau khi thêm `COMPOSE_PROFILES=updater`).
-- Image riêng tư: trên VPS `docker login ghcr.io` bằng **Token A** (PAT classic chỉ quyền `read:packages`; đăng nhập bằng user chạy compose; nếu không phải root đặt `UPDATER_DOCKER_CONFIG=/home/<user>/.docker`; không dùng credential helper). Repo riêng tư: đặt `UPDATE_GITHUB_TOKEN` = **Token B** (PAT classic chỉ `repo`) để web thấy bản mới; Token B cũng là mật khẩu khi `git pull` hỏi (không lưu bằng `credential.helper store`). Chi tiết: [deploy-vps.md §5-6](deploy-vps.md#5-quyền-truy-cập-github-mã-nguồn--image-riêng-tư).
+- Image riêng tư: trên VPS `docker login ghcr.io` bằng **token GitHub** (1 PAT classic tích `repo` + `read:packages`; đăng nhập bằng user chạy compose; nếu không phải root đặt `UPDATER_DOCKER_CONFIG=/home/<user>/.docker`; không dùng credential helper). Repo riêng tư: đặt `UPDATE_GITHUB_TOKEN` = **cùng token đó** để web thấy bản mới; token cũng là mật khẩu khi `git pull` hỏi (không lưu bằng `credential.helper store`). Cài bằng script: `sudo ads-mcp token` đổi token ở mọi nơi. Bản cài cũ dùng 2 token (Token A `read:packages`, Token B `repo`) vẫn chạy bình thường. Chi tiết: [deploy-vps.md §5-6](deploy-vps.md#5-quyền-truy-cập-github-mã-nguồn--image-riêng-tư).
 - Updater chỉ đổi image, **không** cập nhật `docker-compose.yml`/`Caddyfile`/`deploy/`: khi ghi chú phát hành báo các file này đổi, làm thêm `git pull` theo mục dưới, và chạy `docker compose up -d --no-build` **trước** lần bấm Cập nhật tiếp theo.
 - Nếu cập nhật tự động báo `failed` ở bước quay về bản cũ: làm theo mục "Khôi phục từ file pre-update" trong `.claude/docs/07-deployment.md` §6.6 (dữ liệu trước cập nhật nằm ở `backups/pre-update-*.dump`). Dọn các file `pre-update-*` cũ bằng tay (updater không tự xoá).
 - Cập nhật tay khi tắt updater: §6.8 cùng tài liệu.
@@ -54,7 +54,7 @@ VPS **không build** từ mã nguồn (`docker-compose.yml` không có `build:`)
 ```bash
 # 1) sao lưu ngay trước khi cập nhật
 docker compose exec backup sh -c 'pg_dump -Fc -Z zstd:6 -f /backups/adsmcp_pre-update_$(date +%F_%H%M%S).dump'
-# 2) lấy file cấu hình mới (git hỏi Username + Token B) + chọn phiên bản (không có "v", bắt buộc)
+# 2) lấy file cấu hình mới (git hỏi Username + token GitHub; cài bằng script: đổi APP_VERSION rồi `sudo ads-mcp update-config`) + chọn phiên bản (không có "v", bắt buộc)
 git pull --ff-only
 sed -i 's/^APP_VERSION=.*/APP_VERSION=1.2.3/' .env
 # 3) kéo image và khởi động lại

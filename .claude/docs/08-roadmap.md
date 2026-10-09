@@ -169,7 +169,7 @@ Nguồn: nhánh lưu trữ `archive/full-platforms` (chỉ đọc) + nghiên c�
 - [ ] **Còn lại**: thử thật với 1 nhóm Telegram (ảnh, video MP4, PDF, XLSX, CSV từ AI, tệp đính kèm ChatGPT); phát hành (`release-notes/`)
 **Đạt khi**: AI gửi được tin chữ + ảnh/video/tệp vào nhóm Telegram thật qua MCP, mọi tin có dòng ghi nguồn bấm được, không lộ link ký/token trong log.
 
-## Google Drive & Google Sheet làm nguồn creative (đã triển khai 2026-10-09, chưa commit / phát hành), thiết kế `15-google-drive-media.md` (bản thực tế §18)
+## Google Drive & Google Sheet làm nguồn creative (đã phát hành v1.0.6 ngày 2026-10-09), thiết kế `15-google-drive-media.md` (bản thực tế §18)
 Quyết định G1–G7 (cách A tham chiếu; thư mục công ty + riêng; ảnh + video; admin thấy tất cả; chia sẻ cho email hệ thống; link công khai có công tắc mặc định bật; đọc sheet + ghi ngược) + GD1–GD5; chủ dự án 2026-10-09: video **hai đường** (nhỏ qua link tạm, lớn tải nền).
 - [x] Thiết kế + nghiên cứu Drive v3 / Sheets v4 từ tài liệu chính thức (§12)
 - [x] Nghiên cứu tài liệu chính thức nhánh upload: TikTok `UPLOAD_BY_FILE` / `UPLOAD_BY_URL` / tải chia đoạn, OpenAI multipart, Meta `file_url` + `advideos` upload_phase (ghi trong `providers/{tiktok,openai-ads,meta}.md`)
@@ -182,12 +182,21 @@ Quyết định G1–G7 (cách A tham chiếu; thư mục công ty + riêng; ả
 - [x] UI: Cài đặt → Google Drive hệ thống, tab Google Drive ở Kết nối, `/connections/drive/new` + `[id]` (lưới file + ảnh thu nhỏ, xem trước sheet), service account riêng, khối Drive trong wizard / tab Cấu hình / Tổng quan MCP, từ khoá ⌘K; chụp màn hình dev (credential giả) sáng/tối 390/1440
 - [x] Rà soát + sửa: `security-reviewer` (H1 thư mục chứa / nằm trong thư mục riêng của người khác, M1 sheet theo cả file, L1–L9: `drf_`, hạn mức Sheets/MCP, relay, host ghim, thông báo chung, chống công thức) và `ads-api-reviewer` (#4–#7: Range không tính lượt, `deadlineAt`, không lưu URL hết hạn, cảnh báo ảnh TikTok > 10 MB)
 - [x] Tài liệu: 01 (§2, §3b, §4, §8), 02, 03, 04, 05, 06, 07 §4b, 15 §18, `CLAUDE.md`, `docs/huong-dan-google-drive.md`, `docs/ket-noi-ai.md`, `docs/deploy-vps.md` (Cloudflare `/dl/*`), `docs/van-hanh.md`, `legal.ts` (VI + EN), `guides.ts`
-- [ ] Kiểm chứng đầy đủ: `pnpm lint && pnpm typecheck && pnpm test` + test DB (runner) + `pnpm test:e2e` (`tests/e2e/drive.spec.ts`) xanh trên cây hiện tại; `ui-reviewer` cho các trang Drive
+- [x] Kiểm chứng đầy đủ: lint + typecheck + 2.169 test (gồm test DB) + 44 e2e xanh; `security-reviewer` 2 vòng, `ads-api-reviewer`, `ui-reviewer` (đã sửa)
 - [ ] **Thử thật với Google** (§12 UNVERIFIED): thư mục My Drive + Shared drive, link công khai có / không resource key, liệt kê thư mục công khai bằng API key, chi phí quota `alt=media`, lỗi API key sai / API chưa bật ở lần dùng đầu, sheet đọc + ghi ngược (`row_moved`, RAW), `drive.health`
 - [ ] **Thử thật với nền tảng** (TKQC thử nghiệm): ảnh từ Drive lên Meta / TikTok / Google / OpenAI; video nhỏ qua `/dl` (TikTok ≤ 10 MB, Meta ≤ 50 MB) sau Caddy, Cloudflare proxy (B) và Cloudflare Tunnel (D); **video lớn 200–500 MB tải nền** lên Meta + TikTok (tiến độ, `ads_get_media_upload`, worker 768 MB, worker khởi động lại giữa chừng → `failed` + tải lại); ChatGPT ≤ 60 s; tệp đính kèm ChatGPT
-- [ ] Build image web + updater + **smoke test production** (migrate 0007 + 0008, web healthy, worker đủ job mới, `/dl` qua Caddy trả 404 cho token lạ, không bị chuyển về /login)
-- [ ] Phát hành (`release-notes/`): ghi rõ **MCP đã có cũng bật "link Drive công khai" + "ghi trạng thái vào Google Sheet"** (chỉ có tác dụng khi admin thêm API key / sheet bật ghi); cần worker chạy cho video lớn; Cloudflare không challenge `/dl/*`
+- [x] Build image web + updater + **smoke test production** (migrate 0007 + 0008, web healthy, worker đủ job mới, `/dl` qua Caddy trả 404 cho token lạ, không bị chuyển về /login)
+- [x] Phát hành v1.0.6 (`release-notes/v1.0.6.md`; image GHCR đã ký, cosign verify đạt; phát hành thẳng không qua rc là sai quy trình - đã kiểm tra bù đủ các bước của rc trước khi để khách cập nhật): ghi rõ **MCP đã có cũng bật "link Drive công khai" + "ghi trạng thái vào Google Sheet"** (chỉ có tác dụng khi admin thêm API key / sheet bật ghi); cần worker chạy cho video lớn; Cloudflare không challenge `/dl/*`
 **Đạt khi**: nhân viên dùng được file trong thư mục công ty + thư mục riêng + link công khai để upload ảnh (4 nền tảng) và video (Meta, TikTok — nhỏ qua link tạm, lớn tải nền) qua MCP, không lấy được file riêng của người khác bằng mã hay link, đọc sheet và ghi ngược trạng thái đúng dòng, video 500 MB tải lên được mà không đệm toàn bộ vào RAM.
+
+## Cài đặt VPS bằng một lệnh (2026-10-09 → 2026-10-10), phát hành v1.0.7
+Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:packages`) cho clone + GHCR + `UPDATE_GITHUB_TOKEN`; script hỏi GitHub username + token (nhập ẩn); cài **bản phát hành mới nhất** (`--version` để ghim); cuối cùng in link `/setup` + setup key; swap khi RAM ít; tường lửa + cập nhật tự động mặc định bật; HTTPS: tự động (Caddy) hoặc Cloudflare Tunnel.
+- [x] `scripts/install-ads-mcp.sh` (installer 1.0.0) + `scripts/ads-mcp` (status, logs, doctor, setup-key, token, update, update-config, backup)
+- [x] Thử trong container sạch (Docker-in-Docker): cài mới Ubuntu 24.04 + Debian 12, Cloudflare Tunnel (token giả), chạy lại (giữ nguyên secret), đổi phiên bản, mọi lệnh `ads-mcp`, các tình huống lỗi; shellcheck sạch
+- [x] Repo công khai **notivn/ads-mcp-simple-install** (script + `ads-mcp` + README + SHA256SUMS + LICENSE), ruleset bảo vệ `main` (chặn xoá, force-push, chỉ admin được push)
+- [x] Tài liệu: `docs/deploy-vps.md` §0 cài nhanh + §5 một token + §15.2 bước 7b đồng bộ repo công khai; `.env.example`, `docker-compose.yml`, README, `van-hanh.md`, 07-deployment
+- [ ] **Thử trên VPS thật**: chứng chỉ Let's Encrypt thật, Cloudflare Tunnel thật, tạo swap, UFW, token có hạn dùng, chấp nhận lời mời repo, arm64
+**Đạt khi**: một người không rành kỹ thuật cài được trên VPS mới chỉ bằng 2 dòng lệnh + trả lời câu hỏi, có HTTPS thật, tạo được admin bằng setup key, Cài đặt → Cập nhật thấy bản mới nhất.
 
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.

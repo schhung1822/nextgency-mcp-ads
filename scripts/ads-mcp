@@ -1,0 +1,601 @@
+#!/usr/bin/env bash
+# Ads MCP by: noti.vn - server helper command, installed to /usr/local/bin/ads-mcp by scripts/install-ads-mcp.sh
+# (copied from the project directory, so `ads-mcp update-config` also refreshes it). Run `sudo ads-mcp help`.
+# The install directory comes from /etc/ads-mcp.conf (ADS_MCP_DIR=...), default /opt/ads-mcp.
+# Secrets (.env values, the GitHub token) are never printed, passed in argv or logged; `setup-key` is the only
+# command that prints a secret, on purpose, and only while no user exists.
+set -Eeuo pipefail
+
+ADS_MCP_HELPER_VERSION="1.0.0"
+REPO="notivn/Ads-MCP-simple"
+CONF="/etc/ads-mcp.conf"
+SELF_BIN="/usr/local/bin/ads-mcp"
+
+if [[ -t 1 ]]; then
+  C_RED=$'\e[31m' C_GRN=$'\e[32m' C_YLW=$'\e[33m' C_BLU=$'\e[36m' C_BLD=$'\e[1m' C_RST=$'\e[0m'
+else
+  C_RED="" C_GRN="" C_YLW="" C_BLU="" C_BLD="" C_RST=""
+fi
+N_ERR=0 N_WARN=0 TMPD="" GH_TOKEN="" GH_STATUS="" TOKEN_LOGIN="" TOKEN_EXPIRY_EPOCH="" MISSING_SCOPES=""
+
+ok() { printf '  %s✔%s %s\n' "$C_GRN" "$C_RST" "$*"; }
+warn() { printf '  %s⚠%s %s\n' "$C_YLW" "$C_RST" "$*"; N_WARN=$((N_WARN + 1)); }
+bad() { printf '  %s✖%s %s\n' "$C_RED" "$C_RST" "$*"; N_ERR=$((N_ERR + 1)); }
+info() { printf '    %s\n' "$*"; }
+# chk ACTUAL EXPECTED ok-message bad-message
+chk() { if [[ "$1" == "$2" ]]; then ok "$3"; else bad "$4"; fi; }
+die() {
+  printf '%s✖ %s%s\n' "$C_RED$C_BLD" "$*" "$C_RST" >&2
+  exit 1
+}
+cleanup() { [[ -n "$TMPD" && -d "$TMPD" ]] && rm -rf "$TMPD"; return 0; }
+
+# ------------------------------------------------------------------------------------------------------------------
+# Config / .env helpers (pure bash: values never appear in argv of another process)
+# ------------------------------------------------------------------------------------------------------------------
+env_get() {
+  local key=$1 file=${2:-$DIR/.env} line
+  [[ -r "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=${line%$'\r'}
+    if [[ "$line" == "$key="* ]]; then
+      printf '%s' "${line#"$key"=}"
+      return 0
+    fi
+  done <"$file"
+}
+
+env_set() {
+  local key=$1 value=$2 file=${3:-$DIR/.env} line done=0 tmp i
+  local -a lines=()
+  while IFS= read -r line || [[ -n "$line" ]]; do lines+=("${line%$'\r'}"); done <"$file"
+  for i in "${!lines[@]}"; do
+    if [[ "${lines[$i]}" == "$key="* ]]; then lines[i]="$key=$value"; done=1; break; fi
+  done
+  if [[ $done -eq 0 ]]; then
+    for i in "${!lines[@]}"; do
+      if [[ "${lines[$i]}" == "# $key="* || "${lines[$i]}" == "#$key="* ]]; then lines[i]="$key=$value"; done=1; break; fi
+    done
+  fi
+  [[ $done -eq 1 ]] || lines+=("$key=$value")
+  tmp="$file.tmp.$$"
+  (
+    umask 077
+    printf '%s\n' "${lines[@]}" >"$tmp"
+  )
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$file"
+}
+
+load_dir() {
+  DIR=${ADS_MCP_DIR:-}
+  [[ -n "$DIR" ]] || DIR=$(env_get ADS_MCP_DIR "$CONF")
+  [[ -n "$DIR" ]] || DIR=/opt/ads-mcp
+  [[ "$DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "Đường dẫn cài đặt không hợp lệ: $DIR (sửa ADS_MCP_DIR trong $CONF)."
+  [[ -f "$DIR/docker-compose.yml" && -f "$DIR/.env" ]] ||
+    die "Không thấy bản cài Ads MCP ở $DIR (cần docker-compose.yml và .env). Sửa ADS_MCP_DIR trong $CONF."
+  local dc_cfg
+  dc_cfg=$(env_get UPDATER_DOCKER_CONFIG)
+  export DOCKER_CONFIG="${dc_cfg:-/root/.docker}"
+}
+
+need_root() {
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Cần quyền root. Chạy lại: sudo ads-mcp ${CMD:-help}"
+}
+
+dc() { (cd "$DIR" && docker compose "$@"); }
+# dc_quiet ARGS...: compose output is shown only when the command fails
+dc_quiet() {
+  local out
+  if ! out=$(dc "$@" 2>&1); then
+    printf '%s\n' "$out" | tail -n 25 >&2
+    return 1
+  fi
+}
+
+compose_json() { dc ps -a --format json 2>/dev/null | jq -s 'flatten' 2>/dev/null || printf '[]'; }
+svc_field() { jq -r --arg s "$2" --arg f "$3" '[.[] | select(.Service==$s)][0][$f] // empty' <<<"$1"; }
+
+user_count() {
+  local n
+  n=$(dc exec -T db psql -U adsmcp -d adsmcp -Atc 'select count(*) from "user"' 2>/dev/null | tr -d '[:space:]' || true)
+  [[ "$n" =~ ^[0-9]+$ ]] && printf '%s' "$n" || printf '?'
+}
+
+vn_date() { date -d "@$1" '+%d/%m/%Y'; }
+
+need_tools() {
+  local t
+  for t in docker jq curl git; do command -v "$t" >/dev/null 2>&1 || die "Thiếu lệnh $t. Chạy lại trình cài đặt để sửa (sudo bash install-ads-mcp.sh)."; done
+}
+
+mk_tmp() {
+  [[ -n "$TMPD" ]] && return 0
+  TMPD=$(mktemp -d /tmp/ads-mcp.XXXXXX)
+  chmod 700 "$TMPD"
+}
+
+# ------------------------------------------------------------------------------------------------------------------
+# GitHub (token via curl config on stdin / GIT_ASKPASS environment - never argv)
+# ------------------------------------------------------------------------------------------------------------------
+gh_api() {
+  local method=$1 path=$2
+  mk_tmp
+  : >"$TMPD/h"
+  : >"$TMPD/b"
+  GH_STATUS=$(printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" |
+    curl -sS -X "$method" --max-time 25 \
+      -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' -H 'User-Agent: ads-mcp-helper' \
+      -D "$TMPD/h" -o "$TMPD/b" -w '%{http_code}' -K - "https://api.github.com${path}" 2>/dev/null) || GH_STATUS="000"
+}
+
+gh_header() { grep -i "^$1:" "$TMPD/h" 2>/dev/null | tail -n 1 | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//' || true; }
+
+parse_scopes() {
+  local raw=$1 s has_repo=0 has_pkg=0
+  local -a parts=()
+  IFS=',' read -r -a parts <<<"$raw"
+  for s in "${parts[@]}"; do
+    s=${s//[[:space:]]/}
+    case "$s" in repo) has_repo=1 ;; read:packages | write:packages) has_pkg=1 ;; esac
+  done
+  MISSING_SCOPES=""
+  [[ $has_repo -eq 1 ]] || MISSING_SCOPES+="repo "
+  [[ $has_pkg -eq 1 ]] || MISSING_SCOPES+="read:packages "
+  MISSING_SCOPES=${MISSING_SCOPES% }
+}
+
+# check_token -> 0 ok; prints the problem otherwise (sets TOKEN_LOGIN, TOKEN_EXPIRY_EPOCH)
+check_token() {
+  local exp scopes
+  TOKEN_LOGIN="" TOKEN_EXPIRY_EPOCH=""
+  gh_api GET /user
+  case "$GH_STATUS" in
+    200) ;;
+    401) bad "Token GitHub sai, đã bị thu hồi hoặc hết hạn (401). Tạo token mới rồi chạy: sudo ads-mcp token"; return 1 ;;
+    000) bad "Không kết nối được api.github.com (mạng / DNS của máy chủ)."; return 1 ;;
+    *) bad "GitHub trả mã $GH_STATUS khi kiểm tra token."; return 1 ;;
+  esac
+  TOKEN_LOGIN=$(jq -r '.login // empty' "$TMPD/b")
+  if [[ "$GH_TOKEN" == github_pat_* ]] || ! grep -qi '^x-oauth-scopes:' "$TMPD/h"; then
+    bad "Token là loại fine-grained: cần PAT classic (repo + read:packages)."
+    return 1
+  fi
+  scopes=$(gh_header x-oauth-scopes)
+  parse_scopes "$scopes"
+  if [[ -n "$MISSING_SCOPES" ]]; then
+    bad "Token thiếu quyền: ${MISSING_SCOPES// /, } (đang có: ${scopes:-không có})."
+    return 1
+  fi
+  exp=$(gh_header github-authentication-token-expiration)
+  [[ -n "$exp" ]] && TOKEN_EXPIRY_EPOCH=$(date -d "$exp" +%s 2>/dev/null || true)
+  gh_api GET "/repos/${REPO}"
+  if [[ "$GH_STATUS" != "200" ]]; then
+    bad "Tài khoản ${TOKEN_LOGIN} không đọc được ${REPO} (GitHub trả $GH_STATUS): liên hệ noti.vn để được cấp quyền."
+    return 1
+  fi
+  return 0
+}
+
+latest_release() {
+  gh_api GET "/repos/${REPO}/releases/latest"
+  [[ "$GH_STATUS" == "200" ]] || return 1
+  local tag draft pre
+  tag=$(jq -r '.tag_name // empty' "$TMPD/b")
+  draft=$(jq -r '.draft // false' "$TMPD/b")
+  pre=$(jq -r '.prerelease // false' "$TMPD/b")
+  [[ "$draft" == "false" && "$pre" == "false" && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  printf '%s' "${tag#v}"
+}
+
+git_auth() {
+  mk_tmp
+  local helper="$TMPD/askpass.sh"
+  if [[ ! -x "$helper" ]]; then
+    cat >"$helper" <<'EOF'
+#!/bin/sh
+case "$1" in
+  Username*) printf '%s\n' "$ADS_MCP_GIT_USER" ;;
+  *) printf '%s\n' "$ADS_MCP_GIT_TOKEN" ;;
+esac
+EOF
+    chmod 700 "$helper"
+  fi
+  ADS_MCP_GIT_USER="$GH_USER" ADS_MCP_GIT_TOKEN="$GH_TOKEN" GIT_ASKPASS="$helper" GIT_TERMINAL_PROMPT=0 \
+    git -c credential.helper= -c core.askPass="$helper" "$@"
+}
+
+version_gt() { # A > B (x.y.z)
+  local a1 a2 a3 b1 b2 b3
+  IFS=. read -r a1 a2 a3 <<<"$1"
+  IFS=. read -r b1 b2 b3 <<<"$2"
+  if ((a1 != b1)); then return $((a1 > b1 ? 0 : 1)); fi
+  if ((a2 != b2)); then return $((a2 > b2 ? 0 : 1)); fi
+  return $((a3 > b3 ? 0 : 1))
+}
+
+# https_ok DOMAIN: public health endpoint through Caddy. Test switch (maintainers): ADS_MCP_INSTALL_TEST=1 accepts
+# Caddy's internal CA and connects to 127.0.0.1 (same rule as the installer's test mode).
+https_ok() {
+  local -a args=(-fsS --max-time 10 -o /dev/null)
+  [[ "${ADS_MCP_INSTALL_TEST:-}" == "1" ]] && args+=(-k --resolve "$1:443:127.0.0.1")
+  curl "${args[@]}" "https://$1/api/health" 2>/dev/null
+}
+
+wait_web_healthy() {
+  local i h
+  for i in $(seq 1 60); do
+    h=$(svc_field "$(compose_json)" web Health)
+    [[ "$h" == "healthy" ]] && return 0
+    sleep 5
+  done
+  return 1
+}
+
+# ------------------------------------------------------------------------------------------------------------------
+# Commands
+# ------------------------------------------------------------------------------------------------------------------
+cmd_help() {
+  cat <<EOF
+Ads MCP by: noti.vn - lệnh quản trị máy chủ (ads-mcp ${ADS_MCP_HELPER_VERSION})
+
+Cách dùng: sudo ads-mcp <lệnh>
+  status            Trạng thái các dịch vụ, phiên bản, HTTPS
+  logs [dịch vụ]    Xem nhật ký trực tiếp (web, worker, caddy, updater, db, backup, cloudflared...). Ctrl+C để thoát
+  doctor            Tự kiểm tra toàn bộ (Docker, dịch vụ, HTTPS, token GitHub, đăng nhập GHCR, sao lưu, ổ đĩa) và gợi ý cách sửa
+  setup-key         Xem mã cài đặt để tạo tài khoản admin đầu tiên (chỉ khi chưa có tài khoản)
+  token             Đổi token GitHub (dùng cho tải mã nguồn, tải image, kiểm tra bản mới)
+  update            Kiểm tra bản mới và hướng dẫn cập nhật
+  update-config     Lấy lại file cấu hình triển khai (docker-compose.yml, Caddyfile...) đúng phiên bản đang chạy
+  backup            Sao lưu database ngay
+  version           Phiên bản
+  help              Hướng dẫn này
+Thư mục cài đặt: ${DIR:-/opt/ads-mcp} (đổi trong $CONF). Tài liệu: docs/deploy-vps.md
+EOF
+}
+
+cmd_version() {
+  printf 'ads-mcp %s\n' "$ADS_MCP_HELPER_VERSION"
+  printf 'Ads MCP (APP_VERSION): %s\n' "$(env_get APP_VERSION)"
+  printf 'Thư mục: %s\n' "$DIR"
+}
+
+cmd_status() {
+  local ver domain tls
+  ver=$(env_get APP_VERSION)
+  domain=$(env_get APP_DOMAIN)
+  tls=$(env_get CADDY_TLS)
+  printf '%sAds MCP v%s%s — https://%s — thư mục %s\n\n' "$C_BLD" "$ver" "$C_RST" "$domain" "$DIR"
+  dc ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
+  printf '\n'
+  if [[ "$tls" == "tunnel" ]]; then
+    local ch
+    ch=$(svc_field "$(compose_json)" cloudflared Health)
+    if [[ "$ch" == "healthy" ]]; then ok "Cloudflare Tunnel đã kết nối"; else warn "Cloudflare Tunnel chưa kết nối (${ch:-không chạy}): sudo ads-mcp logs cloudflared"; fi
+  elif [[ "$(env_get CADDY_REPLICAS)" != "0" ]]; then
+    if https_ok "$domain"; then ok "https://$domain/api/health trả 200"; else warn "Chưa truy cập được https://$domain/api/health từ máy chủ: sudo ads-mcp doctor"; fi
+  fi
+}
+
+cmd_logs() {
+  local svc=${1:-}
+  if [[ -n "$svc" ]]; then
+    [[ "$svc" =~ ^[a-z][a-z0-9_-]*$ ]] || die "Tên dịch vụ không hợp lệ: $svc"
+    dc logs -f --tail=200 "$svc"
+  else
+    dc logs -f --tail=50
+  fi
+}
+
+cmd_setup_key() {
+  local n key domain
+  n=$(user_count)
+  domain=$(env_get APP_DOMAIN)
+  if [[ "$n" == "0" ]]; then
+    key=$(env_get SETUP_TOKEN)
+    [[ -n "$key" ]] || die "Không có SETUP_TOKEN trong $DIR/.env."
+    printf '%s👉 Tạo tài khoản admin đầu tiên%s\n' "$C_BLD" "$C_RST"
+    printf '   1. Mở: %shttps://%s/setup%s\n' "$C_BLU" "$domain" "$C_RST"
+    printf '   2. Nhập mã cài đặt:\n\n        %s%s%s\n\n' "$C_YLW$C_BLD" "$key" "$C_RST"
+    printf '   Không gửi mã này qua chat/email. Trang /setup tự khoá khi đã có tài khoản.\n'
+  elif [[ "$n" == "?" ]]; then
+    die "Không đọc được database (dịch vụ db chưa chạy?). Xem: sudo ads-mcp status"
+  else
+    printf 'Hệ thống đã có %s tài khoản: trang /setup đã khoá, mã cài đặt không còn dùng được.\n' "$n"
+    printf 'Quên mật khẩu admin: cd %s && docker compose run --rm web node dist/cli.mjs reset-password <email>\n' "$DIR"
+  fi
+}
+
+cmd_backup() {
+  printf 'Đang sao lưu database…\n'
+  # same command as docs/deploy-vps.md 12.1 ($(date) runs inside the backup container)
+  # shellcheck disable=SC2016
+  dc exec -T backup sh -c 'pg_dump -Fc -Z zstd:6 -f /backups/adsmcp_manual_$(date +%F_%H%M%S).dump' ||
+    die "Sao lưu thất bại. Kiểm tra dịch vụ backup/db: sudo ads-mcp status"
+  local f
+  f=$(find "$DIR/backups" -maxdepth 1 -name 'adsmcp_manual_*.dump' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2- || true)
+  [[ -n "$f" ]] && ok "Đã sao lưu: $f ($(du -h "$f" | cut -f1))"
+  info "Đưa bản sao lưu ra ngoài máy chủ (có mã hoá) và sao lưu riêng file $DIR/.env: docs/deploy-vps.md 12.2."
+}
+
+read_new_token() {
+  GH_TOKEN=${ADS_MCP_GITHUB_TOKEN:-}
+  GH_TOKEN=${GH_TOKEN//[[:space:]]/}
+  unset ADS_MCP_GITHUB_TOKEN
+  if [[ -z "$GH_TOKEN" ]]; then
+    { : </dev/tty; } 2>/dev/null || die "Không có bàn phím để nhập token. Dùng: sudo ADS_MCP_GITHUB_TOKEN=... ads-mcp token"
+    printf 'Token GitHub mới: PAT classic tích "repo" + "read:packages" (https://github.com/settings/tokens/new).\n'
+    read -r -s -p 'Dán token (không hiện ra màn hình): ' GH_TOKEN </dev/tty || true
+    printf '\n'
+    GH_TOKEN=${GH_TOKEN//[[:space:]]/}
+  fi
+  [[ ${#GH_TOKEN} -ge 20 && "$GH_TOKEN" =~ ^[A-Za-z0-9_]+$ ]] || die "Token không đúng định dạng."
+}
+
+cmd_token() {
+  read_new_token
+  printf 'Đang kiểm tra token với GitHub…\n'
+  check_token || die "Token không dùng được (xem lý do ở trên). Không thay đổi gì."
+  GH_USER=$TOKEN_LOGIN
+  ok "Token của tài khoản $GH_USER, đủ quyền repo + read:packages, đọc được $REPO"
+  if [[ -n "$TOKEN_EXPIRY_EPOCH" ]]; then
+    ok "Hết hạn ngày $(vn_date "$TOKEN_EXPIRY_EPOCH") (còn $(((TOKEN_EXPIRY_EPOCH - $(date +%s)) / 86400)) ngày)"
+  else
+    warn "Token không có ngày hết hạn (GitHub khuyến nghị đặt hạn)."
+  fi
+  mkdir -p "$DOCKER_CONFIG"
+  chmod 700 "$DOCKER_CONFIG"
+  printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin >/dev/null 2>&1 ||
+    die "docker login ghcr.io thất bại với token mới. Không thay đổi .env."
+  ok "Đã đăng nhập lại ghcr.io ($DOCKER_CONFIG/config.json)"
+  cp -p "$DIR/.env" "$DIR/.env.bak"
+  [[ -n "$(env_get UPDATE_REPO)" ]] || env_set UPDATE_REPO "$REPO"
+  env_set UPDATE_GITHUB_TOKEN "$GH_TOKEN"
+  chmod 600 "$DIR/.env"
+  ok "Đã lưu token vào $DIR/.env (bản cũ: .env.bak, quyền 600)"
+  if [[ -f "$CONF" ]]; then
+    if grep -q '^GITHUB_USER=' "$CONF"; then env_set GITHUB_USER "$GH_USER" "$CONF"; else printf 'GITHUB_USER=%s\n' "$GH_USER" >>"$CONF"; fi
+    chmod 644 "$CONF"
+  fi
+  printf 'Áp dụng cho web + worker (khởi động lại, gián đoạn vài giây)…\n'
+  dc_quiet up -d --no-build web worker || die "docker compose up thất bại: sudo ads-mcp status"
+  if wait_web_healthy; then ok "web đã chạy lại"; else warn "web chưa healthy: sudo ads-mcp logs web"; fi
+  info "Nhớ xoá token cũ ở https://github.com/settings/tokens. Kiểm tra trong web: Cài đặt → Cập nhật → Kiểm tra ngay."
+}
+
+cmd_update() {
+  local cur latest profiles
+  cur=$(env_get APP_VERSION)
+  profiles=$(env_get COMPOSE_PROFILES)
+  GH_TOKEN=$(env_get UPDATE_GITHUB_TOKEN)
+  printf 'Phiên bản đang chạy: %s\n' "$cur"
+  if [[ -n "$GH_TOKEN" ]] && latest=$(latest_release); then
+    printf 'Bản mới nhất:        %s\n\n' "$latest"
+  else
+    latest=""
+    warn "Không lấy được bản mới nhất từ GitHub (token trong .env thiếu/hết hạn?): sudo ads-mcp doctor"
+  fi
+  if [[ -n "$latest" ]] && version_gt "$latest" "$cur"; then
+    if [[ "$profiles" == *updater* ]]; then
+      printf '%sCập nhật trong web (khuyến nghị):%s đăng nhập admin → Cài đặt → Cập nhật → "Cập nhật lên v%s".\n' "$C_BLD" "$C_RST" "$latest"
+      info "Hệ thống tự sao lưu, tải bản mới, kiểm tra chữ ký số, khởi động lại và tự quay về bản cũ nếu lỗi."
+      info "Sau khi cập nhật xong, nếu ghi chú phát hành yêu cầu: sudo ads-mcp update-config"
+    else
+      printf '%sCập nhật tự động đang tắt.%s Cập nhật tay lên v%s:\n' "$C_BLD" "$C_RST" "$latest"
+      info "sudo ads-mcp backup"
+      info "sudo sed -i 's/^APP_VERSION=.*/APP_VERSION=$latest/' $DIR/.env"
+      info "sudo ads-mcp update-config      # lấy cấu hình v$latest, tải image và khởi động lại"
+    fi
+  elif [[ -n "$latest" ]]; then
+    ok "Đang chạy bản mới nhất."
+  fi
+  printf '\n'
+  { : </dev/tty; } 2>/dev/null || return 0
+  local ans=""
+  read -r -p "Tải lại image và khởi động lại các dịch vụ cho bản hiện tại v$cur (docker compose pull + up -d)? [y/N]: " ans </dev/tty || true
+  case "${ans,,}" in
+    y | yes | c | có)
+      printf 'Đang tải image…\n'
+      dc_quiet pull || die "docker compose pull lỗi (token / mạng): sudo ads-mcp doctor"
+      dc_quiet up -d --no-build || die "docker compose up lỗi: sudo ads-mcp status"
+      if wait_web_healthy; then ok "web healthy"; else warn "web chưa healthy: sudo ads-mcp logs web"; fi
+      ;;
+    *) printf 'Không làm gì thêm.\n' ;;
+  esac
+}
+
+cmd_update_config() {
+  local ver old new changed
+  ver=$(env_get APP_VERSION)
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "APP_VERSION trong .env không hợp lệ: \"$ver\"."
+  [[ -d "$DIR/.git" ]] || die "$DIR không phải thư mục git (cài tay?). Cập nhật cấu hình theo docs/deploy-vps.md 11.2."
+  GH_TOKEN=$(env_get UPDATE_GITHUB_TOKEN)
+  [[ -n "$GH_TOKEN" ]] || die "Thiếu UPDATE_GITHUB_TOKEN trong .env. Chạy: sudo ads-mcp token"
+  GH_USER=$(env_get GITHUB_USER "$CONF")
+  if [[ -z "$GH_USER" ]]; then
+    gh_api GET /user
+    [[ "$GH_STATUS" == "200" ]] || die "Token trong .env không dùng được (GitHub trả $GH_STATUS). Chạy: sudo ads-mcp token"
+    GH_USER=$(jq -r '.login // empty' "$TMPD/b")
+  fi
+  local dirty
+  dirty=$(git -C "$DIR" status --porcelain --untracked-files=no 2>/dev/null || true)
+  if [[ -n "$dirty" ]]; then
+    printf 'Các file đã bị sửa trong %s:\n%s\n' "$DIR" "$dirty"
+    die "Không cập nhật để tránh mất thay đổi. Xem docs/deploy-vps.md 11.2 (git checkout -- <file> nếu là file do script sinh lại)."
+  fi
+  old=$(git -C "$DIR" rev-parse HEAD)
+  printf 'Đang lấy cấu hình triển khai v%s…\n' "$ver"
+  git_auth -C "$DIR" fetch -q --depth 1 origin "refs/tags/v$ver:refs/tags/v$ver" ||
+    die "Không tải được tag v$ver (token / quyền / mạng): sudo ads-mcp doctor"
+  git -C "$DIR" -c advice.detachedHead=false checkout -q "v$ver" || die "Không chuyển được sang v$ver."
+  new=$(git -C "$DIR" rev-parse HEAD)
+  if [[ "$old" == "$new" ]]; then
+    ok "Cấu hình đã đúng v$ver (không đổi)"
+  else
+    changed=$(git -C "$DIR" diff --name-only "$old" "$new" 2>/dev/null || true)
+    ok "Đã chuyển cấu hình sang v$ver ($(wc -l <<<"$changed" | tr -d ' ') file thay đổi)"
+  fi
+  printf 'Đang áp dụng (docker compose up -d, tải image nếu thiếu)…\n'
+  dc_quiet up -d --no-build || die "docker compose up lỗi: sudo ads-mcp status"
+  if [[ -n "${changed:-}" ]] && grep -qE '^(Caddyfile|deploy/caddy/)' <<<"$changed"; then
+    if [[ "$(svc_field "$(compose_json)" caddy State)" == "running" ]]; then
+      dc_quiet restart caddy && ok "Đã nạp lại Caddy (Caddyfile / deploy/caddy thay đổi)"
+    fi
+  fi
+  if wait_web_healthy; then ok "web healthy"; else warn "web chưa healthy: sudo ads-mcp logs web"; fi
+  # refresh this helper last (atomic rename: the running copy keeps its old inode)
+  if [[ -f "$DIR/scripts/ads-mcp" ]] && ! cmp -s "$DIR/scripts/ads-mcp" "$SELF_BIN"; then
+    install -m 0755 "$DIR/scripts/ads-mcp" "$SELF_BIN.new" && mv -f "$SELF_BIN.new" "$SELF_BIN" && ok "Đã cập nhật lệnh ads-mcp"
+  fi
+}
+
+cmd_doctor() {
+  local ver domain tls json st h profiles f age disk_kb cfg replicas cf_rep
+  printf '%sAds MCP — tự kiểm tra (%s)%s\n' "$C_BLD" "$DIR" "$C_RST"
+
+  printf '\n%sDocker%s\n' "$C_BLD" "$C_RST"
+  if docker info >/dev/null 2>&1; then ok "Docker đang chạy ($(docker --version | sed 's/,.*//'))"; else
+    bad "Docker không chạy: systemctl start docker (xem journalctl -u docker)"
+    printf '\nKết quả: %d lỗi, %d cảnh báo\n' "$N_ERR" "$N_WARN"
+    return 1
+  fi
+
+  printf '\n%sCấu hình (.env)%s\n' "$C_BLD" "$C_RST"
+  ver=$(env_get APP_VERSION)
+  domain=$(env_get APP_DOMAIN)
+  tls=$(env_get CADDY_TLS)
+  profiles=$(env_get COMPOSE_PROFILES)
+  if [[ "$(stat -c %a "$DIR/.env")" == "600" ]]; then ok ".env quyền 600"; else warn ".env quyền $(stat -c %a "$DIR/.env"), nên là 600: chmod 600 $DIR/.env"; fi
+  if [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then ok "APP_VERSION=$ver"; else bad "APP_VERSION không hợp lệ (\"$ver\"): đặt x.y.z trong .env"; fi
+  if [[ -n "$domain" && "$domain" != "mcp.example.com" ]]; then ok "APP_DOMAIN=$domain"; else bad "APP_DOMAIN chưa đặt"; fi
+  for f in POSTGRES_PASSWORD BETTER_AUTH_SECRET ENCRYPTION_KEYS MCP_KEY_PEPPER; do
+    [[ -n "$(env_get "$f")" ]] || bad "Thiếu $f trong .env (KHÔNG chạy lại gen-secrets: khôi phục .env từ bản sao lưu)"
+  done
+  if [[ "$profiles" == *updater* ]]; then
+    if [[ "$(env_get HOST_PROJECT_DIR)" == "$DIR" ]]; then ok "Cập nhật tự động bật, HOST_PROJECT_DIR đúng"; else bad "HOST_PROJECT_DIR=\"$(env_get HOST_PROJECT_DIR)\" khác $DIR: sửa .env rồi docker compose up -d --no-build"; fi
+  else
+    warn "Cập nhật tự động đang tắt (COMPOSE_PROFILES không có updater)"
+  fi
+  if [[ "$tls" == "tunnel" ]]; then
+    if [[ "$(env_get TUNNEL_TOKEN)" == eyJ* ]]; then ok "TUNNEL_TOKEN đã đặt"; else bad "TUNNEL_TOKEN trống/sai: dán token tunnel (docs/deploy-vps.md 10b.4)"; fi
+  fi
+
+  printf '\n%sDịch vụ%s\n' "$C_BLD" "$C_RST"
+  json=$(compose_json)
+  h=$(svc_field "$json" db Health)
+  chk "$h" healthy "db healthy" "db: ${h:-không chạy} → sudo ads-mcp logs db"
+  st=$(svc_field "$json" migrate State)
+  if [[ "$st" == "exited" && "$(svc_field "$json" migrate ExitCode)" == "0" ]]; then ok "migrate xong (exit 0)"; else bad "migrate: ${st:-không có} (exit $(svc_field "$json" migrate ExitCode)) → sudo ads-mcp logs migrate"; fi
+  h=$(svc_field "$json" web Health)
+  chk "$h" healthy "web healthy" "web: ${h:-không chạy} → sudo ads-mcp logs web"
+  for f in worker backup; do
+    st=$(svc_field "$json" "$f" State)
+    chk "$st" running "$f đang chạy" "$f: ${st:-không chạy} → sudo ads-mcp logs $f"
+  done
+  if [[ "$profiles" == *updater* ]]; then
+    st=$(svc_field "$json" updater State)
+    chk "$st" running "updater đang chạy" "updater: ${st:-không chạy} → sudo ads-mcp logs updater"
+  fi
+  replicas=$(env_get CADDY_REPLICAS)
+  if [[ "$replicas" != "0" ]]; then
+    st=$(svc_field "$json" caddy State)
+    chk "$st" running "caddy đang chạy" "caddy: ${st:-không chạy} → sudo ads-mcp logs caddy"
+  fi
+  cf_rep=$(env_get CLOUDFLARED_REPLICAS)
+  if [[ "$cf_rep" == "1" ]]; then
+    h=$(svc_field "$json" cloudflared Health)
+    chk "$h" healthy "cloudflared đã kết nối Cloudflare" "cloudflared: ${h:-không chạy} → sudo ads-mcp logs cloudflared (docs/deploy-vps.md 10b.10)"
+  fi
+
+  printf '\n%sTruy cập%s\n' "$C_BLD" "$C_RST"
+  if [[ "$tls" == "tunnel" ]]; then
+    if dc exec -T caddy wget -qO- --header "Host: $domain" http://127.0.0.1/api/health >/dev/null 2>&1; then ok "caddy → web OK"; else bad "caddy không chuyển được request tới web"; fi
+  elif [[ "$replicas" != "0" ]]; then
+    if https_ok "$domain"; then
+      ok "https://$domain/api/health trả 200"
+    else
+      bad "Không truy cập được https://$domain/api/health từ máy chủ: kiểm tra bản ghi A, cổng 80/443 (UFW + tường lửa nhà cung cấp), log: sudo ads-mcp logs caddy"
+    fi
+  else
+    info "CADDY_REPLICAS=0 (Nginx trên máy chủ): kiểm tra Nginx theo docs/deploy-vps.md 10.5"
+  fi
+
+  printf '\n%sGitHub / GHCR%s\n' "$C_BLD" "$C_RST"
+  cfg="$DOCKER_CONFIG/config.json"
+  if [[ -f "$cfg" ]] && grep -q '"ghcr.io"' "$cfg"; then
+    if jq -e 'has("credsStore") or has("credHelpers")' "$cfg" >/dev/null 2>&1; then bad "$cfg dùng credential helper: updater không kéo được image (docs/deploy-vps.md 6.2)"; else ok "Đã đăng nhập ghcr.io ($cfg)"; fi
+  else
+    bad "Chưa đăng nhập ghcr.io trong $cfg: sudo ads-mcp token"
+  fi
+  GH_TOKEN=$(env_get UPDATE_GITHUB_TOKEN)
+  if [[ -z "$GH_TOKEN" ]]; then
+    bad "Thiếu UPDATE_GITHUB_TOKEN trong .env (web không thấy bản mới): sudo ads-mcp token"
+  elif check_token; then
+    ok "Token GitHub hợp lệ (tài khoản $TOKEN_LOGIN, repo + read:packages)"
+    if [[ -n "$TOKEN_EXPIRY_EPOCH" ]]; then
+      local days=$(((TOKEN_EXPIRY_EPOCH - $(date +%s)) / 86400))
+      if ((days < 30)); then warn "Token hết hạn ngày $(vn_date "$TOKEN_EXPIRY_EPOCH") (còn $days ngày): tạo token mới rồi sudo ads-mcp token"; else ok "Token hết hạn ngày $(vn_date "$TOKEN_EXPIRY_EPOCH") (còn $days ngày)"; fi
+    fi
+    local latest
+    if latest=$(latest_release); then
+      if version_gt "$latest" "$ver"; then warn "Có bản mới v$latest (đang chạy v$ver): sudo ads-mcp update"; else ok "Đang chạy bản mới nhất (v$ver)"; fi
+    fi
+  fi
+  if [[ -d "$DIR/.git" ]]; then
+    local tag
+    tag=$(git -C "$DIR" describe --tags --exact-match 2>/dev/null || true)
+    if [[ "$tag" == "v$ver" ]]; then ok "File cấu hình triển khai đúng v$ver"; else warn "File cấu hình triển khai đang ở ${tag:-$(git -C "$DIR" rev-parse --short HEAD)}, image v$ver: sudo ads-mcp update-config"; fi
+  fi
+
+  printf '\n%sMáy chủ%s\n' "$C_BLD" "$C_RST"
+  disk_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+  if ((disk_kb < 3 * 1024 * 1024)); then bad "Ổ đĩa / còn $((disk_kb / 1024)) MB: dọn image cũ (docker image prune -a) hoặc nâng ổ đĩa"; elif ((disk_kb < 8 * 1024 * 1024)); then warn "Ổ đĩa / còn $((disk_kb / 1024 / 1024)) GB"; else ok "Ổ đĩa / còn $((disk_kb / 1024 / 1024)) GB"; fi
+  ok "RAM $(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo) MB, swap $(awk '/^SwapTotal:/ {print int($2/1024)}' /proc/meminfo) MB"
+  f=$(find "$DIR/backups" -maxdepth 1 -name 'adsmcp_*.dump' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 || true)
+  if [[ -z "$f" ]]; then
+    warn "Chưa có bản sao lưu nào trong $DIR/backups (dịch vụ backup chạy ngay khi khởi động): sudo ads-mcp logs backup"
+  else
+    age=$((($(date +%s) - ${f%%.*}) / 3600))
+    if ((age > 26)); then warn "Bản sao lưu mới nhất đã $age giờ: sudo ads-mcp logs backup"; else ok "Bản sao lưu mới nhất: ${f#* } ($age giờ trước)"; fi
+  fi
+
+  printf '\nKết quả: %s%d lỗi%s, %s%d cảnh báo%s\n' "$C_RED" "$N_ERR" "$C_RST" "$C_YLW" "$N_WARN" "$C_RST"
+  [[ $N_ERR -eq 0 ]]
+}
+
+main() {
+  CMD=${1:-help}
+  [[ $# -gt 0 ]] && shift
+  trap cleanup EXIT
+  case "$CMD" in
+    help | -h | --help)
+      DIR=$(env_get ADS_MCP_DIR "$CONF")
+      cmd_help
+      return 0
+      ;;
+  esac
+  need_root
+  need_tools
+  load_dir
+  case "$CMD" in
+    version | -v | --version | doctor) ;;
+    *)
+      docker info >/dev/null 2>&1 ||
+        die "Docker không chạy. Khởi động: sudo systemctl start docker (xem: journalctl -u docker), hoặc chạy lại trình cài đặt để sửa."
+      ;;
+  esac
+  case "$CMD" in
+    status) cmd_status ;;
+    logs) cmd_logs "$@" ;;
+    doctor) cmd_doctor ;;
+    setup-key) cmd_setup_key ;;
+    token) cmd_token ;;
+    update) cmd_update ;;
+    update-config) cmd_update_config ;;
+    backup) cmd_backup ;;
+    version | -v | --version) cmd_version ;;
+    *) die "Lệnh không hợp lệ: $CMD. Xem: ads-mcp help" ;;
+  esac
+}
+
+main "$@"
