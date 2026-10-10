@@ -1,0 +1,52 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVIDENT0001",
+  "data": {
+    "identity_list": [
+      {
+        "display_name": "Shop ABC Official",
+        "identity_authorized_bc_id": "7300000000000000001",
+        "identity_id": "7200000000000000002",
+        "identity_type": "BC_AUTH_TT",
+        "is_running_custom_shop_ads": false,
+        "live_gmv_max_available": false,
+        "product_gmv_max_available": true,
+        "profile_image": "https://p16-sign.example.test/avatar1.jpeg?x-expires=1760000000",
+        "unavailable_reason": "OCCUPIED",
+        "user_name": "shopabc.official"
+      },
+      {
+        "display_name": "Shop ABC Live",
+        "identity_authorized_bc_id": "7300000000000000001",
+        "identity_id": "7200000000000000003",
+        "identity_type": "BC_AUTH_TT",
+        "is_running_custom_shop_ads": false,
+        "live_gmv_max_available": true,
+        "product_gmv_max_available": true,
+        "profile_image": "https://p16-sign.example.test/avatar2.jpeg?x-expires=1760000000",
+        "user_name": "shopabc.live"
+      },
+      {
+        "identity_id": "7200000000000000004",
+        "identity_type": "TTS_TT",
+        "is_running_custom_shop_ads": false,
+        "live_gmv_max_available": false,
+        "product_gmv_max_available": false,
+        "store_id": "7494000000000000001",
+        "unavailable_reason": "UNAUTHORIZED"
+      },
+      {
+        "display_name": "Shop ABC",
+        "identity_id": "7200000000000000001",
+        "identity_type": "TT_USER",
+        "is_running_custom_shop_ads": false,
+        "live_gmv_max_available": false,
+        "product_gmv_max_available": true,
+        "profile_image": "https://p16-sign.example.test/avatar3.jpeg?x-expires=1760000000",
+        "unavailable_reason": "UNAUTHORIZED",
+        "user_name": "shopabc"
+      }
+    ]
+  }
+}

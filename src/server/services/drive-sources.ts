@@ -96,6 +96,7 @@ import {
   toDriveServiceError,
   type DriveActor,
 } from "./drive-credentials"
+import { disclaimerAuditMeta, type CreateAudit } from "./disclaimers"
 
 export { DriveServiceError, type DriveActor }
 
@@ -803,7 +804,8 @@ export async function createDriveSource(
     recursiveDepth?: number
     columns?: Partial<Record<SheetColumnKey, string | null>>
     writeback?: boolean
-  }
+  },
+  audit?: CreateAudit
 ): Promise<{ id: string; source: DriveSourceDto }> {
   const ins = await inspect(actor, input)
   const p = ins.preview
@@ -874,6 +876,7 @@ export async function createDriveSource(
               clientEmail: ins.cred.clientEmail,
             },
             config,
+            ...disclaimerAuditMeta(audit),
           },
         },
         tx

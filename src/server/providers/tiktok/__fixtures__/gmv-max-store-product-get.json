@@ -1,0 +1,63 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVPROD0001",
+  "data": {
+    "store_products": [
+      {
+        "status": "AVAILABLE",
+        "product_image_url": "https://p16-oec.example.test/p1.jpeg",
+        "catalog_id": null,
+        "category": "Thời trang nữ > Áo",
+        "historical_sales": 120,
+        "quantity": 2,
+        "item_group_id": "1729000000000000003",
+        "max_price": "199000",
+        "store_id": "7494000000000000001",
+        "min_price": "149000",
+        "currency": "VND",
+        "title": "Áo sơ mi linen",
+        "gmv_max_ads_status": "UNOCCUPIED",
+        "is_running_custom_shop_ads": true
+      },
+      {
+        "status": "AVAILABLE",
+        "product_image_url": "https://p16-oec.example.test/p2.jpeg",
+        "catalog_id": null,
+        "category": "Thời trang nữ > Áo",
+        "historical_sales": 0,
+        "quantity": 2,
+        "item_group_id": "1729000000000000001",
+        "max_price": "99000",
+        "store_id": "7494000000000000001",
+        "min_price": "99000",
+        "currency": "VND",
+        "title": "Áo thun mùa hè",
+        "gmv_max_ads_status": "OCCUPIED",
+        "is_running_custom_shop_ads": false
+      },
+      {
+        "status": "NOT_AVAILABLE",
+        "product_image_url": "https://p16-oec.example.test/p3.jpeg",
+        "catalog_id": null,
+        "category": "Thời trang nữ > Váy",
+        "historical_sales": 3,
+        "quantity": 0,
+        "item_group_id": "1729000000000000009",
+        "max_price": "250000",
+        "store_id": "7494000000000000001",
+        "min_price": "250000",
+        "currency": "VND",
+        "title": "Váy hết hàng",
+        "gmv_max_ads_status": "UNOCCUPIED",
+        "is_running_custom_shop_ads": false
+      }
+    ],
+    "page_info": {
+      "total_number": 3,
+      "page_size": 100,
+      "page": 1,
+      "total_page": 1
+    }
+  }
+}

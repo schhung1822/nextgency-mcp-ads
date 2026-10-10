@@ -63,6 +63,7 @@ import {
   recheckDriveSource,
   updateDriveSource,
 } from "@/server/services/drive-sources"
+import { checkDisclaimerAccepted } from "@/server/services/disclaimers"
 
 const m = driveUi.service
 const CONNECTIONS = "/connections"
@@ -311,9 +312,14 @@ export async function createDriveSourceAction(
     const session = await requireUserForAction()
     const parsed = createDriveSourceSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    // "Miễn trừ trách nhiệm" (kết nối) accepted: current version, last 12 h
+    const disclaimer = await checkDisclaimerAccepted(session.user.id, "connection")
+    if (!disclaimer.ok) return fail(disclaimer.error)
     const throttled = await throttle(session)
     if (throttled) return throttled
-    const res = await createDriveSource(session.user, parsed.data)
+    const res = await createDriveSource(session.user, parsed.data, {
+      disclaimerVersion: disclaimer.version,
+    })
     revalidateDrive(res.id)
     return ok(res, m.done.sourceCreated)
   } catch (e) {

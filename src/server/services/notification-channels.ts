@@ -48,6 +48,7 @@ import {
   validateTelegramConfig,
   TelegramValidationError,
 } from "@/server/notifications/validate"
+import { disclaimerAuditMeta, type CreateAudit } from "@/server/services/disclaimers"
 
 export type Actor = Pick<AppUser, "id" | "email" | "role">
 
@@ -445,7 +446,8 @@ export async function createNotificationChannel(
     messageThreadId?: number | null
     events: NotificationEvent[]
     allConnections: boolean
-  }
+  },
+  audit?: CreateAudit
 ): Promise<{ id: string; check: TelegramCheckResult }> {
   assertAdminOnly(actor.role, input)
   const check = await validateOrThrow(input)
@@ -478,6 +480,7 @@ export async function createNotificationChannel(
           messageThreadId: config.messageThreadId,
           events: input.events,
           allConnections: input.allConnections,
+          ...disclaimerAuditMeta(audit),
         },
       },
       tx

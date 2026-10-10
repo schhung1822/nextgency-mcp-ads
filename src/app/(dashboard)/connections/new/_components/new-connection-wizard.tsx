@@ -59,6 +59,7 @@ import type { GuideDef } from "@/lib/guide-types"
 import { UPCOMING_PLATFORMS } from "@/lib/platforms"
 import { connections as m } from "@/lib/i18n/vi/connections"
 import { guides } from "@/lib/i18n/vi/guides"
+import { tiktokGmvMax } from "@/lib/i18n/vi/tiktok-gmv-max"
 import {
   defaultOffSummary,
   enabledDiffFromDefaults,
@@ -82,6 +83,7 @@ import {
   initialCredentialValues,
 } from "../../_components/credential-fields"
 import { TokenSummary } from "../../_components/token-summary"
+import { TikTokGmvMaxNote } from "./tiktok-gmv-max-guide"
 
 type Mode = "token" | "auth_code"
 
@@ -363,7 +365,9 @@ export function NewConnectionWizard({
                 description={
                   s.platform === "google_ads"
                     ? `${s.guide.summary} ${m.new.youtube.cardNote}`
-                    : s.guide.summary
+                    : s.platform === "tiktok"
+                      ? `${s.guide.summary} ${tiktokGmvMax.cardNote}`
+                      : s.guide.summary
                 }
               />
             ))}
@@ -490,6 +494,8 @@ export function NewConnectionWizard({
                     <AlertDescription>{m.new.youtube.note}</AlertDescription>
                   </Alert>
                 )}
+                {/* GMV Max (TikTok Shop) uses this same connection: note + detailed setup guide */}
+                {spec.platform === "tiktok" && <TikTokGmvMaxNote />}
                 <FieldGroup>
                   <Field
                     data-invalid={!!form.formState.errors.name || undefined}

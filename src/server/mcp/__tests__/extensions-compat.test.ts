@@ -117,7 +117,8 @@ describe("real adapter extensions", () => {
       ownerId: "u",
       ownerEmail: "u@example.test",
       ownerRole: "admin",
-      settings: DEFAULT_MCP_SETTINGS,
+      // opt-in tools (TikTok GMV Max writes) are listed only with their MCP setting on
+      settings: { ...DEFAULT_MCP_SETTINGS, tiktokGmvMaxWrite: true },
       permissions: { meta: [...PERMISSIONS], tiktok: [...PERMISSIONS], google_ads: [...PERMISSIONS], openai_ads: [...PERMISSIONS] },
       accounts: [],
       pages: [],
@@ -144,5 +145,11 @@ describe("real adapter extensions", () => {
       expect(Object.keys((schema!.properties as object) ?? {}), name).toContain(name.startsWith("ads_list_accounts") ? "platform" : name.startsWith("ads_get_report") ? "level" : name === "ads_get_media_upload" ? "upload_id" : "account_id")
     }
     expect(names.length).toBeLessThanOrEqual(45)
+    // default settings: the GMV Max write tools are not listed at all
+    const off = buildMcpServer({ token: "m", clientId: "m", scopes: [], extra: { grant: { ...grant, settings: DEFAULT_MCP_SETTINGS }, req } })
+    for (const name of ["tiktok_gmv_max_update", "tiktok_gmv_max_creatives", "tiktok_gmv_max_create"]) {
+      expect(off.toolInputSchemaJson(name), name).toBeUndefined()
+    }
+    expect(off.toolInputSchemaJson("tiktok_gmv_max_products")).toBeDefined()
   })
 })

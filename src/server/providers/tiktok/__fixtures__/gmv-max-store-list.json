@@ -1,0 +1,84 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVSTORE0001",
+  "data": {
+    "store_list": [
+      {
+        "exclusive_authorized_advertiser_info": {
+          "advertiser_id": "7100000000000000001",
+          "advertiser_name": "Shop ABC",
+          "advertiser_status": "STATUS_ENABLE"
+        },
+        "is_gmv_max_available": true,
+        "is_owner_bc": true,
+        "store_authorized_bc_id": "7300000000000000001",
+        "store_authorized_bc_info": {
+          "bc_id": "7300000000000000001",
+          "bc_name": "BC Shop ABC",
+          "bc_profile_image": "https://p16-sign.example.test/bc.jpeg?x-expires=1760000000&x-signature=abc",
+          "user_role": "ADMIN"
+        },
+        "store_code": "VNABC01",
+        "store_id": "7494000000000000001",
+        "store_name": "Shop ABC Official",
+        "store_role": "AD_PROMOTION",
+        "store_status": "ACTIVE",
+        "targeting_region_codes": [
+          "VN"
+        ],
+        "thumbnail_url": "https://p16-oec.example.test/thumb.jpeg?x-expires=1760000000&x-signature=def"
+      },
+      {
+        "exclusive_authorized_advertiser_info": {
+          "advertiser_id": "7100000000000000999",
+          "advertiser_name": "Agency XYZ",
+          "advertiser_status": "STATUS_ENABLE"
+        },
+        "is_gmv_max_available": true,
+        "is_owner_bc": false,
+        "store_authorized_bc_id": "7300000000000000001",
+        "store_authorized_bc_info": {
+          "bc_id": "7300000000000000001",
+          "bc_name": "BC Shop ABC",
+          "bc_profile_image": "https://p16-sign.example.test/bc.jpeg?x-expires=1760000000&x-signature=abc",
+          "user_role": "ADMIN"
+        },
+        "store_code": "VNABC02",
+        "store_id": "7494000000000000002",
+        "store_name": "Shop ABC Outlet",
+        "store_role": "AD_PROMOTION",
+        "store_status": "ACTIVE",
+        "targeting_region_codes": [
+          "VN"
+        ],
+        "thumbnail_url": "https://p16-oec.example.test/thumb.jpeg?x-expires=1760000000&x-signature=def"
+      },
+      {
+        "exclusive_authorized_advertiser_info": {
+          "advertiser_id": "7100000000000000001",
+          "advertiser_name": "Shop ABC",
+          "advertiser_status": "STATUS_ENABLE"
+        },
+        "is_gmv_max_available": false,
+        "is_owner_bc": true,
+        "store_authorized_bc_id": "7300000000000000001",
+        "store_authorized_bc_info": {
+          "bc_id": "7300000000000000001",
+          "bc_name": "BC Shop ABC",
+          "bc_profile_image": "https://p16-sign.example.test/bc.jpeg?x-expires=1760000000&x-signature=abc",
+          "user_role": "ADMIN"
+        },
+        "store_code": "VNABC03",
+        "store_id": "7494000000000000003",
+        "store_name": "Shop ABC Mới",
+        "store_role": "MANAGER",
+        "store_status": "ACTIVE",
+        "targeting_region_codes": [
+          "VN"
+        ],
+        "thumbnail_url": "https://p16-oec.example.test/thumb.jpeg?x-expires=1760000000&x-signature=def"
+      }
+    ]
+  }
+}

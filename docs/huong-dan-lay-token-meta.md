@@ -55,6 +55,8 @@ Không thấy `read_insights` / `pages_read_user_content` trong danh sách quy�
 
 **Kết nối → Thêm kết nối → Meta**:
 
+> Lần đầu thêm kết nối, Ads MCP hiện popup **Miễn trừ trách nhiệm**: kéo đọc hết nội dung, chờ hết đếm ngược 10 giây, tick ô **Tôi đã đọc kỹ, hiểu và đồng ý…** rồi bấm **Tôi đồng ý và bắt đầu** (bấm **Huỷ** = không kết nối). Đã xác nhận thì những lần sau không hỏi lại, trừ khi nội dung được cập nhật phiên bản mới.
+
 | Ô                   | Giá trị                                                                                     |
 | ------------------- | ------------------------------------------------------------------------------------------- |
 | Access token        | Token ở Bước 4 (bắt buộc)                                                                   |

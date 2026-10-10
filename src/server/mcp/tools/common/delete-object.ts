@@ -5,6 +5,7 @@ import { assertGrant } from "../../grant"
 import { accountIdSchema, objectIdSchema, objectLevelSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext } from "../../tool"
 import { grantPlatformsWith } from "../../types"
+import { writeOptions } from "../../write-options"
 import { mutationOut, previewFromMutation } from "./write-common"
 
 export const NAME = "ads_delete_object"
@@ -33,17 +34,19 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       if (args.level === "keyword" && account.platform !== "google_ads") throw invalid("invalid_level", "level keyword chỉ dùng cho Google Ads.")
       const provider = providerFor(account.platform, "delete")
       const level = args.level as ObjectLevel
+      // GMV Max switch (TikTok) in the adapter
+      const wopts = writeOptions(env.grant, account)
       return runWrite(env, {
         args,
         account,
         alwaysConfirm: true,
         preview: async () => {
           const ctx = await env.providerCtx(account)
-          return previewFromMutation(await provider.deleteObject(ctx, level, args.id, { dryRun: true }), ["Thao tác xoá KHÔNG hoàn tác được."])
+          return previewFromMutation(await provider.deleteObject(ctx, level, args.id, { ...wopts, dryRun: true }), ["Thao tác xoá KHÔNG hoàn tác được."])
         },
-        execute: async (idempotencyKey) => {
+        execute: async (idempotencyKey, meta) => {
           const ctx = await env.providerCtx(account)
-          const r = await provider.deleteObject(ctx, level, args.id, { idempotencyKey })
+          const r = await provider.deleteObject(ctx, level, args.id, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           return { structured: mutationOut(r), summary: `Đã xoá ${args.level} ${args.id}.`, changes: r.changes }
         },
       })

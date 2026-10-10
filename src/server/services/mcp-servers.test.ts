@@ -618,6 +618,67 @@ describe.skipIf(!hasDb)("mcp-servers service (DB)", () => {
     expect(again.changed).toBe(false)
   })
 
+  it("GMV Max write switch: only an admin may turn it on; staff may keep or turn it off; diff logged", async () => {
+    const on = { ...settings, tiktokGmvMaxWrite: true }
+    const before = (await db.select().from(mcpServers).where(eq(mcpServers.ownerId, staffA.id))).length
+    // staff cannot create an MCP with the switch on (nothing created, field error on the switch)
+    const err = await createMcpServer(staffA, input({ name: `${P} gmv staff`, settings: on })).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(McpServiceError)
+    expect(err).toMatchObject({
+      code: "invalid",
+      message: "Chỉ quản trị viên được bật quyền thay đổi GMV Max.",
+      fieldErrors: { "settings.tiktokGmvMaxWrite": "Chỉ quản trị viên được bật quyền thay đổi GMV Max." },
+    })
+    expect((await db.select().from(mcpServers).where(eq(mcpServers.ownerId, staffA.id))).length).toBe(before)
+
+    // an admin may create one with the switch on (own connection)
+    const adm = await createMcpServer(admin, {
+      ...input({ name: `${P} gmv admin`, settings: on }),
+      platforms: [{ platform: "openai_ads", connections: [{ connectionId: ids.connAdmin, accountIds: null }], permissions: ["status"] }],
+    })
+    expect((await getMcpServer(admin, adm.id))!.settings.tiktokGmvMaxWrite).toBe(true)
+
+    // staff MCP: off by default; staff cannot turn it on (stored value unchanged)
+    const r = await createMcpServer(staffA, input({ name: `${P} gmv` }))
+    const [created] = await db.select({ settings: mcpServers.settings }).from(mcpServers).where(eq(mcpServers.id, r.id))
+    expect(created!.settings).toMatchObject({ tiktok_gmv_max_write: false })
+    await expect(
+      updateMcpServer(staffA, { ...input({ name: `${P} gmv` }), id: r.id, settings: on })
+    ).rejects.toMatchObject({ code: "invalid", fieldErrors: { "settings.tiktokGmvMaxWrite": expect.any(String) } })
+    expect((await getMcpServer(staffA, r.id))!.settings.tiktokGmvMaxWrite).toBe(false)
+
+    // an admin edits the staff MCP and turns it on → re-auth required first (S4), then saved + logged before → after
+    await expect(
+      updateMcpServer(admin, { ...input({ name: `${P} gmv` }), id: r.id, settings: on })
+    ).rejects.toMatchObject({ code: "reauth_required" })
+    expect((await getMcpServer(staffA, r.id))!.settings.tiktokGmvMaxWrite).toBe(false)
+    expect(
+      (await updateMcpServer(admin, { ...input({ name: `${P} gmv` }), id: r.id, settings: on }, okVerify)).changed
+    ).toBe(true)
+    expect((await getMcpServer(staffA, r.id))!.settings.tiktokGmvMaxWrite).toBe(true)
+    const upd = (await logsFor(r.id)).filter((l) => l.action === "mcp.update")
+    expect(upd).toHaveLength(1)
+    const meta = upd[0]!.metadata as {
+      before: { settings: Record<string, unknown> }
+      after: { settings: Record<string, unknown> }
+      ownerId?: string
+    }
+    expect(meta.before.settings.tiktokGmvMaxWrite).toBe(false)
+    expect(meta.after.settings.tiktokGmvMaxWrite).toBe(true)
+    expect(meta.ownerId).toBe(staffA.id)
+
+    // the staff owner may keep it (other edits) …
+    expect((await updateMcpServer(staffA, { ...input({ name: `${P} gmv 2` }), id: r.id, settings: on })).changed).toBe(true)
+    expect((await getMcpServer(staffA, r.id))!.settings.tiktokGmvMaxWrite).toBe(true)
+    // … or turn it off, but not back on
+    expect((await updateMcpServer(staffA, { ...input({ name: `${P} gmv 2` }), id: r.id })).changed).toBe(true)
+    expect((await getMcpServer(staffA, r.id))!.settings.tiktokGmvMaxWrite).toBe(false)
+    await expect(
+      updateMcpServer(staffA, { ...input({ name: `${P} gmv 2` }), id: r.id, settings: on })
+    ).rejects.toMatchObject({ code: "invalid" })
+    expect((await getMcpServer(staffA, r.id))!.settings.tiktokGmvMaxWrite).toBe(false)
+  })
+
   it("rotate requires re-auth, invalidates the old key hash and returns a new URL once", async () => {
     const r = await createMcpServer(staffA, input({ name: `${P} rot` }))
     const oldKey = keyOf(r.url)

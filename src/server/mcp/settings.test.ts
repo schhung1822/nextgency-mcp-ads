@@ -5,6 +5,20 @@ import { describe, expect, it } from "vitest"
 import { parseMcpSettings } from "./settings"
 import { DEFAULT_MCP_SETTINGS } from "./types"
 
+describe("parseMcpSettings - TikTok GMV Max write switch", () => {
+  it("OFF unless explicitly true (fail closed), snake_case and camelCase", () => {
+    expect(DEFAULT_MCP_SETTINGS.tiktokGmvMaxWrite).toBe(false)
+    expect(parseMcpSettings(null).tiktokGmvMaxWrite).toBe(false)
+    expect(parseMcpSettings({ two_step_confirm: true }).tiktokGmvMaxWrite).toBe(false)
+    expect(parseMcpSettings({ tiktok_gmv_max_write: true }).tiktokGmvMaxWrite).toBe(true)
+    expect(parseMcpSettings({ tiktokGmvMaxWrite: true }).tiktokGmvMaxWrite).toBe(true)
+    expect(parseMcpSettings({ tiktok_gmv_max_write: true, tiktokGmvMaxWrite: false }).tiktokGmvMaxWrite).toBe(false)
+    for (const garbage of ["true", 1, {}, []]) {
+      expect(parseMcpSettings({ tiktok_gmv_max_write: garbage }).tiktokGmvMaxWrite).toBe(false)
+    }
+  })
+})
+
 describe("parseMcpSettings - Google Drive", () => {
   it("defaults both Drive switches to true", () => {
     expect(DEFAULT_MCP_SETTINGS.drivePublicLinks).toBe(true)

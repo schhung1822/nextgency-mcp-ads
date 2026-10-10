@@ -32,6 +32,7 @@ import { actorOf, logActivity } from "@/server/audit/activity-log"
 import {
   REAUTH_MAX_FAILURES,
   REAUTH_WINDOW_MINUTES,
+  reauthRequiredError,
   verifyReauthWithBetterAuth,
   withReauth,
   type ReauthOutcome,
@@ -81,6 +82,7 @@ import { invalidateGrantCache } from "@/server/mcp/grant"
 import { parseMcpSettings } from "@/server/mcp/settings"
 import type { McpSettings, Permission } from "@/server/mcp/types"
 import type { Platform } from "@/server/providers/types"
+import { disclaimerAuditMeta, type CreateAudit } from "@/server/services/disclaimers"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,10 +123,30 @@ export const MCP_ERRORS = {
   nameMismatch: "Tên xác nhận chưa khớp với tên MCP.",
   dailyCapRequired: (curs: readonly string[]) =>
     `MCP có quyền ghi phải đặt trần ngân sách/ngày cho: ${curs.join(", ")}.`,
+  gmvMaxAdminOnly: "Chỉ quản trị viên được bật quyền thay đổi GMV Max.",
+  gmvMaxStaffWidening:
+    "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt. Mở rộng tài khoản, quyền, hạn mức TikTok, danh sách IP được phép hoặc ngày hết hạn cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
 } as const
+
+/**
+ * TikTok GMV Max write switch (settings.tiktokGmvMaxWrite) is admin-only: a non-admin may keep the stored value or
+ * turn it OFF, never turn it ON (create with true = turning it on). Server-side - the UI lock is only a convenience.
+ */
+function assertGmvMaxSwitchAllowed(
+  actor: McpActor,
+  before: boolean,
+  after: boolean
+): void {
+  if (actor.role === "admin" || !after || before) return
+  throw invalid(MCP_ERRORS.gmvMaxAdminOnly, {
+    "settings.tiktokGmvMaxWrite": MCP_ERRORS.gmvMaxAdminOnly,
+  })
+}
 
 export interface McpListItem {
   id: string
+  /** settings.tiktokGmvMaxWrite: an admin allowed the AI to change TikTok GMV Max campaigns (list badge) */
+  tiktokGmvMaxWrite: boolean
   name: string
   description: string | null
   ownerId: string
@@ -1039,6 +1061,7 @@ export async function listMcpServers(actor: McpActor): Promise<McpListItem[]> {
       errors7d: c?.errors ?? 0,
       createdAt: r.createdAt.toISOString(),
       capsMissing: missing.get(r.id) ?? [],
+      tiktokGmvMaxWrite: parseMcpSettings(r.settings).tiktokGmvMaxWrite,
     }
   })
 }
@@ -1186,6 +1209,7 @@ export async function getMcpServer(
     config,
     stats,
     capsMissing: missing.get(r.id) ?? [],
+    tiktokGmvMaxWrite: parseMcpSettings(r.settings).tiktokGmvMaxWrite,
     notificationChannels: notificationChannelRefs,
     driveSources: driveSourceRefs,
   }
@@ -1249,9 +1273,11 @@ export async function listSelectableConnections(
 export async function createMcpServer(
   actor: McpActor,
   input: unknown,
-  verify: ReauthVerifier
+  verify: ReauthVerifier,
+  audit?: CreateAudit
 ): Promise<{ id: string; name: string; url: string }> {
   const data = parseOrThrow(createMcpSchema, input)
+  assertGmvMaxSwitchAllowed(actor, false, data.settings.tiktokGmvMaxWrite)
   if (data.expiresAt && data.expiresAt.getTime() <= Date.now()) {
     throw invalid(MCP_SCHEMA_MESSAGES.expiresFuture, {
       expiresAt: MCP_SCHEMA_MESSAGES.expiresFuture,
@@ -1301,6 +1327,7 @@ export async function createMcpServer(
             driveSources: driveSourceIds,
           }),
           keyPrefix: columns.keyPrefix,
+          ...disclaimerAuditMeta(audit),
         },
       },
       tx
@@ -1311,14 +1338,33 @@ export async function createMcpServer(
   return { id, name: data.name, url: buildMcpUrl(appBaseUrl(), key) }
 }
 
-/** Updates name/description + steps 2–4. Takes effect on the next MCP request. */
+/**
+ * Updates name/description + steps 2–4. Takes effect on the next MCP request.
+ * Turning the TikTok GMV Max switch ON (admin only) is a sensitive change: it needs re-authentication ("verify");
+ * without it the save is refused with the "re-auth required" field error and the UI asks for the password (S4).
+ */
 export async function updateMcpServer(
   actor: McpActor,
-  input: unknown
+  input: unknown,
+  verify?: ReauthVerifier
 ): Promise<{ changed: boolean }> {
   const data = parseOrThrow(updateMcpSchema, input)
-  const result = await db.transaction(async (tx) => {
+  const save = async (tx: Tx, reauthed: boolean) => {
     const row = await lockMcp(tx, actor, data.id)
+    const storedSettings = parseMcpSettings(row.settings)
+    assertGmvMaxSwitchAllowed(
+      actor,
+      storedSettings.tiktokGmvMaxWrite,
+      data.settings.tiktokGmvMaxWrite
+    )
+    // S4: false → true (admin) is like the other sensitive MCP changes - re-authenticate first
+    if (
+      !storedSettings.tiktokGmvMaxWrite &&
+      data.settings.tiktokGmvMaxWrite &&
+      !reauthed
+    ) {
+      throw reauthRequiredError()
+    }
     const ownerRole = await ownerRoleOf(tx, row.ownerId)
     const expiryChanged =
       (row.expiresAt?.getTime() ?? null) !== (data.expiresAt?.getTime() ?? null)
@@ -1340,6 +1386,8 @@ export async function updateMcpServer(
     await assertDailyCaps(tx, data.platforms, data.settings)
 
     const beforeConfig = await loadConfig(tx, row.id)
+    // S3: a staff save may keep or narrow an admin-approved GMV Max scope, never widen it
+    await assertNoStaffGmvMaxWidening(tx, actor, storedSettings, beforeConfig, data, row.expiresAt)
     const beforeChannels = await loadChannelIds(tx, row.id)
     // Telegram channels of the MCP OWNER only (an admin editing a staff MCP cannot add the admin's channels, an
     // admin MCP cannot use a staff channel); omitted = keep the stored scope; stored foreign rows are pruned
@@ -1424,9 +1472,101 @@ export async function updateMcpServer(
       tx
     )
     return { changed: true }
-  })
+  }
+  const result = verify
+    ? await withReauth(
+        actor,
+        {
+          action: "mcp.update",
+          target: { type: "mcp", id: data.id, label: data.name },
+          metadata: { reason: "tiktok_gmv_max_write" },
+        },
+        verify,
+        (tx) => save(tx, true)
+      )
+    : await db.transaction((tx) => save(tx, false))
   if (result.changed) invalidateGrantCache(data.id)
   return result
+}
+
+/** Currencies of the ad accounts reachable through TikTok scopes (any permission; null = all accounts). */
+async function tiktokScopeCurrencies(
+  tx: Tx | typeof db,
+  scopes: readonly { connectionId: string; accountIds: string[] | null }[]
+): Promise<string[]> {
+  const conds = []
+  for (const c of scopes) {
+    if (c.accountIds === null)
+      conds.push(and(eq(adAccounts.connectionId, c.connectionId), eq(adAccounts.platform, "tiktok")))
+    else if (c.accountIds.length)
+      conds.push(and(eq(adAccounts.connectionId, c.connectionId), inArray(adAccounts.id, c.accountIds)))
+  }
+  if (conds.length === 0) return []
+  const rows = await tx.selectDistinct({ currency: adAccounts.currency }).from(adAccounts).where(or(...conds))
+  return [...new Set(rows.map((r) => r.currency.toUpperCase()))]
+}
+
+/**
+ * S3: while the stored GMV Max switch is on (approved by an admin) and stays on, a NON-admin save may keep or narrow
+ * the TikTok side, never widen it: no new TikTok account / connection / "all accounts", no new TikTok permission, no
+ * higher daily / lifetime / bid cap for a currency of the TikTok accounts (removing a cap = higher), no higher
+ * budgetChangeMaxPct or write rate limit, no looser IP allowlist (emptied = every IP, or an entry not in the stored
+ * list) and no later / removed expiry (L3). Refused with a field error on settings.tiktokGmvMaxWrite.
+ */
+export async function assertNoStaffGmvMaxWidening(
+  tx: Tx | typeof db,
+  actor: McpActor,
+  stored: McpSettings,
+  beforeConfig: readonly McpPlatformConfig[],
+  data: Pick<CreateMcpData, "platforms" | "settings"> & { expiresAt?: Date | null },
+  storedExpiresAt: Date | null = null
+): Promise<void> {
+  if (actor.role === "admin" || !stored.tiktokGmvMaxWrite || !data.settings.tiktokGmvMaxWrite) return
+  const refuse = (): never => {
+    throw invalid(MCP_ERRORS.gmvMaxStaffWidening, {
+      "settings.tiktokGmvMaxWrite": MCP_ERRORS.gmvMaxStaffWidening,
+    })
+  }
+  // L3: the IP allowlist and the expiry are part of the approved scope (an empty allowlist = every IP)
+  const ipKey = (s: string) => s.trim().toLowerCase()
+  const storedIps = new Set(stored.allowedIps.map(ipKey))
+  if (storedIps.size && (!data.settings.allowedIps.length || data.settings.allowedIps.some((ip) => !storedIps.has(ipKey(ip))))) refuse()
+  // the save stores data.expiresAt as is (absent = null = no expiry)
+  const nextExpiry = data.expiresAt ?? null
+  if (storedExpiresAt && (!nextExpiry || nextExpiry.getTime() > storedExpiresAt.getTime())) refuse()
+  const after = data.platforms.find((p) => p.platform === "tiktok")
+  if (!after) return // TikTok removed: narrowing
+  const before = beforeConfig.find((p) => p.platform === "tiktok") ?? refuse()
+  const beforePerms = new Set<string>(before.permissions)
+  if (after.permissions.some((p) => !beforePerms.has(p))) refuse()
+  for (const c of after.connections) {
+    const prev = before.connections.find((b) => b.connectionId === c.connectionId) ?? refuse()
+    if (c.accountIds === null) {
+      if (prev.accountIds !== null) refuse()
+    } else if (prev.accountIds !== null) {
+      const had = new Set(prev.accountIds)
+      if (c.accountIds.some((a) => !had.has(a))) refuse()
+    }
+  }
+  if (data.settings.budgetChangeMaxPct > stored.budgetChangeMaxPct) refuse()
+  if (data.settings.writeRateLimitPer10Min > stored.writeRateLimitPer10Min) refuse()
+  const currencies = await tiktokScopeCurrencies(tx, [
+    ...before.connections.map((c) => ({ connectionId: c.connectionId, accountIds: c.accountIds })),
+    ...after.connections,
+  ])
+  const caps = [
+    [stored.maxDailyBudget, data.settings.maxDailyBudget],
+    [stored.maxLifetimeBudget, data.settings.maxLifetimeBudget],
+    [stored.maxBid, data.settings.maxBid],
+  ] as const
+  for (const cur of currencies) {
+    for (const [prev, next] of caps) {
+      const p = prev?.[cur]
+      if (typeof p !== "number" || !(p > 0)) continue // no cap before: any cap now is narrower
+      const n = next?.[cur]
+      if (typeof n !== "number" || !(n > 0) || n > p) refuse()
+    }
+  }
 }
 
 export async function setMcpEnabled(

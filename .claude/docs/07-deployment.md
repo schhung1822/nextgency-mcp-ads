@@ -160,7 +160,7 @@ volumes: { pgdata: {}, caddy_data: {}, caddy_config: {} }
 ```
 - Postgres không publish port. Muốn backup không kèm log: thêm `--exclude-table-data='mcp_call_logs_p*'`.
 - Service `updater` (profile `updater`, §6) là service duy nhất có `docker.sock`; dùng image riêng (`...-updater`, target `updater` của Dockerfile) vì cần docker CLI và chạy root, khác nguyên tắc "1 image web chạy user node".
-- Tách tải MCP (tuỳ chọn, profile `scale`): thêm service `mcp` `<<: *app` giống `web`, sửa Caddy `handle @mcp { reverse_proxy mcp:3000 ... }`.
+- Tách tải MCP (tuỳ chọn, profile `scale`): thêm service `mcp` `<<: *app` giống `web`, sửa Caddy `handle @mcp { reverse_proxy mcp:3000 ... }`. Luôn chỉ **1 tiến trình** phục vụ `/mcp/*` (không tăng replicas của service phục vụ MCP): khoá + đặt chỗ của trần cộng dồn GMV Max (providers/tiktok.md §8, M1) và giới hạn ghi / 10 phút nằm trong bộ nhớ tiến trình.
 - Dev trên máy (Windows): `docker compose up -d db` (thêm `ports: ["127.0.0.1:5432:5432"]` trong `docker-compose.override.yml` - chỉ loopback, không bao giờ mở Postgres ra mạng) rồi `pnpm dev`; worker dev: `pnpm worker:dev`.
 
 ## 4. Caddyfile

@@ -6,7 +6,7 @@ import { capJson, LOG_REQUEST_MAX, LOG_RESPONSE_MAX } from "../audit/cap-json"
 import { enqueueMcpLog, insertMcpLogNow, type McpCallLogRow } from "../audit/mcp-log-writer"
 import { redactString } from "../audit/redact"
 import { safeErrorForLog } from "../audit/safe-error"
-import type { FieldChange } from "../providers/types"
+import { STARTED_MAX_DAILY_SPEND_FIELD, type FieldChange } from "../providers/types"
 import type { CallLogStatus } from "./errors"
 import { detectClient, detectProtocolVersion, type RequestState } from "./request-state"
 import type { McpGrant } from "./types"
@@ -33,16 +33,69 @@ export interface LoggedChange {
   after: unknown
 }
 
+/** Max rows of the changes column. */
+export const LOG_CHANGES_MAX_ROWS = 200
+/** Longest object_name kept in a logged change. */
+export const LOG_CHANGE_NAME_MAX = 120
+/** Largest before / after value (JSON bytes) kept as is; bigger → {_truncated, _bytes, preview}. */
+export const LOG_CHANGE_VALUE_MAX = 8192
+/** Smaller per-value cap used when the whole column is still too big. */
+const LOG_CHANGE_VALUE_SHRUNK = 256
+/**
+ * Budget of the whole changes column - well below LOG_RESPONSE_MAX so capJson (finish) never replaces the ARRAY with
+ * a {_truncated, preview} object: the STARTED_MAX_DAILY_SPEND_FIELD rows read back by the cumulative cap (S5) must
+ * survive (M3). Rows that do not fit are dropped (started rows never) and counted in a "_changes_truncated" row.
+ */
+export const LOG_CHANGES_BUDGET = 24 * 1024
+
+function jsonBytes(v: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(v) ?? "null", "utf8")
+  } catch {
+    return Number.MAX_SAFE_INTEGER
+  }
+}
+
+function capChangeValue(v: unknown, max: number): unknown {
+  if (v === undefined || v === null) return null
+  let s: string
+  try {
+    s = JSON.stringify(v) ?? "null"
+  } catch {
+    s = JSON.stringify(String(v))
+  }
+  const bytes = Buffer.byteLength(s, "utf8")
+  if (bytes <= max) return v
+  return { _truncated: true, _bytes: bytes, preview: s.slice(0, Math.max(32, Math.floor(max / 4))) }
+}
+
 export function changesForLog(changes: FieldChange[] | undefined | null): LoggedChange[] | null {
   if (!changes || changes.length === 0) return null
-  return changes.slice(0, 200).map((c) => ({
-    object_id: c.objectId,
-    object_name: c.objectName ?? null,
-    level: c.level ?? null,
-    field: c.field,
-    before: c.before ?? null,
-    after: c.after ?? null,
-  }))
+  const isStarted = (c: FieldChange) => c.field === STARTED_MAX_DAILY_SPEND_FIELD
+  // started rows first in the selection (never dropped), original order kept in the output
+  const startedCount = Math.min(LOG_CHANGES_MAX_ROWS, changes.filter(isStarted).length)
+  let room = LOG_CHANGES_MAX_ROWS - startedCount
+  let startedLeft = startedCount
+  const picked = changes.filter((c) => (isStarted(c) ? startedLeft-- > 0 : room-- > 0))
+  const row = (c: FieldChange, valueMax: number): LoggedChange => ({
+    object_id: String(c.objectId).slice(0, 200),
+    object_name: c.objectName === null || c.objectName === undefined ? null : String(c.objectName).slice(0, LOG_CHANGE_NAME_MAX),
+    level: c.level ? String(c.level).slice(0, 50) : null,
+    field: String(c.field).slice(0, 100),
+    before: capChangeValue(c.before, valueMax),
+    after: capChangeValue(c.after, valueMax),
+  })
+  let out = picked.map((c) => row(c, LOG_CHANGE_VALUE_MAX))
+  if (jsonBytes(out) > LOG_CHANGES_BUDGET)
+    out = picked.map((c) => row(c, isStarted(c) ? LOG_CHANGE_VALUE_MAX : LOG_CHANGE_VALUE_SHRUNK))
+  let dropped = 0
+  for (let i = out.length - 1; i >= 0 && jsonBytes(out) > LOG_CHANGES_BUDGET - 200; i--) {
+    if (out[i]!.field === STARTED_MAX_DAILY_SPEND_FIELD) continue
+    out.splice(i, 1)
+    dropped++
+  }
+  if (dropped) out.push({ object_id: "-", object_name: null, level: null, field: "_changes_truncated", before: null, after: dropped })
+  return out
 }
 
 export class CallLog {

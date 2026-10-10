@@ -137,7 +137,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Token, API key, khoá service account, bot token Telegram và đường dẫn MCP được mã hoá AES-256-GCM; khoá mã hoá được giữ tách khỏi cơ sở dữ liệu.",
             "Mật khẩu được băm một chiều; hỗ trợ xác thực 2 bước (TOTP); tạm khoá khi nhập sai nhiều lần.",
             "Phân quyền theo vai trò Quản trị viên / Nhân viên; nhân viên chỉ thấy kết nối, kênh Telegram và MCP của chính mình; thư mục / sheet Google Drive riêng chỉ chủ sở hữu và quản trị viên thấy.",
-            "Thao tác ghi do trợ lý AI đề xuất có thể yêu cầu xác nhận 2 bước và bị giới hạn ngân sách; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng.",
+            "Thao tác ghi do trợ lý AI đề xuất có thể yêu cầu xác nhận 2 bước và bị giới hạn ngân sách; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng, trừ chiến dịch TikTok GMV Max: TikTok không cho tạo ở trạng thái tạm dừng nên chiến dịch GMV Max tạo mới hoặc sao chép sẽ chạy và phát sinh chi phí ngay - chỉ làm được khi quản trị viên đã bật quyền thay đổi GMV Max cho MCP và người dùng xác nhận.",
             "Đường dẫn MCP sai, đã tắt hoặc hết hạn không trả về dữ liệu."
           ),
           p(
@@ -306,7 +306,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Tokens, API keys, service account keys, Telegram bot tokens and MCP links are encrypted with AES-256-GCM; encryption keys are kept separate from the database.",
             "Passwords are hashed; two-factor authentication (TOTP) is supported; repeated wrong attempts trigger a temporary lock.",
             "Role-based access (Administrator / Staff); staff only see their own connections, Telegram channels and MCP servers; personal Google Drive folders / sheets are only visible to their owner and administrators.",
-            "Write actions proposed by an AI assistant can require two-step confirmation and are subject to budget limits; newly created or copied ads always start paused.",
+            "Write actions proposed by an AI assistant can require two-step confirmation and are subject to budget limits; newly created or copied ads always start paused, except TikTok GMV Max campaigns: TikTok does not allow creating them paused, so a newly created or copied GMV Max campaign starts delivering and spending immediately - this is only possible after an administrator has enabled GMV Max changes for the MCP and the user has confirmed.",
             "Invalid, disabled or expired MCP links return no data."
           ),
           p(
@@ -436,7 +436,7 @@ function termsVi(c: LegalInfo): LegalDoc {
         blocks: [
           ul(
             "Mọi thay đổi trên tài khoản quảng cáo, kể cả thay đổi do trợ lý AI thực hiện qua MCP, đều dùng token hoặc API key do bạn cung cấp và có thể phát sinh chi phí thật. Bạn và đơn vị của bạn chịu trách nhiệm về ngân sách, chi tiêu và nội dung quảng cáo.",
-            "Hệ thống có các lớp bảo vệ: xác nhận 2 bước cho thao tác ghi (khi bật), giới hạn mức thay đổi ngân sách, trần ngân sách, giới hạn số thao tác; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng. Các lớp này giúp giảm rủi ro nhưng không thay thế việc bạn kiểm tra trước khi xác nhận và trước khi bật quảng cáo.",
+            "Hệ thống có các lớp bảo vệ: xác nhận 2 bước cho thao tác ghi (khi bật), giới hạn mức thay đổi ngân sách, trần ngân sách, giới hạn số thao tác; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng, trừ chiến dịch TikTok GMV Max (tạo mới hoặc sao chép sẽ chạy và tiêu tiền ngay, chỉ khi quản trị viên đã bật quyền thay đổi GMV Max cho MCP). Các lớp này giúp giảm rủi ro nhưng không thay thế việc bạn kiểm tra trước khi xác nhận và trước khi bật quảng cáo.",
             "Trợ lý AI có thể hiểu sai yêu cầu: hãy đọc kỹ bản xem trước trước khi xác nhận. Thao tác xoá không hoàn tác được."
           ),
         ],
@@ -469,8 +469,20 @@ function termsVi(c: LegalInfo): LegalDoc {
         ],
       },
       {
+        id: "mien-tru",
+        title: "9. Miễn trừ trách nhiệm khi kết nối và khi tạo MCP",
+        blocks: [
+          p(
+            "Trước khi thêm kết nối (tài khoản quảng cáo, kênh Telegram, thư mục / sheet Google Drive) và trước khi tạo MCP, Hệ thống hiển thị nội dung “Miễn trừ trách nhiệm”. Bạn phải đọc hết và xác nhận đồng ý thì mới bắt đầu được; Hệ thống ghi lại tài khoản của bạn, thời gian, địa chỉ IP, thiết bị và phiên bản nội dung bạn đã đồng ý."
+          ),
+          p(
+            "Các nội dung miễn trừ trách nhiệm đó là một phần của Điều khoản này. Khi nội dung được cập nhật, bạn phải đọc và xác nhận lại phiên bản mới trước khi thêm kết nối hoặc tạo MCP."
+          ),
+        ],
+      },
+      {
         id: "tam-ngung",
-        title: "9. Tạm ngừng và chấm dứt",
+        title: "10. Tạm ngừng và chấm dứt",
         blocks: [
           p(
             "Quản trị viên có thể khoá tài khoản, tắt hoặc xoay khoá đường dẫn MCP, xoá kết nối khi phát hiện vi phạm, rủi ro bảo mật, hoặc khi bạn không còn làm việc với đơn vị. Bạn có thể ngừng sử dụng bất cứ lúc nào bằng cách xoá kết nối và MCP của mình."
@@ -479,7 +491,7 @@ function termsVi(c: LegalInfo): LegalDoc {
       },
       {
         id: "rieng-tu",
-        title: "10. Quyền riêng tư",
+        title: "11. Quyền riêng tư",
         blocks: [
           p(
             `Việc xử lý dữ liệu tuân theo Chính sách quyền riêng tư tại ${c.baseUrl}/privacy.`
@@ -488,7 +500,7 @@ function termsVi(c: LegalInfo): LegalDoc {
       },
       {
         id: "luat",
-        title: "11. Luật áp dụng",
+        title: "12. Luật áp dụng",
         blocks: [
           p(
             "Điều khoản này được điều chỉnh bởi pháp luật Việt Nam. Tranh chấp được ưu tiên giải quyết bằng thương lượng; nếu không thành, tranh chấp được đưa ra cơ quan có thẩm quyền tại Việt Nam."
@@ -497,7 +509,7 @@ function termsVi(c: LegalInfo): LegalDoc {
       },
       {
         id: "thay-doi-dk",
-        title: "12. Thay đổi điều khoản",
+        title: "13. Thay đổi điều khoản",
         blocks: [
           p(
             "Điều khoản có thể được cập nhật; ngày cập nhật gần nhất ghi ở đầu trang. Việc tiếp tục sử dụng Hệ thống sau khi thay đổi có hiệu lực đồng nghĩa với việc bạn chấp nhận điều khoản mới."
@@ -506,7 +518,7 @@ function termsVi(c: LegalInfo): LegalDoc {
       },
       {
         id: "lien-he-dk",
-        title: "13. Liên hệ",
+        title: "14. Liên hệ",
         blocks: [
           p(`Câu hỏi về điều khoản, vui lòng liên hệ ${c.orgName}:`),
           contact,
@@ -573,7 +585,7 @@ function termsEn(c: LegalInfo): LegalDoc {
         blocks: [
           ul(
             "Every change to an ad account, including changes made by an AI assistant through MCP, uses the token or API key you provided and may incur real costs. You and your organisation are responsible for budgets, spend and ad content.",
-            "The System adds safeguards: two-step confirmation for write actions (when enabled), budget change limits, budget caps and write-rate limits; newly created or copied ads always start paused. These reduce risk but do not replace your own review before confirming and before activating ads.",
+            "The System adds safeguards: two-step confirmation for write actions (when enabled), budget change limits, budget caps and write-rate limits; newly created or copied ads always start paused, except TikTok GMV Max campaigns (a newly created or copied GMV Max campaign starts delivering and spending immediately, and only when an administrator has enabled GMV Max changes for the MCP). These reduce risk but do not replace your own review before confirming and before activating ads.",
             "An AI assistant can misunderstand a request: read the preview carefully before confirming. Deletions cannot be undone."
           ),
         ],
@@ -606,8 +618,20 @@ function termsEn(c: LegalInfo): LegalDoc {
         ],
       },
       {
+        id: "en-disclaimers",
+        title: "9. In-app disclaimers for connections and MCP servers",
+        blocks: [
+          p(
+            "Before adding a connection (ad account, Telegram channel, Google Drive folder / sheet) and before creating an MCP server, the System shows a “Disclaimer” (in Vietnamese). You must read it to the end and confirm your agreement before you can continue; the System records your account, the time, IP address, device and the version of the text you accepted."
+          ),
+          p(
+            "Those disclaimers form part of these terms. When a disclaimer is updated, you must read and accept the new version before adding a connection or creating an MCP server."
+          ),
+        ],
+      },
+      {
         id: "en-suspension",
-        title: "9. Suspension and termination",
+        title: "10. Suspension and termination",
         blocks: [
           p(
             "Administrators may lock accounts, disable or rotate MCP links and delete connections in case of violations, security risks, or when you no longer work with the organisation. You may stop using the System at any time by deleting your connections and MCP servers."
@@ -616,7 +640,7 @@ function termsEn(c: LegalInfo): LegalDoc {
       },
       {
         id: "en-privacy",
-        title: "10. Privacy",
+        title: "11. Privacy",
         blocks: [
           p(
             `Data is processed according to the Privacy Policy at ${c.baseUrl}/privacy.`
@@ -625,7 +649,7 @@ function termsEn(c: LegalInfo): LegalDoc {
       },
       {
         id: "en-law",
-        title: "11. Governing law",
+        title: "12. Governing law",
         blocks: [
           p(
             "These terms are governed by the laws of Vietnam. Disputes shall first be resolved by negotiation; failing that, they shall be brought before the competent authorities of Vietnam."
@@ -634,7 +658,7 @@ function termsEn(c: LegalInfo): LegalDoc {
       },
       {
         id: "en-changes-terms",
-        title: "12. Changes",
+        title: "13. Changes",
         blocks: [
           p(
             "These terms may be updated; the last update date is shown at the top of the page. Continuing to use the System after a change takes effect means you accept the updated terms."
@@ -643,7 +667,7 @@ function termsEn(c: LegalInfo): LegalDoc {
       },
       {
         id: "en-contact-terms",
-        title: "13. Contact",
+        title: "14. Contact",
         blocks: [
           p(`For questions about these terms, please contact ${c.orgName}:`),
           contact,

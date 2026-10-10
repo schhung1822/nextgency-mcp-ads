@@ -1,4 +1,4 @@
-import type { Platform } from "./types"
+import type { FieldChange, Platform } from "./types"
 
 export type ProviderErrorCode =
   | "invalid_credentials_input"
@@ -14,6 +14,16 @@ export type ProviderErrorCode =
   | "timeout"
   | "upstream_error" // 5xx / transient
   | "unknown"
+
+/**
+ * What the MCP call log must record for a FAILED write whose outcome is uncertain (e.g. a TikTok GMV Max create that
+ * timed out and was not found): the logged error_code (instead of the error code) and the changes column. Never shown
+ * to the client.
+ */
+export interface ProviderErrorAudit {
+  errorCode: string
+  changes: FieldChange[]
+}
 
 export interface UpstreamErrorInfo {
   code?: string | number | null
@@ -33,6 +43,8 @@ export class ProviderError extends Error {
   readonly upstream?: UpstreamErrorInfo
   /** Retry-After in ms when known */
   readonly retryAfterMs?: number
+  /** log-only data of an uncertain write (ProviderErrorAudit) */
+  readonly audit?: ProviderErrorAudit
 
   constructor(args: {
     platform: Platform
@@ -44,6 +56,7 @@ export class ProviderError extends Error {
     upstream?: UpstreamErrorInfo
     retryAfterMs?: number
     cause?: unknown
+    audit?: ProviderErrorAudit
   }) {
     super(args.message, { cause: args.cause })
     this.name = "ProviderError"
@@ -54,6 +67,7 @@ export class ProviderError extends Error {
     this.hint = args.hint
     this.upstream = args.upstream
     this.retryAfterMs = args.retryAfterMs
+    this.audit = args.audit
   }
 
   toJSON() {
@@ -70,6 +84,23 @@ export class ProviderError extends Error {
 
 export function isProviderError(e: unknown): e is ProviderError {
   return e instanceof ProviderError
+}
+
+/** The same provider error with log-only audit data (ProviderErrorAudit); a non-provider error is wrapped first. */
+export function withErrorAudit(e: unknown, platform: Platform, audit: ProviderErrorAudit): ProviderError {
+  const pe = isProviderError(e) ? e : null
+  return new ProviderError({
+    platform: pe?.platform ?? platform,
+    code: pe?.code ?? "upstream_error",
+    message: pe?.message ?? `network / unknown error: ${String(e)}`,
+    userMessageVi: pe?.userMessageVi ?? "Lỗi mạng hoặc lỗi không xác định khi gọi nền tảng.",
+    retryable: pe?.retryable ?? false,
+    hint: pe?.hint,
+    upstream: pe?.upstream,
+    retryAfterMs: pe?.retryAfterMs,
+    cause: pe?.cause ?? e,
+    audit,
+  })
 }
 
 export function unsupported(platform: Platform, what: string): ProviderError {

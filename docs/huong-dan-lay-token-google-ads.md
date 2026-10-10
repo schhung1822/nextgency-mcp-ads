@@ -43,6 +43,8 @@ Hạn mức tính theo **24 giờ trượt** (không reset lúc nửa đêm). 1 
    - Một email chỉ được thêm trực tiếp vào **tối đa 20 TKQC** → **thêm ở MCC** để truy cập mọi TKQC con.
 5. Trong Ads MCP: **Thêm kết nối → Google Ads → Kiểu xác thực: Service account** → dán toàn bộ nội dung file JSON → điền **login_customer_id** = ID MCC (10 số, bỏ dấu gạch) nếu bạn thêm service account ở MCC.
 
+> Lần đầu thêm kết nối, Ads MCP hiện popup **Miễn trừ trách nhiệm**: kéo đọc hết nội dung, chờ hết đếm ngược 10 giây, tick ô **Tôi đã đọc kỹ, hiểu và đồng ý…** rồi bấm **Tôi đồng ý và bắt đầu** (bấm **Huỷ** = không kết nối). Đã xác nhận thì những lần sau không hỏi lại, trừ khi nội dung được cập nhật phiên bản mới.
+
 Service account không bị passkey, không bị bẫy 7 ngày, không hết hạn sau 6 tháng — đó là lý do nên chọn cách này.
 
 ## Cách B — OAuth client + refresh token

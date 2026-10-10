@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto"
 import { expect, test, type Page } from "@playwright/test"
 
+import { acceptDisclaimer } from "./disclaimer-helpers"
 import { BASE, db, seedUser, setPolicy, signInApi } from "./people-helpers"
 
 test.describe.configure({ mode: "serial" })
@@ -215,7 +216,9 @@ test("connections: three top tabs, the platform is a filter; /connections/new of
   ).toBeVisible()
 
   await page.goto("/connections/new")
-  await expect(page.getByText("Kho creative")).toBeVisible()
+  // "Miễn trừ trách nhiệm" popup first (the chooser is locked behind it)
+  await acceptDisclaimer(page)
+  await expect(page.getByText("Kho creative", { exact: true })).toBeVisible()
   await expect(
     page.getByRole("link", { name: /Google Drive/ })
   ).toHaveAttribute("href", "/connections/drive/new")
@@ -271,6 +274,7 @@ test("staff wizard: personal scope only; the system email is offered for sharing
 }) => {
   await signIn(page, staffA.email)
   await page.goto("/connections/drive/new")
+  await acceptDisclaimer(page)
   await expect(page.getByRole("radio", { name: "Công ty" })).toHaveCount(0)
   await expect(
     page.getByText(/Bạn khai báo thư mục \/ sheet riêng/)

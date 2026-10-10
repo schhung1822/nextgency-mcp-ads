@@ -38,6 +38,7 @@ import { DETAIL_TABS, parseDetailTab, type DetailTab } from "./detail-tabs"
 import { OverviewTab } from "./overview-tab"
 import { RevealDialog, type RevealActionFn } from "./reveal-dialog"
 import { SecurityTab, type SecurityActions } from "./security-tab"
+import type { GmvMaxFormContext } from "./tiktok-gmv-max-section"
 
 export interface McpDetailActions extends SecurityActions {
   update: UpdateMcpActionFn
@@ -153,6 +154,7 @@ export function McpDetailView({
   twoFactorEnabled,
   initialTab,
   actions,
+  gmvMax,
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
@@ -167,6 +169,8 @@ export function McpDetailView({
   twoFactorEnabled: boolean
   initialTab: DetailTab
   actions: McpDetailActions
+  /** viewer role + TikTok accounts with GMV Max (config tab: admin-only switch) */
+  gmvMax?: GmvMaxFormContext
 }) {
   const [tab, setTab] = React.useState<DetailTab>(initialTab)
   const [revealOpen, setRevealOpen] = React.useState(false)
@@ -257,8 +261,10 @@ export function McpDetailView({
             drivePublicAvailable={drivePublicAvailable}
             accountNames={accountNames}
             updateAction={actions.update}
+            twoFactorEnabled={twoFactorEnabled}
             onDirtyChange={setConfigDirty}
             capsFocusSignal={capsFocus}
+            gmvMax={gmvMax}
           />
         </TabsContent>
         <TabsContent value="connect">

@@ -187,6 +187,8 @@ Một trong hai cách:
 - **Kết nối** → tab **Google Drive** → nút **Thêm thư mục / sheet**.
 - **Kết nối** → **Thêm kết nối** → nhóm **Kho creative** → thẻ **Google Drive**.
 
+> Lần đầu thêm kết nối, Ads MCP hiện popup **Miễn trừ trách nhiệm**: kéo đọc hết nội dung, chờ hết đếm ngược 10 giây, tick ô **Tôi đã đọc kỹ, hiểu và đồng ý…** rồi bấm **Tôi đồng ý và bắt đầu** (bấm **Huỷ** = không kết nối). Đã xác nhận thì những lần sau không hỏi lại, trừ khi nội dung được cập nhật phiên bản mới.
+
 Trang **Thêm thư mục / sheet Google Drive** có 3 bước. Panel **Hướng dẫn** bên phải giải thích từng bước.
 
 ### 3.2 Bước 1 · Loại & phạm vi
@@ -375,6 +377,8 @@ Khai báo xong, AI **chưa dùng được** cho tới khi bạn gán thư mục/
 ### Khi tạo MCP mới
 
 **MCP → Tạo MCP**:
+
+> Lần đầu **Tạo MCP**, Ads MCP hiện popup **Miễn trừ trách nhiệm** (trợ lý AI có thể sai, link MCP như mật khẩu, TikTok GMV Max chạy ngay…): kéo đọc hết nội dung, chờ hết đếm ngược 10 giây, tick ô đồng ý rồi bấm **Tôi đồng ý và bắt đầu**. Đã xác nhận thì những lần sau không hỏi lại, trừ khi nội dung được cập nhật phiên bản mới.
 
 1. Bước **Nền tảng & tài khoản**: chọn TKQC như bình thường. Kéo xuống nhóm **Ảnh, video quảng cáo (không bắt buộc)** → khối **Google Drive** → tick thư mục / sheet trong các nhóm:
    - **Của công ty** — nguồn công ty.

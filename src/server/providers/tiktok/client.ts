@@ -11,6 +11,7 @@ import { ProviderError, type ProviderErrorCode } from "../errors"
 import { httpJson, type HttpResponse } from "../http"
 import { coolDown, RateLimitWaitError, type BucketSpec } from "../rate-limit"
 import type { UpstreamEvent } from "../types"
+import { gmvMaxScopeHint } from "./gmv-max-text"
 
 /** Production base URL (default of env TIKTOK_BASE_URL). */
 export const TIKTOK_BASE_URL = "https://business-api.tiktok.com/open_api"
@@ -68,6 +69,10 @@ export function bucketSpecFor(path: string): BucketSpec {
       return { ratePerSec: 2 }
     case "/report/task/create/":
       return { ratePerSec: 1 }
+    case "/gmv_max/report/get/":
+      // endpoint-specific limit (Basic tier): 8 QPS / 240 QPM. 3.5/s sustained + burst 4 → at most 4 + 210 = 214
+      // calls in any minute, strictly under 240 QPM including the initial burst
+      return { ratePerSec: 3.5, burst: 4 }
     default:
       return { ratePerSec: 10 }
   }
@@ -117,7 +122,8 @@ export interface TikTokRequest {
 const THROTTLE_COOLDOWN_MS = 5 * 60_000
 const RETRYABLE_CODES = new Set([40133, 40202, 50000, 50002, 60001])
 
-function isServerCode(code: number): boolean {
+/** TikTok envelope codes of server-side failures (5xxxx, 60001): the request may or may not have been executed. */
+export function isServerCode(code: number): boolean {
   return (code >= 50000 && code < 60000) || code === 60001
 }
 
@@ -221,7 +227,7 @@ export async function tiktokRequest<T = unknown>(req: TikTokRequest): Promise<Ti
     })
   }
   if (body.code !== 0 && body.code !== 20001) {
-    const err = mapTikTokError(body.code, body.message ?? "", requestId, res.status)
+    const err = mapTikTokError(body.code, body.message ?? "", requestId, res.status, path)
     if (body.code === 40100 || body.code === 40016) {
       coolDown(bucketKey, err.retryAfterMs ?? THROTTLE_COOLDOWN_MS)
     }
@@ -247,6 +253,13 @@ interface CodeInfo {
   vi: string
   retryable?: boolean
   hint?: string
+}
+
+/** GMV Max endpoints (/gmv_max/*, /campaign/gmv_max/*, /store/product/get/) - permission errors get a GMV-specific hint. */
+export function isGmvMaxPath(path: string): boolean {
+  const p = normalizePath(path)
+  // /store/product/get/ is used only by the GMV Max tools (products of the shop)
+  return p.startsWith("/gmv_max/") || p.startsWith("/campaign/gmv_max/") || p === "/store/product/get/"
 }
 
 const SCOPE_HINT =
@@ -382,9 +395,12 @@ export function mapTikTokError(
   code: number,
   message: string,
   requestId: string | null = null,
-  httpStatus: number | null = 200
+  httpStatus: number | null = 200,
+  path?: string
 ): ProviderError {
   const info = codeInfo(code, message)
+  // GMV Max endpoints: the scope node named in the official "Scope of permission" column of that endpoint
+  if ((code === 40001 || code === 40125) && path && isGmvMaxPath(path)) info.hint = gmvMaxScopeHint(normalizePath(path))
   let retryAfterMs: number | undefined
   if (code === 40100 || code === 40016) {
     retryAfterMs = info.code === "quota_exceeded" ? msUntilNextUtcMidnight() : THROTTLE_COOLDOWN_MS

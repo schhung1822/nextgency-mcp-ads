@@ -28,6 +28,10 @@ import {
   type TT,
 } from "./api"
 import type { TikTokCredentials } from "./credentials"
+import { fetchGmvMaxTypes, peekGmvMaxPresence } from "./gmv-max"
+import { isGmvMaxCandidate } from "./gmv-max-detect"
+import { gmvMaxObjectDetail } from "./gmv-max-write"
+import { GMV_MAX_LIST_HIDDEN_NOTE, GMV_MAX_LIST_NOTE, GMV_MAX_NOT_FOUND_HINT } from "./gmv-max-text"
 
 const EXCLUDE_NULL = ["NULL_FIELD"]
 const MAX_PAGE_SIZE = 1000
@@ -154,8 +158,45 @@ export async function fetchByIds(tt: TT, level: ObjectLevel, ids: string[]): Pro
 
 export async function fetchOne(tt: TT, level: ObjectLevel, id: string): Promise<Raw> {
   const o = (await fetchByIds(tt, level, [id])).get(String(id))
-  if (!o) throw notFound(level, id)
+  if (!o) throw level === "campaign" ? campaignNotFound(id) : notFound(level, id)
   return o
+}
+
+/** Campaign not found by /campaign/get/: GMV Max campaigns may be absent there → point to the read-only GMV Max tool. */
+export function campaignNotFound(id: string): ProviderError {
+  const base = notFound("campaign", id)
+  return new ProviderError({
+    platform: "tiktok",
+    code: base.code,
+    message: base.message,
+    userMessageVi: base.userMessageVi,
+    hint: `${base.hint ?? ""} ${GMV_MAX_NOT_FOUND_HINT}`.trim(),
+  })
+}
+
+/**
+ * D5: tag GMV Max campaigns of a listing page with extra.gmv_max = "PRODUCT" | "LIVE". Only candidate rows (not a known
+ * non-shop objective - gmv-max-detect.ts) are checked (no candidate → no extra call). Never throws: a failed GMV Max
+ * check leaves the listing unchanged.
+ */
+export async function tagGmvMaxCampaigns(tt: TT, raw: Raw[], items: AdObjectSummary[], warnings: string[]): Promise<void> {
+  const candidates = raw.filter(isGmvMaxCandidate).map((o) => String(o.campaign_id))
+  let found = false
+  if (candidates.length) {
+    try {
+      const types = await fetchGmvMaxTypes(tt, candidates)
+      for (const it of items) {
+        const t = types.get(it.id)
+        if (!t) continue
+        it.extra = { ...(it.extra ?? {}), gmv_max: t }
+        found = true
+      }
+    } catch {
+      // listing never fails because of the GMV Max check
+    }
+  }
+  if (found) warnings.push(GMV_MAX_LIST_NOTE)
+  else if (peekGmvMaxPresence(tt) === true) warnings.push(GMV_MAX_LIST_HIDDEN_NOTE)
 }
 
 /** Detail of an Upgraded Smart+ object from the dedicated endpoint (full config). */
@@ -236,6 +277,7 @@ export async function listTikTokObjects(ctx: ProviderContext<TikTokCredentials>,
   if (tl === "ad" && list.some((o) => automationType(o) === "UPGRADED_SMART_PLUS_CREATIVE")) {
     warnings.push("Quảng cáo Upgraded Smart+ được gộp theo smart_plus_ad_id (mỗi quảng cáo có thể gồm nhiều creative).")
   }
+  if (tl === "campaign") await tagGmvMaxCampaigns(tt, list, items, warnings)
   if ((q.statuses?.length || (needle && tl === "ad")) && items.length < list.length) {
     warnings.push("Một phần bộ lọc được áp dụng sau khi lấy dữ liệu nên trang này có thể ít hơn giới hạn.")
   }
@@ -273,11 +315,23 @@ export async function getTikTokObject(
   ctx: ProviderContext<TikTokCredentials>,
   level: ObjectLevel,
   id: string,
-  opts: { includeChildren?: boolean } = {}
+  opts: { includeChildren?: boolean; forWrite?: boolean } = {}
 ): Promise<AdObjectDetail> {
   const tt = ttFromCtx(ctx)
   toTikTokLevel(level)
-  const o = await fetchOne(tt, level, id)
+  let o: Raw
+  if (level === "campaign") {
+    // GMV Max campaigns (maybe absent from /campaign/get/): daily budget / ROI from /campaign/gmv_max/info/ so that
+    // ads_update_budget's guardrails see the GMV Max base budget. Non-candidates: no extra call.
+    const found = (await fetchByIds(tt, "campaign", [id])).get(String(id)) ?? null
+    // forWrite (ads_update_budget): a failed GMV Max check of a candidate refuses instead of falling back (S6)
+    const gmv = await gmvMaxObjectDetail(tt, String(id), found, opts.forWrite === true)
+    if (gmv) return gmv
+    if (!found) throw campaignNotFound(id)
+    o = found
+  } else {
+    o = await fetchOne(tt, level, id)
+  }
   const smartPlus = automationType(o) === "UPGRADED_SMART_PLUS" ? await fetchSmartPlus(tt, level, id).catch(() => null) : null
   const detail = toDetail(level, o, tt.currency, smartPlus)
   if (!opts.includeChildren || level === "ad") return detail

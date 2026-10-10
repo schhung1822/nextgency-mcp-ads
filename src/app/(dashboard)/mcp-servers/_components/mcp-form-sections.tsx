@@ -676,9 +676,12 @@ const PRESET_KEYS = Object.keys(PERMISSION_PRESETS) as PermissionPreset[]
 export function PermissionsSection({
   values,
   update,
+  platformExtra,
 }: {
   values: McpFormValues
   update: FormUpdater
+  /** extra block at the end of a platform's card (TikTok: GMV Max switch) */
+  platformExtra?: Partial<Record<Platform, React.ReactNode>>
 }) {
   const s = t.permissionsStep
   const enabled = MCP_PLATFORMS.filter((p) => values.platforms[p].enabled)
@@ -817,6 +820,7 @@ export function PermissionsSection({
                   <AlertDescription>{s.deleteWarning}</AlertDescription>
                 </Alert>
               )}
+              {platformExtra?.[p]}
             </CardContent>
           </Card>
         )

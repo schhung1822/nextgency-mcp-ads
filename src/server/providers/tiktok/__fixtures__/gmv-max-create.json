@@ -1,0 +1,36 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVCREATE0001",
+  "data": {
+    "advertiser_id": "7100000000000000001",
+    "age_groups": ["AGE_18_24", "AGE_25_34", "AGE_35_44", "AGE_45_54", "AGE_55_100"],
+    "budget": 500000,
+    "campaign_id": "1840000000000000099",
+    "campaign_name": "GMV Max mới",
+    "custom_anchor_video_list": [],
+    "deep_bid_type": "VO_MIN_ROAS",
+    "identity_list": [
+      {
+        "identity_authorized_bc_id": "7300000000000000001",
+        "identity_id": "7200000000000000002",
+        "identity_type": "BC_AUTH_TT"
+      }
+    ],
+    "item_group_ids": ["1729000000000000003"],
+    "item_list": [],
+    "location_ids": ["1562822"],
+    "operation_status": "ENABLE",
+    "optimization_goal": "VALUE",
+    "placements": ["PLACEMENT_TIKTOK"],
+    "product_specific_type": "CUSTOMIZED_PRODUCTS",
+    "product_video_specific_type": "AUTO_SELECTION",
+    "affiliate_posts_enabled": true,
+    "roas_bid": 2.5,
+    "schedule_start_time": "2026-10-10 03:00:00",
+    "schedule_type": "SCHEDULE_FROM_NOW",
+    "shopping_ads_type": "PRODUCT",
+    "store_authorized_bc_id": "7300000000000000001",
+    "store_id": "7494000000000000001"
+  }
+}

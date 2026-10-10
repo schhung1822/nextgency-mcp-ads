@@ -22,7 +22,8 @@ import {
   UPDATE_ANNOTATIONS,
   type ToolContext,
 } from "../tool"
-import { grantAllows } from "../types"
+import { grantAllows, type McpGrant } from "../types"
+import { writeOptions } from "../write-options"
 
 /** Tool-name prefix per platform shipped in this build (an extension of any other platform is skipped). */
 const PREFIX: Partial<Record<Platform, string>> = {
@@ -39,14 +40,31 @@ function isMutationResult(v: unknown): v is MutationResult {
 }
 
 /** Every created id appears in the changes (the logs "Trước → Sau" table reads only `changes`). */
-export function withCreatedIds(changes: FieldChange[], createdIds: string[] | undefined, permission: string): FieldChange[] {
+export function withCreatedIds(
+  changes: FieldChange[],
+  createdIds: string[] | undefined,
+  permission: string,
+  createsActive = false
+): FieldChange[] {
   const out = [...changes]
   const seen = new Set(out.map((c) => c.objectId))
+  const after = permission !== "create" ? "đã tạo" : createsActive ? "đã tạo (ĐANG CHẠY)" : "đã tạo (tạm dừng)"
   for (const id of createdIds ?? []) {
-    if (!seen.has(id)) out.push({ objectId: id, field: "created", before: null, after: permission === "create" ? "đã tạo (tạm dừng)" : "đã tạo" })
+    if (!seen.has(id)) out.push({ objectId: id, field: "created", before: null, after })
   }
   return out
 }
+
+/** Opt-in MCP setting of an extension (ProviderExtension.requiresSetting) is on for this grant. */
+export function extensionSettingOn(grant: Pick<McpGrant, "settings">, ext: Pick<ProviderExtension, "requiresSetting">): boolean {
+  if (!ext.requiresSetting) return true
+  // fail closed: an unknown setting name is never "on"
+  return ext.requiresSetting === "tiktok_gmv_max_write" && grant.settings.tiktokGmvMaxWrite === true
+}
+
+/** Refusal of an extension whose opt-in MCP setting is off (defence in depth - such tools are not even listed). */
+export const EXTENSION_SETTING_OFF =
+  "MCP này chưa được quản trị viên cho phép dùng công cụ này (cần bật quyền tương ứng trong cấu hình MCP)."
 
 function asRecord(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>
@@ -86,6 +104,8 @@ export function registerExtensions(server: Parameters<typeof registerToolSpec>[0
         continue
       }
       if (!grantAllows(tctx.grant, platform, ext.permission)) continue
+      // opt-in tools (e.g. TikTok GMV Max writes): not listed unless the MCP setting is on
+      if (!extensionSettingOn(tctx.grant, ext)) continue
       taken.add(ext.name)
       registerOne(server, tctx, platform, ext)
     }
@@ -132,6 +152,9 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
       }
       const account = assertGrant(env.grant, { platform, accountId: account_id, permission: ext.permission })
       env.log.setTarget({ platform, accountId: account.externalId })
+      if (!extensionSettingOn(env.grant, ext)) {
+        throw denied("setting_disabled", EXTENSION_SETTING_OFF, "Nhờ quản trị viên mở cấu hình MCP để bật quyền này.")
+      }
       // re-validate with the provider's own schema (strips the mcp-core fields)
       const parsed = (ext.input as z.ZodObject).parse(rest)
 
@@ -174,19 +197,23 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
         }
       }
 
+      // GMV Max switch / strict worst-case daily-spend guard / change history (both steps)
+      const wopts = writeOptions(env.grant, account)
+      const pausedNote = ext.permission === "create" && !ext.createsActive ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : []
       return runWrite(env, {
         args: args as Record<string, unknown>,
         account,
+        alwaysConfirm: ext.alwaysConfirm === true,
         preview: async (): Promise<PreviewInfo> => {
           const ctx = await env.providerCtx(account)
-          const r = await ext.run(ctx, parsed, { dryRun: true })
+          const r = await ext.run(ctx, parsed, { ...wopts, dryRun: true })
           if (isMutationResult(r)) {
             // adapters may attach the request body they would send (`payload`) - shown when small
             const payload = (r as MutationResult & { payload?: unknown }).payload
             const details = payload !== undefined && jsonLength(payload) <= 8_000 ? { payload } : undefined
             return {
               changes: previewChanges(r.changes),
-              warnings: [...moneyWarnings, ...(ext.permission === "create" ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : []), ...r.warnings],
+              warnings: [...moneyWarnings, ...pausedNote, ...r.warnings],
               effective_at: r.effectiveAt ?? null,
               ...(details ? { details } : {}),
             }
@@ -194,17 +221,17 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
           const details = asRecord(r)
           return {
             changes: [{ object: ext.name, object_id: "-", level: null, field: ext.permission, before: null, after: "xem details" }],
-            warnings: [...moneyWarnings, ...(ext.permission === "create" ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : [])],
+            warnings: [...moneyWarnings, ...pausedNote],
             effective_at: null,
             details: jsonLength(details) > 8_000 ? { _truncated: true } : details,
           }
         },
-        execute: async (idempotencyKey) => {
+        execute: async (idempotencyKey, meta) => {
           const ctx = await env.providerCtx(account)
-          const r = await ext.run(ctx, parsed, { idempotencyKey })
+          const r = await ext.run(ctx, parsed, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           if (isMutationResult(r)) {
             if (r.createdIds?.length) env.log.addObjectIds(r.createdIds)
-            const changes = withCreatedIds(r.changes, r.createdIds, ext.permission)
+            const changes = withCreatedIds(r.changes, r.createdIds, ext.permission, ext.createsActive === true)
             return {
               structured: {
                 changes: (changesForLog(changes) ?? []) as unknown as Record<string, unknown>[],

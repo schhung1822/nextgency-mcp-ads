@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import type { CallToolResult, McpServer, ServerContext, ToolAnnotations } from "@modelcontextprotocol/server"
 import type { z } from "zod"
 import { safeErrorForLog } from "../audit/safe-error"
+import { isProviderError } from "../providers/errors"
 import { getProvider } from "../providers/registry"
 import type { AdsProvider, Capability, FieldChange, Platform } from "../providers/types"
 import { argsHash, runConfirmFlow, type PreviewInfo, type StoredOutcome } from "./confirm"
@@ -188,9 +189,13 @@ async function runTool<S extends z.ZodObject<any>>(
     if (env.providerCtx.touched.size === 1) await noteAuthFailure(e, [...env.providerCtx.touched][0])
     const mapped = mapToolError(e)
     log.addUpstreamRequestId(mapped.upstreamRequestId)
+    // a failed write with an uncertain outcome (e.g. GMV Max create timeout + not found): the row keeps its changes and
+    // a dedicated error_code so the cumulative started-spend cap still counts it (S5 / L1) - log only, never returned
+    const audit = isProviderError(e) ? e.audit : undefined
+    if (audit?.changes.length) log.setChanges(audit.changes)
     await log.finish({
       status: mapped.logStatus,
-      errorCode: mapped.payload.code,
+      errorCode: audit?.errorCode ?? mapped.payload.code,
       errorMessage: mapped.logMessage,
       response: mapped.payload,
     })
@@ -270,7 +275,8 @@ export async function runWrite(
     account: GrantAccount
     alwaysConfirm?: boolean
     preview: () => Promise<PreviewInfo>
-    execute: (idempotencyKey: string) => Promise<WriteExecution>
+    /** meta.confirmed: this execution consumed a two-step confirmation (confirm_token) - never true without one */
+    execute: (idempotencyKey: string, meta: { confirmed: boolean }) => Promise<WriteExecution>
   }
 ): Promise<ToolOutcome> {
   const base = { platform: o.account.platform, account_id: o.account.externalId }
@@ -285,7 +291,9 @@ export async function runWrite(
     // the write quota is spent by real executions only (not by previews, replays of a consumed token or invalid tokens)
     admit: () => admitWrite(env.grant, { confirmable: true }),
     execute: async (pendingActionId): Promise<StoredOutcome> => {
-      const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }))
+      const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }), {
+        confirmed: pendingActionId !== null,
+      })
       // the logs UI ("Trước → Sau") reads only the changes column: never leave it empty for an executed write
       executed = r.changes?.length ? r.changes : [{ objectId: "-", field: env.toolName, before: null, after: r.structured.result ?? r.summary }]
       env.log.setChanges(executed)

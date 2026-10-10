@@ -309,6 +309,104 @@ export interface MutationOptions {
   dryRun?: boolean
   /** Maps to the platform idempotency key (OpenAI Idempotency-Key) */
   idempotencyKey?: string
+  /**
+   * TikTok GMV Max: an admin allowed this MCP to change GMV Max campaigns (MCP setting tiktok_gmv_max_write). Set by
+   * mcp-core from the grant; absent / false = every write on a GMV Max campaign is refused (fail closed).
+   */
+  gmvMaxWrite?: boolean
+  /**
+   * STRICT daily-spend guard supplied by mcp-core: throws (Vietnamese McpToolError) when the MCP has no daily cap for
+   * the currency (even a legacy MCP) or an amount exceeds it. Adapters call it with WORST-CASE daily spends of writes
+   * that start or raise spend beyond what the generic guardrails see (TikTok GMV Max: create / copy run at once, auto
+   * budget increase / promotion days). Absent → such writes are refused (fail closed).
+   */
+  dailySpendGuard?: (items: DailySpendCheck[]) => void
+  /**
+   * Successful executed changes of one field on one object made through ANY MCP of this app (mcp_call_logs), newest
+   * first, within the last `sinceHours`. Used for warnings only (TikTok GMV Max ROI changes). Absent → no history.
+   */
+  fieldHistory?: (q: { objectId: string; field: string; sinceHours: number }) => Promise<FieldHistoryEntry[]>
+  /**
+   * true ONLY when mcp-core executes this write through a consumed two-step confirmation (confirm_token). Set on
+   * execution, never on a preview. TikTok GMV Max writes refuse to execute without it (defence in depth for C4).
+   */
+  confirmed?: boolean
+  /**
+   * Worst-case daily spends (MAJOR units, account currency) of objects that THIS MCP made start running (or raised
+   * while running) on this ad account within the last 24 h: executed changes with field STARTED_MAX_DAILY_SPEND_FIELD
+   * in mcp_call_logs (+ error rows with STARTED_SPEND_UNCERTAIN_LOG_CODE) + the live in-process reservations of
+   * startedSpendLedger. Throws when it cannot be read - callers fail closed. Absent → writes that need it are refused.
+   */
+  startedSpend24h?: () => Promise<StartedSpendEntry[]>
+  /**
+   * S5/M1 (execution only): per MCP + ad account lock + reservations of this process, so two parallel starts cannot
+   * both pass the cumulative check on the same history. Absent on an execution that needs it → refused (fail closed).
+   */
+  startedSpendLedger?: StartedSpendLedger
+  /**
+   * ads_update_budget: the MCP's % change limit + 24 h cumulative rule, checked by the ADAPTER against the budget it
+   * reads itself (TikTok GMV Max: /campaign/gmv_max/info/ budget). Throws a Vietnamese McpToolError when violated.
+   */
+  budgetChangeGuard?: (q: { current: number; next: number; currency: string }) => Promise<void>
+}
+
+/**
+ * FieldChange.field recorded for every object an adapter makes START RUNNING at once (TikTok GMV Max create / copy /
+ * enable): after = its worst-case daily spend (major units). Read back by MutationOptions.startedSpend24h.
+ */
+export const STARTED_MAX_DAILY_SPEND_FIELD = "started_max_daily_spend"
+
+/**
+ * mcp_call_logs.error_code of a write that may have started / raised spend although it failed (TikTok GMV Max create
+ * timeout + not found, enable / budget raise with an unknown outcome): the row carries the STARTED_MAX_DAILY_SPEND_FIELD
+ * change and startedSpend24h counts it like a success (L1).
+ */
+export const STARTED_SPEND_UNCERTAIN_LOG_CODE = "started_spend_uncertain"
+
+/** S5/M1: what a write reserves under the ledger lock (objectId = campaign id, or a request key before the id is known). */
+export interface StartedSpendItem {
+  objectId: string
+  amount: number
+}
+
+/** Reservation handle (MutationOptions.startedSpendLedger.reserve). */
+export interface StartedSpendReservation {
+  /** after the write: the final object id / amount of a reserved item (create: request key → new campaign id) */
+  settle(fromObjectId: string, to: StartedSpendItem): void
+  /** the write definitely did not start these objects (all of the reservation when omitted) */
+  release(objectIds?: string[]): void
+}
+
+/** S5/M1: in-process ledger of one MCP + ad account (mcp-core: src/server/mcp/started-spend-ledger.ts). */
+export interface StartedSpendLedger {
+  /** run fn under the per MCP + ad account lock (check + reserve are atomic; never held across a platform call) */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>
+  /** record items as started now: counted by startedSpend24h until their log row is visible (or 24 h) */
+  reserve(items: StartedSpendItem[]): StartedSpendReservation
+}
+
+/** One object started by this MCP in the window (MutationOptions.startedSpend24h). */
+export interface StartedSpendEntry {
+  objectId: string
+  /** worst-case daily spend recorded when it started, major units */
+  amount: number
+  at: Date
+}
+
+/** One worst-case daily spend to check against the MCP daily cap (MutationOptions.dailySpendGuard). */
+export interface DailySpendCheck {
+  /** Vietnamese label used in the refusal, e.g. 'Mức chi tối đa có thể mỗi ngày của chiến dịch GMV Max mới' */
+  label: string
+  /** MAJOR units */
+  amount: number
+  currency: string
+}
+
+/** A past executed change (MutationOptions.fieldHistory). */
+export interface FieldHistoryEntry {
+  at: Date
+  before: unknown
+  after: unknown
 }
 
 export interface FieldChange {
@@ -333,6 +431,26 @@ export interface MutationResult {
 }
 
 export type TargetStatus = "active" | "paused"
+
+/** Write operation asked about by AdsProvider.mustAlwaysConfirm ("active" / "paused" = ads_set_status). */
+export type AlwaysConfirmOp = TargetStatus | "update" | "copy" | "delete"
+
+/**
+ * Worst-case DAILY spend that switching an object on can cause beyond the budget getObject reports
+ * (AdsProvider.activationSpend - TikTok: GMV Max campaigns with auto budget increase / promotion days).
+ */
+export interface ActivationSpend {
+  id: string
+  /** Vietnamese label of the object, e.g. 'Chiến dịch GMV Max "Tên" (123)' */
+  label: string
+  currency: string
+  /** configured daily budget, major units (null when unknown) */
+  dailyBudget: number | null
+  /** worst-case spend of ONE day, major units - compared with the MCP daily cap */
+  maxDailySpend: number
+  /** Vietnamese notes (how the worst case was computed, what is not included) */
+  notes: string[]
+}
 
 export interface BudgetUpdate {
   level: "campaign" | "ad_group"
@@ -385,6 +503,13 @@ export interface CopyResult {
   rootNewId: string | null
   mappings: CopyMapping[]
   warnings: string[]
+  /**
+   * Status of the new objects when it is NOT the usual "paused" (TikTok GMV Max: a copy starts RUNNING - the platform
+   * has no paused option). Absent = paused.
+   */
+  newStatus?: "active"
+  /** extra change rows to log with the copy (e.g. STARTED_MAX_DAILY_SPEND_FIELD of a copy that starts running) */
+  extraChanges?: FieldChange[]
 }
 
 export interface MediaUploadRequest {
@@ -536,6 +661,18 @@ export interface ProviderExtension<C = unknown, I = any, O = unknown> {
    * money: mcp-core refuses money-like inputs of extensions that do not declare them.
    */
   moneyOf?(input: I): ExtensionMoneyItem[]
+  /**
+   * Opt-in MCP setting the tool needs: not listed (and refused) unless it is on (TikTok GMV Max writes:
+   * "tiktok_gmv_max_write" = McpSettings.tiktokGmvMaxWrite).
+   */
+  requiresSetting?: "tiktok_gmv_max_write"
+  /** write tools: ALWAYS two-step confirmation, even when the MCP disabled it */
+  alwaysConfirm?: true
+  /**
+   * create tools whose new objects start RUNNING because the platform cannot create them paused (TikTok GMV Max):
+   * the generic "always created paused" notes are not shown. The adapter must warn itself.
+   */
+  createsActive?: true
   run(ctx: ProviderContext<C>, input: I, opts: MutationOptions): Promise<O>
 }
 
@@ -572,7 +709,8 @@ export interface AdsProvider<C = unknown> {
     ctx: ProviderContext<C>,
     level: ObjectLevel,
     id: string,
-    opts?: { includeChildren?: boolean }
+    /** forWrite: the detail feeds a write guard - platform-specific checks fail closed instead of falling back */
+    opts?: { includeChildren?: boolean; forWrite?: boolean }
   ): Promise<AdObjectDetail>
 
   setStatus(
@@ -582,6 +720,32 @@ export interface AdsProvider<C = unknown> {
     status: TargetStatus,
     opts?: MutationOptions
   ): Promise<MutationResult>
+  /**
+   * Optional: Vietnamese reasons why this write (status change, budget / field update, copy, delete) must ALWAYS go
+   * through two-step confirmation, even when the MCP disabled it (TikTok: GMV Max campaigns). Empty = no extra
+   * confirmation. May throw: the caller then requires confirmation (fail closed). Absent = behaviour unchanged.
+   */
+  mustAlwaysConfirm?(ctx: ProviderContext<C>, level: ObjectLevel, ids: string[], op: AlwaysConfirmOp): Promise<string[]>
+  /**
+   * Optional: worst-case daily spend of the objects that ads_set_status (status active) would switch on, for objects
+   * whose spend is not described by getObject's budget (TikTok: GMV Max campaigns). Entries are compared with the MCP
+   * daily cap and shown in the preview. Throws when it cannot be verified: with a daily cap the activation is then
+   * refused (budget_unverifiable, fail closed). Absent = behaviour unchanged.
+   */
+  activationSpend?(ctx: ProviderContext<C>, level: ObjectLevel, ids: string[]): Promise<ActivationSpend[]>
+  /**
+   * Optional: refusals that do not depend on money checks, asked by ads_set_status (op = target status) and by
+   * ads_update_budget / ads_update_object (op "update") BEFORE their cap checks so the user gets the real reason first
+   * (TikTok: a GMV Max campaign on an MCP without the GMV Max switch → "locked"). Throws to refuse; absent / resolves =
+   * continue unchanged.
+   */
+  preflightWrite?(
+    ctx: ProviderContext<C>,
+    level: ObjectLevel,
+    ids: string[],
+    op: AlwaysConfirmOp,
+    opts: MutationOptions
+  ): Promise<void>
   updateBudget(ctx: ProviderContext<C>, u: BudgetUpdate, opts?: MutationOptions): Promise<MutationResult>
   updateObject(ctx: ProviderContext<C>, u: ObjectUpdate, opts?: MutationOptions): Promise<MutationResult>
   copyObject(ctx: ProviderContext<C>, r: CopyRequest, opts?: MutationOptions): Promise<CopyResult>

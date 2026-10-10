@@ -86,9 +86,9 @@ export const tiktokGuide: ConnectionGuide = {
       link: { label: "Mở TikTok API for Business", url: "https://business-api.tiktok.com/portal" },
     },
     {
-      title: "Chọn quyền (scope) cho app",
+      title: "Chọn quyền (scope) cho app - tick tất cả",
       detail:
-        "Bật các nhóm quyền: Ad Account Management, Ads Management, Reporting, Creative Management (ảnh, video, identity) và Pixel Management. Tuỳ chọn: Audience Management (để tra cứu tệp đối tượng). Đổi scope sau này: app bị duyệt lại 2–3 ngày làm việc, rồi advertiser phải cấp quyền lại để token có quyền mới.",
+        "Ở mục Scope of permission, tick HẾT mọi nhóm quyền và mọi ô con, TRỪ 2 ô GMV MAX → Session và GMV MAX → Exclusive Authorization (để trống 2 ô này). Thiếu một ô cần dùng là AI lỗi 40001 ở đúng việc đó, và muốn thêm sau thì phải chờ TikTok duyệt lại.\n• Ad Account Management, Creative Management (ảnh, video, identity), Pixel Management, Audience Management.\n• Ads Management - mọi ô con, kể cả GMV MAX (Store Management), Identity And Video và custom anchor. KHÔNG tick GMV MAX → Session và GMV MAX → Exclusive Authorization: Ads MCP không dùng 2 quyền này, và nếu token bị lộ, Exclusive Authorization cho phép chuyển tài khoản GMV Max của cửa hàng (làm tạm dừng mọi chiến dịch GMV Max của tài khoản cũ).\n• Reporting - mọi ô con, kể cả GMV MAX Report.\n• Onsite Commerce Store (sản phẩm TikTok Shop cho GMV Max).\n• Mọi nhóm quyền khác có trong danh sách.\nCách nhanh: tick ô của từng nhóm cấp 1 để chọn trọn nhóm, mở từng nhóm kiểm tra không sót ô con nào, rồi BỎ tick 2 ô Session và Exclusive Authorization trong GMV MAX. Cấp đủ quyền cho app không có nghĩa AI được làm hết: AI chỉ làm những gì bạn cho phép trong từng MCP. Đổi scope sau này: app bị duyệt lại 2–3 ngày làm việc, rồi advertiser phải cấp quyền lại để token có quyền mới.",
     },
     {
       title: "Khai báo Redirect URL",
@@ -110,19 +110,35 @@ export const tiktokGuide: ConnectionGuide = {
       detail:
         "Sao chép App ID và Secret ở trang Basic Information của app, dán vào form rồi bấm Kiểm tra kết nối.",
     },
+    {
+      title: "Chuẩn bị GMV Max (TikTok Shop) - tuỳ chọn",
+      detail:
+        "Chỉ cần nếu bạn chạy GMV Max. Kết nối này dùng luôn cho GMV Max, không cần kết nối riêng.\n• Cửa hàng TikTok Shop và tài khoản quảng cáo nằm cùng một Business Center. Bạn là Admin Business Center và có quyền Ad promotion với cửa hàng.\n• Chọn tài khoản quảng cáo làm GMV Max account của cửa hàng: Business Center → Accounts → TikTok Shop Accounts → Set up GMV Max, hoặc Seller Center → Shop Ads → Manage account → GMV Max account.\n• Bấm \"Xem hướng dẫn GMV Max\" trong form để xem từng bước chi tiết.",
+      link: {
+        label: "Hướng dẫn về GMV Max (TikTok)",
+        url: "https://ads.tiktok.com/help/article/gmv-max-guidelines?lang=vi",
+      },
+    },
   ],
   requiredScopes: [
     "Ad Account Management",
-    "Ads Management",
-    "Reporting",
+    "Ads Management (mọi ô con)",
+    "Ads Management → GMV MAX",
+    "Reporting (mọi ô con)",
+    "Reporting → GMV MAX Report",
     "Creative Management",
     "Pixel Management",
-    "Audience Management (tuỳ chọn)",
+    "Audience Management",
+    "Onsite Commerce Store",
+    "Mọi nhóm quyền khác trong danh sách",
   ],
   warnings: [
     "Access token dài hạn của advertiser không hết hạn và không cần làm mới - chỉ mất hiệu lực khi advertiser thu hồi quyền (TikTok For Business → cài đặt Authorization → chọn app → Remove). Hãy giữ bí mật.",
     "Thiếu quyền thường chỉ lộ ra khi gọi API (lỗi 40001): khi đó cần bật thêm scope cho app và cho advertiser cấp quyền lại.",
     "Từ sau 31/12/2026 TikTok không cho tạo chiến dịch thủ công (Manual) qua API.",
+    "GMV Max: mỗi cửa hàng chỉ có 1 tài khoản quảng cáo GMV Max. Đổi sang tài khoản khác thì mọi chiến dịch GMV Max của tài khoản cũ tự tạm dừng và phải tạo lại.",
+    "GMV Max: mặc định AI chỉ xem và phân tích chỉ số. AI chỉ thay đổi được chiến dịch GMV Max khi quản trị viên bật “Cho phép AI thay đổi GMV Max” trong MCP, và mọi thay đổi luôn phải xác nhận 2 bước. TikTok khuyên giữ mỗi mức ROI mục tiêu ít nhất 3 ngày.",
+    "GMV Max: chiến dịch GMV Max tạo mới hoặc sao chép qua API CHẠY NGAY (không tạo ở trạng thái tạm dừng được) và có thể tự tạm dừng quảng cáo Shop khác dùng cùng cửa hàng / sản phẩm / tài khoản TikTok.",
   ],
 }
 

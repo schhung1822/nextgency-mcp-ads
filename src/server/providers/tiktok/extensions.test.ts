@@ -21,12 +21,21 @@ describe("khai báo extension", () => {
       "tiktok_create_adgroup",
       "tiktok_create_ads",
       "tiktok_update_targeting",
+      "tiktok_gmv_max_shops",
+      "tiktok_gmv_max_campaigns",
+      "tiktok_gmv_max_report",
+      "tiktok_gmv_max_products",
+      "tiktok_gmv_max_identities",
+      "tiktok_gmv_max_bid_recommend",
+      "tiktok_gmv_max_update",
+      "tiktok_gmv_max_creatives",
+      "tiktok_gmv_max_create",
     ])
     for (const e of tiktokExtensions) {
       expect(e.name).toMatch(/^tiktok_[a-z0-9_]{1,33}$/)
       expect(e.description.startsWith("Dùng khi")).toBe(true)
       expect(e.description.length).toBeLessThanOrEqual(1500)
-      expect(e.write).toBe(true)
+      expect(e.write).toBe(e.permission !== "read")
     }
     expect(tiktokExtensions.some((e) => e.name.includes("exchange"))).toBe(false)
   })

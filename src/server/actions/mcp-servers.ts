@@ -27,6 +27,7 @@ import {
   updateMcpServer,
   type McpActor,
 } from "@/server/services/mcp-servers"
+import { checkDisclaimerAccepted } from "@/server/services/disclaimers"
 import { getSetting } from "@/server/services/settings"
 import { safeErrorForLog } from "@/server/audit/safe-error"
 
@@ -100,8 +101,11 @@ export async function createMcpAction(
       const issue = fields.error.issues[0]
       return fail(issue?.message ?? t.errors.generic, issue ? { [issue.path.join(".")]: issue.message } : undefined)
     }
+    // "Miễn trừ trách nhiệm" (MCP) accepted: current version, last 12 h - checked before the password is verified
+    const disclaimer = await checkDisclaimerAccepted(s.user.id, "mcp")
+    if (!disclaimer.ok) return fail(disclaimer.error)
     const verify = await requestReauthVerifier(s.user, fields.data)
-    const r = await createMcpServer(actorFrom(s), mcpInput, verify)
+    const r = await createMcpServer(actorFrom(s), mcpInput, verify, { disclaimerVersion: disclaimer.version })
     revalidate()
     return ok(r, t.toast.created)
   } catch (e) {
@@ -109,12 +113,26 @@ export async function createMcpAction(
   }
 }
 
+/**
+ * Config save: {...mcp fields, reauth?: {password, code?}}. Turning the TikTok GMV Max switch ON needs the re-auth
+ * fields; without them the service answers "re-auth required" (fieldErrors[REAUTH_REQUIRED_FIELD]) and the UI asks.
+ */
 export async function updateMcpAction(
   input: unknown
 ): Promise<ActionResult<{ changed: boolean }>> {
   try {
     const s = await requireMcpSession()
-    const r = await updateMcpServer(actorFrom(s), input)
+    const { reauth, ...mcpInput } = (input && typeof input === "object" ? input : {}) as Record<string, unknown>
+    let verify: ReauthVerifier | undefined
+    if (reauth !== undefined) {
+      const fields = reauthFieldsSchema.safeParse(reauth)
+      if (!fields.success) {
+        const issue = fields.error.issues[0]
+        return fail(issue?.message ?? t.errors.generic, issue ? { [issue.path.join(".")]: issue.message } : undefined)
+      }
+      verify = await requestReauthVerifier(s.user, fields.data)
+    }
+    const r = await updateMcpServer(actorFrom(s), mcpInput, verify)
     const id = (input as { id?: unknown } | null)?.id
     revalidate(typeof id === "string" ? id : undefined)
     return ok(r, r.changed ? t.toast.updated : t.toast.noChanges)

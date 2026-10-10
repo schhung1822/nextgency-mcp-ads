@@ -48,6 +48,7 @@ import {
   updateNotificationChannel,
   type ChannelRecheckResult,
 } from "@/server/services/notification-channels"
+import { checkDisclaimerAccepted } from "@/server/services/disclaimers"
 
 const LIST = "/connections"
 const detailPath = (id: string) => `/connections/telegram/${id}`
@@ -120,9 +121,14 @@ export async function createTelegramChannelAction(
     const session = await requireUserForAction()
     const parsed = createTelegramChannelSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    // "Miễn trừ trách nhiệm" (kết nối) accepted: current version, last 12 h
+    const disclaimer = await checkDisclaimerAccepted(session.user.id, "connection")
+    if (!disclaimer.ok) return fail(disclaimer.error)
     const throttled = await throttleTelegram(session)
     if (throttled) return throttled
-    const res = await createNotificationChannel(session.user, parsed.data)
+    const res = await createNotificationChannel(session.user, parsed.data, {
+      disclaimerVersion: disclaimer.version,
+    })
     revalidateChannel(res.id)
     return ok(res, m.server.created)
   } catch (e) {

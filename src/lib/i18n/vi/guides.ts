@@ -262,13 +262,18 @@ export const guides = {
               "AI được gửi tin: AI gửi báo cáo vào Telegram khi bạn yêu cầu, có thể kèm 1 ảnh, video hoặc tệp (link công khai, tệp bạn đính kèm trong ChatGPT, hoặc tệp CSV/TXT do AI viết).\nTự báo khi AI thay đổi quảng cáo: mỗi thao tác ghi thành công gửi 1 tin tóm tắt trước → sau.\nMọi tin đều có dòng ghi nguồn \"Ads MCP Simple\" ở cuối.",
           },
           {
+            title: "GMV Max (TikTok Shop) - chỉ quản trị viên",
+            detail:
+              "Thẻ TikTok Ads có công tắc Cho phép AI thay đổi GMV Max (mặc định tắt: AI chỉ xem chỉ số GMV Max). Chỉ quản trị viên bật được; nhân viên nhờ quản trị viên mở MCP để bật. Khi bật, mọi thay đổi GMV Max luôn phải xác nhận 2 bước và cần trần ngân sách/ngày; chiến dịch GMV Max tạo mới / sao chép chạy ngay. Đọc kỹ ảnh hưởng của từng quyền hiện ngay dưới công tắc.",
+          },
+          {
             title: "Google Drive",
             detail:
               "Cho phép dùng link Drive công khai (mặc định bật): AI lấy được ảnh, video từ link \"Bất kỳ ai có đường liên kết\" bạn dán vào chat - cần quản trị viên đã lưu API key.\nCho phép ghi trạng thái vào Google Sheet (mặc định bật): sau khi lên quảng cáo, AI ghi trạng thái, mã quảng cáo vào đúng dòng của sheet đã bật ghi; mỗi lần ghi tính vào giới hạn thao tác ghi / 10 phút.\nAI chỉ tải được ảnh, video lên khi MCP có quyền Tạo mới ở nền tảng đó. Video lớn (TikTok > 10 MB, Meta > 50 MB) được tải ở chế độ nền vài phút.",
           },
         ],
         tips: [
-          "Đối tượng mới tạo hoặc sao chép luôn ở trạng thái tạm dừng, bạn bật khi đã kiểm tra.",
+          "Đối tượng mới tạo hoặc sao chép luôn ở trạng thái tạm dừng, bạn bật khi đã kiểm tra - trừ chiến dịch GMV Max (TikTok Shop): TikTok cho chạy ngay.",
         ],
         warnings: [
           "Quyền Xoá/Lưu trữ KHÔNG thể hoàn tác. Chỉ bật khi thật sự cần, AI vẫn phải xin xác nhận trước khi xoá.",
@@ -384,6 +389,11 @@ export const guides = {
           title: "Google Drive",
           detail:
             "Chọn thư mục / sheet ở khung Nền tảng (khối Google Drive); bật hoặc tắt Cho phép dùng link Drive công khai và Cho phép ghi trạng thái vào Google Sheet ở khung Quyền. Nguồn không còn dùng được bị loại khỏi MCP khi bạn lưu.",
+        },
+        {
+          title: "GMV Max (TikTok Shop)",
+          detail:
+            "Công tắc Cho phép AI thay đổi GMV Max nằm trong thẻ TikTok Ads ở khung Quyền. Chỉ quản trị viên bật được; nhân viên chỉ tắt được.",
         },
       ],
       warnings: [

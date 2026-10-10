@@ -49,6 +49,12 @@ import {
   TelegramChannelsSection,
   TelegramPermissionsSection,
 } from "./telegram-sections"
+import {
+  TiktokGmvMaxBlock,
+  type GmvMaxFormContext,
+} from "./tiktok-gmv-max-section"
+
+const NO_GMV_MAX: GmvMaxFormContext = { isAdmin: false, flags: {} }
 
 export type CreateMcpActionFn = (
   input: unknown
@@ -119,6 +125,10 @@ export function mapServerErrors(
           : "platforms"
       ] = msg
       at(1)
+    } else if (k === "settings.tiktokGmvMaxWrite") {
+      // admin-only GMV Max switch: lives in step 3 (Chọn quyền), TikTok card
+      errors.tiktokGmvMaxWrite = msg
+      at(2)
     } else if (k.startsWith("settings.") || k === "expiresAt") {
       const key =
         k === "expiresAt"
@@ -142,6 +152,7 @@ export function McpWizard({
   drivePublicAvailable = true,
   createAction,
   twoFactorEnabled,
+  gmvMax = NO_GMV_MAX,
 }: {
   connections: SelectableConnection[]
   /** Telegram channels the user may give the MCP: the user's own channels (admins too) */
@@ -153,6 +164,8 @@ export function McpWizard({
   createAction: CreateMcpActionFn
   /** current user's 2FA state: the final re-auth asks for the TOTP code too */
   twoFactorEnabled: boolean
+  /** viewer role + TikTok accounts with GMV Max (admin-only switch in step 3) */
+  gmvMax?: GmvMaxFormContext
 }) {
   const [values, setValues] =
     React.useState<McpFormValues>(defaultMcpFormValues)
@@ -300,7 +313,21 @@ export function McpWizard({
             )}
             {step === 2 && (
               <div className="flex flex-col gap-6">
-                <PermissionsSection values={values} update={update} />
+                <PermissionsSection
+                  values={values}
+                  update={update}
+                  platformExtra={{
+                    tiktok: (
+                      <TiktokGmvMaxBlock
+                        values={values}
+                        update={update}
+                        connections={connections}
+                        gmv={gmvMax}
+                        error={errors.tiktokGmvMaxWrite}
+                      />
+                    ),
+                  }}
+                />
                 <TelegramPermissionsSection values={values} update={update} />
                 <DrivePermissionsSection
                   values={values}

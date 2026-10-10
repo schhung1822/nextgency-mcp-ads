@@ -50,6 +50,12 @@ export interface McpSettings {
   drivePublicLinks: boolean
   /** Google Drive: the MCP may write status / result columns of sheets that enabled write-back. Default ON. */
   driveSheetWriteback: boolean
+  /**
+   * TikTok GMV Max: the AI may change GMV Max campaigns (on/off, budget/ROI, products, creatives, copy, create,
+   * delete) within the MCP's TikTok permissions. Default OFF; only an admin can turn it on (C2). Fail closed: only an
+   * explicit true enables it.
+   */
+  tiktokGmvMaxWrite: boolean
 }
 
 /** Bounds of McpSettings.telegramMessagesPerHour */
@@ -73,6 +79,7 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   telegramMessagesPerHour: TELEGRAM_MESSAGES_PER_HOUR.default,
   drivePublicLinks: true,
   driveSheetWriteback: true,
+  tiktokGmvMaxWrite: false,
 }
 
 /** An ad account the MCP may act on (already filtered: enabled, connection active, owner rules applied). */

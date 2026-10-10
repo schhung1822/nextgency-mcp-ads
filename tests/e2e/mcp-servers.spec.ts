@@ -8,6 +8,8 @@
 // Skipped when the variables are missing.
 import { expect, test, type BrowserContext, type Page } from "@playwright/test"
 
+import { acceptDisclaimerIfAsked } from "./disclaimer-helpers"
+
 const BASE = process.env.E2E_BASE_URL
 const COOKIE = process.env.E2E_SESSION_COOKIE
 const PASSWORD = process.env.E2E_PASSWORD
@@ -54,6 +56,8 @@ test.describe("MCP servers", () => {
       page.getByRole("heading", { level: 1, name: "MCP" })
     ).toBeVisible()
     await page.getByRole("link", { name: "Tạo MCP" }).first().click()
+    // "Miễn trừ trách nhiệm" popup before the wizard (shown once per user and version)
+    await acceptDisclaimerIfAsked(page)
 
     // ① name — required
     await page.getByRole("button", { name: "Tiếp tục" }).click()
@@ -193,6 +197,8 @@ test.describe("MCP servers", () => {
         ).toBeVisible()
         await shot(page, `e2e-list-${theme}-${width}`)
         await page.goto(`${BASE}/mcp-servers/new`)
+        await shot(page, `e2e-disclaimer-${theme}-${width}`)
+        await acceptDisclaimerIfAsked(page)
         await expect(
           page.getByRole("heading", { level: 1, name: "Tạo MCP" })
         ).toBeVisible()

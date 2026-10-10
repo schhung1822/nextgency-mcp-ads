@@ -49,6 +49,7 @@ import { allProviders, ensureProvidersRegistered, getProvider } from "@/server/p
 import { isProviderError } from "@/server/providers/errors"
 import { forgetPageTokens, pageCapabilities } from "@/server/providers/meta/pages"
 import { exchangeAuthCode } from "@/server/providers/tiktok"
+import { disclaimerAuditMeta, type CreateAudit } from "@/server/services/disclaimers"
 import { PLATFORMS, type AdAccountInfo, type ConnectionGuide, type Platform } from "@/server/providers/types"
 
 export type Actor = Pick<AppUser, "id" | "email" | "role">
@@ -100,8 +101,14 @@ async function verifyOrThrow(
   opts: { connectionId?: string; connectionMeta?: Record<string, unknown>; listPages?: boolean }
 ): Promise<VerifyOutcome & { accounts: AdAccountInfo[] }> {
   let out: VerifyOutcome
+  // a check the user asked for always re-probes TikTok GMV Max (the 24 h reuse is for the background health job only)
+  const { gmvMax: _staleGmvMax, ...connectionMeta } = opts.connectionMeta ?? {}
   try {
-    out = await verifyCredentials(platform, credentials, { ...opts, listAccounts: true })
+    out = await verifyCredentials(platform, credentials, {
+      ...opts,
+      connectionMeta: opts.connectionMeta ? connectionMeta : undefined,
+      listAccounts: true,
+    })
   } catch (e) {
     if (!isProviderError(e)) console.error("[connections] verify failed:", safeErrorForLog(e))
     throw new ConnectionServiceError(providerErrorMessage(e))
@@ -354,6 +361,7 @@ async function insertVerifiedConnection(
     disabledExternalIds: string[]
     enabledExternalIds?: string[]
     via?: "token" | "auth_code"
+    audit?: CreateAudit
   }
 ): Promise<{ id: string }> {
   const provider = getProvider(args.platform)
@@ -397,6 +405,7 @@ async function insertVerifiedConnection(
           accounts: summary.total,
           disabledAccounts: args.disabledExternalIds.length,
           ...(pages ? { pages: pages.total } : {}),
+          ...disclaimerAuditMeta(args.audit),
         },
       },
       tx
@@ -413,7 +422,8 @@ export async function createConnection(
     credentials: Record<string, string>
     disabledExternalIds?: string[]
     enabledExternalIds?: string[]
-  }
+  },
+  audit?: CreateAudit
 ): Promise<{ id: string }> {
   const { credentials: creds } = await prepareOrThrow(input.platform, parseCredentialsOrThrow(input.platform, input.credentials))
   const out = await verifyOrThrow(input.platform, creds, {})
@@ -424,6 +434,7 @@ export async function createConnection(
     out,
     disabledExternalIds: input.disabledExternalIds ?? [],
     enabledExternalIds: input.enabledExternalIds ?? [],
+    audit,
   })
 }
 
@@ -445,7 +456,8 @@ async function exchangeTikTok(input: { appId: string; secret: string; authCode: 
 
 export async function createTikTokConnectionFromAuthCode(
   actor: Actor,
-  input: { name: string; appId: string; secret: string; authCode: string }
+  input: { name: string; appId: string; secret: string; authCode: string },
+  audit?: CreateAudit
 ): Promise<{ id: string }> {
   const { creds, meta } = await exchangeTikTok(input)
   const out = await verifyOrThrow("tiktok", creds, { connectionMeta: meta })
@@ -456,6 +468,7 @@ export async function createTikTokConnectionFromAuthCode(
     out,
     disabledExternalIds: [],
     via: "auth_code",
+    audit,
   })
 }
 

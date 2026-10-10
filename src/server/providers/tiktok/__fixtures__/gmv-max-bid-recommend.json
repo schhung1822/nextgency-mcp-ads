@@ -1,0 +1,9 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVBID0001",
+  "data": {
+    "budget": 300000,
+    "roas_bid": 2
+  }
+}

@@ -57,6 +57,7 @@ describe.skipIf(!hasDb)("server actions with a crafted client", { timeout: 180_0
 
   beforeAll(async () => {
     w = await World.create()
+    for (const u of [w.users.admin, w.users.staff, w.users.staff2]) await w.acceptDisclaimers(u)
     staffConn = await w.connect(w.users.staff, "meta", demoAccounts(w.prefix, "meta"))
     staffMcp = await w.mcp(w.users.staff, { platforms: { meta: { permissions: ["read", "status"], connections: [{ conn: staffConn }] } } })
   }, 120_000)

@@ -3,7 +3,7 @@
 > Áp dụng cho **Ads MCP by: noti.vn** (10/2026). Giao diện các AI thay đổi thường xuyên — nếu tên menu khác, tìm mục *Connectors / Apps / MCP*.
 
 ## Trước khi bắt đầu
-1. Tạo MCP trong Ads MCP (**MCP → Tạo MCP**), sao chép link dạng:
+1. Tạo MCP trong Ads MCP (**MCP → Tạo MCP** — đọc hết và xác nhận popup **Miễn trừ trách nhiệm** trước), sao chép link dạng:
    ```
    https://mcp.congty.vn/mcp/amcp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    ```
@@ -81,15 +81,22 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 - “Báo cáo theo ngày từ 1/9 đến 30/9 của chiến dịch X.”
 - “Tắt các quảng cáo có CPA trên 200.000đ trong 7 ngày qua.” → AI hiện **bản xem trước** → bạn đồng ý → AI xác nhận.
 - “Tăng ngân sách nhóm Y lên 1 triệu/ngày.” *(bị chặn nếu vượt giới hạn % thay đổi đã cấu hình)*
-- “Nhân bản chiến dịch Z, thêm hậu tố ‘T10’.” *(bản sao luôn ở trạng thái tạm dừng)*
+- “Nhân bản chiến dịch Z, thêm hậu tố ‘T10’.” *(bản sao luôn ở trạng thái tạm dừng - trừ GMV Max: bản sao chạy ngay, xem lưu ý bên dưới)*
 - “Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team.” *(cần MCP được cấp kênh Telegram và bật “AI được gửi tin”)*
 - “Trong thư mục Drive ‘Creative T10’ có những video nào mới tuần này?” *(cần MCP được cấp thư mục Google Drive — xem mục Google Drive bên dưới)*
 - “Lên quảng cáo TikTok (tạm dừng) cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10, nội dung theo file.”
+- “Tổng chi tiêu, doanh thu, ROI GMV Max 7 ngày qua của TKQC TikTok X, theo ngày; sản phẩm và video nào kéo đơn nhiều nhất?” *(GMV Max - TikTok Shop: mặc định chỉ phân tích, xem lưu ý bên dưới)*
 - “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet.”
 
 ## Lưu ý theo nền tảng
 - **Meta**: số liệu trong ngày có độ trễ, chuyển đổi được ghi nhận muộn.
 - **TikTok Ads**: số liệu chậm khoảng 30 phút, có lúc tới 2 giờ. Đổi ngân sách có thể chỉ có hiệu lực từ 00:00 hôm sau — AI sẽ báo thời điểm có hiệu lực. TikTok ngừng cho tạo chiến dịch thủ công (Manual) qua API từ 31/12/2026; sửa, bật/tắt chiến dịch có sẵn vẫn dùng được.
+- **TikTok GMV Max (TikTok Shop)**: dùng chung kết nối TikTok Ads (app cần **đủ quyền** - tick tất cả, kể cả mọi ô GMV MAX - xem [huong-dan-lay-token-tiktok.md — GMV Max](huong-dan-lay-token-tiktok.md#gmv-max-tiktok-shop)). **Dùng AI để xem và phân tích chỉ số; hạn chế bật/tắt hay sửa** vì GMV Max tự tối ưu theo ngày: TikTok khuyên giữ mỗi mức ROI mục tiêu ít nhất 3 ngày, và tạm dừng / xoá / sửa ROI hoặc sản phẩm trong ngày làm mất Bảo vệ ROI của ngày đó. Mặc định MCP **chỉ xem** GMV Max; AI chỉ bật/tắt, sửa (ngân sách, ROI, sản phẩm, video), sao chép, tạo mới hay xoá chiến dịch GMV Max khi **quản trị viên bật “Cho phép AI thay đổi GMV Max (TikTok Shop)”** ở bước **Chọn quyền** của MCP (nhân viên không tự bật được). Mọi thay đổi GMV Max **luôn phải xác nhận 2 bước** và **bắt buộc có trần ngân sách/ngày** (tính theo mức chi tối đa có thể mỗi ngày, gồm tăng ngân sách tự động, ngày khuyến mãi). Chiến dịch GMV Max **tạo mới / sao chép chạy NGAY** (không tạo ở trạng thái tạm dừng được). GMV Max không có nhóm quảng cáo; đổi tài khoản GMV Max độc quyền của cửa hàng và phiên Max delivery / Creative boost không làm qua MCP - xem [Cho AI thay đổi GMV Max](huong-dan-lay-token-tiktok.md#cho-ai-thay-đổi-gmv-max-chỉ-quản-trị-viên). ROI và số đơn GMV Max gồm cả đơn tự nhiên; chi tiêu GMV Max có thể không nằm (đầy đủ) trong báo cáo TikTok thường — không cộng hai báo cáo vì có thể bị trùng hoặc sai. Câu hỏi mẫu:
+  - “Kiểm tra cửa hàng GMV Max của TKQC X - cửa hàng nào sẵn sàng, cửa hàng nào chưa và vì sao?”
+  - “So sánh các chiến dịch GMV Max sản phẩm tháng này: chiến dịch nào ROI thấp hơn mục tiêu?”
+  - “Top 10 sản phẩm theo doanh thu tuần qua trong chiến dịch GMV Max Y; sản phẩm nào tốn tiền mà ít đơn?”
+  - “Phiên LIVE nào hôm qua có ROI tốt nhất?”
+  - “Chiến dịch GMV Max nào đang kém? Chỉ phân tích và đề xuất, chưa sửa gì.”
 - **Google Ads (gồm YouTube)**: quảng cáo YouTube là chiến dịch **Video** / **Demand Gen** trong tài khoản Google Ads — kết nối Google Ads là xem được, không cần kết nối riêng. Hỏi AI theo kênh (Search, YouTube, Performance Max…) và chỉ số video (lượt xem, tỉ lệ xem, CPV, tỉ lệ xem 25/50/75/100%). Chiến dịch **Video chỉ xem được** qua API — bật/tắt, sửa ngân sách hãy làm trong Google Ads. Số liệu chậm 1–3 giờ. ID tài khoản 10 số, có hoặc không có dấu gạch (`123-456-7890`).
 - **OpenAI Ads**: không có xoá (chỉ lưu trữ) và không có sao chép gốc của nền tảng.
 
@@ -121,6 +128,7 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 | **403** | IP không nằm trong danh sách cho phép của MCP |
 | **429** | Vượt giới hạn lệnh/phút → đợi, hoặc tăng giới hạn trong cấu hình MCP |
 | Không thấy tool ghi | MCP chưa cấp quyền tương ứng (Bật/Tắt, Sửa, Sao chép…) hoặc ChatGPT Business chưa *Refresh* |
+| AI báo “MCP này chưa được quản trị viên cho phép thay đổi chiến dịch GMV Max” | Mặc định MCP chỉ xem GMV Max → nhờ **quản trị viên** mở MCP → tab **Cấu hình** → **Chọn quyền** → thẻ TikTok Ads → bật **Cho phép AI thay đổi GMV Max (TikTok Shop)**, rồi đặt **Trần ngân sách/ngày** cho loại tiền của TKQC |
 | Lệnh dài bị ngắt sau 125 giây (lỗi 524) | Tên miền đi qua Cloudflare proxy → chia nhỏ yêu cầu, hoặc chuyển tên miền sang *DNS only* (cần chứng chỉ công khai) - xem [deploy-vps.md §9.7](deploy-vps.md#97-giới-hạn-thời-gian-125-giây-và-mcp) |
 | Claude không thêm được connector | Kiểm tra bản ghi A IPv4, chứng chỉ HTTPS, tường lửa cho dải `160.79.104.0/21` |
 | Không thấy tool `drive_*` | MCP chưa được cấp thư mục / sheet Google Drive và (link công khai tắt hoặc chưa có API key hệ thống, hoặc MCP không có quyền Tạo mới); `drive_sheet_update_rows` chỉ có khi sheet bật ghi trạng thái + MCP bật “ghi trạng thái vào Google Sheet” |

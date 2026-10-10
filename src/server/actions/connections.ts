@@ -27,6 +27,7 @@ import { ReauthError, requestReauthVerifier, requireReauth } from "@/server/auth
 import { AuthorizationError, requireUserForAction, type AppSession } from "@/server/auth/session"
 import { consumeQuota } from "@/server/db/quota"
 import { setAdAccountsEnabled, setMetaPagesEnabled } from "@/server/services/ad-accounts"
+import { checkDisclaimerAccepted } from "@/server/services/disclaimers"
 import {
   ConnectionServiceError,
   createConnection,
@@ -115,9 +116,12 @@ export async function createConnectionAction(input: unknown): Promise<ActionResu
     const session = await requireUserForAction()
     const parsed = createConnectionSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    // "Miễn trừ trách nhiệm" accepted (current version, last 12 h) before anything reaches the platform
+    const disclaimer = await checkDisclaimerAccepted(session.user.id, "connection")
+    if (!disclaimer.ok) return fail(disclaimer.error)
     const throttled = await throttleProvider(session)
     if (throttled) return throttled
-    const res = await createConnection(session.user, parsed.data)
+    const res = await createConnection(session.user, parsed.data, { disclaimerVersion: disclaimer.version })
     revalidateConnection(res.id)
     return ok(res, m.new.saved)
   } catch (e) {
@@ -131,9 +135,11 @@ export async function createTikTokFromAuthCodeAction(input: unknown): Promise<Ac
     const session = await requireUserForAction()
     const parsed = tiktokAuthCodeCreateSchema.safeParse(input)
     if (!parsed.success) return zodFail(parsed.error)
+    const disclaimer = await checkDisclaimerAccepted(session.user.id, "connection")
+    if (!disclaimer.ok) return fail(disclaimer.error)
     const throttled = await throttleProvider(session)
     if (throttled) return throttled
-    const res = await createTikTokConnectionFromAuthCode(session.user, parsed.data)
+    const res = await createTikTokConnectionFromAuthCode(session.user, parsed.data, { disclaimerVersion: disclaimer.version })
     revalidateConnection(res.id)
     return ok({ id: res.id }, m.new.authCodeSuccess)
   } catch (e) {

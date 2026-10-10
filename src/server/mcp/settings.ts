@@ -1,7 +1,8 @@
 // Parse mcp_servers.settings (jsonb) into McpSettings. Accepts the documented snake_case shape
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
 //    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required,
-//    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback })
+//    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback,
+//    tiktok_gmv_max_write })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields.
 import { z } from "zod"
@@ -31,6 +32,7 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   telegram_messages_per_hour: "telegramMessagesPerHour",
   drive_public_links: "drivePublicLinks",
   drive_sheet_writeback: "driveSheetWriteback",
+  tiktok_gmv_max_write: "tiktokGmvMaxWrite",
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -84,5 +86,7 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     // get the default without a data migration
     drivePublicLinks: n.drivePublicLinks !== false,
     driveSheetWriteback: n.driveSheetWriteback !== false,
+    // TikTok GMV Max writes: OFF unless explicitly true (admin-only switch; fail closed)
+    tiktokGmvMaxWrite: n.tiktokGmvMaxWrite === true,
   }
 }

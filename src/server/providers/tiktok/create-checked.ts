@@ -4,6 +4,7 @@
 // request_id), the object is looked up by name (created after the call started) before a failure is reported. A failure
 // is never marked retryable: the user must check TikTok Ads Manager first. Spec: providers/tiktok.md §4, §6.
 import { ProviderError, isProviderError } from "../errors"
+import { isServerCode } from "./client"
 import {
   parseTikTokTime,
   str,
@@ -27,10 +28,16 @@ export function createVerifyHint(kind: CreateKind, name: string): string {
   return `Có thể ${LABEL[kind]} "${name.slice(0, 80)}" đã được tạo (đang TẮT) - kiểm tra trong TikTok Ads Manager (hoặc ads_list_objects) trước khi thử lại để tránh tạo trùng.`
 }
 
-/** The request may have reached TikTok and been executed. */
+/**
+ * The request may have reached TikTok and been executed. A TikTok envelope (HTTP 200) with a BUSINESS error code is a
+ * definite rejection (nothing was created) - only server codes (5xxxx / 60001) and 40050 (duplicate request_id) stay
+ * uncertain, like timeouts, network errors and HTTP 5xx.
+ */
 export function isUncertainCreateError(e: unknown): boolean {
   if (!isProviderError(e)) return true // network/abort error
-  if (e.upstream?.code === 40050) return true // duplicate request_id: TikTok already processed an earlier attempt
+  const code = e.upstream?.code
+  if (code === 40050) return true // duplicate request_id: TikTok already processed an earlier attempt
+  if (typeof code === "number" && (e.upstream?.httpStatus ?? 200) < 500) return isServerCode(code)
   return (
     e.code === "timeout" || e.code === "upstream_error" || e.code === "unknown"
   )

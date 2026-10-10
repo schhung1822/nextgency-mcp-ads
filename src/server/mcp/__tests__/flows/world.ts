@@ -33,6 +33,8 @@ import {
   type Actor,
 } from "@/server/services/connections"
 import { setAdAccountsEnabled } from "@/server/services/ad-accounts"
+import { acceptDisclaimer } from "@/server/services/disclaimers"
+import { DISCLAIMER_KINDS, DISCLAIMER_VERSIONS, type DisclaimerKind } from "@/lib/disclaimers"
 import {
   createMcpServer,
   rotateMcpKey,
@@ -114,6 +116,7 @@ export const DEFAULT_SETTINGS: McpSettingsInput = {
   // parallel) must not add drive_* tools to the exact tool lists other flows assert; drive.flows turns it on
   drivePublicLinks: false,
   driveSheetWriteback: true,
+  tiktokGmvMaxWrite: false,
 }
 
 export class World {
@@ -257,6 +260,14 @@ export class World {
       expiresAt: cfg.expiresAt ? cfg.expiresAt.toISOString() : null,
       ...(cfg.notificationChannelIds ? { notificationChannelIds: cfg.notificationChannelIds } : {}),
     }
+  }
+
+  /**
+   * Record that `actor` read and accepted the current "Miễn trừ trách nhiệm" texts (what the popup does): the create
+   * ACTIONS (connection, Telegram, Drive source, MCP) refuse without it. Services called directly do not check it.
+   */
+  async acceptDisclaimers(actor: McpActor, kinds: readonly DisclaimerKind[] = DISCLAIMER_KINDS) {
+    for (const kind of kinds) await acceptDisclaimer(actor, { kind, version: DISCLAIMER_VERSIONS[kind] })
   }
 
   async mcp(actor: McpActor, cfg: McpCfg): Promise<McpInfo> {

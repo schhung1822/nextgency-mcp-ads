@@ -24,8 +24,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   read: "Xem danh sách tài khoản, chiến dịch và toàn bộ chỉ số theo ngày.",
   status: "Chạy hoặc tạm dừng chiến dịch, nhóm quảng cáo, quảng cáo.",
   update: "Đổi tên, ngân sách, giá thầu, lịch chạy, nhắm mục tiêu.",
-  copy: "Nhân bản chiến dịch/nhóm/quảng cáo (bản sao luôn ở trạng thái tạm dừng).",
-  create: "Tạo chiến dịch, nhóm, quảng cáo mới và tải ảnh/video (luôn tạo ở trạng thái tạm dừng).",
+  copy: "Nhân bản chiến dịch/nhóm/quảng cáo (bản sao luôn ở trạng thái tạm dừng - trừ TikTok GMV Max: chạy ngay).",
+  create: "Tạo chiến dịch, nhóm, quảng cáo mới và tải ảnh/video (luôn tạo ở trạng thái tạm dừng - trừ TikTok GMV Max: chạy ngay).",
   delete: "Xoá hoặc lưu trữ vĩnh viễn - KHÔNG thể hoàn tác.",
 }
 

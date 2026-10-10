@@ -6,10 +6,12 @@ import { InformationCircleIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { toast } from "sonner"
 
-import { ContextualSaveBar } from "@/components/app"
+import { ContextualSaveBar, ReauthDialog } from "@/components/app"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import type { ActionResult } from "@/lib/action-result"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import { tiktokGmvMaxMcp as tgm } from "@/lib/i18n/vi/tiktok-gmv-max"
+import { REAUTH_REQUIRED_FIELD } from "@/lib/schemas/reauth"
 import {
   analyzeScope,
   configToFormValues,
@@ -51,10 +53,16 @@ import {
   TelegramChannelsSection,
   TelegramPermissionsSection,
 } from "./telegram-sections"
+import {
+  GMV_MAX_SWITCH_ID,
+  TiktokGmvMaxBlock,
+  type GmvMaxFormContext,
+} from "./tiktok-gmv-max-section"
 
 const NO_NAMES: Record<string, string> = {}
 const NO_CHANNELS: McpChannelOption[] = []
 const NO_DRIVE_SOURCES: McpDriveSourceOption[] = []
+const NO_GMV_MAX: GmvMaxFormContext = { isAdmin: false, flags: {} }
 
 /**
  * Scroll the per-currency caps section into view (smooth unless reduced motion) and focus the first
@@ -75,6 +83,18 @@ function focusCapsSection() {
     required[0] ??
     section.querySelector<HTMLElement>("h3")
   target?.focus({ preventScroll: true })
+}
+
+/**
+ * The server refused the save on the GMV Max switch (staff widening an admin-approved scope, admin-only switch):
+ * bring the switch + its error into view (the save bar is usually far below it) and focus it.
+ */
+function focusGmvMaxSwitch() {
+  const el = document.getElementById(GMV_MAX_SWITCH_ID)
+  if (!el) return
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" })
+  el.focus({ preventScroll: true })
 }
 
 export type UpdateMcpActionFn = (
@@ -134,6 +154,8 @@ export function ConfigTab({
   updateAction,
   onDirtyChange,
   capsFocusSignal = 0,
+  gmvMax = NO_GMV_MAX,
+  twoFactorEnabled = false,
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
@@ -150,6 +172,10 @@ export function ConfigTab({
   onDirtyChange?: (dirty: boolean) => void
   /** > 0: the user asked to set the caps (overview banner) - land on the caps section */
   capsFocusSignal?: number
+  /** viewer role + TikTok accounts with GMV Max (admin-only switch) */
+  gmvMax?: GmvMaxFormContext
+  /** viewer's 2FA state: the re-auth dialog (turning the GMV Max switch on) asks for the TOTP code too */
+  twoFactorEnabled?: boolean
 }) {
   const router = useRouter()
   const initial = React.useMemo(
@@ -163,6 +189,11 @@ export function ConfigTab({
   const [values, setValues] = React.useState<McpFormValues>(initial)
   const [errors, setErrors] = React.useState<StepErrors>({})
   const [pending, startTransition] = React.useTransition()
+  // the server asked to re-authenticate (turning the GMV Max switch on): the payload waits for the password
+  const [reauthPayload, setReauthPayload] = React.useState<Record<
+    string,
+    unknown
+  > | null>(null)
   // "Huỷ" on the bar: leave the config as it is for now (the warning above the platforms stays)
   const [pruneDismissed, setPruneDismissed] = React.useState(false)
   const update: FormUpdater = React.useCallback(
@@ -189,7 +220,8 @@ export function ConfigTab({
   // ?tab=config&focus=caps (link / reload) or the banner action: land on the caps section once
   React.useEffect(() => {
     const url = new URL(window.location.href)
-    if (capsFocusSignal === 0 && url.searchParams.get("focus") !== "caps") return
+    if (capsFocusSignal === 0 && url.searchParams.get("focus") !== "caps")
+      return
     // the tab content was hidden until this render: wait for layout before scrolling
     const raf = requestAnimationFrame(focusCapsSection)
     url.searchParams.delete("focus")
@@ -213,10 +245,8 @@ export function ConfigTab({
       return
     }
     startTransition(async () => {
-      const r = await updateAction({
-        id: mcp.id,
-        ...formValuesToCreateInput(values),
-      })
+      const payload = { id: mcp.id, ...formValuesToCreateInput(values) }
+      const r = await updateAction(payload)
       if (r.ok) {
         toast.success(
           r.data.changed ? t.config.saved : (r.message ?? t.toast.noChanges)
@@ -224,108 +254,161 @@ export function ConfigTab({
         router.refresh()
         return
       }
-      setErrors(mapServerErrors(r.fieldErrors).errors)
+      // sensitive change (GMV Max switch on): ask for the password (+ 2FA code), then save with it
+      if (r.fieldErrors?.[REAUTH_REQUIRED_FIELD]) {
+        setReauthPayload(payload)
+        return
+      }
+      const mapped = mapServerErrors(r.fieldErrors).errors
+      setErrors(mapped)
       toast.error(r.error)
+      if (mapped.tiktokGmvMaxWrite) requestAnimationFrame(focusGmvMaxSwitch)
     })
   }
 
   return (
-    <form
-      id={formId}
-      noValidate
-      onSubmit={save}
-      className="flex flex-col gap-5"
-    >
-      <ContextualSaveBar
-        open={dirty}
-        formId={formId}
-        saving={pending}
-        message={barMessage}
-        onDiscard={() => {
-          setValues(initial)
-          setErrors({})
-          setPruneDismissed(true)
-        }}
-      />
-      {!mcp.isMine && (
-        <Alert>
-          <HugeiconsIcon
-            icon={InformationCircleIcon}
-            strokeWidth={2}
-            aria-hidden
-          />
-          <AlertDescription>
-            {t.config.ownerNote(mcp.ownerEmail)}
-          </AlertDescription>
-        </Alert>
-      )}
-      <SectionCard title={t.config.infoTitle}>
-        <NameSection values={values} update={update} errors={errors} />
-      </SectionCard>
-      <SectionCard
-        title={t.platformsStep.cardTitle}
-        description={t.platformsStep.cardDescription}
+    <>
+      <form
+        id={formId}
+        noValidate
+        onSubmit={save}
+        className="flex flex-col gap-5"
       >
-        <div className="flex flex-col gap-4">
-          <ScopeIssuesAlert analysis={analysis} />
-          <PlatformsSection
-            values={values}
-            update={update}
-            errors={errors}
-            connections={connections}
-            layout="grid"
-          />
-          <TelegramChannelsSection
-            values={values}
-            update={update}
-            errors={errors}
-            channels={channels}
-            ownerNote={
-              !mcp.isMine
-                ? t.telegram.ownerOnlyNote(mcp.ownerEmail)
-                : undefined
-            }
-          />
-          <DriveSourcesSection
-            values={values}
-            update={update}
-            errors={errors}
-            sources={driveSources}
-            ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
-          />
-        </div>
-      </SectionCard>
-      <SectionCard
-        title={t.permissionsStep.cardTitle}
-        description={t.permissionsStep.cardDescription}
-      >
-        <div className="flex flex-col gap-4">
-          <PermissionsSection values={values} update={update} />
-          <TelegramPermissionsSection values={values} update={update} />
-          <DrivePermissionsSection
-            values={values}
-            update={update}
-            sources={driveSources}
-            publicLinksAvailable={drivePublicAvailable}
-          />
+        <ContextualSaveBar
+          open={dirty}
+          formId={formId}
+          saving={pending}
+          message={barMessage}
+          onDiscard={() => {
+            setValues(initial)
+            setErrors({})
+            setPruneDismissed(true)
+          }}
+        />
+        {!mcp.isMine && (
           <Alert>
             <HugeiconsIcon
               icon={InformationCircleIcon}
               strokeWidth={2}
               aria-hidden
             />
-            <AlertDescription>{t.config.chatgptNote}</AlertDescription>
+            <AlertDescription>
+              {t.config.ownerNote(mcp.ownerEmail)}
+            </AlertDescription>
           </Alert>
-        </div>
-      </SectionCard>
-      <SectionCard title={t.protectionStep.cardTitle}>
-        <ProtectionSection
-          values={values}
-          update={update}
-          errors={errors}
-          connections={connections}
+        )}
+        <SectionCard title={t.config.infoTitle}>
+          <NameSection values={values} update={update} errors={errors} />
+        </SectionCard>
+        <SectionCard
+          title={t.platformsStep.cardTitle}
+          description={t.platformsStep.cardDescription}
+        >
+          <div className="flex flex-col gap-4">
+            <ScopeIssuesAlert analysis={analysis} />
+            <PlatformsSection
+              values={values}
+              update={update}
+              errors={errors}
+              connections={connections}
+              layout="grid"
+            />
+            <TelegramChannelsSection
+              values={values}
+              update={update}
+              errors={errors}
+              channels={channels}
+              ownerNote={
+                !mcp.isMine
+                  ? t.telegram.ownerOnlyNote(mcp.ownerEmail)
+                  : undefined
+              }
+            />
+            <DriveSourcesSection
+              values={values}
+              update={update}
+              errors={errors}
+              sources={driveSources}
+              ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
+            />
+          </div>
+        </SectionCard>
+        <SectionCard
+          title={t.permissionsStep.cardTitle}
+          description={t.permissionsStep.cardDescription}
+        >
+          <div className="flex flex-col gap-4">
+            <PermissionsSection
+              values={values}
+              update={update}
+              platformExtra={{
+                tiktok: (
+                  <TiktokGmvMaxBlock
+                    values={values}
+                    update={update}
+                    connections={connections}
+                    gmv={gmvMax}
+                    savedOn={initial.tiktokGmvMaxWrite}
+                    error={errors.tiktokGmvMaxWrite}
+                  />
+                ),
+              }}
+            />
+            <TelegramPermissionsSection values={values} update={update} />
+            <DrivePermissionsSection
+              values={values}
+              update={update}
+              sources={driveSources}
+              publicLinksAvailable={drivePublicAvailable}
+            />
+            <Alert>
+              <HugeiconsIcon
+                icon={InformationCircleIcon}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <AlertDescription>{t.config.chatgptNote}</AlertDescription>
+            </Alert>
+          </div>
+        </SectionCard>
+        <SectionCard title={t.protectionStep.cardTitle}>
+          <ProtectionSection
+            values={values}
+            update={update}
+            errors={errors}
+            connections={connections}
+          />
+        </SectionCard>
+      </form>
+      {reauthPayload && (
+        <ReauthDialog
+          open
+          onOpenChange={(o) => !o && setReauthPayload(null)}
+          twoFactorEnabled={twoFactorEnabled}
+          idPrefix="mcp-config-reauth"
+          hint={null}
+          texts={tgm.reauth}
+          onSubmit={(fields) =>
+            updateAction({ ...reauthPayload, reauth: fields })
+          }
+          onSuccess={(data, message) => {
+            toast.success(
+              data.changed ? t.config.saved : (message ?? t.toast.noChanges)
+            )
+            router.refresh()
+          }}
+          onFailure={(r) => {
+            // a form field is wrong (e.g. the staff GMV Max rule): close and show it on the form
+            const mapped = mapServerErrors(r.fieldErrors)
+            if (mapped.step === null) return false
+            setErrors(mapped.errors)
+            toast.error(r.error)
+            if (mapped.errors.tiktokGmvMaxWrite)
+              requestAnimationFrame(focusGmvMaxSwitch)
+            return true
+          }}
         />
-      </SectionCard>
-    </form>
+      )}
+    </>
   )
 }

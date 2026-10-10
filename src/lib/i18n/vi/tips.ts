@@ -606,7 +606,7 @@ export const tips = {
     ],
 
     safety: [
-      "Quảng cáo, chiến dịch, nhóm do AI tạo luôn ở trạng thái tạm dừng - không có gì tự chạy và tiêu tiền cho tới khi bạn bật.",
+      "Quảng cáo, chiến dịch, nhóm do AI tạo luôn ở trạng thái tạm dừng - không có gì tự chạy và tiêu tiền cho tới khi bạn bật (riêng chiến dịch TikTok GMV Max chạy ngay, chỉ tạo được khi quản trị viên bật quyền GMV Max cho MCP).",
       "Giữ Xác nhận 2 bước cho MCP này: AI phải cho bạn xem trước từng lần tải file và tạo quảng cáo.",
       "Trần ngân sách/ngày là bắt buộc khi MCP có quyền Tạo mới: AI không đặt được ngân sách vượt mức này.",
       "MCP riêng, chỉ Xem + Tạo mới, không cấp Xoá. Đặt Ngày hết hạn nếu chỉ dùng cho một đợt.",

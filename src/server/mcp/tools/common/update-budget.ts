@@ -19,6 +19,8 @@ import {
 import { accountIdSchema, objectIdSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext } from "../../tool"
 import { grantPlatformsWith, type McpSettings } from "../../types"
+import { writeOptions } from "../../write-options"
+import { alwaysConfirmFor } from "./set-status"
 import { mutationOut, previewFromMutation } from "./write-common"
 
 export const NAME = "ads_update_budget"
@@ -152,7 +154,10 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
 
       // Guardrails run on BOTH steps against the live budget (it may have changed since the preview).
       const ctx = await env.providerCtx(account)
-      const obj = await provider.getObject(ctx, args.level, args.id)
+      // L5: refusals that do not depend on money (TikTok: GMV Max locked) come before the cap checks
+      if (provider.preflightWrite) await provider.preflightWrite(ctx, args.level, [args.id], "update", writeOptions(env.grant, account))
+      // forWrite: platform-specific lookups (TikTok GMV Max) fail closed instead of falling back to a generic budget
+      const obj = await provider.getObject(ctx, args.level, args.id, { forWrite: true })
       const current = obj.budget ?? null
       if (!current) {
         // without the current value the % guardrail cannot be enforced → refuse (money safety)
@@ -185,20 +190,41 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         next
       )
       const update = { level: args.level, id: args.id, type: args.budget_type, amount: args.amount }
+      // e.g. TikTok GMV Max: always two-step confirmation; GMV Max switch + strict worst-case guard in the adapter
+      const confirm = await alwaysConfirmFor(env, account, provider, args.level, [args.id], "update", args)
+      const wopts = {
+        ...writeOptions(env.grant, account),
+        // S6: adapters that read the budget themselves (TikTok GMV Max) re-check the % limit + 24 h cumulative rule
+        // against THAT value, so a different baseline here cannot widen the change
+        budgetChangeGuard: async (q: { current: number; next: number; currency: string }) => {
+          const cur = q.currency.toUpperCase()
+          checkBudgetGuardrails(
+            env.grant.settings,
+            { type: "daily", amount: q.current, currency: cur, level: args.level },
+            { type: "daily", amount: q.next, currency: cur }
+          )
+          checkCumulativeBudget(
+            env.grant.settings,
+            await budgetBaseline24h({ platform: account.platform, accountExternalId: account.externalId, level: args.level, id: args.id, type: "daily" }),
+            { type: "daily", amount: q.next, currency: cur }
+          )
+        },
+      }
 
       return runWrite(env, {
         args,
         account,
+        alwaysConfirm: confirm.alwaysConfirm,
         preview: async () => {
-          const r = await provider.updateBudget(ctx, update, { dryRun: true })
-          return previewFromMutation(r, warnings, {
+          const r = await provider.updateBudget(ctx, update, { ...wopts, dryRun: true })
+          return previewFromMutation(r, [...warnings, ...confirm.reasons], {
             current: current ? { type: current.type, amount: current.amount, currency } : null,
             requested: { type: args.budget_type, amount: args.amount, currency },
             change_pct: guard.changePct === null ? null : Math.round(guard.changePct * 10) / 10,
           })
         },
-        execute: async (idempotencyKey) => {
-          const r = await provider.updateBudget(ctx, update, { idempotencyKey })
+        execute: async (idempotencyKey, meta) => {
+          const r = await provider.updateBudget(ctx, update, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           return {
             structured: {
               ...mutationOut(r, guard.warnings),

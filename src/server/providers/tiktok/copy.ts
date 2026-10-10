@@ -23,7 +23,8 @@ import { AD_CREATE_VERIFY_HINT, createAdsChecked } from "./ad-create"
 import { makeRequestId } from "./client"
 import { createChecked, isUncertainCreateError } from "./create-checked"
 import type { TikTokCredentials } from "./credentials"
-import { fetchAdsForAdGroups, fetchOne, objectId } from "./objects"
+import { routeGmvMaxCopy } from "./gmv-max-write"
+import { campaignNotFound, fetchAdsForAdGroups, fetchByIds, fetchOne, objectId } from "./objects"
 import { applyStatus } from "./mutate"
 
 /** Poll timing for the async copy task (overridable in tests). */
@@ -409,7 +410,17 @@ export async function copyTikTokObject(
   const tt = ttFromCtx(ctx)
   const now = opts.now ?? new Date()
   const warnings: string[] = []
-  const src = await fetchOne(tt, r.level, r.id)
+  let src: Raw
+  if (r.level === "campaign") {
+    // GMV Max (C3/C6): needs the admin switch; copied as a NEW GMV Max campaign (runs at once) after pre-checks
+    const found = (await fetchByIds(tt, "campaign", [r.id])).get(String(r.id)) ?? null
+    const gmv = await routeGmvMaxCopy(tt, r, found, opts)
+    if (gmv) return gmv
+    if (!found) throw campaignNotFound(r.id)
+    src = found
+  } else {
+    src = await fetchOne(tt, r.level, r.id)
+  }
   assertCopyable(r.level, src)
   const name = copyName(
     str(r.level === "campaign" ? src.campaign_name : r.level === "ad_group" ? src.adgroup_name : src.ad_name) ?? r.id,

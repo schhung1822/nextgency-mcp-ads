@@ -8,6 +8,8 @@ import { accountIdSchema, objectIdSchema, objectLevelSchema, platformEnum, write
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext, type ToolEnv } from "../../tool"
 import { grantPlatformsWith, type GrantAccount } from "../../types"
 import { checkBidCap, checkLifetimeCap, LEVEL_VI, legacyCapWarning, lifetimeLimit, requireMoneyCaps, type Flight } from "../../guardrails"
+import { writeOptions } from "../../write-options"
+import { alwaysConfirmFor } from "./set-status"
 import { mutationOut, previewFromMutation } from "./write-common"
 
 export const NAME = "ads_update_object"
@@ -116,6 +118,11 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       if (changes.startTime && changes.endTime && Date.parse(changes.startTime) >= Date.parse(changes.endTime)) {
         throw invalid("invalid_schedule", "start_time phải trước end_time.")
       }
+      // L5: refusals that do not depend on money (TikTok: GMV Max locked) come before the cap checks
+      const pre = providerFor(account.platform, "update_object")
+      if (pre.preflightWrite) {
+        await pre.preflightWrite(await env.providerCtx(account), args.level as ObjectLevel, [args.id], "update", writeOptions(env.grant, account))
+      }
       // a new schedule or bid can start / raise spend: daily cap mandatory (new MCPs), caps re-checked (both steps)
       const moneyChange = changes.startTime !== undefined || changes.endTime !== undefined || changes.bidAmount !== undefined
       if (moneyChange) requireMoneyCaps(env.grant.settings, account.currency, "đổi lịch chạy hoặc giá thầu")
@@ -125,17 +132,21 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         await assertScheduleWithinCaps(env, account, provider, args.level as ObjectLevel, args.id, changes)
       }
       const update: ObjectUpdate = { level: args.level as ObjectLevel, id: args.id, changes }
+      // e.g. TikTok GMV Max: always two-step confirmation; GMV Max switch in the adapter
+      const confirm = await alwaysConfirmFor(env, account, provider, args.level as ObjectLevel, [args.id], "update", args)
+      const wopts = writeOptions(env.grant, account)
       return runWrite(env, {
         args,
         account,
+        alwaysConfirm: confirm.alwaysConfirm,
         preview: async () => {
           const ctx = await env.providerCtx(account)
           const warn = moneyChange ? legacyCapWarning(env.grant.settings, account.currency) : []
-          return previewFromMutation(await provider.updateObject(ctx, update, { dryRun: true }), warn)
+          return previewFromMutation(await provider.updateObject(ctx, update, { ...wopts, dryRun: true }), [...warn, ...confirm.reasons])
         },
-        execute: async (idempotencyKey) => {
+        execute: async (idempotencyKey, meta) => {
           const ctx = await env.providerCtx(account)
-          const r = await provider.updateObject(ctx, update, { idempotencyKey })
+          const r = await provider.updateObject(ctx, update, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           return {
             structured: mutationOut(r),
             summary: `Đã cập nhật ${Object.keys(changes).length} trường của ${args.level} ${args.id}.`,

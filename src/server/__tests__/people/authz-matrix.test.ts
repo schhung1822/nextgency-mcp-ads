@@ -56,6 +56,7 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     revokeOtherSessionsAction: "any",
   },
   "@/server/actions/auth": { signOutAction: "public" },
+  "@/server/actions/legal": { acceptDisclaimerAction: "any" },
   "@/server/actions/setup": { setupFirstAdminAction: "public" },
   "@/server/actions/users": {
     createUserAction: "admin",

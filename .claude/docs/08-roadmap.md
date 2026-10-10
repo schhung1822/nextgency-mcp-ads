@@ -205,6 +205,24 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] Google Sheet: cột hệ thống mới "Link bài viết" / "Link chiến dịch" (`post_link` / `campaign_link` của `drive_sheet_update_rows`), bí danh trạng thái "Chưa tạo ads" / "Đã tạo ads"…
 - [ ] Thử thật quy trình lên quảng cáo hàng loạt và báo cáo theo lịch với Google + TKQC thử nghiệm + MCP bán hàng
 
+## TikTok GMV Max (2026-10-10) - chưa phát hành
+- [x] Nghiên cứu API GMV Max (providers/tiktok.md §8): báo cáo BASIC không gồm GMV Max (ít nhất loại tạo từ TikTok Shop) → báo cáo riêng `/gmv_max/report/get/`; tạo GMV Max qua API luôn chạy ngay → không mở cho AI
+- [x] 3 tool chỉ đọc `tiktok_gmv_max_shops` / `tiktok_gmv_max_campaigns` / `tiktok_gmv_max_report` (kèm `caution`), cảnh báo trong `ads_get_report` / `ads_list_objects` TikTok
+- [x] Chặn đổi ngân sách / sửa / sao chép / xoá / thêm nhóm QC trên chiến dịch GMV Max; bật/tắt luôn xác nhận 2 bước (hook `mustAlwaysConfirm`) + cảnh báo; bật chạy tôn trọng trần ngân sách ngày theo chi tiêu tối đa có thể (hook `activationSpend`); nhận diện fail closed
+- [x] Hướng dẫn GMV Max trong form thêm kết nối TikTok (khung lưu ý + hộp thoại hướng dẫn chi tiết + panel hướng dẫn), kiểm tra cửa hàng GMV Max khi kiểm tra kết nối; tài liệu người dùng
+- [x] Giai đoạn 2 (chủ dự án duyệt 2026-10-10): mở ghi GMV Max sau công tắc MCP `tiktok_gmv_max_write` **chỉ admin bật** (cần xác thực lại; nhân viên chỉ giữ / tắt / thu hẹp): đổi ngân sách, ROI, sản phẩm, video, tự tăng ngân sách, ngày khuyến mãi, bật/tắt, xoá, **tạo mới + sao chép (chạy ngay, cảnh báo đỏ)**; luôn xác nhận 2 bước (cờ `confirmed` ở adapter), trần ngày theo chi tiêu tối đa có thể + trần cộng dồn 24 giờ cho chiến dịch bắt đầu chạy; đọc lại sau khi ghi; không mở: chuyển tài khoản GMV Max độc quyền, phiên Max delivery, nhóm quảng cáo
+- [x] Hướng dẫn kết nối TikTok "tick tất cả quyền"; bước Chọn quyền của MCP có công tắc + bảng ảnh hưởng từng quyền với GMV Max; huy hiệu ở danh sách MCP
+- [ ] Chủ dự án quyết: bỏ quyền Exclusive Authorization / Session khỏi danh sách "tick tất cả"? sửa 2 câu "luôn tạm dừng" ở trang pháp lý?
+- [ ] e2e `people-flows.spec.ts` "bắt buộc 2FA cho quản trị viên" lỗi cả trên v1.0.8 (có từ trước) - cần xem riêng
+- [ ] Thử thật với TKQC có GMV Max (UNVERIFIED §8: `/campaign/get/` có trả GMV Max không, BASIC có trùng không, `primary_status` mặc định, scope id, mã lỗi shop chưa cấp quyền)
+
+## Popup "Miễn trừ trách nhiệm" khi thêm kết nối và khi tạo MCP (2026-10-10) - chưa phát hành
+- [x] Nội dung 2 bản (kết nối / MCP) trong `src/lib/i18n/vi/disclaimers.ts`, phiên bản + quy tắc chặn trong `src/lib/disclaimers.ts` (mã băm nội dung ghim bằng test)
+- [x] Popup `DisclaimerGate` trước `/connections/new`, `/connections/telegram/new`, `/connections/drive/new`, `/mcp-servers/new` (kéo hết + 10 giây + tick; Huỷ / Esc / ✕ rời trang; tạo MCP khi chưa có kết nối thì không hỏi)
+- [x] Server: `acceptDisclaimerAction` ghi `legal.disclaimer_accept`; 5 action tạo từ chối khi người dùng chưa từng xác nhận phiên bản hiện tại; log tạo mang `disclaimerVersion`; Điều khoản dịch vụ §9 (VI + EN)
+- [x] Chủ dự án quyết: **hiện 1 lần cho mỗi người dùng và mỗi phiên bản** (trang server tra xác nhận, không giới hạn thời gian; bỏ cửa sổ 12 giờ); tên trong 2 bản nội dung: "Ads MCP Simple by noti.vn" (giữ vai trò Đơn vị vận hành / noti.vn)
+- [ ] Chủ dự án quyết: có thêm popup cho "service account riêng" Google Drive (tab Google Drive) / credential Drive hệ thống (Cài đặt) không
+
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.
 2. GitHub: tổ chức **notivn**, repo **Ads-MCP-simple** → image `ghcr.io/notivn/ads-mcp-simple`.

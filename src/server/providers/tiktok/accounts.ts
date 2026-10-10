@@ -3,6 +3,7 @@
 import { isProviderError, ProviderError } from "../errors"
 import type { AccountStatus, AdAccountInfo, ConnectionContext, CredentialCheck } from "../types"
 import { chunk, str, ttFromConnection, ttGet, type Raw } from "./api"
+import { tiktokRequest } from "./client"
 import type { TikTokCredentials } from "./credentials"
 
 /** /advertiser/info/ batch size. TikTok documents no explicit maximum - 100 is conservative [L]. */
@@ -109,6 +110,9 @@ export async function validateTikTokCredentials(ctx: ConnectionContext<TikTokCre
       "TikTok không cho kiểm tra scope của token có sẵn - nếu thiếu quyền, lỗi 40001 sẽ xuất hiện khi thao tác. Dùng \"Đổi auth_code\" để app ghi nhận scope."
     )
   }
+  // GMV Max (TikTok Shop) readiness - informational only, never blocks saving
+  const gmv = await probeGmvMax(ctx, advertisers)
+  warnings.push(...gmv.warnings)
   return {
     valid: true,
     tokenExpiresAt: null,
@@ -120,8 +124,162 @@ export async function validateTikTokCredentials(ctx: ConnectionContext<TikTokCre
       displayName: str(user.display_name),
       advertiserCount: advertisers.length,
       ...(Array.isArray(storedScope) ? { scope: storedScope } : {}),
+      gmvMax: gmv.meta,
     },
   }
+}
+
+/** GMV Max probe: first N authorized advertisers, one /gmv_max/store/list/ call each (sequential). */
+export const GMV_PROBE_MAX_ADVERTISERS = 10
+const GMV_PROBE_TIMEOUT_MS = 8_000
+/** Hard total deadline of the probe, in-flight calls included (AbortSignal): validation must stay quick. */
+export const GMV_PROBE_BUDGET_MS = 20_000
+/** A previous probe result (connections.meta.gmvMax) is reused for this long - the periodic token check runs often. */
+export const GMV_PROBE_REUSE_MS = 24 * 60 * 60_000
+
+/** Non-secret summary stored in connections.meta.gmvMax (no shop names). */
+export interface GmvMaxProbe {
+  checkedAt: string
+  /** developer app the probe ran with (a different app → probe again) */
+  appId?: string
+  /** advertisers whose shop list was read: shops the ad account can access, and shops ready for GMV Max */
+  advertisers: { advertiserId: string; shops: number; ready: number }[]
+  /** authorized advertisers not probed (cap / time budget / probe stopped) */
+  notChecked: number
+  /** every probed advertiser was refused (40001/40125): the token most likely lacks the GMV Max scope */
+  permissionDenied: boolean
+  /** the probe stopped on another error (rate limit, network, deadline, endpoint unavailable…) */
+  failed: boolean
+}
+
+/**
+ * A previous probe (ctx.connectionMeta.gmvMax) that can be reused: < 24 h old, same developer app, complete (not
+ * failed / refused) and covering every advertiser the probe would ask now. Otherwise null → probe again.
+ */
+export function reusableGmvMaxProbe(
+  previous: unknown,
+  appId: string,
+  advertiserIds: string[],
+  nowMs: number
+): GmvMaxProbe | null {
+  if (!previous || typeof previous !== "object") return null
+  const p = previous as Partial<GmvMaxProbe>
+  const at = typeof p.checkedAt === "string" ? Date.parse(p.checkedAt) : NaN
+  if (!Number.isFinite(at) || nowMs - at < 0 || nowMs - at >= GMV_PROBE_REUSE_MS) return null
+  if (typeof p.appId !== "string" || p.appId !== appId) return null
+  if (p.failed !== false || p.permissionDenied !== false || !Array.isArray(p.advertisers)) return null
+  const probed = new Set(p.advertisers.map((a) => String(a?.advertiserId ?? "")))
+  if (!advertiserIds.slice(0, GMV_PROBE_MAX_ADVERTISERS).every((id) => probed.has(id))) return null
+  return p as GmvMaxProbe
+}
+
+/** Warnings for explicit findings only: ready shops, or the GMV Max permission missing. */
+function gmvMaxProbeWarnings(meta: GmvMaxProbe, names: Map<string, string>): string[] {
+  const warnings: string[] = []
+  const ready = meta.advertisers.filter((c) => c.ready > 0)
+  const name = (id: string) => names.get(id) ?? id
+  if (ready.length === 1) {
+    const r = ready[0]!
+    warnings.push(`GMV Max (TikTok Shop): tài khoản ${name(r.advertiserId)} đã sẵn sàng với ${r.ready} cửa hàng.`)
+  } else if (ready.length > 1) {
+    const shown = ready.slice(0, 3).map((r) => `${name(r.advertiserId)} (${r.ready} cửa hàng)`)
+    const rest = ready.length - shown.length
+    warnings.push(
+      `GMV Max (TikTok Shop): ${ready.length} tài khoản đã sẵn sàng - ${shown.join(", ")}${rest > 0 ? ` và ${rest} tài khoản khác` : ""}.`
+    )
+  }
+  if (meta.permissionDenied) {
+    warnings.push(
+      "Token chưa có quyền GMV Max (Store Management / GMV MAX Report) - xem hướng dẫn GMV Max nếu bạn dùng TikTok Shop."
+    )
+  }
+  return warnings
+}
+
+/**
+ * D6 - non-fatal GMV Max readiness probe: GET /gmv_max/store/list/ for the first ≤10 authorized advertisers.
+ * A shop is ready when `is_gmv_max_available` is true AND its exclusive GMV Max advertiser is this advertiser.
+ * Also runs in the periodic token-health job: a recent complete result in connectionMeta.gmvMax (< 24 h, same app,
+ * same advertisers) is reused without any call. Hard total deadline 20 s (AbortSignal, in-flight calls included).
+ * Never throws. Warnings only for explicit findings: ready shops, or the GMV Max permission missing; a token
+ * without any GMV Max shop gets no line (most TikTok users do not run TikTok Shop).
+ */
+export async function probeGmvMax(
+  ctx: ConnectionContext<TikTokCredentials>,
+  advertisers: Raw[],
+  now: () => number = Date.now
+): Promise<{ meta: GmvMaxProbe; warnings: string[] }> {
+  const started = now()
+  const ids = advertisers
+    .map((a) => ({ id: String(a.advertiser_id ?? ""), name: str(a.advertiser_name) }))
+    .filter((a) => /^\d+$/.test(a.id))
+  const names = new Map(ids.map((a) => [a.id, a.name ?? a.id]))
+  const appId = String(ctx.credentials.appId ?? "")
+  const previous = reusableGmvMaxProbe(
+    ctx.connectionMeta?.gmvMax,
+    appId,
+    ids.map((a) => a.id),
+    started
+  )
+  if (previous) return { meta: previous, warnings: gmvMaxProbeWarnings(previous, names) }
+
+  const deadline = AbortSignal.timeout(GMV_PROBE_BUDGET_MS)
+  const signal = ctx.signal ? AbortSignal.any([ctx.signal, deadline]) : deadline
+  const checked: GmvMaxProbe["advertisers"] = []
+  let denied = 0
+  let failed = false
+  for (const a of ids.slice(0, GMV_PROBE_MAX_ADVERTISERS)) {
+    if (signal.aborted || now() - started > GMV_PROBE_BUDGET_MS) {
+      if (deadline.aborted || now() - started > GMV_PROBE_BUDGET_MS) failed = true
+      break
+    }
+    try {
+      const res = await tiktokRequest<{ store_list?: unknown }>({
+        method: "GET",
+        path: "gmv_max/store/list",
+        query: { advertiser_id: a.id },
+        auth: ctx.credentials.accessToken,
+        appId: ctx.credentials.appId,
+        retries: 0,
+        timeoutMs: GMV_PROBE_TIMEOUT_MS,
+        signal,
+        onUpstream: ctx.onUpstream,
+      })
+      const rows = (Array.isArray(res.data?.store_list) ? (res.data.store_list as unknown[]) : []).filter(
+        (s): s is Raw => !!s && typeof s === "object"
+      )
+      // one store may be listed once per Business Center with access (owner + partner BCs): count store ids
+      const shops = new Set(rows.map((s) => String(s.store_id ?? "")))
+      const ready = new Set(
+        rows
+          .filter((shop) => {
+            const exclusive = shop.exclusive_authorized_advertiser_info as Raw | null | undefined
+            return shop.is_gmv_max_available === true && String(exclusive?.advertiser_id ?? "") === a.id
+          })
+          .map((s) => String(s.store_id ?? ""))
+      )
+      checked.push({ advertiserId: a.id, shops: shops.size, ready: ready.size })
+    } catch (e) {
+      if (!signal.aborted && isProviderError(e) && e.code === "permission_denied") {
+        denied++
+        // a missing scope is token-wide: two refusals before any success → stop asking
+        if (checked.length === 0 && denied >= 2) break
+        continue
+      }
+      // rate limit / network / deadline / endpoint unavailable: stop, keep the validation quick
+      failed = true
+      break
+    }
+  }
+  const meta: GmvMaxProbe = {
+    checkedAt: new Date(now()).toISOString(),
+    appId,
+    advertisers: checked,
+    notChecked: ids.length - checked.length - denied,
+    permissionDenied: denied > 0 && checked.length === 0,
+    failed,
+  }
+  return { meta, warnings: gmvMaxProbeWarnings(meta, names) }
 }
 
 async function listAuthorizedAdvertisers(ctx: ConnectionContext<TikTokCredentials>): Promise<Raw[]> {

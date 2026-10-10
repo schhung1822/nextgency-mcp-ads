@@ -199,6 +199,11 @@ export const mcpSettingsSchema = z.object({
    */
   drivePublicLinks: z.boolean().default(true),
   driveSheetWriteback: z.boolean().default(true),
+  /**
+   * TikTok GMV Max: the AI may change GMV Max campaigns (status, budget/ROI, products, creatives, copy, create, delete)
+   * within this MCP's TikTok permissions. Default OFF; only an admin may turn it on (enforced server-side).
+   */
+  tiktokGmvMaxWrite: z.boolean().default(false),
 })
 export type McpSettingsInput = z.infer<typeof mcpSettingsSchema>
 
@@ -216,6 +221,7 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
   telegramMessagesPerHour: 20,
   drivePublicLinks: true,
   driveSheetWriteback: true,
+  tiktokGmvMaxWrite: false,
 }
 
 /** Shape stored in `mcp_servers.settings` (snake_case, as documented in 03-database-schema.md). */
@@ -235,6 +241,7 @@ export interface StoredMcpSettings {
   telegram_messages_per_hour: number
   drive_public_links: boolean
   drive_sheet_writeback: boolean
+  tiktok_gmv_max_write: boolean
 }
 
 function sortedCaps(r: Record<string, number>): Record<string, number> {
@@ -260,6 +267,7 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     telegram_messages_per_hour: s.telegramMessagesPerHour,
     drive_public_links: s.drivePublicLinks,
     drive_sheet_writeback: s.driveSheetWriteback,
+    tiktok_gmv_max_write: s.tiktokGmvMaxWrite,
   }
 }
 
@@ -457,6 +465,8 @@ export type McpFormValues = {
   driveSourceIds: string[]
   drivePublicLinks: boolean
   driveSheetWriteback: boolean
+  /** TikTok GMV Max write switch (admin-only) */
+  tiktokGmvMaxWrite: boolean
 }
 
 export const PERMISSION_PRESETS = {
@@ -511,6 +521,7 @@ export function defaultMcpFormValues(): McpFormValues {
     driveSourceIds: [],
     drivePublicLinks: DEFAULT_SETTINGS_INPUT.drivePublicLinks,
     driveSheetWriteback: DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
+    tiktokGmvMaxWrite: DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite,
   }
 }
 
@@ -610,6 +621,7 @@ export function formValuesToConfig(
       telegramMessagesPerHour: Number(v.telegramMessagesPerHour),
       drivePublicLinks: v.drivePublicLinks ?? DEFAULT_SETTINGS_INPUT.drivePublicLinks,
       driveSheetWriteback: v.driveSheetWriteback ?? DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
+      tiktokGmvMaxWrite: v.tiktokGmvMaxWrite ?? DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite,
     },
     expiresAt: v.expiresOn ? expiryDateToIso(v.expiresOn) : null,
     notificationChannelIds: [...new Set(v.notificationChannelIds)],
@@ -691,6 +703,8 @@ export function configToFormValues(config: {
   v.drivePublicLinks = config.settings.drivePublicLinks ?? DEFAULT_SETTINGS_INPUT.drivePublicLinks
   v.driveSheetWriteback =
     config.settings.driveSheetWriteback ?? DEFAULT_SETTINGS_INPUT.driveSheetWriteback
+  // missing on rows saved before the feature → OFF (same default as the runtime parser)
+  v.tiktokGmvMaxWrite = config.settings.tiktokGmvMaxWrite ?? DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite
   return v
 }
 

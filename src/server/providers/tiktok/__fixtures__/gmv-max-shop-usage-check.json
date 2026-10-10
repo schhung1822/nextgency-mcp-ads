@@ -1,0 +1,9 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVUSAGE0001",
+  "data": {
+    "is_running_custom_shop_ads": true,
+    "promote_all_products_allowed": false
+  }
+}

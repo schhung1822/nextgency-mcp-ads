@@ -53,6 +53,7 @@ export type ActivityAction =
   | "mcp.key.reveal"
   | "settings.update"
   | "logs.export"
+  | "legal.disclaimer_accept"
   | "system.update_check"
   | "system.update_requested"
   | "system.update_succeeded"

@@ -49,6 +49,7 @@ describe.skipIf(!hasDb)("TikTok auth_code exchange", { timeout: 120_000 }, () =>
       },
     })
     w.setToken("tiktok", SECRET_TOKEN, { accounts: demoAccounts(w.prefix, "tiktok") })
+    await w.acceptDisclaimers(w.users.staff, ["connection"])
   }, 120_000)
   afterAll(async () => {
     if (w) await w.cleanup()

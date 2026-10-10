@@ -19,6 +19,7 @@ import {
   type SelectableConnection,
 } from "@/server/services/mcp-servers"
 import { getDriveSystemInfo } from "@/server/services/drive-credentials"
+import { gmvMaxFlagsForMcpScope } from "@/server/services/mcp-gmv-max"
 import { listDriveSourcesForMcpScope } from "@/server/services/drive-sources"
 import { listChannelsForMcpScope } from "@/server/services/notification-channels"
 
@@ -101,7 +102,11 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
     listDriveSourcesForMcpScope(actor, { id: mcp.ownerId, role: mcp.ownerRole }),
     getDriveSystemInfo(),
   ])
-  const accountNames = await switchedOffAccountNames(actor, mcp, connections)
+  const [accountNames, gmvFlags] = await Promise.all([
+    switchedOffAccountNames(actor, mcp, connections),
+    // TikTok accounts with TikTok Shop / GMV Max (connection check summary) - for the admin-only GMV Max switch
+    gmvMaxFlagsForMcpScope(actor, connections),
+  ])
   const initialTab = parseDetailTab(sp.tab)
   return (
     <McpDetailView
@@ -113,6 +118,7 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
       accountNames={accountNames}
       twoFactorEnabled={user.twoFactorEnabled}
       initialTab={initialTab}
+      gmvMax={{ isAdmin: actor.role === "admin", flags: gmvFlags }}
       actions={{
         update: updateMcpAction,
         reveal: revealMcpUrlAction,

@@ -26,6 +26,9 @@ import { CAMPAIGN_CREATE_CUTOFF_WARNING } from "./copy"
 import type { TikTokCredentials } from "./credentials"
 import { fetchOne } from "./objects"
 import { fullAdgroupUpdate } from "./mutate"
+import { gmvMaxExtensions } from "./gmv-max"
+import { gmvMaxWriteExtensions } from "./gmv-max-write"
+import { assertNotGmvMaxCampaign } from "./gmv-max-detect"
 
 export type CreateResult = MutationResult & { payload?: Raw }
 
@@ -341,6 +344,8 @@ async function runCreateAdGroup(
   if (normalizeStatus(campaign.operation_status, campaign.secondary_status) === "deleted") {
     throw invalid(`Chiến dịch ${input.campaign_id} đã bị xoá.`)
   }
+  // GMV Max campaigns have no ad groups in the API: no ad group is added to them (fail closed when unverifiable)
+  await assertNotGmvMaxCampaign(tt, campaign)
   if (automationType(campaign) !== "MANUAL") {
     throw invalid("Chỉ tạo được nhóm quảng cáo trong chiến dịch thủ công (Manual); Smart+ cần endpoint riêng/allowlist.")
   }
@@ -572,4 +577,7 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     write: true,
     run: (ctx, input, opts) => runUpdateTargeting(ctx, input as UpdateTargetingInput, opts),
   },
+  // GMV Max (TikTok Shop): analysis tools (gmv-max.ts) + reads / writes behind the admin-only MCP switch (gmv-max-write.ts)
+  ...gmvMaxExtensions,
+  ...gmvMaxWriteExtensions,
 ]

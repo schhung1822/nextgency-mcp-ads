@@ -1,0 +1,98 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVINFO0001",
+  "data": {
+    "advertiser_id": "7100000000000000001",
+    "age_groups": [
+      "AGE_18_24",
+      "AGE_25_34",
+      "AGE_35_44",
+      "AGE_45_54",
+      "AGE_55_100"
+    ],
+    "budget": 300000,
+    "campaign_id": "1840000000000000001",
+    "campaign_name": "GMV Max - Tất cả sản phẩm",
+    "custom_anchor_video_list": [],
+    "deep_bid_type": "VO_MIN_ROAS",
+    "identity_list": [
+      {
+        "identity_id": "7200000000000000001",
+        "identity_type": "TT_USER"
+      },
+      {
+        "identity_authorized_bc_id": "7300000000000000001",
+        "identity_id": "7200000000000000002",
+        "identity_type": "BC_AUTH_TT"
+      }
+    ],
+    "item_group_ids": [
+      "1729000000000000001",
+      "1729000000000000002"
+    ],
+    "item_list": [
+      {
+        "item_id": "7400000000000000001",
+        "text": "Áo thun mùa hè",
+        "spu_id_list": [
+          "1729000000000000001"
+        ],
+        "identity_info": {
+          "identity_id": "7200000000000000001",
+          "identity_type": "TT_USER",
+          "profile_image": "https://p16-sign.example.test/avatar.jpeg?x-expires=1760000000",
+          "user_name": "shopabc"
+        },
+        "video_info": {
+          "video_id": "v10044g50000abc",
+          "video_cover_url": "https://p16-sign.example.test/cover.jpeg?x-expires=1760000000",
+          "preview_url": "https://v16m.example.test/preview.mp4?x-expires=1760000000",
+          "height": 1920,
+          "width": 1080,
+          "duration": 15.2,
+          "format": "mp4"
+        }
+      }
+    ],
+    "location_ids": [
+      "1562822"
+    ],
+    "operation_status": "ENABLE",
+    "optimization_goal": "VALUE",
+    "placements": [
+      "PLACEMENT_TIKTOK"
+    ],
+    "product_specific_type": "CUSTOMIZED_PRODUCTS",
+    "product_video_specific_type": "AUTO_SELECTION",
+    "affiliate_posts_enabled": true,
+    "roas_bid": 2,
+    "auto_budget": {
+      "auto_budget_enabled": true,
+      "budget_increase_percentage": 50,
+      "increase_limit": 10,
+      "current_budget": 300000,
+      "next_increase": 150000,
+      "remained_times": 10,
+      "maximum_budget": 1800000
+    },
+    "promotion_days": {
+      "is_enabled": false,
+      "auto_schedule_enabled": false,
+      "custom_schedule_list": [],
+      "budget_increase_percentage": 50,
+      "increase_limit": 10,
+      "current_budget": 300000,
+      "next_increase": 150000,
+      "remained_times": 10,
+      "maximum_budget": 1800000
+    },
+    "roi_protection_enabled": true,
+    "schedule_end_time": "2026-12-31 16:59:59",
+    "schedule_start_time": "2026-09-01 17:00:00",
+    "schedule_type": "SCHEDULE_START_END",
+    "shopping_ads_type": "PRODUCT",
+    "store_authorized_bc_id": "7300000000000000001",
+    "store_id": "7494000000000000001"
+  }
+}

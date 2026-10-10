@@ -29,6 +29,7 @@ export const ACTIVITY_GROUPS = [
   "mcp",
   "settings",
   "logs",
+  "legal",
   "system",
 ] as const
 export type ActivityGroup = (typeof ACTIVITY_GROUPS)[number]

@@ -23,6 +23,8 @@ const ADGROUP = adgroupFixture.data.list[0] as Record<string, unknown>
 
 function objectsFor(level: "campaign" | "adgroup", ids: string[], extra: Record<string, unknown> = {}) {
   return ids.map((id) => ({
+    // a non-shop objective: these campaigns are never GMV Max candidates (no /gmv_max/campaign/get/ check)
+    ...(level === "campaign" ? { objective_type: "TRAFFIC" } : {}),
     [`${level}_id`]: id,
     [`${level}_name`]: `N${id}`,
     operation_status: "ENABLE",

@@ -5,6 +5,8 @@ import { assertGrant } from "../../grant"
 import { accountIdSchema, objectIdSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { CREATE_ANNOTATIONS, providerFor, registerToolSpec, runWrite, type ToolContext } from "../../tool"
 import { grantPlatformsWith } from "../../types"
+import { writeOptions } from "../../write-options"
+import { alwaysConfirmFor } from "./set-status"
 
 export const NAME = "ads_copy_object"
 export const MAX_DEEP_COPY_ADS = 50
@@ -35,7 +37,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
   registerToolSpec(server, tctx, {
     name: NAME,
     title: "Sao chép chiến dịch / nhóm / quảng cáo",
-    description: `Dùng khi cần nhân bản một chiến dịch, nhóm quảng cáo hoặc quảng cáo (deep=true để sao cả các cấp con, tối đa ${MAX_DEEP_COPY_ADS} quảng cáo mỗi lần), có thể thêm tiền tố/hậu tố tên và chọn parent đích (target_parent_id). Bản sao LUÔN ở trạng thái tạm dừng; dùng ads_set_status để bật sau. Gọi ads_list_accounts và ads_get_object (include_children) trước để xem cây đối tượng. Kết quả gồm bảng map id cũ → id mới và cảnh báo. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.`,
+    description: `Dùng khi cần nhân bản một chiến dịch, nhóm quảng cáo hoặc quảng cáo (deep=true để sao cả các cấp con, tối đa ${MAX_DEEP_COPY_ADS} quảng cáo mỗi lần), có thể thêm tiền tố/hậu tố tên và chọn parent đích (target_parent_id). Bản sao LUÔN ở trạng thái tạm dừng; dùng ads_set_status để bật sau - riêng chiến dịch GMV Max (TikTok, chỉ khi quản trị viên đã cho phép MCP thay đổi GMV Max) bản sao CHẠY NGAY vì TikTok không tạo GMV Max ở trạng thái tạm dừng. Gọi ads_list_accounts và ads_get_object (include_children) trước để xem cây đối tượng. Kết quả gồm bảng map id cũ → id mới và cảnh báo. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.`,
     kind: "write",
     annotations: CREATE_ANNOTATIONS,
     input: z.object({
@@ -86,12 +88,17 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         nameSuffix: args.name_suffix,
         allowIncomplete: args.allow_incomplete_targeting,
       }
+      // e.g. TikTok GMV Max: always two-step confirmation; GMV Max switch + strict worst-case guard in the adapter
+      const confirm = await alwaysConfirmFor(env, account, provider, args.level, [args.id], "copy", args)
+      const wopts = writeOptions(env.grant, account)
       return runWrite(env, {
         args,
         account,
+        alwaysConfirm: confirm.alwaysConfirm,
         preview: async () => {
-          const r = await provider.copyObject(ctx, req, { dryRun: true })
+          const r = await provider.copyObject(ctx, req, { ...wopts, dryRun: true })
           const planned = r.mappings.length || 1
+          const active = r.newStatus === "active"
           return {
             changes: [
               {
@@ -100,11 +107,12 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
                 level: args.level,
                 field: "copy",
                 before: null,
-                after: `${planned} đối tượng mới (tạm dừng)${args.target_parent_id ? ` dưới ${args.target_parent_id}` : ""}`,
+                after: `${planned} đối tượng mới (${active ? "CHẠY NGAY" : "tạm dừng"})${args.target_parent_id ? ` dưới ${args.target_parent_id}` : ""}`,
               },
             ],
             warnings: [
-              "Bản sao luôn ở trạng thái tạm dừng.",
+              ...(active ? [] : ["Bản sao luôn ở trạng thái tạm dừng."]),
+              ...confirm.reasons,
               ...(args.allow_incomplete_targeting
                 ? ["Đã cho phép sao chép thiếu tiêu chí nhắm/loại trừ - kiểm tra kỹ nhắm mục tiêu của bản sao trước khi bật."]
                 : []),
@@ -114,17 +122,19 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
             details: { mode: r.mode, deep: args.deep, ads_in_tree: adCount, mappings: mappingsOut(r).slice(0, 50) },
           }
         },
-        execute: async (idempotencyKey) => {
-          const r = await provider.copyObject(ctx, req, { idempotencyKey })
+        execute: async (idempotencyKey, meta) => {
+          const r = await provider.copyObject(ctx, req, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           const failed = r.mappings.filter((m) => !m.newId).length
+          const active = r.newStatus === "active"
           return {
             structured: {
               changes: copyChanges(r).map((c) => ({ object_id: c.objectId, level: c.level, field: c.field, before: null, after: c.after })),
               warnings: r.warnings,
-              result: { mode: r.mode, root_new_id: r.rootNewId, mappings: mappingsOut(r), new_status: "paused" },
+              result: { mode: r.mode, root_new_id: r.rootNewId, mappings: mappingsOut(r), new_status: active ? "active" : "paused" },
             },
-            summary: `Đã sao chép ${args.level} ${args.id} → ${r.rootNewId ?? "(không tạo được)"} (${r.mappings.length - failed} đối tượng mới, tạm dừng)${failed ? `, ${failed} lỗi` : ""}.`,
-            changes: copyChanges(r),
+            summary: `Đã sao chép ${args.level} ${args.id} → ${r.rootNewId ?? "(không tạo được)"} (${r.mappings.length - failed} đối tượng mới, ${active ? "ĐANG CHẠY" : "tạm dừng"})${failed ? `, ${failed} lỗi` : ""}.`,
+            // e.g. the worst-case daily spend of a TikTok GMV Max copy that starts running (cumulative cap)
+            changes: [...copyChanges(r), ...(r.extraChanges ?? [])],
           }
         },
       })

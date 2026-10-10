@@ -1,0 +1,21 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVUPDATE0001",
+  "data": {
+    "advertiser_id": "7100000000000000001",
+    "budget": 330000,
+    "campaign_id": "1840000000000000001",
+    "campaign_name": "GMV Max - Tất cả sản phẩm",
+    "deep_bid_type": "VO_MIN_ROAS",
+    "operation_status": "ENABLE",
+    "optimization_goal": "VALUE",
+    "product_specific_type": "CUSTOMIZED_PRODUCTS",
+    "product_video_specific_type": "AUTO_SELECTION",
+    "roas_bid": 2,
+    "schedule_type": "SCHEDULE_FROM_NOW",
+    "shopping_ads_type": "PRODUCT",
+    "store_authorized_bc_id": "7300000000000000001",
+    "store_id": "7494000000000000001"
+  }
+}

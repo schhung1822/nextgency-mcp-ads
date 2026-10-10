@@ -124,6 +124,7 @@ export const account = {
     "mcp.key.reveal": "Xem lại link MCP",
     "settings.update": "Đổi cài đặt",
     "logs.export": "Xuất nhật ký",
+    "legal.disclaimer_accept": "Xác nhận miễn trừ trách nhiệm",
     "system.update_check": "Kiểm tra bản cập nhật",
     "system.update_requested": "Yêu cầu cập nhật hệ thống",
     "system.update_succeeded": "Cập nhật hệ thống thành công",

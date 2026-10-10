@@ -6,7 +6,10 @@
 import { addDays, todayInTz } from "../dates"
 import { ProviderError } from "../errors"
 import { roundMoney } from "../money"
+import { STARTED_MAX_DAILY_SPEND_FIELD } from "../types"
 import type {
+  ActivationSpend,
+  AlwaysConfirmOp,
   BudgetUpdate,
   FieldChange,
   MutationOptions,
@@ -14,6 +17,7 @@ import type {
   ObjectLevel,
   ObjectUpdate,
   ProviderContext,
+  StartedSpendReservation,
   TargetStatus,
 } from "../types"
 import {
@@ -39,7 +43,21 @@ import {
   type TT,
 } from "./api"
 import type { TikTokCredentials } from "./credentials"
-import { assertNotLegacySmartPlus, fetchByIds, fetchOne, objectId, objectName } from "./objects"
+import { gmvMaxActivationSpend } from "./gmv-max"
+import {
+  gmvMaxConfirmReasons,
+  gmvMaxHitFor,
+  gmvMaxLockedError,
+  gmvMaxStatusEffects,
+  gmvMaxStatusFailed,
+  planGmvMaxStatus,
+  verifyGmvMaxStatus,
+  routeGmvMaxBudget,
+  routeGmvMaxDelete,
+  routeGmvMaxObjectUpdate,
+  type GmvMaxStatusPlan,
+} from "./gmv-max-write"
+import { assertNotLegacySmartPlus, campaignNotFound, fetchByIds, fetchOne, objectId, objectName } from "./objects"
 
 export const STATUS_BATCH = 20
 /** Writes that set absolute values are idempotent → safe to retry on transient errors. */
@@ -148,7 +166,20 @@ export async function setTikTokStatus(
   toTikTokLevel(level)
   if (!ids.length) throw invalid("Cần ít nhất 1 id.")
   const op: OpStatus = status === "active" ? "ENABLE" : "DISABLE"
-  const objs = await resolveAll(tt, level, [...new Set(ids.map(String))])
+  const uniq = [...new Set(ids.map(String))]
+  let objs: Raw[]
+  let gmv: GmvMaxStatusPlan | null = null
+  if (level === "campaign") {
+    // GMV Max (C3): campaigns need the admin switch (gmvMaxWrite) - also for on/off; refused before anything is sent
+    const found = await fetchByIds(tt, "campaign", uniq)
+    gmv = await planGmvMaxStatus(tt, uniq, found, opts, status)
+    const plan = gmv
+    const missing = uniq.filter((id) => !found.has(id) && !plan.rows.has(id))
+    if (missing.length) throw campaignNotFound(missing.join(", "))
+    objs = uniq.map((id) => found.get(id) ?? plan.rows.get(id)!)
+  } else {
+    objs = await resolveAll(tt, level, uniq)
+  }
   const warnings: string[] = []
   const changes: FieldChange[] = []
   const todo: Raw[] = []
@@ -182,12 +213,131 @@ export async function setTikTokStatus(
     })
     todo.push(o)
   }
+  // GMV Max: pause / enable warnings; switching ON needs the worst-case daily spend within the MCP daily cap (C5), also
+  // cumulated with the GMV Max campaigns this MCP started in the last 24 h (S5); execution needs the confirmation (C4)
+  let started = new Map<string, number>()
+  let reservation: StartedSpendReservation | null = null
+  if (gmv && todo.length) {
+    const fx = await gmvMaxStatusEffects(tt, todo.map((o) => objectId(level, o)), gmv, status, opts)
+    warnings.push(...fx.warnings)
+    started = fx.started
+    reservation = fx.reservation
+  }
   if (opts.dryRun || !todo.length) return { preview: !!opts.dryRun, changes, warnings }
-  const applied = await applyStatus(tt, level, todo, op)
+  let applied: ApplyStatusResult
+  try {
+    applied = await applyStatus(tt, level, todo, op)
+  } catch (e) {
+    // S5: definite failure → reservation released; unknown outcome → kept + the error row carries the started changes
+    throw gmvMaxStatusFailed(e, reservation, started, new Map(changes.map((c) => [c.objectId, c.objectName ?? null])))
+  }
   warnings.push(...applied.warnings)
   // partial success: only objects TikTok actually updated are reported as changes
   const failed = new Set(applied.failed.map((o) => objectId(level, o)))
-  return { preview: false, changes: changes.filter((ch) => !failed.has(ch.objectId)), warnings }
+  // S5: campaigns TikTok refused to switch on did not start (their reservation is released)
+  if (failed.size) reservation?.release([...failed])
+  const done = changes.filter((ch) => !failed.has(ch.objectId))
+  // GMV Max: read the status back (A2) and record the worst-case spend of the campaigns switched on (S5)
+  const gmvDone = gmv ? done.map((ch) => ch.objectId).filter((id) => gmv!.gmvIds.has(id)) : []
+  if (gmvDone.length) warnings.push(...(await verifyGmvMaxStatus(tt, gmvDone, status)))
+  for (const id of gmvDone) {
+    const amount = started.get(id)
+    if (amount !== undefined) {
+      const ch = done.find((c) => c.objectId === id)
+      done.push({
+        objectId: id,
+        objectName: ch?.objectName ?? null,
+        level: "campaign",
+        field: STARTED_MAX_DAILY_SPEND_FIELD,
+        before: null,
+        after: amount,
+      })
+    }
+  }
+  return { preview: false, changes: done, warnings }
+}
+
+/**
+ * AdsProvider.preflightWrite (S8, L5): with the GMV Max switch OFF, a status change ("active" / "paused") or a budget /
+ * field update ("update": ads_update_budget, ads_update_object) of a GMV Max campaign is refused with the "locked"
+ * message BEFORE mcp-core's money checks (it must not answer with a budget / cap error first).
+ * Switch on / other levels / other ops: nothing to do (the adapter runs the full checks).
+ */
+export async function tiktokPreflightWrite(
+  ctx: ProviderContext<TikTokCredentials>,
+  level: ObjectLevel,
+  ids: string[],
+  op: AlwaysConfirmOp,
+  opts: MutationOptions
+): Promise<void> {
+  if (level !== "campaign" || opts.gmvMaxWrite === true || !ids.length) return
+  if (op !== "active" && op !== "paused" && op !== "update") return
+  const tt = ttFromCtx(ctx)
+  const uniq = [...new Set(ids.map(String))]
+  const found = await fetchByIds(tt, "campaign", uniq)
+  if (op === "update") {
+    // L5: ads_update_budget / ads_update_object on a GMV Max campaign with the switch OFF → "locked" before the money
+    // checks (a failed GMV Max check → refused, fail closed - the adapter would refuse it the same way)
+    for (const id of uniq) {
+      if (await gmvMaxHitFor(tt, id, found.get(id) ?? null, true)) throw gmvMaxLockedError([id])
+    }
+    return
+  }
+  // throws gmvMaxLockedError when one of them is a GMV Max campaign that would change
+  await planGmvMaxStatus(tt, uniq, found, opts, op)
+}
+
+/**
+ * AdsProvider.mustAlwaysConfirm (C4): EVERY write on a GMV Max campaign (status, budget / field update, copy, delete)
+ * always goes through two-step confirmation, even when the MCP disabled it. Status: only campaigns that would actually
+ * change are checked. Ids absent from /campaign/get/ are checked against /gmv_max/campaign/get/; non-candidates cost one
+ * /campaign/get/ read and no GMV Max call. Returns the Vietnamese reasons (empty = no extra confirmation); a failed
+ * GMV Max check → reasons for every candidate (fail closed).
+ */
+export async function tiktokMustAlwaysConfirm(
+  ctx: ProviderContext<TikTokCredentials>,
+  level: ObjectLevel,
+  ids: string[],
+  op: AlwaysConfirmOp
+): Promise<string[]> {
+  if (level !== "campaign" || !ids.length) return []
+  const tt = ttFromCtx(ctx)
+  const uniq = [...new Set(ids.map(String))]
+  const found = await fetchByIds(tt, "campaign", uniq)
+  let check = uniq
+  if (op === "active" || op === "paused") {
+    const target: OpStatus = op === "active" ? "ENABLE" : "DISABLE"
+    check = uniq.filter((id) => found.get(id)?.operation_status !== target)
+  }
+  return gmvMaxConfirmReasons(tt, check, found, op)
+}
+
+/**
+ * AdsProvider.activationSpend: GMV Max campaigns that ads_set_status (active) would switch on → worst-case daily spend
+ * (daily budget, auto budget increase / promotion days maxima, legacy auto budget ×10; Max delivery / Creative boost
+ * sessions not included - noted). Campaigns already on, deleted or not found are skipped; non-candidates cost one
+ * /campaign/get/ read and no GMV Max call. Throws when a candidate's GMV Max status or budget cannot be read.
+ */
+export async function tiktokActivationSpend(
+  ctx: ProviderContext<TikTokCredentials>,
+  level: ObjectLevel,
+  ids: string[]
+): Promise<ActivationSpend[]> {
+  if (level !== "campaign" || !ids.length) return []
+  const tt = ttFromCtx(ctx)
+  const found = await fetchByIds(tt, "campaign", [...new Set(ids.map(String))])
+  const rows = [...found.values()].filter(
+    (o) => o.operation_status !== "ENABLE" && normalizeStatus(o.operation_status, o.secondary_status) !== "deleted"
+  )
+  const spend = await gmvMaxActivationSpend(tt, rows)
+  return spend.map((s) => ({
+    id: s.id,
+    label: `Chiến dịch GMV Max${s.name ? ` "${s.name.slice(0, 80)}"` : ""} (${s.id})`,
+    currency: tt.currency,
+    dailyBudget: s.daily_budget,
+    maxDailySpend: s.max_possible_daily_spend,
+    notes: s.notes,
+  }))
 }
 
 export async function deleteTikTokObject(
@@ -198,7 +348,17 @@ export async function deleteTikTokObject(
 ): Promise<MutationResult> {
   const tt = ttFromCtx(ctx)
   toTikTokLevel(level)
-  const o = await fetchOne(tt, level, id)
+  let o: Raw
+  if (level === "campaign") {
+    // GMV Max (C3): needs the admin switch; deleted through /campaign/status/update/ DELETE with GMV Max warnings
+    const found = (await fetchByIds(tt, "campaign", [id])).get(String(id)) ?? null
+    const routed = await routeGmvMaxDelete(tt, String(id), found, opts)
+    if (routed) return routed
+    if (!found) throw campaignNotFound(id)
+    o = found
+  } else {
+    o = await fetchOne(tt, level, id)
+  }
   const before = normalizeStatus(o.operation_status, o.secondary_status)
   const warnings = ["Xoá trên TikTok là vĩnh viễn, không hoàn tác được."]
   if (before === "deleted") {
@@ -251,7 +411,17 @@ export async function updateTikTokBudget(
   const now = opts.now ?? new Date()
   const amount = apiMoney(u.amount, tt.currency)
   const level: ObjectLevel = u.level
-  const o = await fetchOne(tt, level, u.id)
+  let o: Raw
+  if (level === "campaign") {
+    // GMV Max (C3/C5): needs the admin switch; daily budget via /campaign/gmv_max/update/, worst case within the cap
+    const found = (await fetchByIds(tt, "campaign", [u.id])).get(String(u.id)) ?? null
+    const routed = await routeGmvMaxBudget(tt, u, found, opts)
+    if (routed) return routed
+    if (!found) throw campaignNotFound(u.id)
+    o = found
+  } else {
+    o = await fetchOne(tt, level, u.id)
+  }
   assertNotLegacySmartPlus(level, o, "đổi ngân sách")
   const status = normalizeStatus(o.operation_status, o.secondary_status)
   if (status === "deleted") throw invalid(`${LEVEL_VI[level]} ${u.id} đã bị xoá.`)
@@ -685,8 +855,14 @@ export async function updateTikTokObject(
   }
 
   if (u.level === "campaign") {
-    reject(["startTime", "endTime", "bidAmount", "finalUrl"])
-    const o = await fetchOne(tt, "campaign", u.id)
+    reject(["startTime", "bidAmount", "finalUrl"])
+    // GMV Max (C3): needs the admin switch; name / end time via /campaign/gmv_max/update/
+    const found = (await fetchByIds(tt, "campaign", [u.id])).get(String(u.id)) ?? null
+    const routed = await routeGmvMaxObjectUpdate(tt, u, found, opts)
+    if (routed) return routed
+    if (!found) throw campaignNotFound(u.id)
+    reject(["endTime"])
+    const o = found
     assertNotLegacySmartPlus("campaign", o, "sửa")
     const name = c.name!.trim()
     const changes: FieldChange[] = [

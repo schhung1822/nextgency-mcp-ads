@@ -30,6 +30,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PERMISSION_LABELS, PLATFORM_LABELS } from "@/lib/constants"
 import { formatNumber } from "@/lib/format"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import { tiktokGmvMaxMcp as tg } from "@/lib/i18n/vi/tiktok-gmv-max"
 import {
   matchPermissionPreset,
   MCP_PLATFORMS,
@@ -62,6 +63,20 @@ function CapsMissingBadge({ currencies }: { currencies: string[] }) {
       title={t.list.capsMissingHint(currencies.join(", "))}
     >
       {t.list.capsMissingBadge}
+    </Badge>
+  )
+}
+
+/** TikTok GMV Max write switch on (admin-approved): small warning-toned badge. */
+function GmvMaxBadge({ on }: { on: boolean }) {
+  if (!on) return null
+  return (
+    <Badge
+      variant="outline"
+      className="rounded-full border-warning/40 bg-warning/10 font-medium text-warning-strong"
+      title={tg.listBadgeHint}
+    >
+      {tg.listBadge}
     </Badge>
   )
 }
@@ -185,6 +200,7 @@ function buildColumns(isAdmin: boolean) {
         <div className="flex flex-wrap items-center gap-1">
           <StatusBadge kind="mcp" status={row.original.status} />
           <CapsMissingBadge currencies={row.original.capsMissing} />
+          <GmvMaxBadge on={row.original.tiktokGmvMaxWrite} />
         </div>
       ),
     }),
@@ -253,6 +269,7 @@ function MobileCard({
           ))}
           <PermissionSummary permissions={item.allPermissions} />
           <CapsMissingBadge currencies={item.capsMissing} />
+          <GmvMaxBadge on={item.tiktokGmvMaxWrite} />
         </div>
         <div className="flex justify-between gap-2 text-[13px] text-muted-foreground">
           {item.lastUsedAt ? (

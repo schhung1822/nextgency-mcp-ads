@@ -166,6 +166,7 @@ describe("mcp-servers schemas", () => {
       telegram_messages_per_hour: 20,
       drive_public_links: true,
       drive_sheet_writeback: true,
+      tiktok_gmv_max_write: false,
     })
   })
 
@@ -785,5 +786,42 @@ describe("Google Drive in the MCP config", () => {
       driveSourceIds: [CONN],
     })
     expect([w.driveSourceIds, w.drivePublicLinks]).toEqual([[CONN], false])
+  })
+})
+
+describe("TikTok GMV Max write switch in the MCP config", () => {
+  const base = {
+    twoStepConfirm: true,
+    budgetChangeMaxPct: 50,
+    maxDailyBudget: {},
+    rateLimitPerMin: 60,
+    allowedIps: [],
+  }
+
+  it("defaults OFF on input, stored snake_case, explicit true kept", () => {
+    expect(DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite).toBe(false)
+    expect(mcpSettingsSchema.parse(base).tiktokGmvMaxWrite).toBe(false)
+    expect(toStoredMcpSettings(mcpSettingsSchema.parse(base)).tiktok_gmv_max_write).toBe(false)
+    const on = toStoredMcpSettings(mcpSettingsSchema.parse({ ...base, tiktokGmvMaxWrite: true }))
+    expect(on.tiktok_gmv_max_write).toBe(true)
+    expect(mcpSettingsSchema.safeParse({ ...base, tiktokGmvMaxWrite: "yes" }).success).toBe(false)
+  })
+
+  it("form values round-trip; rows saved before the feature read OFF", () => {
+    const v = defaultMcpFormValues()
+    expect(v.tiktokGmvMaxWrite).toBe(false)
+    expect(formValuesToConfig(v).settings.tiktokGmvMaxWrite).toBe(false)
+    v.tiktokGmvMaxWrite = true
+    expect(formValuesToConfig(v).settings.tiktokGmvMaxWrite).toBe(true)
+    const legacy = configToFormValues({ name: "x", description: null, platforms: [], settings: { ...base }, expiresAt: null })
+    expect(legacy.tiktokGmvMaxWrite).toBe(false)
+    const on = configToFormValues({
+      name: "x",
+      description: null,
+      platforms: [],
+      settings: { ...base, tiktokGmvMaxWrite: true },
+      expiresAt: null,
+    })
+    expect(on.tiktokGmvMaxWrite).toBe(true)
   })
 })

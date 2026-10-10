@@ -118,6 +118,7 @@ Kênh hoặc nhóm **công khai** có thể dùng `@tên_kênh` thay cho số.
 
 1. **Kết nối** → tab **Telegram** → **Thêm kết nối Telegram**.
    (Hoặc **Kết nối** → **Thêm kết nối** → nhóm **Kênh thông báo** → thẻ **Telegram**.)
+   Lần đầu thêm kết nối, trước khi hiện form, Ads MCP hiện popup **Miễn trừ trách nhiệm**: kéo đọc hết, chờ hết đếm ngược 10 giây, tick ô đồng ý → **Tôi đồng ý và bắt đầu** (đã xác nhận khi thêm kết nối khác thì không hỏi lại, trừ khi nội dung được cập nhật phiên bản mới).
 2. Điền form **Thông tin bot và chat**:
 
 | Ô                                                       | Điền                                                                                                                               | Ví dụ                             |
@@ -145,6 +146,8 @@ Bot token được mã hoá trước khi lưu và **không bao giờ hiển th�
 ## Bước 5 — Gán kết nối Telegram cho MCP
 
 **MCP → Tạo MCP** (hoặc trang MCP → tab **Cấu hình** với MCP có sẵn):
+
+> Lần đầu **Tạo MCP**, Ads MCP hiện popup **Miễn trừ trách nhiệm** (trợ lý AI có thể sai, link MCP như mật khẩu, TikTok GMV Max chạy ngay…): kéo đọc hết nội dung, chờ hết đếm ngược 10 giây, tick ô đồng ý rồi bấm **Tôi đồng ý và bắt đầu**. Đã xác nhận thì những lần sau không hỏi lại, trừ khi nội dung được cập nhật phiên bản mới.
 
 1. Bước **Nền tảng & tài khoản** → nhóm **Thông báo (không bắt buộc)** → khối **Kết nối Telegram**: tick kết nối muốn dùng (tối đa 20).
 2. Bước **Quyền** → khối **Telegram**:

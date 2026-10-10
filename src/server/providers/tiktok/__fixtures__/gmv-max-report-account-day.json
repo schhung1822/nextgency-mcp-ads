@@ -1,0 +1,43 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVREP0001",
+  "data": {
+    "list": [
+      {
+        "dimensions": {
+          "advertiser_id": "7100000000000000001",
+          "stat_time_day": "2026-10-01 00:00:00"
+        },
+        "metrics": {
+          "cost": "9387.58",
+          "cost_per_order": "1.41",
+          "gross_revenue": "43117.68",
+          "net_cost": "6550.08",
+          "orders": "6674",
+          "roi": "4.59"
+        }
+      },
+      {
+        "dimensions": {
+          "advertiser_id": "7100000000000000001",
+          "stat_time_day": "2026-10-02 00:00:00"
+        },
+        "metrics": {
+          "cost": "7230.56",
+          "cost_per_order": "1.44",
+          "gross_revenue": "31547.59",
+          "net_cost": "7230.56",
+          "orders": "5036",
+          "roi": "4.36"
+        }
+      }
+    ],
+    "page_info": {
+      "page": 1,
+      "page_size": 1000,
+      "total_number": 2,
+      "total_page": 1
+    }
+  }
+}

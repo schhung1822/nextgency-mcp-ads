@@ -42,6 +42,7 @@ import {
   formatPercent,
 } from "@/lib/format"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import { tiktokGmvMaxMcp as gmv } from "@/lib/i18n/vi/tiktok-gmv-max"
 import {
   analyzeScope,
   type PlatformUsability,
@@ -228,6 +229,8 @@ export function OverviewTab({
   const caps = Object.entries(mcp.settings.maxDailyBudget)
   const lifetimeCaps = Object.entries(mcp.settings.maxLifetimeBudget)
   const bidCaps = Object.entries(mcp.settings.maxBid)
+  const hasTiktok = mcp.config.some((p) => p.platform === "tiktok")
+  const gmvWrite = hasTiktok && mcp.settings.tiktokGmvMaxWrite === true
   return (
     <div className="flex flex-col gap-5">
       {mcp.status === "expired" && (
@@ -385,6 +388,17 @@ export function OverviewTab({
                   permissions={p.permissions}
                   withDescriptions
                 />
+                {p.platform === "tiktok" && gmvWrite && (
+                  <p className="flex items-start gap-1.5 text-[13px] font-medium text-warning-strong">
+                    <HugeiconsIcon
+                      icon={Alert02Icon}
+                      strokeWidth={2}
+                      className="mt-0.5 size-3.5 shrink-0"
+                      aria-hidden
+                    />
+                    <span className="min-w-0">{gmv.summaryBadge}</span>
+                  </p>
+                )}
                 <ul className="flex flex-col gap-1 text-[13px] text-muted-foreground">
                   {p.connections.map((c) => (
                     <li
@@ -420,6 +434,13 @@ export function OverviewTab({
               <SummaryRow label={o.summaryTwoStep}>
                 {mcp.settings.twoStepConfirm ? o.on : o.off}
               </SummaryRow>
+              {hasTiktok && (
+                <SummaryRow label={gmv.summaryLabel}>
+                  <span className={gmvWrite ? "font-medium text-warning-strong" : undefined}>
+                    {gmvWrite ? gmv.summaryOn : gmv.summaryOff}
+                  </span>
+                </SummaryRow>
+              )}
               <SummaryRow label={o.summaryBudgetPct}>
                 ±{mcp.settings.budgetChangeMaxPct}%
               </SummaryRow>

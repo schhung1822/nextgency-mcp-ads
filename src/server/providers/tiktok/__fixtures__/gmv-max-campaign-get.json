@@ -1,0 +1,37 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVCAMP0001",
+  "data": {
+    "list": [
+      {
+        "campaign_name": "GMV Max - Tất cả sản phẩm",
+        "advertiser_id": "7100000000000000001",
+        "objective_type": "PRODUCT_SALES",
+        "modify_time": "2026-10-01 03:00:00",
+        "secondary_status": "CAMPAIGN_STATUS_ENABLE",
+        "campaign_id": "1840000000000000001",
+        "create_time": "2026-09-01 02:30:00",
+        "operation_status": "ENABLE",
+        "roi_protection_compensation_status": "IN_EFFECT"
+      },
+      {
+        "campaign_name": "GMV Max - Áo thun",
+        "advertiser_id": "7100000000000000001",
+        "objective_type": "PRODUCT_SALES",
+        "modify_time": "2026-10-01 03:00:00",
+        "secondary_status": "CAMPAIGN_STATUS_PRODUCT_GMV_MAX_AUTHORIZATION_CANCEL",
+        "campaign_id": "1840000000000000002",
+        "create_time": "2026-09-01 02:30:00",
+        "operation_status": "DISABLE",
+        "roi_protection_compensation_status": "IN_EFFECT"
+      }
+    ],
+    "page_info": {
+      "page": 1,
+      "page_size": 100,
+      "total_page": 1,
+      "total_number": 2
+    }
+  }
+}

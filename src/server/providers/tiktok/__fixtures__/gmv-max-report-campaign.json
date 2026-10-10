@@ -1,0 +1,63 @@
+{
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261010101500GMVREP0002",
+  "data": {
+    "list": [
+      {
+        "dimensions": {
+          "campaign_id": "1840000000000000001"
+        },
+        "metrics": {
+          "bid_type": "CUSTOM",
+          "campaign_id": "1840000000000000001",
+          "campaign_name": "GMV Max - Tất cả sản phẩm",
+          "cost": "1250000.00",
+          "cost_per_order": "25000.00",
+          "gross_revenue": "6875000.00",
+          "max_delivery_budget": "0.00",
+          "net_cost": "1100000.00",
+          "operation_status": "ENABLE",
+          "orders": "50",
+          "roas_bid": "5.50",
+          "roi": "5.50",
+          "schedule_end_time": "2026-12-31 16:59:59",
+          "schedule_start_time": "2026-09-01 17:00:00",
+          "schedule_type": "Continuously",
+          "target_roi_budget": "300000.00",
+          "currency": "USD"
+        }
+      },
+      {
+        "dimensions": {
+          "campaign_id": "1840000000000000002"
+        },
+        "metrics": {
+          "bid_type": "CUSTOM",
+          "campaign_id": "1840000000000000002",
+          "campaign_name": "GMV Max - Áo thun",
+          "cost": "0.00",
+          "cost_per_order": "0.00",
+          "gross_revenue": "0.00",
+          "max_delivery_budget": "0.00",
+          "net_cost": "0.00",
+          "operation_status": "DISABLE",
+          "orders": "0",
+          "roas_bid": "4.50",
+          "roi": "0.00",
+          "schedule_end_time": "",
+          "schedule_start_time": "2026-09-01 17:00:00",
+          "schedule_type": "Continuously",
+          "target_roi_budget": "150000.00",
+          "currency": "0"
+        }
+      }
+    ],
+    "page_info": {
+      "page": 1,
+      "page_size": 1000,
+      "total_number": 2,
+      "total_page": 1
+    }
+  }
+}
