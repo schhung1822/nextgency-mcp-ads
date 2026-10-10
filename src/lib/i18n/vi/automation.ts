@@ -1,13 +1,8 @@
-// Chuỗi tiếng Việt - trang "Mẹo chạy tự động" (/automation-tips): cách cho Claude / ChatGPT / Gemini tự chạy
-// theo lịch qua MCP. Văn bản câu lệnh / skill do src/lib/automation-prompt.ts dựng.
+// Chuỗi tiếng Việt - mẹo "Chạy tự động" (/tips/automation, nhóm trang "Mẹo sử dụng"): cách cho Claude / ChatGPT /
+// Gemini tự chạy theo lịch qua MCP. Văn bản câu lệnh / skill do src/lib/automation-prompt.ts dựng. Tiêu đề trang,
+// menu chọn mẹo và phần giới thiệu nằm ở tips.ts. Thông tin ứng dụng AI kiểm tra ngày 10/10/2026.
 
 export const automation = {
-  metaTitle: "Mẹo chạy tự động",
-  title: "Mẹo chạy tự động",
-  description:
-    "Cho Claude, ChatGPT, Gemini tự kiểm tra quảng cáo qua MCP theo lịch mỗi giờ (30 phút nếu chạy trên máy tính). Ví dụ: tự tắt quảng cáo có CPA vượt ngưỡng.",
-  createMcp: "Tạo MCP chạy tự động",
-
   how: {
     title: "Cách hoạt động",
     description:
@@ -122,7 +117,7 @@ export const automation = {
   platforms: {
     title: "Bước 3 - Đặt lịch trong ứng dụng AI",
     description:
-      "Thêm link MCP vào ứng dụng AI trước (xem tab Kết nối AI của MCP), rồi tạo tác vụ hẹn giờ. Thông tin kiểm tra ngày 07/10/2026 - các ứng dụng AI thay đổi tính năng rất nhanh.",
+      "Thêm link MCP vào ứng dụng AI trước (xem tab Kết nối AI của MCP), rồi tạo tác vụ hẹn giờ. Thông tin kiểm tra ngày 10/10/2026 - các ứng dụng AI thay đổi tính năng rất nhanh.",
     tabsLabel: "Ứng dụng AI",
     frequencyLabel: "Tần suất",
     stepsLabel: "Các bước",
@@ -130,24 +125,25 @@ export const automation = {
     newTab: "(mở tab mới)",
     codeLabel: "Lệnh / tệp mẫu",
     intervalNote:
-      "Tác vụ chạy trên máy chủ của Claude, ChatGPT, Gemini cho tối thiểu 1 giờ/lần. Muốn 30 phút/lần phải chạy trên máy tính luôn bật: tác vụ cục bộ của Claude Desktop (tab Claude) hoặc Gemini CLI (tab Gemini CLI).",
+      "Tác vụ chạy trên máy chủ của Claude, ChatGPT, Gemini cho tối thiểu 1 giờ/lần. Muốn 30 phút/lần phải chạy trên máy tính luôn bật 24/7: tác vụ cục bộ của Claude Desktop (tab Claude) hoặc Gemini CLI (tab Gemini CLI).",
     clients: {
       claude: {
         tab: "Claude",
         title: "Claude - Tác vụ hẹn giờ (Scheduled tasks)",
         frequency: "Mỗi giờ · 30 phút nếu chạy cục bộ",
         plans:
-          "Gói Pro, Max, Team, Enterprise. Gói Free thêm được connector nhưng không có tác vụ hẹn giờ. Dùng được cả hai chế độ: Chỉ báo cáo và Tự tắt.",
+          "Gói Pro, Max, Team, Enterprise. Gói Free thêm được 1 custom connector nhưng không có tác vụ hẹn giờ. Dùng được cả hai chế độ: Chỉ báo cáo và Tự tắt.",
         steps: [
           'Thêm connector: claude.ai → Customize → Connectors → "+ Add" → "Add custom connector" → đặt tên, dán link MCP → Continue → mục Authentication chọn "No sign in" → Add. Team/Enterprise: Owner thêm ở Organization settings → Connectors.',
           'Đặt quyền tool: trong Customize → Connectors mở connector vừa thêm → Tool permissions. Các tool đọc chọn "Always allow". Chế độ Tự tắt: ads_set_status cũng chọn "Always allow" - lúc chạy theo lịch không có ai bấm duyệt.',
           '(Nên làm) Cài skill: Settings → Capabilities bật "Code execution and file creation", rồi Customize → Skills → "+" → "+ Create skill" → "Upload a skill" → chọn tệp .zip ở Bước 2.',
-          'Tạo lịch - giao diện mới (ô nhắn tin không còn nút Chat / Cowork): trong một cuộc trò chuyện, dán câu lệnh ở Bước 2 và thêm "chạy mỗi giờ"; kiểm tra tên, lịch và hướng dẫn Claude đề xuất rồi bấm "Schedule".',
+          'Tạo lịch - giao diện mới (ô nhắn tin không còn nút Chat / Cowork): trên claude.ai mở tab Home, trong một cuộc trò chuyện dán câu lệnh ở Bước 2 và thêm "chạy mỗi giờ"; kiểm tra tên, lịch và hướng dẫn Claude đề xuất rồi bấm "Schedule".',
           'Tạo lịch - Cowork (Team/Enterprise, hoặc chưa có giao diện mới): thanh bên trái "Scheduled" → "New task" → "Set up manually" → nhập Task name, câu lệnh, approval mode, tần suất "hourly" → "Save". Hoặc gõ /schedule trong một tác vụ Cowork.',
-          'Approval mode: Chỉ báo cáo dùng "Manually approve". Tự tắt: tool đã đặt "Always allow" được duyệt ở mọi chế độ; Cowork còn có "Skip all approvals". Không nên dựa vào "Automatically approve" vì Claude có thể tự chặn thao tác ghi.',
+          'Approval mode: Chỉ báo cáo dùng "Manually approve". Tự tắt: tool đã đặt "Always allow" được duyệt ở mọi chế độ; Cowork còn có "Skip all approvals". Không nên dựa vào "Automatically approve": Claude có thể tự chặn thao tác ghi và chế độ này tốn hạn mức nhiều hơn.',
           "Theo dõi lượt chạy đầu tiên trong mục Scheduled và đối chiếu Nhật ký MCP. Nếu Claude vẫn dừng hỏi duyệt mỗi lần tắt quảng cáo, chuyển về chế độ Chỉ báo cáo.",
         ],
         notes: [
+          'Từ 06/10/2026, tác vụ Cowork mới trên gói Pro/Max luôn chạy trên cloud (đã bỏ tuỳ chọn "Only on your computer"); tác vụ tạo trước ngày đó vẫn chạy trên máy.',
           "Tác vụ chạy trên máy chủ của Claude nên vẫn chạy khi máy tính ngủ hoặc app đóng. Mỗi lượt là một phiên riêng trong mục Scheduled; điện thoại nhận thông báo khi xong hoặc khi cần bạn xử lý. Không có email - muốn nhận qua Slack/Gmail, bật connector đó và ghi vào câu lệnh.",
           'Cần 30 phút/lần: Claude Desktop → tab Code → Routines → New routine → Local (chọn một thư mục), rồi nhờ Claude đặt lịch "every 30 minutes". App phải mở và máy phải thức (Settings → This computer → System → Keep computer awake; gập máy vẫn ngủ). Bấm Run now lần đầu và chọn "always allow" cho từng tool.',
           "Tool tắt quảng cáo được MCP đánh dấu là thao tác có tác động; Claude có thể vẫn hỏi duyệt dù đã chọn Always allow - chưa kiểm chứng, hãy chạy thử trước.",
@@ -187,20 +183,20 @@ export const automation = {
         title: "ChatGPT - Tác vụ hẹn giờ (Scheduled) trong Work",
         frequency: "Tối đa mỗi giờ (gói trả phí)",
         plans:
-          "MCP tự thêm chỉ dùng trên web. Quyền ghi: trang trợ giúp OpenAI vẫn ghi chỉ Business / Enterprise / Edu (Pro chỉ đọc), còn tài liệu cho nhà phát triển không giới hạn theo gói - hãy thử trên gói của bạn. Chưa rõ với Free / Go / Plus.",
+          "MCP tự thêm chỉ dùng trên web. Quyền ghi: trang trợ giúp OpenAI vẫn ghi chỉ Business / Enterprise / Edu (Pro chỉ đọc), còn tài liệu cho nhà phát triển không giới hạn theo gói - hãy thử trên gói của bạn. Free / Go không có Work (cần cho các bước dưới); Plus có Work nhưng quyền ghi qua MCP chưa rõ.",
         steps: [
-          'Thêm MCP (không còn bước bật Developer mode): chatgpt.com/plugins → nút "+" → "Add custom MCP server" (có thể hiện "Create custom MCP server") → đặt tên, mục Connection dán link MCP vào Server URL → Authentication chọn "No authentication" → "I understand and want to continue" → "Create as a plugin".',
+          'Thêm MCP (không còn bước bật Developer mode): chatgpt.com/plugins → nút "+" → "Add custom MCP server" (có thể hiện "Create custom MCP server") → đặt tên, mục Connection dán link MCP vào Server URL → Authentication chọn "No authentication" → "I understand and want to continue" → "Create as a plugin". Nếu nút "+" mở cuộc trò chuyện với Plugin Creator, nhắn "tạo plugin kết nối MCP server <link MCP>" (chưa kiểm chứng).',
           'Cài plugin: chatgpt.com/plugins?view=personal → mở plugin vừa tạo → bấm "+" để cài.',
           'Ở đầu trang chủ chuyển tab từ "Chat" sang "Work", mở cuộc trò chuyện Work mới, gõ @ và chọn plugin, dán câu lệnh ở Bước 2 kèm "lặp lại việc này mỗi giờ". Tác vụ hiện trong mục "Scheduled".',
           'Nhận kết quả: Settings → Notifications → chọn "Push", "Email" hoặc cả hai.',
-          'Chế độ Tự tắt: Settings → Plugins (hoặc Apps) → plugin → Permissions → chọn "Allow all actions" nếu có. Nếu không, mỗi lần tắt quảng cáo tác vụ sẽ dừng chờ bạn duyệt.',
+          'Chế độ Tự tắt: Settings → Plugins (hoặc Apps) → plugin → (Connected accounts → ••• → Settings) → Permissions → chọn "Allow all actions" nếu có. Mức mới "Allow low-risk actions" có thể vẫn hỏi duyệt việc tắt quảng cáo. Khi cần duyệt, tác vụ tạm dừng cho tới khi bạn xử lý.',
           "Chạy thử và đối chiếu Nhật ký MCP để chắc tác vụ hẹn giờ gọi được MCP.",
         ],
         notes: [
-          'OpenAI chưa ghi rõ tác vụ hẹn giờ gọi được MCP tự thêm; tài liệu chỉ nói tác vụ tạo trong Work trên web "can use plugins". Hãy kiểm tra trước khi tin dùng.',
+          "OpenAI chưa ghi rõ tác vụ hẹn giờ gọi được MCP tự thêm; tài liệu chỉ nói tác vụ dùng được app / plugin đã kết nối (ví dụ Gmail, Slack, GitHub). Hãy chạy thử trước khi tin dùng.",
           "Số tác vụ đang bật tối đa: Free/Go 3, Plus 5, Business/Edu 10, Pro/Enterprise 15. Gói Free chỉ chạy tối đa 1 lần/ngày.",
           '"Allow all actions" không có ở cài đặt chung của workspace; thành viên workspace không được chọn "Always allow". Business/Enterprise: admin cấp quyền "Create custom MCP servers" (tên mới của Developer mode).',
-          "Tác vụ hẹn giờ không dùng được GPTs (GPTs ngừng hoạt động 11/12/2026). Skills chỉ có ở Business/Enterprise/Healthcare/Edu: Plugins → Plugin Directory → tab Skills → Create → Upload, gọi bằng @.",
+          "Tác vụ hẹn giờ không dùng được GPTs (GPTs ngừng hoạt động 11/12/2026, được chuyển thành plugin và hướng dẫn của GPT thành skill). Skills chỉ có ở Business/Enterprise/Healthcare/Edu: Plugins → Plugin Directory → tab Skills → Create → Upload, gọi bằng @.",
           "Tác vụ tự tạm dừng khi lâu không dùng, khi cần bạn xử lý hoặc khi xoá cuộc trò chuyện của nó. Lượt chạy trong Work tính vào hạn mức Work.",
           "Đổi quyền MCP trong app này → vào chatgpt.com/plugins, mở plugin, bấm Refresh để ChatGPT nhận danh sách tool mới.",
         ],
@@ -225,7 +221,7 @@ export const automation = {
         title: "Gemini app - Spark Schedules",
         frequency: "Mỗi giờ",
         plans:
-          "Hiện chưa dùng được ở Việt Nam: Custom apps (MCP tự thêm) chỉ mở cho người dùng ở Mỹ, giao diện tiếng Anh, tài khoản cá nhân. Spark cần Google AI Ultra (gói Pro mới có ở Mỹ). Ở Việt Nam, dùng tab Gemini CLI.",
+          "Spark (gói Google AI Pro hoặc Ultra) đã dùng được ở Việt Nam, nhưng Custom apps (MCP tự thêm) vẫn chỉ mở cho người dùng ở Mỹ, giao diện tiếng Anh, tài khoản cá nhân - nên lịch Spark chưa gọi được MCP của bạn. Ở Việt Nam, dùng tab Gemini CLI.",
         steps: [
           'Thêm MCP (nếu tài khoản đủ điều kiện): gemini.google.com → Settings → Connected Apps (hoặc Personal Intelligence → Connected Apps) → mục "Custom apps" → Add a custom app → dán link MCP → Next.',
           "(Nên làm) Cài skill: Settings → Skills → Upload → chọn tệp SKILL.md ở Bước 2.",

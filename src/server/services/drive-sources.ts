@@ -83,6 +83,7 @@ import {
   type DriveAuth,
   type DriveFile,
   type FolderSourceConfig,
+  sheetStatusLabel,
   type SheetColumnsConfig,
   type SheetSourceConfig,
 } from "@/server/drive/types"
@@ -1399,10 +1400,11 @@ export async function previewDriveSheetRows(
       else idx.set(k, i)
     }
     const statusIdx = idx.get("status")
+    // aliases ("Chưa tạo ads", "Đã tạo"…) are counted under the canonical value; "" = empty status
     const statusCounts: Record<string, number> = {}
     if (statusIdx !== undefined)
       for (const r of read.rows) {
-        const v = (r.cells[statusIdx] ?? "").trim()
+        const v = sheetStatusLabel(r.cells[statusIdx])
         statusCounts[v] = (statusCounts[v] ?? 0) + 1
       }
     const rows = read.rows.slice(0, SHEET_PREVIEW_ROWS).map((r) => {

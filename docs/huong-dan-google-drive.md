@@ -115,13 +115,13 @@ Nút **Kiểm tra** (chỉ có sau khi đã lưu) đăng nhập lại Google b�
 | Đổi khoá JSON                        | Dán khoá mới vào ô **Thay service account JSON** → **Lưu thông tin xác thực**. Để trống = giữ khoá cũ.                          |
 | Đổi API key                          | Dán key mới → **Lưu thông tin xác thực**. Để trống = giữ key cũ.                                                                |
 | Tắt link Drive công khai cho mọi MCP | Tick **Xoá API key (tắt link Drive công khai)** → **Lưu thông tin xác thực**.                                                   |
-| Gỡ hẳn Google Drive hệ thống         | **Xoá** (nhập lại mật khẩu). Phải xoá hết thư mục / sheet đang dùng thông tin này ở **Kết nối quảng cáo → Google Drive** trước. |
+| Gỡ hẳn Google Drive hệ thống         | **Xoá** (nhập lại mật khẩu). Phải xoá hết thư mục / sheet đang dùng thông tin này ở **Kết nối → Google Drive** trước.           |
 
 Khoá JSON và API key được mã hoá, **không bao giờ hiển thị lại**, không bao giờ đưa cho AI.
 
 ### Bước 7. Báo cho nhân viên
 
-Email hệ thống giờ hiện ở **Kết nối quảng cáo → tab Google Drive** (khối **Email hệ thống**, có nút sao chép) cho mọi người. Gửi nhân viên đường dẫn tới tài liệu này từ Phần 2.
+Email hệ thống giờ hiện ở **Kết nối → tab Google Drive** (khối **Email hệ thống**, có nút sao chép) cho mọi người. Gửi nhân viên đường dẫn tới tài liệu này từ Phần 2.
 
 > Đừng quên kiểm tra **Phần 10**: worker phải chạy (video lớn), và nếu tên miền đi qua Cloudflare thì không được chặn đường dẫn `/dl/*`.
 
@@ -131,7 +131,7 @@ Email hệ thống giờ hiện ở **Kết nối quảng cáo → tab Google Dr
 
 ### Lấy email hệ thống
 
-Ads MCP → **Kết nối quảng cáo** → tab **Google Drive** → khối **Email hệ thống** → bấm nút sao chép. Email có đuôi `.iam.gserviceaccount.com`.
+Ads MCP → **Kết nối** → tab **Google Drive** → khối **Email hệ thống** → bấm nút sao chép. Email có đuôi `.iam.gserviceaccount.com`.
 
 Nếu khối này báo **"Chưa cấu hình Google Drive"**: quản trị viên chưa làm Phần 1. Bạn vẫn có thể dùng service account riêng (Phần 3.4, nâng cao) hoặc nhờ quản trị viên.
 
@@ -184,8 +184,8 @@ Chia sẻ xong, bạn phải **khai báo** để hệ thống biết thư mục/
 
 Một trong hai cách:
 
-- **Kết nối quảng cáo** → tab **Google Drive** → nút **Thêm thư mục / sheet**.
-- **Kết nối quảng cáo** → **Thêm kết nối** → nhóm **Kho creative** → thẻ **Google Drive**.
+- **Kết nối** → tab **Google Drive** → nút **Thêm thư mục / sheet**.
+- **Kết nối** → **Thêm kết nối** → nhóm **Kho creative** → thẻ **Google Drive**.
 
 Trang **Thêm thư mục / sheet Google Drive** có 3 bước. Panel **Hướng dẫn** bên phải giải thích từng bước.
 
@@ -229,7 +229,7 @@ Bấm **Tiếp tục**.
 Chỉ cần khi bạn **không muốn** chia sẻ thư mục cho email hệ thống của công ty (ví dụ thư mục của khách hàng, hoặc công ty chưa cấu hình Google Drive hệ thống).
 
 1. Làm Bước 1–4 của Phần 1 trong **project Google Cloud của bạn** (bật cả Google Drive API và Google Sheets API, tạo service account, tải khoá JSON).
-2. **Kết nối quảng cáo** → tab **Google Drive** → khối **Service account riêng** (nhãn _Nâng cao_) → **Thêm service account** (hoặc nút **Thêm service account** ngay ở Bước 2 của trình khai báo).
+2. **Kết nối** → tab **Google Drive** → khối **Service account riêng** (nhãn _Nâng cao_) → **Thêm service account** (hoặc nút **Thêm service account** ngay ở Bước 2 của trình khai báo).
 3. **Tên gợi nhớ** (ví dụ "Drive cá nhân của Lan") + dán **Service account JSON** → **Kiểm tra & thêm**.
 4. Chia sẻ thư mục cho **email của service account riêng** này, rồi khai báo như 3.3 và chọn **Service account riêng**.
 
@@ -242,7 +242,7 @@ Service account riêng chỉ dùng cho thư mục / sheet **riêng** của chín
 - **Sheet**: khối **Ánh xạ cột**. Hệ thống tự gợi ý theo tên cột mẫu (Phần 4); nếu sheet của bạn đặt tên khác, chọn lại:
   - **Cột AI đọc**: _Link Drive_ (**Bắt buộc**), _Tên creative_, _Nền tảng_, _Tài khoản QC_, _Nội dung_, _Tiêu đề_, _Link đích_. Cột nào không có thì chọn _Không dùng_.
   - Công tắc **Cho phép AI ghi trạng thái vào sheet** — chỉ bật được khi email có quyền **Người chỉnh sửa**. Nếu email mới có quyền Người xem: cấp thêm quyền rồi quay lại Bước 2 bấm **Kiểm tra** lại.
-  - Mục **Cột ghi trạng thái (nâng cao)**: _Trạng thái_ (**bắt buộc** khi bật ghi), _Mã media_, _Mã quảng cáo_, _Ghi chú hệ thống_, _Cập nhật lúc_ (tuỳ chọn).
+  - Mục **Cột ghi trạng thái (nâng cao)**: _Trạng thái_ (**bắt buộc** khi bật ghi), _Mã media_, _Mã quảng cáo_, _Link bài viết_, _Link chiến dịch_, _Ghi chú hệ thống_, _Cập nhật lúc_ (tuỳ chọn).
 - Bấm **Lưu thư mục / sheet**.
 
 Lưu xong bạn được đưa tới trang chi tiết với thông báo **Đã khai báo** — bước tiếp theo là gán cho MCP (Phần 5).
@@ -294,19 +294,25 @@ Tên cột dưới đây là tên hệ thống tự nhận ra. Đặt tên khác
 | `Nội dung`         |                       | Bạn            | Nội dung quảng cáo (primary text) gợi ý cho AI                                                                                                                                                     |
 | `Tiêu đề`          |                       | Bạn            | Tiêu đề gợi ý                                                                                                                                                                                      |
 | `Link đích`        |                       | Bạn            | Trang đích (landing page)                                                                                                                                                                          |
-| `Trạng thái`       | ✔ nếu muốn AI ghi lại | Bạn + hệ thống | Để trống hoặc `Chờ lên` = cần lên. Hệ thống ghi `Đang xử lý`, `Đã lên`, `Lỗi`                                                                                                                      |
+| `Trạng thái`       | ✔ nếu muốn AI ghi lại | Bạn + hệ thống | Để trống hoặc `Chờ lên` (hoặc `Chưa tạo ads`, `Chưa tạo`, `Chưa lên`) = cần lên. Hệ thống ghi `Đang xử lý`, `Đã lên`, `Lỗi` — xem 4.4                                                              |
 | `Mã media`         |                       | **Hệ thống**   | Mã ảnh/video trên nền tảng                                                                                                                                                                         |
 | `Mã quảng cáo`     |                       | **Hệ thống**   | Mã quảng cáo đã tạo                                                                                                                                                                                |
+| `Link bài viết`    |                       | **Hệ thống**   | Link bài viết / bài quảng cáo AI vừa tạo từ dòng này (vd bài trên Facebook, TikTok) — bấm để xem nhanh                                                                                             |
+| `Link chiến dịch`  |                       | **Hệ thống**   | Link chiến dịch trong trình quản lý quảng cáo (Meta Ads Manager, TikTok Ads Manager…)                                                                                                              |
 | `Ghi chú hệ thống` |                       | **Hệ thống**   | Lý do lỗi hoặc ghi chú của AI                                                                                                                                                                      |
 | `Cập nhật lúc`     |                       | **Hệ thống**   | Dạng `09/10/2026 14:05 · MCP Lên QC tuần 41` (giờ Việt Nam + tên MCP)                                                                                                                              |
+
+Hai cột **Link bài viết** và **Link chiến dịch** (thêm ngày 10/10/2026) là **tuỳ chọn**: thêm hai cột này vào sheet rồi chọn chúng trong mục **Cột ghi trạng thái (nâng cao)** khi khai báo sheet — sheet đã khai báo trước đó: **Kết nối** → tab **Google Drive** → mở sheet → **Sửa cài đặt** để chọn. Sau khi tạo quảng cáo từ một dòng, AI ghi link bài viết và link chiến dịch nếu biết (chỉ link `https://`, không đoán). Sheet không có hai cột này vẫn chạy bình thường.
 
 ### 4.2 Dòng tiêu đề để dán nhanh
 
 Sao chép khối dưới đây, bấm vào ô **A1** của tab mới trong Google Sheet rồi dán (Ctrl+V) — mỗi tên cột tự vào một ô:
 
 ```text
-Link Drive	Tên creative	Nền tảng	Tài khoản QC	Nội dung	Tiêu đề	Link đích	Trạng thái	Mã media	Mã quảng cáo	Ghi chú hệ thống	Cập nhật lúc
+Link Drive	Tên creative	Nền tảng	Tài khoản QC	Nội dung	Tiêu đề	Link đích	Trạng thái	Mã media	Mã quảng cáo	Link bài viết	Link chiến dịch	Ghi chú hệ thống	Cập nhật lúc
 ```
+
+Thứ tự đầy đủ (14 cột): Link Drive | Tên creative | Nền tảng | Tài khoản QC | Nội dung | Tiêu đề | Link đích | Trạng thái | Mã media | Mã quảng cáo | Link bài viết | Link chiến dịch | Ghi chú hệ thống | Cập nhật lúc.
 
 ### 4.3 Dòng ví dụ
 
@@ -314,11 +320,11 @@ Dán vào ô **A2** (thay link và ID bằng của bạn):
 
 ```text
 https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view	Ra mắt serum - video 15s	TikTok	7212345678901234567	Da sáng sau 7 ngày, ưu đãi 30% tuần này	Serum Vitamin C	https://congty.vn/serum	Chờ lên
-https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view, https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view	Ra mắt serum - video dọc + ảnh bìa	TikTok	7212345678901234567	Da sáng sau 7 ngày	Serum Vitamin C	https://congty.vn/serum	Chờ lên
+https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view, https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view	Ra mắt serum - video dọc + ảnh bìa	TikTok	7212345678901234567	Da sáng sau 7 ngày	Serum Vitamin C	https://congty.vn/serum	Chưa tạo ads
 https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view	Banner serum 1080x1080	Facebook	Shop Mỹ Phẩm - TKQC chính	Freeship toàn quốc cho đơn từ 299k	Serum Vitamin C	https://congty.vn/serum
 ```
 
-Dòng 3 có 2 file trong một ô (video + ảnh bìa). Dòng 4 để trống **Trạng thái** — vẫn được tính là "Chờ lên". Dòng 4 ghi **tên** TKQC thay cho ID (được, miễn tên không trùng).
+Dòng 3 có 2 file trong một ô (video + ảnh bìa) và ghi `Chưa tạo ads` — hệ thống hiểu như `Chờ lên`. Dòng 4 để trống **Trạng thái** — cũng được tính là "Chờ lên". Dòng 4 ghi **tên** TKQC thay cho ID (được, miễn tên không trùng). Các cột từ **Mã media** trở đi để trống — hệ thống tự ghi.
 
 ### 4.4 Trạng thái của một dòng
 
@@ -327,20 +333,29 @@ Dòng 3 có 2 file trong một ô (video + ảnh bìa). Dòng 4 để trống **
                                   ↘  Lỗi
 ```
 
-- Khi bạn bảo AI "lên các dòng Chờ lên", AI chỉ đọc dòng có **Trạng thái** trống hoặc `Chờ lên` (có thể bảo AI đọc dòng có trạng thái khác, hoặc mọi dòng).
-- Sau khi xử lý, AI ghi `Đã lên` + **Mã media**, **Mã quảng cáo**, **Cập nhật lúc**; hoặc `Lỗi` + lý do ở **Ghi chú hệ thống**.
-- Muốn lên lại một dòng `Lỗi`: sửa nguyên nhân, đổi **Trạng thái** về `Chờ lên`.
+| Ý nghĩa           | Hệ thống ghi | Bạn cũng có thể gõ                               |
+| ----------------- | ------------ | ------------------------------------------------ |
+| Cần lên quảng cáo | `Chờ lên`    | để trống, `Chưa tạo ads`, `Chưa tạo`, `Chưa lên` |
+| AI đang làm       | `Đang xử lý` | —                                                |
+| Đã lên xong       | `Đã lên`     | `Đã tạo ads`, `Đã tạo`                           |
+| Có lỗi            | `Lỗi`        | —                                                |
+
+- Không phân biệt hoa thường, có dấu hay không dấu, thừa dấu cách: `chua tao ads`, `ĐÃ TẠO` đều được hiểu đúng. **Thống kê trạng thái** ở trang xem sheet cũng gộp theo nghĩa (vd `Chưa tạo ads` tính vào `Chờ lên`).
+- Khi bạn bảo AI "lên các dòng Chờ lên", AI chỉ đọc dòng **cần lên** (trống, `Chờ lên` hoặc các cách gõ ở bảng trên). Có thể bảo AI đọc dòng có trạng thái khác (vd "các dòng Đã tạo ads"), hoặc mọi dòng.
+- Giá trị không có trong bảng (vd `Tạm dừng`) được giữ nguyên: AI bỏ qua dòng đó khi lên các dòng chờ, trừ khi bạn bảo đọc đúng trạng thái đó.
+- Sau khi xử lý, AI ghi `Đã lên` + **Mã media**, **Mã quảng cáo**, **Link bài viết**, **Link chiến dịch** (nếu sheet có các cột này), **Cập nhật lúc**; hoặc `Lỗi` + lý do ở **Ghi chú hệ thống**. Hệ thống **luôn ghi giá trị chuẩn** ở cột "Hệ thống ghi" — dòng `Chưa tạo ads` sau khi lên xong sẽ thành `Đã lên`.
+- Muốn lên lại một dòng `Lỗi`: sửa nguyên nhân, đổi **Trạng thái** về `Chờ lên` (hoặc xoá trống).
 
 Ví dụ dòng 2 sau khi AI xử lý:
 
-| Link Drive                            | …   | Trạng thái | Mã media        | Mã quảng cáo     | Ghi chú hệ thống        | Cập nhật lúc                          |
-| ------------------------------------- | --- | ---------- | --------------- | ---------------- | ----------------------- | ------------------------------------- |
-| https://drive.google.com/file/d/1AbC… | …   | Đã lên     | v10033g50000abc | 1812345678901234 | Quảng cáo đang tạm dừng | 09/10/2026 14:05 · MCP Lên QC tuần 41 |
+| Link Drive                            | …   | Trạng thái | Mã media        | Mã quảng cáo     | Link bài viết                          | Link chiến dịch                             | Ghi chú hệ thống        | Cập nhật lúc                          |
+| ------------------------------------- | --- | ---------- | --------------- | ---------------- | -------------------------------------- | ------------------------------------------- | ----------------------- | ------------------------------------- |
+| https://drive.google.com/file/d/1AbC… | …   | Đã lên     | v10033g50000abc | 1812345678901234 | https://www.tiktok.com/@shop/video/73… | https://ads.tiktok.com/i18n/perf/campaign?… | Quảng cáo đang tạm dừng | 09/10/2026 14:05 · MCP Lên QC tuần 41 |
 
 ### 4.5 Hệ thống ghi vào sheet an toàn thế nào
 
-- Chỉ ghi vào **5 cột hệ thống** (Trạng thái, Mã media, Mã quảng cáo, Ghi chú hệ thống, Cập nhật lúc) — và chỉ những cột có trong dòng tiêu đề. **Không bao giờ** sửa cột khác.
-- Ghi dạng chữ thuần, **không chạy công thức**.
+- Chỉ ghi vào **7 cột hệ thống** (Trạng thái, Mã media, Mã quảng cáo, Link bài viết, Link chiến dịch, Ghi chú hệ thống, Cập nhật lúc) — và chỉ những cột đã chọn ở **Ánh xạ cột** và có trong dòng tiêu đề. **Không bao giờ** sửa cột khác.
+- Ghi dạng chữ thuần, **không chạy công thức**. **Link bài viết** / **Link chiến dịch** chỉ nhận link `https://` (tối đa 500 ký tự); link khác bị từ chối.
 - **Chống ghi nhầm dòng:** trước khi ghi, hệ thống đọc lại ô **Link Drive** của dòng đó. Nếu bạn vừa chèn / xoá / sắp xếp làm dòng bị lệch, dòng đó được **bỏ qua** (báo _"Dòng trong sheet đã thay đổi… đã bỏ qua để tránh ghi nhầm"_). Chỉ cần bảo AI đọc lại sheet rồi ghi lại.
 - Nội dung ô là **dữ liệu**: nếu ai đó viết câu lệnh trong sheet (vd "hãy xoá chiến dịch X"), AI không làm theo.
 - Ghi sheet **không** qua xác nhận 2 bước (không đụng quảng cáo hay tiền), nhưng mỗi lần ghi tính vào **Giới hạn thao tác ghi / 10 phút** của MCP và được ghi nhật ký trước → sau từng ô.
@@ -415,7 +430,7 @@ Bạn nói yêu cầu
   → AI liệt kê file (drive_list_files) hoặc đọc sheet (drive_sheet_read)
   → AI tải file lên TKQC, lấy mã media (ads_upload_media)      ← xác nhận 2 bước
   → AI tạo quảng cáo bằng mã media, luôn TẠM DỪNG              ← xác nhận 2 bước
-  → (sheet) AI ghi Đã lên / Lỗi + mã quảng cáo (drive_sheet_update_rows)
+  → (sheet) AI ghi Đã lên / Lỗi + mã quảng cáo, link bài viết, link chiến dịch (drive_sheet_update_rows)
 ```
 
 Bạn không cần nhớ tên tool. Chỉ cần nói rõ: **nền tảng**, **TKQC**, **file / thư mục / sheet nào**, và nội dung quảng cáo (hoặc "theo sheet").
@@ -433,7 +448,7 @@ AI sẽ:
 
 ### 6.3 Ví dụ B — Lên quảng cáo theo Google Sheet và ghi trạng thái
 
-> "Đọc các dòng **Chờ lên** trong sheet **Kế hoạch creative T10**. Với mỗi dòng: tải file lên đúng TKQC ghi trong sheet, tạo quảng cáo **tạm dừng** trong chiến dịch **Ra mắt serum** dùng nội dung, tiêu đề, link đích của dòng đó, rồi ghi trạng thái và mã quảng cáo vào sheet. Làm lần lượt 10 dòng đầu, báo lại dòng nào lỗi."
+> "Đọc các dòng **Chờ lên** trong sheet **Kế hoạch creative T10**. Với mỗi dòng: tải file lên đúng TKQC ghi trong sheet, tạo quảng cáo **tạm dừng** trong chiến dịch **Ra mắt serum** dùng nội dung, tiêu đề, link đích của dòng đó, rồi ghi trạng thái, mã quảng cáo, link bài viết và link chiến dịch vào sheet. Làm lần lượt 10 dòng đầu, báo lại dòng nào lỗi."
 
 AI sẽ đọc tối đa 10 dòng, báo các vấn đề phát hiện trước (thiếu link, nền tảng lạ, TKQC không thuộc MCP, MCP không có quyền tạo trên nền tảng đó…), xin xác nhận từng thao tác tải/tạo (nếu MCP bật xác nhận 2 bước), rồi ghi `Đã lên` / `Lỗi` vào sheet.
 
@@ -662,7 +677,7 @@ Link "Bất kỳ ai có đường liên kết" làm lộ creative **chưa chạy
 | Gỡ nguồn khỏi Ads MCP và mọi MCP           | Trang chi tiết nguồn → **Xoá**. File trên Drive không bị ảnh hưởng.                                                                                                           |
 | Gỡ khỏi một MCP                            | Trang MCP → tab **Cấu hình** → bỏ tick nguồn → lưu.                                                                                                                           |
 | Ngừng ghi sheet                            | Tắt **Cho phép AI ghi trạng thái vào sheet** (trang sheet) hoặc hạ quyền email xuống **Người xem**.                                                                           |
-| Xoá service account riêng                  | **Kết nối quảng cáo → Google Drive → Service account riêng → Xoá** (xoá các nguồn đang dùng nó trước).                                                                        |
+| Xoá service account riêng                  | **Kết nối → Google Drive → Service account riêng → Xoá** (xoá các nguồn đang dùng nó trước).                                                                                  |
 | Quản trị viên: vô hiệu hoá toàn bộ         | **Cài đặt → Google Drive hệ thống → Xoá**, và/hoặc trong Google Cloud: xoá khoá (**IAM & Admin → Service accounts → Keys**), xoá API key (**APIs & Services → Credentials**). |
 | Nghi lộ file khoá JSON                     | Google Cloud → xoá khoá đó ngay, tạo khoá mới, dán vào **Cài đặt → Google Drive hệ thống**.                                                                                   |
 

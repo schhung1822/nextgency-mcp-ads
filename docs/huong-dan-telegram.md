@@ -116,8 +116,8 @@ Kênh hoặc nhóm **công khai** có thể dùng `@tên_kênh` thay cho số.
 
 ## Bước 4 — Thêm kết nối Telegram trong Ads MCP
 
-1. **Kết nối quảng cáo** → tab **Telegram** → **Thêm kết nối Telegram**.
-   (Hoặc **Kết nối quảng cáo** → **Thêm kết nối** → nhóm **Kênh thông báo** → thẻ **Telegram**.)
+1. **Kết nối** → tab **Telegram** → **Thêm kết nối Telegram**.
+   (Hoặc **Kết nối** → **Thêm kết nối** → nhóm **Kênh thông báo** → thẻ **Telegram**.)
 2. Điền form **Thông tin bot và chat**:
 
 | Ô                                                       | Điền                                                                                                                               | Ví dụ                             |
@@ -231,7 +231,7 @@ Muốn ép kiểu gửi, nói rõ với AI: "gửi dạng tệp" (giữ nguyên 
 
 ## Quản lý kết nối Telegram
 
-**Kết nối quảng cáo** → tab **Telegram**: bảng các kết nối với **Tên**, **Người tạo** (quản trị viên thấy), **Chat**, **Chủ đề**, **Sự kiện**, **Trạng thái** (**Hoạt động** / **Lỗi** / **Đã tắt**), **Gửi lần cuối**. Nhân viên chỉ thấy kết nối của mình; quản trị viên thấy tất cả.
+**Kết nối** → tab **Telegram**: bảng các kết nối với **Tên**, **Người tạo** (quản trị viên thấy), **Chat**, **Chủ đề**, **Sự kiện**, **Trạng thái** (**Hoạt động** / **Lỗi** / **Đã tắt**), **Gửi lần cuối**. Nhân viên chỉ thấy kết nối của mình; quản trị viên thấy tất cả.
 
 Bấm vào một kết nối để mở trang chi tiết:
 

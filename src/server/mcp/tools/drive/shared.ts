@@ -177,6 +177,8 @@ export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
   status: "status",
   mediaId: "media_id",
   adIds: "ad_ids",
+  postLink: "post_link",
+  campaignLink: "campaign_link",
   note: "note",
   updatedAt: "updated_at",
 }
@@ -268,4 +270,31 @@ export const SHEET_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_\-./:~]{0,199}$/
  */
 export function neutralizeFormula(text: string): string {
   return /^[=+\-@\t\r]/.test(text) ? ` ${text}` : text
+}
+
+/** Max characters of a link (post / campaign) written into a sheet cell. */
+export const SHEET_LINK_MAX = 500
+
+// every control character (tab / newline included), bidi overrides / isolates, zero-width, BOM
+const UNSAFE_LINK_CHARS =
+  /[\u0000-\u001F\u007F-\u009F\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g
+
+/** A link given by the AI for a sheet cell: unsafe characters removed, trimmed (validate with isSheetLink). */
+export function cleanSheetLink(raw: string): string {
+  return String(raw ?? "")
+    .normalize("NFC")
+    .replace(UNSAFE_LINK_CHARS, "")
+    .trim()
+}
+
+/** A cleaned link may be written: https only, a host, no spaces, no user:password@, ≤ SHEET_LINK_MAX characters. */
+export function isSheetLink(cleaned: string): boolean {
+  if (cleaned.length > SHEET_LINK_MAX || !/^https:\/\/\S+$/i.test(cleaned))
+    return false
+  try {
+    const u = new URL(cleaned)
+    return u.protocol === "https:" && !!u.hostname && !u.username && !u.password
+  } catch {
+    return false
+  }
 }

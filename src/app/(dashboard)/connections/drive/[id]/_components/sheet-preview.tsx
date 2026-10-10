@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { sheetStatusLabel } from "@/lib/drive-sheet-status"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import type {
   DriveSheetPreview,
@@ -34,7 +35,10 @@ import { ListingErrorAlert, type ListingErrorOptions } from "./listing-error"
 const m = driveUi.detail
 const cols = driveUi.wizard.columns
 
-/** Status chip: the values the system writes get their colour (Chờ lên / Đang xử lý / Đã lên / Lỗi), others neutral. */
+/**
+ * Status chip: the values the system writes get their colour (Chờ lên / Đang xử lý / Đã lên / Lỗi) - their aliases
+ * too ("Chưa tạo ads", "Đã tạo"…), others neutral.
+ */
 function SheetStatusChip({
   status,
   count,
@@ -45,7 +49,7 @@ function SheetStatusChip({
   className?: string
 }) {
   const tone: StatusTone = status
-    ? (m.sheetStatusTone[status.trim().toLowerCase()] ?? "neutral")
+    ? (m.sheetStatusTone[sheetStatusLabel(status).toLowerCase()] ?? "neutral")
     : "neutral"
   const t = STATUS_TONE_CLASSES[tone]
   return (

@@ -190,8 +190,6 @@ export const driveUi = {
     description:
       "Service account đọc thư mục / Google Sheet được chia sẻ cho nó; API key đọc link Drive công khai. Dùng chung cho cả công ty.",
     notConfigured: "Chưa cấu hình",
-    notConfiguredHint:
-      "Nhân viên chưa có email để chia sẻ thư mục. Làm theo mục “Google Drive hệ thống” trong khung Hướng dẫn rồi dán khoá JSON vào đây.",
     email: "Email service account",
     emailCopyLabel: "Email service account Google Drive",
     project: "Dự án Google Cloud",
@@ -376,8 +374,23 @@ export const driveUi = {
       status: "Trạng thái",
       mediaId: "Mã media",
       adIds: "Mã quảng cáo",
+      postLink: "Link bài viết",
+      campaignLink: "Link chiến dịch",
       note: "Ghi chú hệ thống",
       updatedAt: "Cập nhật lúc",
+    } as Record<string, string>,
+    /** short help under some column pickers (tuỳ chọn) */
+    columnHelp: {
+      mediaId:
+        "Tuỳ chọn. AI ghi mã ảnh / video trên nền tảng sau khi tải lên.",
+      adIds: "Tuỳ chọn. AI ghi mã các quảng cáo đã tạo từ dòng này.",
+      postLink:
+        "Tuỳ chọn. AI ghi link bài viết / bài quảng cáo sau khi tạo quảng cáo từ dòng này.",
+      campaignLink:
+        "Tuỳ chọn. AI ghi link chiến dịch trong trình quản lý quảng cáo để mở nhanh.",
+      note: "Tuỳ chọn. AI ghi lý do lỗi và cách sửa, hoặc ghi chú ngắn.",
+      updatedAt:
+        "Tuỳ chọn. AI ghi giờ Việt Nam + tên MCP mỗi lần cập nhật dòng.",
     } as Record<string, string>,
     required: "Bắt buộc",
     notUsed: "Không dùng",
@@ -390,7 +403,7 @@ export const driveUi = {
       "Email đang chỉ có quyền Người xem trên sheet. Cấp quyền Người chỉnh sửa rồi bấm Kiểm tra lại để bật.",
     writebackNeedsStatus: "Chọn cột Trạng thái để bật ghi trạng thái.",
     templateHint:
-      "Mẫu cột gợi ý: Link Drive · Tên creative · Nền tảng · Tài khoản QC · Nội dung · Tiêu đề · Link đích · Trạng thái · Mã media · Mã quảng cáo · Ghi chú hệ thống · Cập nhật lúc.",
+      "Mẫu cột gợi ý: Link Drive · Tên creative · Nền tảng · Tài khoản QC · Nội dung · Tiêu đề · Link đích · Trạng thái · Mã media · Mã quảng cáo · Link bài viết · Link chiến dịch · Ghi chú hệ thống · Cập nhật lúc.",
     back: "Quay lại",
     next: "Tiếp tục",
     save: "Lưu thư mục / sheet",
@@ -433,6 +446,10 @@ export const driveUi = {
     columnsTitle: "Ánh xạ cột",
     columnsRead: "AI đọc",
     columnsWrite: "AI ghi",
+    /** next to "AI ghi" when write-back is off (the chips are dimmed) */
+    columnsWriteOff: "(đang tắt)",
+    /** link columns not mapped yet (sheets declared before v1.0.8) */
+    columnsUnused: (labels: string) => `Chưa dùng: ${labels}`,
     usedByTitle: "Đang dùng trong MCP",
     usedByNone: "Chưa có MCP nào dùng thư mục / sheet này.",
     usedByOther: (n: number) => `+ ${n} MCP của người khác`,

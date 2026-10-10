@@ -58,6 +58,16 @@ describe("automation prompt builder", () => {
     expect(buildSkillPrompt(DEFAULT_CPA_RULE)).toContain(SKILL_NAME)
   })
 
+  it("names the connector the user chose (default Ads MCP)", () => {
+    expect(buildSchedulePrompt(DEFAULT_CPA_RULE)).toMatch(
+      /^Dùng connector "Ads MCP" \(Ads MCP\)/
+    )
+    const custom = { ...DEFAULT_CPA_RULE, connectorName: ' QC "Shop A"\n' }
+    expect(buildSchedulePrompt(custom)).toContain('connector "QC Shop A"')
+    expect(buildSkillMd(custom)).toContain('connector "QC Shop A"')
+    expect(skillDescription("report")).not.toContain("noti.vn")
+  })
+
   it("keeps the skill frontmatter inside Claude's limits", () => {
     expect(SKILL_NAME).toMatch(/^[a-z0-9-]{1,64}$/)
     for (const mode of ["report", "pause"] as const) {

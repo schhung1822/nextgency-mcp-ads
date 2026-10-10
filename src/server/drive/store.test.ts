@@ -149,11 +149,34 @@ describe("config normalisation", () => {
         status: null,
         mediaId: null,
         adIds: null,
+        postLink: null,
+        campaignLink: null,
         note: null,
         updatedAt: null,
       },
       writeback: false,
     })
+    // a config stored before the link columns existed (2026-10-10): they read as "not mapped"
+    const old = normalizeSheetConfig({
+      headerRow: 1,
+      columns: { link: "Link Drive", status: "Trạng thái", note: "Ghi chú" },
+      writeback: true,
+    })
+    expect(old.columns).toMatchObject({
+      status: "Trạng thái",
+      note: "Ghi chú",
+      postLink: null,
+      campaignLink: null,
+    })
+    expect(
+      normalizeSheetConfig({
+        columns: {
+          link: "Link Drive",
+          postLink: "Link bài viết",
+          campaignLink: " ",
+        },
+      }).columns
+    ).toMatchObject({ postLink: "Link bài viết", campaignLink: null })
     const c = normalizeSheetConfig({
       headerRow: 3,
       columns: { link: "Link", status: "Trạng thái", bogus: "x", note: 5 },

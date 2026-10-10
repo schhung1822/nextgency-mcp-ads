@@ -3,6 +3,8 @@
 import { common } from "@/lib/i18n/vi/common"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import { notifications } from "@/lib/i18n/vi/notifications"
+import { tips } from "@/lib/i18n/vi/tips"
+import { DEFAULT_TIP_HREF, TIPS_ROOT } from "@/lib/tips-routes"
 
 export type AppRole = "admin" | "staff"
 
@@ -26,6 +28,8 @@ export interface NavItem {
   adminOnly?: boolean
   /** extra search terms for the command palette */
   keywords?: string[]
+  /** the item is active on every page under this prefix (default: href) - e.g. "/tips" while href is "/tips/automation" */
+  activeRoot?: string
 }
 
 export const NAV_MAIN: NavItem[] = [
@@ -71,16 +75,34 @@ export const NAV_MAIN: NavItem[] = [
   },
   {
     title: common.nav.automationTips,
-    href: "/automation-tips",
+    href: DEFAULT_TIP_HREF,
+    activeRoot: TIPS_ROOT,
     icon: "tips",
     keywords: [
       "meo",
+      "meo su dung",
+      "tips",
+      "huong dan",
       "tu dong",
+      "chay tu dong",
       "lich",
       "schedule",
       "scheduled task",
       "skill",
       "cpa",
+      "hang loat",
+      "so luong lon",
+      "bulk",
+      "google sheet",
+      "sheet",
+      "len quang cao",
+      "kiem tra",
+      "kiem tra quang cao",
+      "bao cao",
+      "don hang",
+      "pos",
+      "roas",
+      "telegram",
     ],
   },
 ]
@@ -169,7 +191,18 @@ export function isBottomMenuActive(
   )
 }
 
-/** Active when the pathname equals the href or is nested under it ("/" only matches exactly). */
+/** Prefix a nav href is active under (its activeRoot, else the href itself). */
+function activeRootOf(href: string): string {
+  return (
+    [...NAV_MAIN, ...NAV_ADMIN, NAV_ACCOUNT].find((i) => i.href === href)
+      ?.activeRoot ?? href
+  )
+}
+
+/**
+ * Active when the pathname equals the href or is nested under it ("/" only matches exactly). A nav item with an
+ * activeRoot (Mẹo sử dụng: href /tips/automation, root /tips) is active on every page under that root.
+ */
 export function isNavActive(
   pathname: string | null | undefined,
   href: string
@@ -177,7 +210,8 @@ export function isNavActive(
   if (!pathname) return false
   const clean = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname
   if (href === "/") return clean === "/"
-  return clean === href || clean.startsWith(`${href}/`)
+  const root = activeRootOf(href)
+  return clean === root || clean.startsWith(`${root}/`)
 }
 
 export interface Crumb {
@@ -194,11 +228,15 @@ const SEGMENT_LABELS: Record<string, string> = {
   ui: common.nav.crumbDevUi,
   telegram: notifications.ui.crumb,
   drive: driveUi.ui.crumb,
+  // Mẹo sử dụng → /tips/<slug>
+  automation: tips.pages.automation.label,
+  "bulk-ads": tips.pages["bulk-ads"].label,
+  "ad-check": tips.pages["ad-check"].label,
 }
 
 /**
  * Derives top-bar breadcrumbs from a pathname using nav labels.
- * "/connections/new" → [Kết nối quảng cáo (link), Tạo mới]; unknown ids → "Chi tiết".
+ * "/connections/new" → [Kết nối (link), Tạo mới]; unknown ids → "Chi tiết".
  */
 export function buildBreadcrumbs(pathname: string | null | undefined): Crumb[] {
   if (!pathname || pathname === "/") return [{ label: common.nav.dashboard }]
@@ -208,9 +246,13 @@ export function buildBreadcrumbs(pathname: string | null | undefined): Crumb[] {
   let acc = ""
   segments.forEach((seg, i) => {
     acc += `/${seg}`
-    const nav = all.find((n) => n.href === acc)
+    // an item with an activeRoot names its root segment ("/tips" → Mẹo sử dụng) and links to its own href
+    const nav = all.find((n) => (n.activeRoot ?? n.href) === acc)
     const label = nav?.title ?? SEGMENT_LABELS[seg] ?? common.nav.crumbDetail
-    crumbs.push({ label, href: i < segments.length - 1 ? acc : undefined })
+    crumbs.push({
+      label,
+      href: i < segments.length - 1 ? (nav?.href ?? acc) : undefined,
+    })
   })
   return crumbs
 }

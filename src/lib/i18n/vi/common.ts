@@ -52,10 +52,10 @@ export const common = {
   nav: {
     label: "Điều hướng chính",
     dashboard: "Tổng quan",
-    connections: "Kết nối quảng cáo",
+    connections: "Kết nối",
     mcp: "MCP",
     logs: "Nhật ký",
-    automationTips: "Mẹo chạy tự động",
+    automationTips: "Mẹo sử dụng",
     users: "Người dùng",
     settings: "Cài đặt",
     account: "Tài khoản",

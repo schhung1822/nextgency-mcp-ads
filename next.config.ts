@@ -41,6 +41,16 @@ const nextConfig: NextConfig = {
   logging: { serverFunctions: false, incomingRequests: { ignore: [/\/mcp\//, /\/dl\//] } },
   images: { unoptimized: true },
   serverExternalPackages: ["pg", "pg-boss"],
+  // "Mẹo sử dụng" (/tips/<slug>, src/lib/tips-routes.ts): /tips has no page of its own; the old single page
+  // /automation-tips (bookmarks, docs) moved to /tips/automation. Checked before the proxy, so a signed-out visitor
+  // lands on /login?next=/tips/automation. Query strings are passed through by Next.
+  async redirects() {
+    return [
+      { source: "/tips", destination: "/tips/automation", permanent: false },
+      { source: "/automation-tips", destination: "/tips/automation", permanent: true },
+      { source: "/automation-tips/:path+", destination: "/tips/automation", permanent: true },
+    ]
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

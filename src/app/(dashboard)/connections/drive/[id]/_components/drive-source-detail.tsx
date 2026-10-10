@@ -16,6 +16,7 @@ import {
   Refresh01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { cn } from "cn"
 
 import {
   ConfirmDialog,
@@ -266,7 +267,11 @@ export function DriveSourceDetailView({
             )}
           </div>
           <div className="flex min-w-0 flex-col gap-5">
-            <InfoCard detail={detail} isAdmin={isAdmin} />
+            <InfoCard
+              detail={detail}
+              isAdmin={isAdmin}
+              onEdit={detail.canManage ? () => setEditOpen(true) : undefined}
+            />
             <UsageCard detail={detail} />
           </div>
         </div>
@@ -327,15 +332,22 @@ function InfoRow({
   )
 }
 
+/** the two optional link columns added in v1.0.8 - older sheets often have them unmapped */
+const LINK_COLUMNS = ["postLink", "campaignLink"] as const satisfies readonly SheetColumnKey[]
+
 function InfoCard({
   detail,
   isAdmin,
+  onEdit,
 }: {
   detail: DriveSourceDetail
   isAdmin: boolean
+  /** managers: opens the "Sửa cài đặt" dialog (map the missing columns) */
+  onEdit?: () => void
 }) {
   const cred = detail.credential
   const sheet = detail.sheet
+  const unusedLinks = sheet ? LINK_COLUMNS.filter((k) => !sheet.columns[k]) : []
   return (
     <Card>
       <CardHeader>
@@ -391,13 +403,19 @@ function InfoCard({
                   ] as const
                 ).map(([groupLabel, keys]) => {
                   const shown = keys.filter((k) => !!sheet.columns[k])
-                  if (shown.length === 0) return null
+                  const writeGroup = groupLabel === m.columnsWrite
+                  // write-back off: the "AI ghi" columns are kept but not written - shown dimmed
+                  const off = writeGroup && !sheet.writeback
+                  if (shown.length === 0 && !(writeGroup && unusedLinks.length > 0))
+                    return null
                   return (
                     <div key={groupLabel} className="mt-1.5 flex flex-col gap-1">
                       <span className="text-xs font-medium text-muted-foreground">
                         {groupLabel}
+                        {off && <> {m.columnsWriteOff}</>}
                       </span>
-                      <ul className="flex flex-wrap gap-1">
+                      {shown.length > 0 && (
+                      <ul className={cn("flex flex-wrap gap-1", off && "opacity-55")}>
                         {shown.map((k: SheetColumnKey) => {
                           const label = driveUi.wizard.columns[k] ?? k
                           const name = sheet.columns[k]!
@@ -412,6 +430,35 @@ function InfoCard({
                           )
                         })}
                       </ul>
+                      )}
+                      {writeGroup && unusedLinks.length > 0 && (
+                        <div className="mt-0.5 flex flex-col items-start gap-1.5">
+                          <span className="text-xs text-pretty text-muted-foreground">
+                            {m.columnsUnused(
+                              unusedLinks
+                                .map((k) => driveUi.wizard.columns[k] ?? k)
+                                .join(", ")
+                            )}
+                          </span>
+                          {onEdit && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={onEdit}
+                              className="max-sm:h-10"
+                            >
+                              <HugeiconsIcon
+                                icon={PencilEdit02Icon}
+                                strokeWidth={2}
+                                data-icon="inline-start"
+                                aria-hidden
+                              />
+                              {m.edit}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}

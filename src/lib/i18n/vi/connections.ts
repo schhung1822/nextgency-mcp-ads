@@ -4,10 +4,10 @@ export const connections = {
   statusHintLabel: "Việc cần làm:",
 
   list: {
-    title: "Kết nối quảng cáo",
-    metaTitle: "Kết nối quảng cáo",
+    title: "Kết nối",
+    metaTitle: "Kết nối",
     description:
-      "Dán token từ app developer để kết nối tài khoản quảng cáo, và thêm bot Telegram để nhận thông báo.",
+      "Kết nối tài khoản quảng cáo, bot Telegram nhận thông báo và thư mục / sheet Google Drive cho AI dùng.",
     /** per top tab (Quảng cáo · Telegram · Google Drive) */
     descriptionAds:
       "Dán token từ app developer để kết nối tài khoản quảng cáo cho AI xem chỉ số và điều khiển chiến dịch.",

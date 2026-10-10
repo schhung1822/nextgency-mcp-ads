@@ -133,7 +133,7 @@ Phần **ứng dụng** (web + worker + DB):
 - [x] `/settings/updates` tự kiểm tra GitHub khi mở (không toast, nhật ký `trigger: auto`); e2e trỏ `UPDATE_REPO` tới repo không tồn tại để không ghi đè dữ liệu test
 - [x] Chụp sáng/tối 1440 + 390; test dịch vụ cập nhật cập nhật theo `latestKnown` / `trigger`
 
-## Trang "Mẹo chạy tự động" (2026-10-07)
+## Trang "Mẹo chạy tự động" (2026-10-07) - nay là mẹo "Chạy tự động" trong "Mẹo sử dụng" (`/tips/automation`, 2026-10-10)
 - [x] Mục menu dưới "Nhật ký" (`/automation-tips`, mọi vai trò; ⌘K; điện thoại: sheet Menu - `bottomMenuItemsForRole().main`), `PageGuide`, `loading.tsx`
 - [x] Bộ soạn quy tắc CPA (`src/lib/automation-prompt.ts` + test): câu lệnh đầy đủ, `SKILL.md` (frontmatter trong giới hạn Claude), câu lệnh ngắn gọi skill; tham số khớp `ads_get_report` / `ads_set_status`
 - [x] Hướng dẫn Claude (Scheduled tasks: giao diện mới + Cowork, Tool permissions "Always allow", tác vụ cục bộ Claude Desktop 30 phút), ChatGPT (MCP = plugin, không còn Developer mode; tác vụ hẹn giờ trong Work; quyền ghi theo help center chỉ Business/Enterprise/Edu), Gemini (Spark Schedules - chưa dùng được ở VN: custom apps chỉ ở Mỹ; ghi luôn cần xác nhận), Gemini CLI + Task Scheduler/cron (30 phút) - nghiên cứu lại kỹ từ nguồn chính thức 2026-10-07
@@ -197,6 +197,13 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] Tài liệu: `docs/deploy-vps.md` §0 cài nhanh + §5 một token + §15.2 bước 7b đồng bộ repo công khai; `.env.example`, `docker-compose.yml`, README, `van-hanh.md`, 07-deployment
 - [ ] **Thử trên VPS thật**: chứng chỉ Let's Encrypt thật, Cloudflare Tunnel thật, tạo swap, UFW, token có hạn dùng, chấp nhận lời mời repo, arm64
 **Đạt khi**: một người không rành kỹ thuật cài được trên VPS mới chỉ bằng 2 dòng lệnh + trả lời câu hỏi, có HTTPS thật, tạo được admin bằng setup key, Cài đặt → Cập nhật thấy bản mới nhất.
+
+## Mẹo sử dụng, giải thích Google Drive trong Cài đặt, đổi tên menu (2026-10-10), phát hành v1.0.8
+- [x] Cài đặt → thẻ Google Drive hệ thống: khung "Hướng dẫn cấu hình" (Drive dùng để làm gì, lấy khoá JSON, API key không bắt buộc + dùng để làm gì + cách tạo, sau khi lưu) chiếm nửa phải trên màn rộng, xếp dưới form trên mobile; bỏ bước Google Drive khỏi panel hướng dẫn
+- [x] Đổi tên menu: "Kết nối quảng cáo" → "Kết nối", "Mẹo chạy tự động" → "Mẹo sử dụng" (UI, pháp lý VI/EN, tài liệu)
+- [x] "Mẹo sử dụng" `/tips` với menu con: Chạy tự động (`/tips/automation`, nội dung cũ + cập nhật nghiên cứu 10/10), Tạo quảng cáo số lượng lớn (`/tips/bulk-ads`: mẫu sheet 14 cột, sao chép tiêu đề, tải CSV mẫu, bộ soạn câu lệnh + SKILL.md), Tự động kiểm tra quảng cáo (`/tips/ad-check`: vì sao dùng lịch trên web, Claude web khuyên dùng, MCP bán hàng, bộ soạn câu lệnh + SKILL.md, báo cáo Telegram); `/automation-tips` chuyển hướng 308
+- [x] Google Sheet: cột hệ thống mới "Link bài viết" / "Link chiến dịch" (`post_link` / `campaign_link` của `drive_sheet_update_rows`), bí danh trạng thái "Chưa tạo ads" / "Đã tạo ads"…
+- [ ] Thử thật quy trình lên quảng cáo hàng loạt và báo cáo theo lịch với Google + TKQC thử nghiệm + MCP bán hàng
 
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.

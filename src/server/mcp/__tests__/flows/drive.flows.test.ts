@@ -46,6 +46,7 @@ import {
   mcpDriveScopes,
 } from "@/server/db/schema"
 import { __clearGoogleTokenCache } from "@/server/google/service-account"
+import { __resetSheetsLimiter } from "@/server/drive/rate-limit"
 import { __clearSheetsCache } from "@/server/drive/sheets"
 import { encryptDriveApiKey, encryptServiceAccount } from "@/server/drive/store"
 import {
@@ -326,7 +327,8 @@ const HEADER = [
   ),
   "Khác",
 ]
-// columns: Link Drive, Tên creative, Nền tảng, Tài khoản QC, Nội dung, Trạng thái, Mã media, Mã quảng cáo, Ghi chú hệ thống, Cập nhật lúc, Khác
+// columns: A Link Drive, B Tên creative, C Nền tảng, D Tài khoản QC, E Nội dung, F Trạng thái, G Mã media, H Mã quảng cáo,
+// I Link bài viết, J Link chiến dịch, K Ghi chú hệ thống, L Cập nhật lúc, M Khác
 const col = (name: string) => HEADER.indexOf(name)
 
 const g = {
@@ -1464,8 +1466,8 @@ describe.skipIf(!hasDb)(
           "'Creative tuần 41'!F2",
           "'Creative tuần 41'!G2",
           "'Creative tuần 41'!H2",
-          "'Creative tuần 41'!I2",
-          "'Creative tuần 41'!J2",
+          "'Creative tuần 41'!K2",
+          "'Creative tuần 41'!L2",
         ].sort()
       )
       const row = g.grid[1]!
@@ -1508,6 +1510,220 @@ describe.skipIf(!hasDb)(
         ],
       })
       expect(refused.isError).toBe(true)
+    })
+
+    it("sheet link columns + status aliases: aliases read as their status, post_link / campaign_link written (RAW, logged), a legacy config writes no link", async () => {
+      __resetSheetsLimiter()
+      const m = await mcpWith("staff", { platforms: createAll() }, [
+        src.sheet,
+        src.company,
+      ])
+      // statuses typed by hand: row 3 custom, row 4 an alias of "Chờ lên", row 6 an alias of "Đã lên"
+      g.grid[2]![col("Trạng thái")] = "Tạm dừng"
+      g.grid[3]![col("Trạng thái")] = "chưa tạo ads"
+      g.grid[5]![col("Trạng thái")] = "Đã tạo ads"
+      g.grid[5]![col("Link bài viết")] = "https://www.facebook.com/1/posts/old"
+      const read = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+        resolve_files: false,
+      })
+      expect(read.isError, read.text).toBe(false)
+      const rows = read.sc.rows as Record<string, any>[]
+      expect(rows.map((x) => [x.row_number, x.status_key])).toEqual([
+        [2, "pending"],
+        [4, "pending"],
+        [5, "pending"],
+      ])
+      expect(read.sc.columns).toMatchObject({
+        post_link: "Link bài viết",
+        campaign_link: "Link chiến dịch",
+      })
+      const done = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+        status: "Đã lên",
+        resolve_files: false,
+      })
+      expect(done.sc.rows).toEqual([
+        expect.objectContaining({
+          row_number: 6,
+          status_key: "done",
+          values: expect.objectContaining({
+            status: "Đã tạo ads",
+            post_link: "https://www.facebook.com/1/posts/old",
+          }),
+        }),
+      ])
+      const custom = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+        status: "tam dung",
+        resolve_files: false,
+      })
+      expect(custom.sc.rows).toEqual([
+        expect.objectContaining({ row_number: 3, status_key: null }),
+      ])
+
+      const post = "https://www.facebook.com/100/posts/200"
+      const campaign =
+        "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=1&selected_campaign_ids=2"
+      const r = await w.call(m.key, "drive_sheet_update_rows", {
+        source_id: src.sheet,
+        rows: [
+          {
+            row_number: 4,
+            expected_link: rows[1]!.link_cell,
+            status: "done",
+            ad_ids: ["a9"],
+            post_link: ` ${post}​`,
+            campaign_link: campaign,
+          },
+        ],
+      })
+      expect(r.isError, r.text).toBe(false)
+      // Trạng thái, Mã quảng cáo, Link bài viết, Link chiến dịch, Cập nhật lúc
+      expect(r.sc.updated).toEqual([{ row_number: 4, cells: 5 }])
+      expect(g.writes).toHaveLength(1)
+      expect(g.writes[0]!.valueInputOption).toBe("RAW")
+      const row = g.grid[3]!
+      // the canonical value is written, never the alias
+      expect(row[col("Trạng thái")]).toBe("Đã lên")
+      expect(row[col("Link bài viết")]).toBe(post)
+      expect(row[col("Link chiến dịch")]).toBe(campaign)
+      expect(row[col("Tên creative")]).toBe("Bí mật")
+      await flushMcpLogs()
+      const [log] = await db
+        .select()
+        .from(mcpCallLogs)
+        .where(eq(mcpCallLogs.mcpId, m.id))
+        .then((rs) =>
+          rs.filter((x) => x.toolName === "drive_sheet_update_rows")
+        )
+      const changes = log!.changes as {
+        field: string
+        before: unknown
+        after: unknown
+      }[]
+      expect(changes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "Trạng thái",
+            before: "chưa tạo ads",
+            after: "Đã lên",
+          }),
+          expect.objectContaining({
+            field: "Link bài viết",
+            before: "",
+            after: post,
+          }),
+          expect.objectContaining({
+            field: "Link chiến dịch",
+            before: "",
+            after: campaign,
+          }),
+        ])
+      )
+
+      // only https links: the call is refused, nothing is written
+      for (const bad of [
+        { post_link: "http://x.test/1" },
+        { campaign_link: '=HYPERLINK("https://evil.example")' },
+      ]) {
+        const refused = await w.call(m.key, "drive_sheet_update_rows", {
+          source_id: src.sheet,
+          rows: [
+            {
+              row_number: 2,
+              expected_link: IDS.companyPng,
+              status: "done",
+              ...bad,
+            },
+          ],
+        })
+        expect(refused.isError, JSON.stringify(bad)).toBe(true)
+      }
+      expect(g.writes).toHaveLength(1)
+
+      // a mapped link column missing from the header row is skipped (g.grid[0] is HEADER itself: replace, not mutate)
+      g.grid[0] = HEADER.map((h) => (h === "Link chiến dịch" ? "Cột khác" : h))
+      const partial = await w.call(m.key, "drive_sheet_update_rows", {
+        source_id: src.sheet,
+        rows: [
+          {
+            row_number: 2,
+            expected_link: IDS.companyPng,
+            status: "done",
+            post_link: post,
+            campaign_link: campaign,
+          },
+        ],
+      })
+      expect(partial.isError, partial.text).toBe(false)
+      // Trạng thái, Link bài viết, Cập nhật lúc
+      expect(partial.sc.updated).toEqual([{ row_number: 2, cells: 3 }])
+      expect(g.grid[1]![col("Link chiến dịch")]).toBe("")
+
+      // a config saved before the link columns existed: links are not written, nothing breaks
+      const [orig] = await db
+        .select({ config: driveSources.config })
+        .from(driveSources)
+        .where(eq(driveSources.id, src.sheet))
+      await db
+        .update(driveSources)
+        .set({
+          config: {
+            headerRow: 1,
+            columns: {
+              link: "Link Drive",
+              status: "Trạng thái",
+              note: "Ghi chú hệ thống",
+              updatedAt: "Cập nhật lúc",
+            },
+            writeback: true,
+          } as SheetSourceConfig,
+        })
+        .where(eq(driveSources.id, src.sheet))
+      try {
+        const legacy = await mcpWith("staff", { platforms: createAll() }, [
+          src.sheet,
+        ])
+        const lr = await w.call(legacy.key, "drive_sheet_update_rows", {
+          source_id: src.sheet,
+          rows: [
+            {
+              row_number: 6,
+              expected_link: IDS.staffJpg,
+              status: "error",
+              post_link: post,
+              campaign_link: campaign,
+              note: "Thiếu ảnh",
+            },
+          ],
+        })
+        expect(lr.isError, lr.text).toBe(false)
+        // Trạng thái, Ghi chú hệ thống, Cập nhật lúc
+        expect(lr.sc.updated).toEqual([{ row_number: 6, cells: 3 }])
+        expect(g.grid[5]![col("Link bài viết")]).toBe(
+          "https://www.facebook.com/1/posts/old"
+        )
+        expect(g.grid[5]![col("Link chiến dịch")]).toBe("")
+        const lread = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          all_statuses: true,
+          resolve_files: false,
+        })
+        expect(lread.isError, lread.text).toBe(false)
+        expect(lread.sc.columns).not.toHaveProperty("post_link")
+        expect(
+          (lread.sc.rows as Record<string, any>[]).every(
+            (x) => !("post_link" in x.values)
+          )
+        ).toBe(true)
+      } finally {
+        await db
+          .update(driveSources)
+          .set({ config: orig!.config })
+          .where(eq(driveSources.id, src.sheet))
+        invalidateGrantCache()
+      }
     })
 
     it("ChatGPT file: images downloaded through the guarded path and uploaded as bytes; videos by link; logs never keep the link", async () => {

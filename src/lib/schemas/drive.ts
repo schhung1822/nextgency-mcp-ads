@@ -140,6 +140,8 @@ export const sheetColumnsSchema = z
     status: optionalColumn,
     mediaId: optionalColumn,
     adIds: optionalColumn,
+    postLink: optionalColumn,
+    campaignLink: optionalColumn,
     note: optionalColumn,
     updatedAt: optionalColumn,
   })
@@ -263,6 +265,8 @@ export type SheetColumnKey =
   | "status"
   | "mediaId"
   | "adIds"
+  | "postLink"
+  | "campaignLink"
   | "note"
   | "updatedAt"
 
@@ -277,6 +281,8 @@ export const SHEET_COLUMN_KEYS: readonly SheetColumnKey[] = [
   "status",
   "mediaId",
   "adIds",
+  "postLink",
+  "campaignLink",
   "note",
   "updatedAt",
 ]
@@ -286,6 +292,8 @@ export const SHEET_WRITABLE_COLUMN_KEYS: readonly SheetColumnKey[] = [
   "status",
   "mediaId",
   "adIds",
+  "postLink",
+  "campaignLink",
   "note",
   "updatedAt",
 ]
@@ -316,6 +324,13 @@ export const SHEET_COLUMN_ALIASES: Record<SheetColumnKey, readonly string[]> = {
   status: ["trang thai", "status"],
   mediaId: ["ma media", "media id", "media"],
   adIds: ["ma quang cao", "ad id", "ad ids", "ma qc"],
+  postLink: ["link bai viet", "link bai dang", "link post", "post link"],
+  campaignLink: [
+    "link chien dich",
+    "link campaign",
+    "campaign link",
+    "link ads manager",
+  ],
   note: ["ghi chu he thong", "ghi chu", "note"],
   updatedAt: ["cap nhat luc", "updated at", "cap nhat"],
 }

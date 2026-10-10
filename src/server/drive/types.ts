@@ -2,6 +2,15 @@
 // Contract between src/server/drive/** (Google REST), services, MCP tools and the /dl relay route.
 // No imports from "next/*".
 
+export {
+  SHEET_STATUS,
+  SHEET_STATUS_ALIASES,
+  SHEET_STATUS_KEYS,
+  sheetStatusKey,
+  sheetStatusLabel,
+  type SheetStatusKey,
+} from "../../lib/drive-sheet-status"
+
 export type DriveCredentialKind = "system" | "personal"
 export type DriveSourceKind = "folder" | "sheet"
 export type DriveSourceScope = "company" | "personal"
@@ -118,6 +127,10 @@ export interface SheetColumnsConfig {
   status?: string | null
   mediaId?: string | null
   adIds?: string | null
+  /** link of the post / ad preview the AI created from the row (2026-10-10) */
+  postLink?: string | null
+  /** Ads Manager link of the campaign the AI created from the row (2026-10-10) */
+  campaignLink?: string | null
   note?: string | null
   updatedAt?: string | null
 }
@@ -143,6 +156,8 @@ export const DEFAULT_SHEET_COLUMNS: Required<{
   status: "Trạng thái",
   mediaId: "Mã media",
   adIds: "Mã quảng cáo",
+  postLink: "Link bài viết",
+  campaignLink: "Link chiến dịch",
   note: "Ghi chú hệ thống",
   updatedAt: "Cập nhật lúc",
 }
@@ -152,19 +167,12 @@ export const SHEET_WRITABLE_COLUMNS = [
   "status",
   "mediaId",
   "adIds",
+  "postLink",
+  "campaignLink",
   "note",
   "updatedAt",
 ] as const
 export type SheetWritableColumn = (typeof SHEET_WRITABLE_COLUMNS)[number]
-
-/** Values of the status column (Vietnamese, what the media team sees). */
-export const SHEET_STATUS = {
-  pending: "Chờ lên",
-  processing: "Đang xử lý",
-  done: "Đã lên",
-  error: "Lỗi",
-} as const
-export type SheetStatusKey = keyof typeof SHEET_STATUS
 
 export interface SheetMeta {
   spreadsheetTitle: string

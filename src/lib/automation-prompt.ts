@@ -1,7 +1,9 @@
-// Builds the copy-paste texts of the "Mẹo chạy tự động" page (/automation-tips): the rule an AI chat runs on a
+// Builds the copy-paste texts of tip "Chạy tự động" (/tips/automation, "Mẹo sử dụng"): the rule an AI chat runs on a
 // schedule ("pause ads whose CPA is above X"), as a full prompt, as a Claude skill (SKILL.md) and as the short
 // prompt that calls the skill. Pure + client-safe (no server imports). Tool names / parameters must match
 // src/server/mcp/tools/common/{list-accounts,get-report,set-status}.ts.
+
+import { connectorLabel } from "./bulk-ads-prompt"
 
 export type AutomationMode = "report" | "pause"
 
@@ -14,6 +16,8 @@ export const AUTOMATION_WINDOWS = [
 export type AutomationWindow = (typeof AUTOMATION_WINDOWS)[number]
 
 export interface CpaRuleInput {
+  /** name the user gave the Ads MCP connector in the AI app (empty / missing = "Ads MCP") */
+  connectorName?: string
   mode: AutomationMode
   /** CPA ceiling, in the main unit of `currency` */
   cpaMax: number
@@ -92,7 +96,7 @@ export function buildCpaRule(input: CpaRuleInput): string {
 /** Full prompt pasted directly into a scheduled task (no skill / instructions needed). */
 export function buildSchedulePrompt(input: CpaRuleInput): string {
   return [
-    'Dùng connector "Ads MCP by noti.vn" để kiểm tra quảng cáo theo quy tắc dưới đây. Chạy hết các bước rồi báo cáo, không hỏi lại.',
+    `Dùng connector "${connectorLabel(input.connectorName)}" (Ads MCP) để kiểm tra quảng cáo theo quy tắc dưới đây. Chạy hết các bước rồi báo cáo, không hỏi lại.`,
     "",
     buildCpaRule(input),
   ].join("\n")
@@ -107,7 +111,7 @@ export function buildSkillPrompt(input: CpaRuleInput): string {
 
 /** Frontmatter description - Claude caps it at 200 chars, so it never embeds user-typed numbers. */
 export function skillDescription(mode: AutomationMode): string {
-  return `Kiểm tra CPA quảng cáo qua connector Ads MCP by noti.vn và ${mode === "pause" ? "tự tắt" : "báo cáo"} quảng cáo vượt ngưỡng. Dùng khi chạy lịch kiểm tra CPA tự động.`
+  return `Kiểm tra CPA quảng cáo qua connector Ads MCP và ${mode === "pause" ? "tự tắt" : "báo cáo"} quảng cáo vượt ngưỡng. Dùng khi chạy lịch kiểm tra CPA tự động.`
 }
 
 /** SKILL.md (Claude skills: YAML frontmatter `name` + `description`, then Markdown instructions). */
@@ -119,6 +123,8 @@ export function buildSkillMd(input: CpaRuleInput): string {
     "---",
     "",
     "# Kiểm tra CPA quảng cáo",
+    "",
+    `Dùng connector "${connectorLabel(input.connectorName)}" (Ads MCP).`,
     "",
     buildCpaRule(input),
     "",

@@ -161,9 +161,9 @@ export const mcp = {
     budgetPctLabel: "Giới hạn thay đổi ngân sách mỗi lần",
     budgetPctHelp:
       "Vd 50%: ngân sách 1.000.000 ₫ chỉ được đổi trong khoảng 500.000 – 1.500.000 ₫ mỗi lần.",
-    maxBudgetLabel: "Trần ngân sách/ngày (tuỳ chọn)",
+    maxBudgetLabel: "Trần ngân sách/ngày",
     maxBudgetHelp:
-      "Bắt buộc khi MCP có quyền ghi. AI không được đặt hoặc bật ngân sách/ngày vượt mức này. Áp dụng theo loại tiền của tài khoản quảng cáo.",
+      "Bắt buộc khi MCP có quyền Bật/Tắt, Sửa, Sao chép hoặc Tạo mới - mỗi loại tiền của tài khoản quảng cáo một mức. MCP chỉ có quyền Xem (hoặc thêm Xoá/Lưu trữ) thì để trống được. AI không được đặt hoặc bật ngân sách/ngày vượt mức này.",
     maxBudgetNoCurrency:
       "Chọn tài khoản ở bước 2 để đặt trần ngân sách theo tiền tệ.",
     maxBudgetPlaceholder: "Không giới hạn",
@@ -561,6 +561,9 @@ export const mcp = {
     tabsLabel: "Ứng dụng AI",
     copyCommand: "Sao chép lệnh",
     copySnippet: "Sao chép",
+    /** long snippets (tips): toggle of the capped preview */
+    expandSnippet: "Xem toàn bộ",
+    collapseSnippet: "Thu gọn",
     stepsLabel: "Các bước",
     notesLabel: "Lưu ý",
     serverName: "ads-noti",

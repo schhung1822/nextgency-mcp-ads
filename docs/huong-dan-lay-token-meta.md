@@ -53,7 +53,7 @@ Không thấy `read_insights` / `pages_read_user_content` trong danh sách quy�
 
 ## Bước 5 - Dán vào Ads MCP
 
-**Kết nối quảng cáo → Thêm kết nối → Meta**:
+**Kết nối → Thêm kết nối → Meta**:
 
 | Ô                   | Giá trị                                                                                     |
 | ------------------- | ------------------------------------------------------------------------------------------- |

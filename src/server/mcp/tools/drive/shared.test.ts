@@ -2,16 +2,21 @@ import { describe, expect, it } from "vitest"
 import { driveRefForLog } from "../../log-args"
 import type { GrantAccount, McpGrant } from "../../types"
 import { jobErrorText, uploadLogArgs } from "../common/upload-media"
-import { updatedAtStamp } from "./sheet-update-rows"
+import { statusFilter } from "./sheet-read"
+import { rowInput, updatedAtStamp } from "./sheet-update-rows"
 import {
   canonicalLinkCell,
+  cleanSheetLink,
+  COLUMN_FIELDS,
   foldText,
+  isSheetLink,
   linkTokens,
   matchAccount,
   neutralizeFormula,
   normalizePlatform,
   sanitizeCell,
   SHEET_ID_RE,
+  SHEET_LINK_MAX,
 } from "./shared"
 
 const FILE = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
@@ -155,5 +160,93 @@ describe("drive tool helpers", () => {
     expect(jobErrorText("drive_rate_limited")).toContain("Google Drive")
     expect(jobErrorText("provider_timeout")).toContain("Nền tảng")
     expect(jobErrorText(null)).toBe("Tải lên thất bại.")
+  })
+})
+
+describe("sheet link columns + status aliases (2026-10-10)", () => {
+  it("cleanSheetLink / isSheetLink: https only, a host, no spaces / credentials, ≤ 500 characters", () => {
+    expect(cleanSheetLink("  https://fb.com/123\u200b\n ")).toBe(
+      "https://fb.com/123"
+    )
+    expect(cleanSheetLink("https://x.test/a\u202e\u0007b")).toBe(
+      "https://x.test/ab"
+    )
+    for (const ok of [
+      "https://www.facebook.com/123/posts/456",
+      "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=1&selected_campaign_ids=2",
+      "https://ads.tiktok.com/i18n/perf/campaign?aadvid=1",
+      `https://x.test/${"a".repeat(SHEET_LINK_MAX - 15)}`,
+    ])
+      expect(isSheetLink(ok), ok).toBe(true)
+    for (const bad of [
+      "http://fb.com/1",
+      "javascript:alert(1)",
+      '=HYPERLINK("https://evil")',
+      "https://",
+      "https://a b.com/x",
+      "https://user:pass@x.test/",
+      "ftp://x.test/a",
+      "fb.com/123",
+      "",
+      `https://x.test/${"a".repeat(SHEET_LINK_MAX)}`,
+    ])
+      expect(isSheetLink(bad), bad).toBe(false)
+  })
+
+  it("drive_sheet_update_rows row input: post_link / campaign_link optional, validated after cleaning", () => {
+    const base = { row_number: 2, expected_link: "x", status: "done" }
+    expect(rowInput.safeParse(base).success).toBe(true)
+    const ok = rowInput.safeParse({
+      ...base,
+      post_link: " https://fb.com/1/posts/2\u200b ",
+      campaign_link: "https://adsmanager.facebook.com/x?act=1",
+    })
+    expect(ok.success).toBe(true)
+    for (const bad of [
+      { post_link: "http://fb.com/1" },
+      { post_link: '=IMPORTXML("https://x")' },
+      { campaign_link: "https://a b" },
+      { campaign_link: `https://x.test/${"a".repeat(600)}` },
+      { post_link: "" },
+    ])
+      expect(
+        rowInput.safeParse({ ...base, ...bad }).success,
+        JSON.stringify(bad)
+      ).toBe(false)
+  })
+
+  it("COLUMN_FIELDS exposes the link columns to drive_sheet_read", () => {
+    expect(COLUMN_FIELDS.postLink).toBe("post_link")
+    expect(COLUMN_FIELDS.campaignLink).toBe("campaign_link")
+  })
+
+  it("statusFilter: default pending = its aliases + empty; a status matches every spelling; custom values by text", () => {
+    const pending = statusFilter("Chờ lên")
+    for (const v of [
+      "",
+      " ",
+      "Chờ lên",
+      "chua tao ads",
+      "Chưa tạo",
+      "CHƯA LÊN",
+    ])
+      expect(pending(v), v).toBe(true)
+    for (const v of ["Đã lên", "Đã tạo ads", "Lỗi", "Tạm dừng"])
+      expect(pending(v), v).toBe(false)
+    const done = statusFilter("đã tạo")
+    expect(["Đã lên", "Đã tạo ads", "da tao", "", "Chờ lên"].map(done)).toEqual(
+      [true, true, true, false, false]
+    )
+    expect(statusFilter("Lỗi")("loi")).toBe(true)
+    expect(statusFilter("Đang xử lý")("dang  xu ly")).toBe(true)
+    const custom = statusFilter("Tạm dừng")
+    expect(["tam dung", "Tạm  dừng", "Đã lên", ""].map(custom)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ])
+    expect(["", "Chờ lên"].map(statusFilter(""))).toEqual([true, false])
+    expect(statusFilter(null)("anything")).toBe(true)
   })
 })

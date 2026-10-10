@@ -8,6 +8,7 @@ import {
   normalizeHeader,
   previewDriveSourceSchema,
   saveSystemDriveCredentialSchema,
+  SHEET_WRITABLE_COLUMN_KEYS,
   sheetColumnsSchema,
   suggestSheetColumns,
   updateDriveSourceSchema,
@@ -120,6 +121,33 @@ describe("Google Drive schemas", () => {
     expect(dup.success).toBe(false)
     expect(dup.error?.issues[0]?.path).toEqual(["note"])
   })
+
+  it("sheet columns: optional Link bài viết / Link chiến dịch (system-written), duplicates refused", () => {
+    expect(sheetColumnsSchema.parse({ link: "Link Drive" })).toMatchObject({
+      postLink: null,
+      campaignLink: null,
+    })
+    expect(
+      sheetColumnsSchema.parse({
+        link: "Link Drive",
+        postLink: " Link bài viết ",
+        campaignLink: "Link chiến dịch",
+      })
+    ).toMatchObject({
+      postLink: "Link bài viết",
+      campaignLink: "Link chiến dịch",
+    })
+    const dup = sheetColumnsSchema.safeParse({
+      link: "Link Drive",
+      postLink: "Link",
+      campaignLink: "LINK",
+    })
+    expect(dup.success).toBe(false)
+    expect(dup.error?.issues[0]?.path).toEqual(["campaignLink"])
+    expect(SHEET_WRITABLE_COLUMN_KEYS).toEqual(
+      expect.arrayContaining(["postLink", "campaignLink"])
+    )
+  })
 })
 
 describe("sheet column mapping helpers", () => {
@@ -151,6 +179,24 @@ describe("sheet column mapping helpers", () => {
       adIds: null,
     })
     expect(suggestSheetColumns([]).link).toBeNull()
+    // the link columns: by name (any spelling); a plain "Chiến dịch" / "Bài viết" column is never taken for them
+    expect(
+      suggestSheetColumns([
+        "Link Drive",
+        "Chiến dịch",
+        "Bài viết",
+        "LINK BÀI VIẾT",
+        "link  chiến dịch",
+      ])
+    ).toMatchObject({
+      link: "Link Drive",
+      postLink: "LINK BÀI VIẾT",
+      campaignLink: "link  chiến dịch",
+    })
+    expect(suggestSheetColumns(["Link Drive", "Chiến dịch"])).toMatchObject({
+      campaignLink: null,
+      postLink: null,
+    })
     expect(headerIndex(["A", "Trạng Thái"], "trang thai")).toBe(1)
     expect(headerIndex(["A"], "")).toBe(-1)
   })

@@ -46,7 +46,7 @@ claude mcp list          # kiểm tra trạng thái: ✓ Connected
 
 **Business / Enterprise**: admin cấp quyền **Create custom MCP servers** (tên mới của *Developer mode*). ChatGPT **“đóng băng” danh sách tool** → sau khi đổi quyền MCP trong Ads MCP, vào chatgpt.com/plugins → mở plugin → **Refresh** để ChatGPT thấy tool mới.
 
-Muốn AI tự chạy theo lịch (vd tự tắt quảng cáo có CPA cao): xem trang **Mẹo chạy tự động** trong app.
+Muốn AI tự chạy theo lịch (vd tự tắt quảng cáo có CPA cao): xem trang **Mẹo sử dụng** → **Chạy tự động** trong app.
 
 ## Gemini CLI
 Sửa file `~/.gemini/settings.json` (Windows: `%USERPROFILE%\.gemini\settings.json`):
@@ -96,7 +96,7 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 ## Thông báo Telegram (tuỳ chọn)
 Ads MCP gửi tin vào nhóm / kênh / chat riêng trên Telegram qua bot của bạn. Hướng dẫn đầy đủ (tạo bot, lấy Chat ID / Thread ID, giới hạn, xử lý lỗi): **[huong-dan-telegram.md](huong-dan-telegram.md)**.
 
-1. **Kết nối quảng cáo → tab Telegram → Thêm kết nối Telegram**: dán bot token (tạo bot với **@BotFather**), Chat ID (và Thread ID nếu nhóm bật Chủ đề), chọn sự kiện hệ thống → **Kiểm tra & lưu** → **Gửi tin thử**. Thêm bot vào nhóm/kênh và cấp quyền gửi tin trước.
+1. **Kết nối → tab Telegram → Thêm kết nối Telegram**: dán bot token (tạo bot với **@BotFather**), Chat ID (và Thread ID nếu nhóm bật Chủ đề), chọn sự kiện hệ thống → **Kiểm tra & lưu** → **Gửi tin thử**. Thêm bot vào nhóm/kênh và cấp quyền gửi tin trước.
 2. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn kết nối Telegram (chỉ kết nối của chủ MCP); bước Quyền bật **AI được gửi tin** và/hoặc **Tự báo khi AI thay đổi quảng cáo** (mặc định tắt); bước Bảo vệ đặt **Giới hạn tin Telegram / giờ**.
 3. Trong AI: “Gửi tóm tắt chi tiêu hôm qua vào nhóm Marketing.” Tin luôn có tiêu đề “🤖 Tin từ AI · MCP <tên>” và dòng ghi nguồn “Ads MCP Simple” ở cuối; AI không bao giờ thấy bot token hay Chat ID.
 
@@ -106,7 +106,7 @@ Ads MCP gửi tin vào nhóm / kênh / chat riêng trên Telegram qua bot của 
 AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự lấy file từ Google Drive: bạn chỉ cần nói tên file / thư mục, dán link Drive hoặc trỏ tới một dòng trong Google Sheet. Hướng dẫn đầy đủ (quản trị viên cài đặt, chia sẻ, khai báo, mẫu sheet, câu lệnh mẫu, giới hạn, xử lý lỗi): **[huong-dan-google-drive.md](huong-dan-google-drive.md)**.
 
 1. **Quản trị viên** (một lần): **Cài đặt → Google Drive hệ thống** — dán khoá JSON service account (và API key nếu muốn dùng link Drive công khai).
-2. **Kết nối quảng cáo → tab Google Drive**: chia sẻ thư mục ảnh/video (quyền **Người xem**) hoặc Google Sheet (**Người chỉnh sửa** nếu muốn AI ghi trạng thái) cho **email hệ thống**, rồi **Thêm thư mục / sheet**.
+2. **Kết nối → tab Google Drive**: chia sẻ thư mục ảnh/video (quyền **Người xem**) hoặc Google Sheet (**Người chỉnh sửa** nếu muốn AI ghi trạng thái) cho **email hệ thống**, rồi **Thêm thư mục / sheet**.
 3. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn thư mục / sheet ở khối **Google Drive**; bước Quyền bật quyền **Tạo mới** cho nền tảng muốn tải ảnh/video lên, giữ **Cho phép dùng link Drive công khai** và **Cho phép ghi trạng thái vào Google Sheet** (mặc định bật).
 4. Trong AI: “Lên quảng cáo TikTok tạm dừng cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10” hoặc “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet”.
 

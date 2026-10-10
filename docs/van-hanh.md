@@ -154,7 +154,7 @@ Khi nghi lộ khoá, khi nhân sự giữ khoá nghỉ việc, hoặc định k�
 ## Giám sát
 - **Healthcheck**: `docker compose ps` — `web` phải `healthy`. Giám sát từ ngoài (UptimeRobot, Better Stack…): kiểm tra `https://<tên-miền>/api/health` trả HTTP 200 mỗi 1–5 phút.
 - **Cảnh báo trong app**: trang **Tổng quan** hiện token lỗi/sắp hết hạn (Meta 60 ngày, Google refresh token ở Testing 7 ngày…; token TikTok không hết hạn, chỉ mất khi bị thu hồi), tỉ lệ lỗi MCP 24h; chuông thông báo trên thanh trên cùng.
-- **Cảnh báo qua Telegram** (tuỳ chọn): thêm kênh Telegram (**Kết nối quảng cáo → Thêm kết nối → Kênh thông báo**), đăng ký sự kiện *kết nối quảng cáo* và (admin) *cập nhật hệ thống*. Máy chủ cần ra Internet tới `api.telegram.org` (HTTPS 443). Biến `TELEGRAM_API_BASE_URL` **tuỳ chọn** (mặc định `https://api.telegram.org`; chỉ đổi khi dùng Bot API server riêng, phải là https). Lịch sử gửi tin xem ở trang chi tiết kênh, được dọn theo thời hạn nhật ký MCP.
+- **Cảnh báo qua Telegram** (tuỳ chọn): thêm kênh Telegram (**Kết nối → Thêm kết nối → Kênh thông báo**), đăng ký sự kiện *kết nối quảng cáo* và (admin) *cập nhật hệ thống*. Máy chủ cần ra Internet tới `api.telegram.org` (HTTPS 443). Biến `TELEGRAM_API_BASE_URL` **tuỳ chọn** (mặc định `https://api.telegram.org`; chỉ đổi khi dùng Bot API server riêng, phải là https). Lịch sử gửi tin xem ở trang chi tiết kênh, được dọn theo thời hạn nhật ký MCP.
 - **Phiên bản API**: **Cài đặt → Phiên bản API nền tảng** cảnh báo khi phiên bản đang dùng sắp ngừng (Meta, Google đổi phiên bản 3–4 lần/năm; TikTok hiện chỉ có v1.3) → cập nhật Ads MCP.
 - **Tài nguyên**: `docker stats --no-stream`. Tham khảo: web ~250 MB, worker ~120 MB RAM.
 - **Đĩa**: cảnh báo khi ổ < 20% trống (log + backup tăng dần).

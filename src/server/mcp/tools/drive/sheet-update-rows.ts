@@ -1,12 +1,14 @@
 // drive_sheet_update_rows (15-google-drive-media.md §9.3, GD2): write status / result columns of a granted sheet.
 // No two-step confirmation (no ad / money is touched), but: the sheet must enable write-back, the MCP setting
 // drive_sheet_writeback must be on and the MCP must be allowed to "create" on ≥ 1 platform; ONLY the mapped
-// system columns (Trạng thái, Mã media, Mã quảng cáo, Ghi chú hệ thống, Cập nhật lúc) present in the header are written,
+// system columns (Trạng thái, Mã media, Mã quảng cáo, Link bài viết, Link chiến dịch, Ghi chú hệ thống, Cập nhật lúc)
+// present in the header are written,
 // valueInputOption=RAW (formulas are stored as text); every row is re-read fresh first and skipped (row_moved) when its
 // link cell no longer matches expected_link. Every cell change is logged before → after in mcp_call_logs.
 // Limits (security review L2): one executed write counts against the MCP write limit (write_rate_limit_per_10min) and
-// every Sheets call against the per-MCP Sheets budget. Values (L7): ids must look like ids, a note starting with
-// = + - @ is neutralised (CSV / formula injection when the sheet is exported).
+// every Sheets call against the per-MCP Sheets budget. Values (L7): ids must look like ids, links must be https URLs
+// (≤ 500 characters, control characters removed), a note / link starting with = + - @ is neutralised (CSV / formula
+// injection when the sheet is exported). The status column always receives the canonical SHEET_STATUS values.
 import { z } from "zod"
 import { sanitizeExternalLabel } from "../../../../lib/text-safety"
 import { DriveError } from "../../../drive/errors"
@@ -31,11 +33,14 @@ import { admitWrite, registerToolSpec, type ToolContext } from "../../tool"
 import { grantPlatformsWith } from "../../types"
 import {
   canonicalLinkCell,
+  cleanSheetLink,
+  isSheetLink,
   mapColumns,
   nameLabel,
   neutralizeFormula,
   sanitizeCell,
   SHEET_ID_RE,
+  SHEET_LINK_MAX,
   takeMcpSheetsBudget,
   type SheetColumnKey,
 } from "./shared"
@@ -60,7 +65,18 @@ const STATUS_KEYS = Object.keys(SHEET_STATUS) as [
   ...SheetStatusKey[],
 ]
 
-const rowInput = z.object({
+/** An https link written into a sheet cell (cleaned with cleanSheetLink before the check and before writing). */
+function sheetLinkInput(field: string) {
+  return z
+    .string()
+    .max(2_000)
+    .refine((v) => isSheetLink(cleanSheetLink(v)), {
+      error: `${field} phải là một link https:// hợp lệ, tối đa ${SHEET_LINK_MAX} ký tự`,
+    })
+    .optional()
+}
+
+export const rowInput = z.object({
   row_number: z
     .number()
     .int()
@@ -97,6 +113,12 @@ const rowInput = z.object({
     .max(20)
     .optional()
     .describe("Mã quảng cáo đã tạo"),
+  post_link: sheetLinkInput("post_link").describe(
+    "Link bài viết / bài quảng cáo đã tạo (https://, vd link bài trên Facebook, TikTok) - ghi vào cột Link bài viết"
+  ),
+  campaign_link: sheetLinkInput("campaign_link").describe(
+    "Link chiến dịch trong trình quản lý quảng cáo (https://, vd Ads Manager) - ghi vào cột Link chiến dịch"
+  ),
   note: z
     .string()
     .max(NOTE_MAX)
@@ -139,7 +161,7 @@ export function register(
     name: NAME,
     title: "Ghi trạng thái vào Google Sheet",
     description:
-      "Dùng khi đã xử lý xong các dòng đọc bằng drive_sheet_read (tải media, tạo quảng cáo) để ghi kết quả ngược vào sheet: mỗi dòng {row_number, expected_link = link_cell từ drive_sheet_read, status pending|processing|done|error, media_id?, ad_ids?, note?}, tối đa 50 dòng mỗi lần. Chỉ ghi các cột hệ thống (Trạng thái, Mã media, Mã quảng cáo, Ghi chú hệ thống, Cập nhật lúc); không bao giờ sửa cột khác. Dòng đã bị chèn / xoá / sắp xếp lại (link không còn khớp expected_link) bị bỏ qua với code row_moved - đọc lại sheet rồi ghi lại. Cần sheet bật ghi trạng thái (drive_list_sources: writeback = true). Mỗi lần ghi tính vào giới hạn thao tác ghi của MCP - gộp nhiều dòng vào một lần gọi. Chỉ ghi kết quả thật của việc đã làm.",
+      "Dùng khi đã xử lý xong các dòng đọc bằng drive_sheet_read (tải media, tạo quảng cáo) để ghi kết quả ngược vào sheet: mỗi dòng {row_number, expected_link = link_cell từ drive_sheet_read, status pending|processing|done|error, media_id?, ad_ids?, post_link?, campaign_link?, note?}, tối đa 50 dòng mỗi lần. Khi đã tạo quảng cáo từ một dòng, ghi kèm post_link (link bài viết / bài quảng cáo) và campaign_link (link chiến dịch trong trình quản lý quảng cáo) nếu biết - chỉ link https:// thật, không đoán. Chỉ ghi các cột hệ thống (Trạng thái, Mã media, Mã quảng cáo, Link bài viết, Link chiến dịch, Ghi chú hệ thống, Cập nhật lúc) có trong sheet; không bao giờ sửa cột khác. Cột Trạng thái luôn nhận giá trị chuẩn (Chờ lên, Đang xử lý, Đã lên, Lỗi). Dòng đã bị chèn / xoá / sắp xếp lại (link không còn khớp expected_link) bị bỏ qua với code row_moved - đọc lại sheet rồi ghi lại. Cần sheet bật ghi trạng thái (drive_list_sources: writeback = true). Mỗi lần ghi tính vào giới hạn thao tác ghi của MCP - gộp nhiều dòng vào một lần gọi. Chỉ ghi kết quả thật của việc đã làm.",
     kind: "write",
     annotations: UPDATE_ROWS_ANNOTATIONS,
     input: z.object({
@@ -271,6 +293,16 @@ export function register(
                   .map((id) => sanitizeExternalLabel(id, 100) ?? "")
                   .filter(Boolean)
                   .join(", "),
+              }
+            : {}),
+          ...(r.post_link !== undefined
+            ? { postLink: neutralizeFormula(cleanSheetLink(r.post_link)) }
+            : {}),
+          ...(r.campaign_link !== undefined
+            ? {
+                campaignLink: neutralizeFormula(
+                  cleanSheetLink(r.campaign_link)
+                ),
               }
             : {}),
           ...(r.note !== undefined

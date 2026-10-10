@@ -14,7 +14,7 @@
 4. **Sao chép key ngay** — key chỉ hiện **một lần**. Mất thì xoá key cũ và tạo key mới.
 
 ## Bước 2 — Dán vào Ads MCP
-**Kết nối quảng cáo → Thêm kết nối → OpenAI Ads** → dán **API key** → **Kiểm tra**.
+**Kết nối → Thêm kết nối → OpenAI Ads** → dán **API key** → **Kiểm tra**.
 App gọi `GET /v1/ad_account` để xác nhận key và hiện: tên TKQC, ID (`adacct_…`), tiền tệ, múi giờ, trạng thái duyệt. App cũng dò các tính năng đang bật cho tài khoản (báo cáo chuyển đổi, giới hạn chi tiêu…) — tính năng chưa bật sẽ hiện “chưa hỗ trợ”, đó là bình thường.
 
 ## Lỗi thường gặp

@@ -49,7 +49,7 @@ Chỉ cần bật quyền con (vd chỉ “Read” của một nhóm) thì Ads M
 
 ## Bước 3 — Đổi `auth_code` lấy access token
 
-**Cách dễ nhất (trong Ads MCP)**: **Kết nối quảng cáo → Thêm kết nối → TikTok** → chọn chế độ **auth_code** → điền App ID, Secret, dán `auth_code` → app tự đổi lấy access token, ghi nhận scope và hiện danh sách TKQC được uỷ quyền.
+**Cách dễ nhất (trong Ads MCP)**: **Kết nối → Thêm kết nối → TikTok** → chọn chế độ **auth_code** → điền App ID, Secret, dán `auth_code` → app tự đổi lấy access token, ghi nhận scope và hiện danh sách TKQC được uỷ quyền.
 
 **Cách thủ công** (nếu cần):
 

@@ -43,7 +43,7 @@ export const guides = {
     ],
     tips: [
       "Nhân viên chỉ thấy số liệu của kết nối và MCP do chính mình tạo.",
-      "Chưa có gì? Bắt đầu bằng Kết nối quảng cáo → Thêm kết nối, rồi Tạo MCP.",
+      "Chưa có gì? Bắt đầu bằng Kết nối → Thêm kết nối, rồi Tạo MCP.",
     ],
   },
 
@@ -515,15 +515,6 @@ export const guides = {
           "Tên đơn vị vận hành và email liên hệ quyền riêng tư, hiển thị trên các trang công khai /privacy, /terms, /data-deletion (dán vào Meta App Dashboard, TikTok for Developers, màn hình đồng ý OAuth của Google Cloud / OpenAI). Để trống sẽ dùng tên miền.",
       },
       {
-        title: "Google Drive hệ thống",
-        detail:
-          "1. Tạo hoặc chọn project Google Cloud (dùng chung project với Google Ads được).\n2. Bật Google Drive API và Google Sheets API (APIs & Services → Library).\n3. IAM & Admin → Service accounts → Create; mở service account → Keys → Add key → JSON (không cần cấp vai trò).\n4. Tuỳ chọn - để AI đọc link Drive công khai: Credentials → Create credentials → API key, giới hạn chỉ Google Drive API.\n5. Dán JSON (và API key) vào thẻ Google Drive hệ thống rồi bấm Lưu thông tin xác thực. Mọi người thấy email service account ở Kết nối → Google Drive để chia sẻ thư mục.",
-        link: {
-          label: "Mở Service accounts",
-          url: "https://console.cloud.google.com/iam-admin/serviceaccounts",
-        },
-      },
-      {
         title: "Lưu thay đổi",
         detail: "Thanh Có thay đổi chưa lưu hiện ra khi bạn sửa; bấm Lưu để áp dụng.",
       },
@@ -531,24 +522,6 @@ export const guides = {
     tips: [
       "Phiên bản API nền tảng chỉ đọc; đổi bằng biến môi trường rồi khởi động lại.",
       "Thẻ Google Drive hệ thống lưu riêng (nút Lưu thông tin xác thực), không đi theo thanh Có thay đổi chưa lưu.",
-    ],
-    links: [
-      {
-        label: "Google Cloud: tạo project",
-        url: "https://console.cloud.google.com/projectcreate",
-      },
-      {
-        label: "Google Cloud: bật Google Drive API",
-        url: "https://console.cloud.google.com/apis/library/drive.googleapis.com",
-      },
-      {
-        label: "Google Cloud: bật Google Sheets API",
-        url: "https://console.cloud.google.com/apis/library/sheets.googleapis.com",
-      },
-      {
-        label: "Google Cloud: Credentials (API key)",
-        url: "https://console.cloud.google.com/apis/credentials",
-      },
     ],
     warnings: [
       "Giảm số tháng lưu trữ sẽ xoá phần nhật ký cũ, không thể hoàn tác.",
@@ -760,8 +733,9 @@ export const guides = {
     ],
   },
 
+  /** Mẹo sử dụng → Chạy tự động (/tips/automation) */
   automationTips: {
-    title: "Mẹo chạy tự động",
+    title: "Mẹo: chạy tự động",
     summary:
       "Ứng dụng AI tự chạy câu lệnh theo lịch và gọi MCP của bạn - app này không tự gửi lệnh cho AI.",
     steps: [
@@ -790,6 +764,88 @@ export const guides = {
     ],
     warnings: [
       "Tắt MCP (tab Bảo mật) là cách dừng nhanh nhất khi AI làm sai.",
+    ],
+  },
+
+  /** Mẹo sử dụng → Tạo quảng cáo số lượng lớn (/tips/bulk-ads) */
+  tipsBulkAds: {
+    title: "Mẹo: lên quảng cáo hàng loạt",
+    summary:
+      "Mỗi dòng Google Sheet là một creative; AI tải ảnh, video từ Drive, tạo quảng cáo tạm dừng rồi ghi kết quả vào dòng đó.",
+    steps: [
+      {
+        title: "Chuẩn bị Drive",
+        detail:
+          "Thư mục ảnh / video và Google Sheet chia sẻ cho email hệ thống (sheet: Người chỉnh sửa), khai báo ở Kết nối → tab Google Drive.",
+      },
+      {
+        title: "Điền sheet theo mẫu",
+        detail:
+          'Dán dòng tiêu đề hoặc nhập tệp CSV mẫu. Trạng thái trống, "Chờ lên" hoặc "Chưa tạo ads" = cần lên.',
+      },
+      {
+        title: "MCP riêng",
+        detail:
+          'Quyền Tạo mới, Trần ngân sách/ngày, bật "Cho phép ghi trạng thái vào Google Sheet", gán thư mục + sheet.',
+      },
+      {
+        title: "Chạy theo lượt nhỏ",
+        detail:
+          "Soạn câu lệnh, dán vào Claude / ChatGPT, mỗi lượt 5-10 dòng; đồng ý từng bản xem trước.",
+      },
+      {
+        title: "Duyệt rồi bật",
+        detail:
+          "Mở Link chiến dịch trong sheet, kiểm tra quảng cáo (đang tạm dừng) rồi tự bật.",
+      },
+    ],
+    tips: [
+      "Video và ảnh bìa để chung một ô Link Drive (mỗi link một dòng trong ô).",
+      "Không sắp xếp, chèn, xoá dòng khi AI đang chạy.",
+    ],
+    warnings: [
+      "Quảng cáo AI tạo luôn tạm dừng - chỉ tiêu tiền khi bạn tự bật.",
+    ],
+  },
+
+  /** Mẹo sử dụng → Tự động kiểm tra quảng cáo (/tips/ad-check) */
+  tipsAdCheck: {
+    title: "Mẹo: tự kiểm tra quảng cáo",
+    summary:
+      "Tác vụ hẹn giờ trên web gộp chi tiêu quảng cáo (Ads MCP) với đơn hàng thật (MCP bán hàng) và gửi báo cáo vào Telegram.",
+    steps: [
+      {
+        title: "MCP chỉ xem + Telegram",
+        detail:
+          'Quyền Chỉ xem; chọn kết nối Telegram và bật "AI được gửi tin".',
+      },
+      {
+        title: "MCP bán hàng",
+        detail:
+          "Pancake POS, Nhanh.vn, KiotViet, Sapo, Haravan chưa có MCP chính thức: dùng MCP bên thứ ba hoặc tự kết nối qua API.",
+      },
+      {
+        title: "Cùng một ứng dụng AI",
+        detail:
+          'Claude trên web: thêm cả hai làm custom connector, tool đọc và telegram_send_message để "Always allow".',
+      },
+      {
+        title: "Chạy thử rồi đặt lịch",
+        detail:
+          "Dán câu lệnh, đối chiếu số liệu, rồi đặt lịch mỗi ngày (vd 8:00) hoặc mỗi giờ.",
+      },
+      {
+        title: "Theo dõi",
+        detail:
+          "Xem vài lượt đầu trong mục Scheduled và Nhật ký MCP.",
+      },
+    ],
+    tips: [
+      "Gắn utm_campaign = mã chiến dịch vào link quảng cáo để khớp đơn chính xác.",
+      "Lịch trên web chạy khi máy bạn tắt; lịch trên máy tính cần máy bật 24/7.",
+    ],
+    warnings: [
+      "Không đưa tên, số điện thoại, địa chỉ khách vào báo cáo hay Telegram.",
     ],
   },
 } as const satisfies Record<string, unknown>

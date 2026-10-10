@@ -3,6 +3,9 @@
 // Settings → "Google Drive hệ thống" (admin): the company service account (JSON key, write-only) + optional API key
 // for public "Anyone with the link" files. Saving / deleting re-authenticates (password + TOTP). Never prefilled:
 // only the client email (not a secret), the project id and the last 4 chars of the key id / API key are shown.
+// Wide card: form on the left, the setup explainer (DriveSettingsHelp) on the right; narrow: explainer under the form -
+// except while nothing is configured: then the explainer comes FIRST so the admin reads "how to get the JSON" before
+// the empty form (owner-approved exception to "no guide aside in a page", 06-ui-design-system.md §11).
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -12,6 +15,7 @@ import {
   Refresh01Icon,
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { cn } from "cn"
 
 import {
   CopyField,
@@ -38,6 +42,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
+import { driveSettingsHelp } from "@/lib/i18n/vi/drive-settings-help"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import {
   GOOGLE_API_KEY_RE,
@@ -50,6 +55,7 @@ import {
 } from "@/server/actions/drive"
 
 import { DriveStatusBadge } from "../../connections/drive/_components/drive-badges"
+import { DriveSettingsHelp } from "./drive-settings-help"
 
 const m = driveUi.settings
 
@@ -81,8 +87,10 @@ export function DriveSettingsCard({
     const errs: Record<string, string> = {}
     const j = json.trim()
     const k = apiKey.trim()
-    if (!c.configured && !j) errs.serviceAccountJson = driveUi.service.serviceAccountRequired
-    if (k && !GOOGLE_API_KEY_RE.test(k)) errs.apiKey = driveUi.service.invalidApiKey
+    if (!c.configured && !j)
+      errs.serviceAccountJson = driveUi.service.serviceAccountRequired
+    if (k && !GOOGLE_API_KEY_RE.test(k))
+      errs.apiKey = driveUi.service.invalidApiKey
     setErrors(errs)
     if (Object.keys(errs).length) return
     if (!j && !k && !clearApiKey) {
@@ -122,190 +130,206 @@ export function DriveSettingsCard({
           <DriveStatusBadge status={c.status} />
         </CardAction>
       </CardHeader>
-      {/* one column (the "how to create a service account" steps live in the page's Guide panel) */}
-      <CardContent>
-        <div className="flex max-w-3xl min-w-0 flex-col gap-5">
-          {c.configured && c.status === "error" && (
-            <Alert variant="destructive">
-              <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
-              <AlertTitle>{m.statusErrorTitle}</AlertTitle>
-              {c.statusMessage && (
-                <AlertDescription>{c.statusMessage}</AlertDescription>
-              )}
-            </Alert>
-          )}
-          {c.configured && c.clientEmail ? (
-            <div className="flex flex-col gap-3">
-              <Field className="gap-1.5">
-                <FieldLabel htmlFor="drive-system-email">{m.email}</FieldLabel>
-                <CopyField
-                  id="drive-system-email"
-                  value={c.clientEmail}
-                  label={m.emailCopyLabel}
-                  wrap
-                />
-              </Field>
-              <dl className="grid grid-cols-2 items-start gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-                <InfoItem label={m.project}>
-                  <span
-                    className="block truncate font-mono text-xs leading-5"
-                    title={c.projectId ?? undefined}
-                  >
-                    {c.projectId ?? "—"}
-                  </span>
-                </InfoItem>
-                <InfoItem label={m.keyId}>
-                  <span className="font-mono text-xs leading-5">
-                    {c.credentialHint ? `…${c.credentialHint}` : "—"}
-                  </span>
-                </InfoItem>
-                <InfoItem label={m.apiKey}>
-                  {c.apiKeyHint ? (
+      {/* container query: two columns (form | explainer) once the card content is ≥ 56rem wide */}
+      <CardContent className="@container">
+        <div className="grid gap-5 @4xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] @4xl:items-start @4xl:gap-8">
+          <div className="flex max-w-3xl min-w-0 flex-col gap-5 @4xl:max-w-none">
+            {c.configured && c.status === "error" && (
+              <Alert variant="destructive">
+                <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
+                <AlertTitle>{m.statusErrorTitle}</AlertTitle>
+                {c.statusMessage && (
+                  <AlertDescription>{c.statusMessage}</AlertDescription>
+                )}
+              </Alert>
+            )}
+            {c.configured && c.clientEmail ? (
+              <div className="flex flex-col gap-3">
+                <Field className="gap-1.5">
+                  <FieldLabel htmlFor="drive-system-email">
+                    {m.email}
+                  </FieldLabel>
+                  <CopyField
+                    id="drive-system-email"
+                    value={c.clientEmail}
+                    label={m.emailCopyLabel}
+                    wrap
+                  />
+                </Field>
+                <dl className="grid grid-cols-2 items-start gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+                  <InfoItem label={m.project}>
+                    <span
+                      className="block truncate font-mono text-xs leading-5"
+                      title={c.projectId ?? undefined}
+                    >
+                      {c.projectId ?? "—"}
+                    </span>
+                  </InfoItem>
+                  <InfoItem label={m.keyId}>
                     <span className="font-mono text-xs leading-5">
-                      …{c.apiKeyHint}
+                      {c.credentialHint ? `…${c.credentialHint}` : "—"}
                     </span>
-                  ) : (
-                    <span className="text-[13px] leading-5 text-warning-strong">
-                      {m.apiKeyNone}
-                    </span>
-                  )}
-                </InfoItem>
-                <InfoItem label={m.lastChecked}>
-                  {c.lastCheckedAt ? (
-                    <RelativeTime value={c.lastCheckedAt} />
-                  ) : (
-                    <span className="text-muted-foreground">{m.never}</span>
-                  )}
-                </InfoItem>
-                <InfoItem label={m.sources}>
-                  <span className="tabular-nums">{c.sourceCount}</span>
-                </InfoItem>
-              </dl>
-            </div>
-          ) : (
-            <p className="rounded-xl border border-dashed p-3 text-sm text-pretty text-muted-foreground">
-              {m.notConfiguredHint}
-            </p>
-          )}
-
-          <FieldGroup className="border-t pt-5">
-            <Field data-invalid={errors.serviceAccountJson ? true : undefined}>
-              <FieldLabel htmlFor="drive-system-json">
-                {c.configured ? m.jsonLabelReplace : m.jsonLabel}
-              </FieldLabel>
-              <SecretInput
-                id="drive-system-json"
-                multiline
-                rows={5}
-                value={json}
-                onChange={(e) => {
-                  setJson(e.target.value)
-                  setErrors(({ serviceAccountJson: _d, ...r }) => r)
-                }}
-                placeholder={m.jsonPlaceholder}
-                aria-invalid={errors.serviceAccountJson ? true : undefined}
-                aria-describedby="drive-system-json-help"
-              />
-              <FieldDescription id="drive-system-json-help">
-                {c.configured ? m.jsonHelpKeep : m.jsonHelpNew}
-              </FieldDescription>
-              {errors.serviceAccountJson && (
-                <FieldError>{errors.serviceAccountJson}</FieldError>
-              )}
-            </Field>
-            <Field data-invalid={errors.apiKey ? true : undefined}>
-              <FieldLabel htmlFor="drive-system-apikey">{m.apiKeyLabel}</FieldLabel>
-              <SecretInput
-                id="drive-system-apikey"
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value)
-                  setErrors(({ apiKey: _d, ...r }) => r)
-                }}
-                placeholder={m.apiKeyPlaceholder}
-                maxLength={64}
-                disabled={clearApiKey}
-                aria-invalid={errors.apiKey ? true : undefined}
-                aria-describedby="drive-system-apikey-help"
-              />
-              <FieldDescription id="drive-system-apikey-help">
-                {c.apiKeyHint ? m.apiKeyKeep(c.apiKeyHint) : m.apiKeyHelp}
-              </FieldDescription>
-              {errors.apiKey && <FieldError>{errors.apiKey}</FieldError>}
-            </Field>
-            {c.hasApiKey && (
-              <Field orientation="horizontal" className="items-center">
-                <Checkbox
-                  id="drive-system-clear-key"
-                  checked={clearApiKey}
-                  onCheckedChange={(v) => {
-                    setClearApiKey(v === true)
-                    if (v === true) setApiKey("")
-                  }}
-                />
-                <FieldLabel
-                  htmlFor="drive-system-clear-key"
-                  className="font-normal"
-                >
-                  {m.clearApiKey}
-                </FieldLabel>
-              </Field>
-            )}
-          </FieldGroup>
-
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            {c.configured ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-destructive hover:text-destructive max-sm:w-full"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <HugeiconsIcon
-                  icon={Delete02Icon}
-                  strokeWidth={2}
-                  data-icon="inline-start"
-                  aria-hidden
-                />
-                {m.delete}
-              </Button>
+                  </InfoItem>
+                  <InfoItem label={m.apiKey}>
+                    {c.apiKeyHint ? (
+                      <span className="font-mono text-xs leading-5">
+                        …{c.apiKeyHint}
+                      </span>
+                    ) : (
+                      <span className="text-[13px] leading-5 text-warning-strong">
+                        {m.apiKeyNone}
+                      </span>
+                    )}
+                  </InfoItem>
+                  <InfoItem label={m.lastChecked}>
+                    {c.lastCheckedAt ? (
+                      <RelativeTime value={c.lastCheckedAt} />
+                    ) : (
+                      <span className="text-muted-foreground">{m.never}</span>
+                    )}
+                  </InfoItem>
+                  <InfoItem label={m.sources}>
+                    <span className="tabular-nums">{c.sourceCount}</span>
+                  </InfoItem>
+                </dl>
+              </div>
             ) : (
-              <span />
+              <p className="rounded-xl border border-dashed p-3 text-sm text-pretty text-muted-foreground">
+                {driveSettingsHelp.notConfiguredHint}
+              </p>
             )}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              {c.configured && (
+
+            <FieldGroup className="border-t pt-5">
+              <Field
+                data-invalid={errors.serviceAccountJson ? true : undefined}
+              >
+                <FieldLabel htmlFor="drive-system-json">
+                  {c.configured ? m.jsonLabelReplace : m.jsonLabel}
+                </FieldLabel>
+                <SecretInput
+                  id="drive-system-json"
+                  multiline
+                  rows={5}
+                  value={json}
+                  onChange={(e) => {
+                    setJson(e.target.value)
+                    setErrors(({ serviceAccountJson: _d, ...r }) => r)
+                  }}
+                  placeholder={m.jsonPlaceholder}
+                  aria-invalid={errors.serviceAccountJson ? true : undefined}
+                  aria-describedby="drive-system-json-help"
+                />
+                <FieldDescription id="drive-system-json-help">
+                  {c.configured ? m.jsonHelpKeep : m.jsonHelpNew}
+                </FieldDescription>
+                {errors.serviceAccountJson && (
+                  <FieldError>{errors.serviceAccountJson}</FieldError>
+                )}
+              </Field>
+              <Field data-invalid={errors.apiKey ? true : undefined}>
+                <FieldLabel htmlFor="drive-system-apikey">
+                  {m.apiKeyLabel}
+                </FieldLabel>
+                <SecretInput
+                  id="drive-system-apikey"
+                  value={apiKey}
+                  onChange={(e) => {
+                    setApiKey(e.target.value)
+                    setErrors(({ apiKey: _d, ...r }) => r)
+                  }}
+                  placeholder={m.apiKeyPlaceholder}
+                  maxLength={64}
+                  disabled={clearApiKey}
+                  aria-invalid={errors.apiKey ? true : undefined}
+                  aria-describedby="drive-system-apikey-help"
+                />
+                <FieldDescription id="drive-system-apikey-help">
+                  {c.apiKeyHint ? m.apiKeyKeep(c.apiKeyHint) : m.apiKeyHelp}
+                </FieldDescription>
+                {errors.apiKey && <FieldError>{errors.apiKey}</FieldError>}
+              </Field>
+              {c.hasApiKey && (
+                <Field orientation="horizontal" className="items-center">
+                  <Checkbox
+                    id="drive-system-clear-key"
+                    checked={clearApiKey}
+                    onCheckedChange={(v) => {
+                      setClearApiKey(v === true)
+                      if (v === true) setApiKey("")
+                    }}
+                  />
+                  <FieldLabel
+                    htmlFor="drive-system-clear-key"
+                    className="font-normal"
+                  >
+                    {m.clearApiKey}
+                  </FieldLabel>
+                </Field>
+              )}
+            </FieldGroup>
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+              {c.configured ? (
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => void test()}
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive max-sm:w-full"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <HugeiconsIcon
+                    icon={Delete02Icon}
+                    strokeWidth={2}
+                    data-icon="inline-start"
+                    aria-hidden
+                  />
+                  {m.delete}
+                </Button>
+              ) : (
+                <span />
+              )}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                {c.configured && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void test()}
+                    disabled={testing}
+                    className="max-sm:w-full"
+                  >
+                    {testing ? (
+                      <Spinner aria-hidden />
+                    ) : (
+                      <HugeiconsIcon
+                        icon={Refresh01Icon}
+                        strokeWidth={2}
+                        data-icon="inline-start"
+                        aria-hidden
+                      />
+                    )}
+                    {testing ? m.checking : m.check}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  // the settings page has no header button: like the save bar of the other cards, "Lưu" turns into
+                  // the brand action once something was typed here
+                  variant={dirty ? "brand" : "outline"}
+                  onClick={save}
                   disabled={testing}
                   className="max-sm:w-full"
                 >
-                  {testing ? (
-                    <Spinner aria-hidden />
-                  ) : (
-                    <HugeiconsIcon
-                      icon={Refresh01Icon}
-                      strokeWidth={2}
-                      data-icon="inline-start"
-                      aria-hidden
-                    />
-                  )}
-                  {testing ? m.checking : m.check}
+                  {m.save}
                 </Button>
-              )}
-              <Button
-                type="button"
-                // the settings page has no header button: like the save bar of the other cards, "Lưu" turns into
-                // the brand action once something was typed here
-                variant={dirty ? "brand" : "outline"}
-                onClick={save}
-                disabled={testing}
-                className="max-sm:w-full"
-              >
-                {m.save}
-              </Button>
+              </div>
             </div>
+          </div>
+          <div
+            className={cn(
+              "min-w-0",
+              !c.configured && "order-first @4xl:order-none"
+            )}
+          >
+            <DriveSettingsHelp configured={c.configured} />
           </div>
         </div>
       </CardContent>
@@ -380,7 +404,9 @@ function InfoItem({
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <dt className="text-[13px] leading-5 text-muted-foreground">{label}</dt>
-      <dd className="flex min-h-5 min-w-0 items-center leading-5">{children}</dd>
+      <dd className="flex min-h-5 min-w-0 items-center leading-5">
+        {children}
+      </dd>
     </div>
   )
 }

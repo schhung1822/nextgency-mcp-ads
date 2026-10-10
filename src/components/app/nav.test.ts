@@ -21,7 +21,7 @@ describe("nav", () => {
       "/connections",
       "/mcp-servers",
       "/logs",
-      "/automation-tips",
+      "/tips/automation",
     ])
   })
 
@@ -34,6 +34,12 @@ describe("nav", () => {
     expect(isNavActive(null, "/")).toBe(false)
     expect(isNavActive("/mcp-servers/abc", "/mcp-servers")).toBe(true)
     expect(isNavActive("/mcp/amcp_key", "/mcp-servers")).toBe(false)
+    // Mẹo sử dụng: href /tips/automation, active on every tip under /tips
+    expect(isNavActive("/tips/automation", "/tips/automation")).toBe(true)
+    expect(isNavActive("/tips/bulk-ads", "/tips/automation")).toBe(true)
+    expect(isNavActive("/tips/ad-check/", "/tips/automation")).toBe(true)
+    expect(isNavActive("/tipsx", "/tips/automation")).toBe(false)
+    expect(isNavActive("/automation-tips", "/tips/automation")).toBe(false)
   })
 
   it("keeps the phone bottom bar on the four main pages", () => {
@@ -52,7 +58,7 @@ describe("nav", () => {
     ])
     expect(bottomMenuItemsForRole("staff").admin).toEqual([])
     expect(bottomMenuItemsForRole("staff").main.map((i) => i.href)).toEqual([
-      "/automation-tips",
+      "/tips/automation",
     ])
     expect(bottomMenuItemsForRole("staff").account.href).toBe("/account")
   })
@@ -61,7 +67,8 @@ describe("nav", () => {
     expect(isBottomMenuActive("/account")).toBe(true)
     expect(isBottomMenuActive("/settings")).toBe(true)
     expect(isBottomMenuActive("/users")).toBe(true)
-    expect(isBottomMenuActive("/automation-tips")).toBe(true)
+    expect(isBottomMenuActive("/tips/automation")).toBe(true)
+    expect(isBottomMenuActive("/tips/ad-check")).toBe(true)
     expect(isBottomMenuActive("/logs")).toBe(false)
     expect(isBottomMenuActive("/")).toBe(false)
     expect(isBottomMenuActive(null)).toBe(false)
@@ -70,8 +77,16 @@ describe("nav", () => {
   it("builds breadcrumbs from the pathname", () => {
     expect(buildBreadcrumbs("/")).toEqual([{ label: "Tổng quan" }])
     expect(buildBreadcrumbs("/connections/new")).toEqual([
-      { label: "Kết nối quảng cáo", href: "/connections" },
+      { label: "Kết nối", href: "/connections" },
       { label: "Tạo mới" },
+    ])
+    expect(buildBreadcrumbs("/tips/bulk-ads")).toEqual([
+      { label: "Mẹo sử dụng", href: "/tips/automation" },
+      { label: "Tạo quảng cáo số lượng lớn" },
+    ])
+    expect(buildBreadcrumbs("/tips/automation")).toEqual([
+      { label: "Mẹo sử dụng", href: "/tips/automation" },
+      { label: "Chạy tự động" },
     ])
     expect(buildBreadcrumbs("/mcp-servers/123")).toEqual([
       { label: "MCP", href: "/mcp-servers" },

@@ -17,18 +17,13 @@ function CardSkeleton({ rows }: { rows: number }) {
   )
 }
 
-export default function AutomationTipsLoading() {
+/** Content of a tip while it loads - the "Mẹo sử dụng" header and the tip menu (layout) stay on screen. */
+export default function TipsLoading() {
   return (
-    <div className="flex w-full flex-col" aria-busy="true">
-      <div className="space-y-2 pb-6">
-        <Skeleton className="h-8 w-52" />
-        <Skeleton className="h-4 w-[28rem] max-w-full" />
-      </div>
-      <div className="flex flex-col gap-4 sm:gap-6">
-        <CardSkeleton rows={2} />
-        <CardSkeleton rows={3} />
-        <CardSkeleton rows={4} />
-      </div>
+    <div className="flex flex-col gap-4 sm:gap-6" aria-busy="true">
+      <CardSkeleton rows={2} />
+      <CardSkeleton rows={3} />
+      <CardSkeleton rows={4} />
     </div>
   )
 }

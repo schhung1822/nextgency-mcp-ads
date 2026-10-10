@@ -1308,6 +1308,28 @@ describe.skipIf(!HAS_DB)("Google Drive services (DB)", () => {
 
     const prev = await previewDriveSheetRows(staffA, res.id)
     expect(prev.statusCounts).toEqual({ "Chờ lên": 1, "Đã lên": 1, "": 1 })
+    // hand-typed aliases are counted under the canonical value; other values stay as typed
+    const savedRows = g.rows
+    g.rows = [
+      ...savedRows,
+      ...["chưa tạo ads", "Chưa lên", "ĐÃ TẠO", "Tạm dừng"].map((s, i) => ({
+        rowNumber: 10 + i,
+        cells: [
+          `https://drive.google.com/file/d/IMGfile00000001/view`,
+          "",
+          "",
+          "",
+          s,
+        ],
+      })),
+    ]
+    expect((await previewDriveSheetRows(staffA, res.id)).statusCounts).toEqual({
+      "Chờ lên": 3,
+      "Đã lên": 2,
+      "Tạm dừng": 1,
+      "": 1,
+    })
+    g.rows = savedRows
     expect(prev.rows[0]).toEqual({
       rowNumber: 2,
       values: expect.objectContaining({

@@ -692,15 +692,15 @@ function dataDeletionVi(c: LegalInfo): LegalDoc {
         title: "2. Cách 1: Tự xoá trong Hệ thống",
         blocks: [
           ol(
-            "Đăng nhập Hệ thống, mở mục Kết nối quảng cáo.",
+            "Đăng nhập Hệ thống, mở mục Kết nối.",
             "Chọn kết nối Meta (hoặc TikTok Ads, Google Ads, OpenAI Ads) cần xoá.",
             "Bấm Thêm → Xoá kết nối, rồi xác nhận."
           ),
           p(
-            "Kênh Telegram: trong mục Kết nối quảng cáo, mở chế độ xem Telegram, chọn kênh cần xoá → Xoá, rồi xác nhận. Nhân viên xoá được kết nối và kênh do mình tạo; quản trị viên xoá được mọi kết nối và kênh. Quản trị viên cũng có thể khoá hoặc xoá tài khoản nhân sự ở mục Người dùng (nút Thao tác trên dòng của người đó → Khoá tài khoản hoặc Xoá người dùng)."
+            "Kênh Telegram: trong mục Kết nối, mở chế độ xem Telegram, chọn kênh cần xoá → Xoá, rồi xác nhận. Nhân viên xoá được kết nối và kênh do mình tạo; quản trị viên xoá được mọi kết nối và kênh. Quản trị viên cũng có thể khoá hoặc xoá tài khoản nhân sự ở mục Người dùng (nút Thao tác trên dòng của người đó → Khoá tài khoản hoặc Xoá người dùng)."
           ),
           p(
-            "Google Drive: trong mục Kết nối quảng cáo, mở chế độ xem Google Drive, chọn thư mục / sheet → Xoá, rồi xác nhận (nguồn bị gỡ khỏi mọi MCP; file trên Google Drive không bị ảnh hưởng). Service account riêng xoá ở cùng chế độ xem; khoá service account và API key của hệ thống do quản trị viên xoá ở mục Cài đặt → Google Drive hệ thống."
+            "Google Drive: trong mục Kết nối, mở chế độ xem Google Drive, chọn thư mục / sheet → Xoá, rồi xác nhận (nguồn bị gỡ khỏi mọi MCP; file trên Google Drive không bị ảnh hưởng). Service account riêng xoá ở cùng chế độ xem; khoá service account và API key của hệ thống do quản trị viên xoá ở mục Cài đặt → Google Drive hệ thống."
           ),
         ],
       },
@@ -793,15 +793,15 @@ function dataDeletionEn(c: LegalInfo): LegalDoc {
         title: "2. Option 1: Delete it yourself in the System",
         blocks: [
           ol(
-            "Sign in to the System and open Kết nối quảng cáo (Ad connections).",
+            "Sign in to the System and open Kết nối (Connections).",
             "Select the Meta (or TikTok Ads, Google Ads, OpenAI Ads) connection to delete.",
             "Click Thêm (More) → Xoá kết nối (Delete connection) and confirm."
           ),
           p(
-            "Telegram channels: in Kết nối quảng cáo (Ad connections), switch to the Telegram view, select the channel → Xoá (Delete) and confirm. Staff can delete the connections and channels they created; administrators can delete any connection or channel. Administrators can also lock or delete staff accounts under Người dùng (Users): the actions button on the person’s row → Khoá tài khoản (Lock account) or Xoá người dùng (Delete user)."
+            "Telegram channels: in Kết nối (Connections), switch to the Telegram view, select the channel → Xoá (Delete) and confirm. Staff can delete the connections and channels they created; administrators can delete any connection or channel. Administrators can also lock or delete staff accounts under Người dùng (Users): the actions button on the person’s row → Khoá tài khoản (Lock account) or Xoá người dùng (Delete user)."
           ),
           p(
-            "Google Drive: in Kết nối quảng cáo (Ad connections), switch to the Google Drive view, select the folder / sheet → Xoá (Delete) and confirm (it is removed from every MCP server; files on Google Drive are not affected). Personal service accounts are deleted in the same view; the system service account key and API key are deleted by an administrator under Cài đặt (Settings) → Google Drive hệ thống (System Google Drive)."
+            "Google Drive: in Kết nối (Connections), switch to the Google Drive view, select the folder / sheet → Xoá (Delete) and confirm (it is removed from every MCP server; files on Google Drive are not affected). Personal service accounts are deleted in the same view; the system service account key and API key are deleted by an administrator under Cài đặt (Settings) → Google Drive hệ thống (System Google Drive)."
           ),
         ],
       },
@@ -880,9 +880,9 @@ export const legal = {
     terms: "Điều khoản",
     dataDeletion: "Xoá dữ liệu",
   },
-  updatedAt: "09/10/2026",
-  updatedAtIso: "2026-10-09",
-  updatedAtEn: "October 9, 2026",
+  updatedAt: "10/10/2026",
+  updatedAtIso: "2026-10-10",
+  updatedAtEn: "October 10, 2026",
   /** prefilled subject of the mailto link on /data-deletion */
   deletionMailSubject: "Yêu cầu xoá dữ liệu",
   updatedLabel: { vi: "Cập nhật lần cuối", en: "Last updated" },

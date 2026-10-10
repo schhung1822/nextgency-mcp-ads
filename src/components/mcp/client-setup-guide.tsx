@@ -3,6 +3,8 @@
 import * as React from "react"
 import {
   Alert02Icon,
+  ArrowDown01Icon,
+  ArrowUp01Icon,
   Copy01Icon,
   InformationCircleIcon,
   Tick02Icon,
@@ -49,52 +51,171 @@ export function geminiCliSnippet(url: string) {
   )
 }
 
+/** Preview height of a `collapsible` snippet (max-h-80): taller code gets an inner scroll + "Xem toàn bộ". */
+const COLLAPSED_MAX_PX = 320
+
 /** Multi-line code block with a copy button (commands / JSON). */
 export function CodeSnippet({
   code,
   label,
   copyable = true,
   className,
+  collapsible = false,
+  copyLabel,
+  disabledReason,
 }: {
   code: string
   label: string
   /** false for masked URLs (nothing useful to copy) */
   copyable?: boolean
   className?: string
+  /**
+   * Long texts (prompts, SKILL.md): cap the preview at 20rem with its own scroll and a "Xem toàn bộ / Thu gọn"
+   * toggle; on phones the copy button sits ABOVE the block, full width and 40px tall, so it is reachable without
+   * scrolling past the text. Off by default (other callers keep the compact block).
+   */
+  collapsible?: boolean
+  /** visible text of the copy button (default "Sao chép") */
+  copyLabel?: string
+  /** set while the text cannot be used yet (form errors): copy buttons disabled + this reason shown */
+  disabledReason?: string | null
 }) {
   const { copied, copy } = useCopy()
-  return (
-    <div
-      className={cn(
-        "relative rounded-xl border bg-muted/50 text-[13px] leading-5",
-        className
-      )}
-    >
-      <pre
-        aria-label={label}
+  const reasonId = React.useId()
+  const preRef = React.useRef<HTMLPreElement>(null)
+  const [expanded, setExpanded] = React.useState(false)
+  const [tall, setTall] = React.useState(false)
+  const blocked = !!disabledReason
+  const buttonText = copied ? common.copied : (copyLabel ?? g.copySnippet)
+
+  React.useEffect(() => {
+    const pre = preRef.current
+    if (!collapsible || !pre) return
+    const measure = () => setTall(pre.scrollHeight > COLLAPSED_MAX_PX + 2)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(pre)
+    return () => ro.disconnect()
+  }, [collapsible, code])
+
+  const copyIcon = (
+    <HugeiconsIcon
+      icon={copied ? Tick02Icon : Copy01Icon}
+      strokeWidth={2}
+      className={cn("size-4", copied && "text-success")}
+      aria-hidden
+    />
+  )
+
+  if (!collapsible)
+    return (
+      <div
         className={cn(
-          "overflow-x-auto p-3 font-mono break-all whitespace-pre-wrap",
-          copyable && "sm:pr-28"
+          "relative rounded-xl border bg-muted/50 text-[13px] leading-5",
+          className
         )}
       >
-        <code>{code}</code>
-      </pre>
+        <pre
+          aria-label={label}
+          className={cn(
+            "overflow-x-auto p-3 font-mono break-all whitespace-pre-wrap",
+            copyable && "sm:pr-28"
+          )}
+        >
+          <code>{code}</code>
+        </pre>
+        {copyable && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="mx-3 mb-3 w-[calc(100%-1.5rem)] sm:absolute sm:top-2 sm:right-2 sm:m-0 sm:w-auto"
+            onClick={() => void copy(code)}
+            aria-label={`${g.copySnippet}: ${label}`}
+          >
+            {copyIcon}
+            <span>{copied ? common.copied : g.copySnippet}</span>
+          </Button>
+        )}
+      </div>
+    )
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      {blocked && (
+        <p
+          id={reasonId}
+          role="status"
+          className="text-[13px] text-pretty text-destructive"
+        >
+          {disabledReason}
+        </p>
+      )}
       {copyable && (
+        // phones: big copy button above the text (the text can be thousands of pixels tall)
         <Button
           type="button"
-          size="sm"
           variant="secondary"
-          className="mx-3 mb-3 w-[calc(100%-1.5rem)] sm:absolute sm:top-2 sm:right-2 sm:m-0 sm:w-auto"
+          className="h-10 w-full sm:hidden"
           onClick={() => void copy(code)}
-          aria-label={`${g.copySnippet}: ${label}`}
+          disabled={blocked}
+          aria-describedby={blocked ? reasonId : undefined}
+          aria-label={`${copyLabel ?? g.copySnippet}: ${label}`}
+        >
+          {copyIcon}
+          <span>{buttonText}</span>
+        </Button>
+      )}
+      <div
+        className={cn(
+          "relative rounded-xl border bg-muted/50 text-[13px] leading-5",
+          blocked && "opacity-60"
+        )}
+      >
+        <pre
+          ref={preRef}
+          aria-label={label}
+          tabIndex={tall && !expanded ? 0 : undefined}
+          className={cn(
+            "overflow-x-auto p-3 font-mono break-all whitespace-pre-wrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-xl",
+            copyable && "sm:pr-44",
+            !expanded && "max-h-80 overflow-y-auto overscroll-contain"
+          )}
+        >
+          <code>{code}</code>
+        </pre>
+        {copyable && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="absolute top-2 right-2 max-sm:hidden"
+            onClick={() => void copy(code)}
+            disabled={blocked}
+            aria-describedby={blocked ? reasonId : undefined}
+            aria-label={`${copyLabel ?? g.copySnippet}: ${label}`}
+          >
+            {copyIcon}
+            <span>{buttonText}</span>
+          </Button>
+        )}
+      </div>
+      {tall && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="self-start max-sm:h-10"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
         >
           <HugeiconsIcon
-            icon={copied ? Tick02Icon : Copy01Icon}
+            icon={expanded ? ArrowUp01Icon : ArrowDown01Icon}
             strokeWidth={2}
-            className={cn("size-4", copied && "text-success")}
+            data-icon="inline-start"
             aria-hidden
           />
-          <span>{copied ? common.copied : g.copySnippet}</span>
+          {expanded ? g.collapseSnippet : g.expandSnippet}
         </Button>
       )}
     </div>

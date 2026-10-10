@@ -15,7 +15,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -41,6 +46,18 @@ export type SheetColumnsValue = Record<SheetColumnKey, string | null>
 const READ_KEYS = SHEET_COLUMN_KEYS.filter(
   (k) => !SHEET_WRITABLE_COLUMN_KEYS.includes(k)
 )
+
+/** System-written columns in the order of the recommended sheet template (tips/bulk-ads); every one but Trạng thái
+ *  has a "Tuỳ chọn. …" help line. */
+const WRITE_KEYS: readonly SheetColumnKey[] = [
+  "status",
+  "mediaId",
+  "adIds",
+  "postLink",
+  "campaignLink",
+  "note",
+  "updatedAt",
+]
 
 /** Unique, non-empty header cells (first spelling wins), in sheet order. */
 function headerOptions(header: readonly string[]): string[] {
@@ -94,6 +111,8 @@ export function SheetColumnsFields({
   const row = (k: SheetColumnKey) => {
     const id = `${idPrefix}-col-${k}`
     const label = w.columns[k] ?? k
+    const help = w.columnHelp[k]
+    const helpId = help ? `${id}-help` : undefined
     const required = k === "link" || (k === "status" && writeback)
     const err = errors?.[`columns.${k}`] ?? errors?.[k]
     const current = value[k]
@@ -122,6 +141,7 @@ export function SheetColumnsFields({
               id={id}
               className="w-full"
               aria-label={w.columnSelectLabel(label)}
+              aria-describedby={helpId}
               aria-invalid={err ? true : undefined}
             >
               <SelectValue placeholder={w.notUsed} />
@@ -144,9 +164,11 @@ export function SheetColumnsFields({
             maxLength={100}
             disabled={disabled}
             autoComplete="off"
+            aria-describedby={helpId}
             aria-invalid={err ? true : undefined}
           />
         )}
+        {help && <FieldDescription id={helpId}>{help}</FieldDescription>}
         {err && <FieldError>{err}</FieldError>}
       </Field>
     )
@@ -191,7 +213,7 @@ export function SheetColumnsFields({
               {w.columnsAdvancedHint}
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
-              {SHEET_WRITABLE_COLUMN_KEYS.map(row)}
+              {WRITE_KEYS.map(row)}
             </div>
           </div>
         </CollapsibleContent>
