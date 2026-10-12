@@ -46,7 +46,7 @@ Bạn cần có:
 
 | Thứ cần có                                       | Ghi chú                                                                                                                                                            |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1 VPS**                                        | Ubuntu 24.04 (khuyến nghị) hoặc Debian 12. Tối thiểu **2 CPU, 2 GB RAM, 20 GB ổ cứng**. Nhà cung cấp gửi cho bạn: **địa chỉ IP**, **tên đăng nhập**, **mật khẩu**. |
+| **1 VPS**                                        | Ubuntu 24.04 (khuyến nghị) hoặc Debian 12. Tối thiểu **1 vCPU, 2 GB RAM, 20 GB ổ cứng**. Nhà cung cấp gửi cho bạn: **địa chỉ IP**, **tên đăng nhập**, **mật khẩu**. |
 | **1 tên miền**                                   | Ví dụ `congty.vn`. Phần mềm sẽ chạy ở một tên miền con, ví dụ `mcp.congty.vn`.                                                                                     |
 | **1 tài khoản GitHub đã được noti.vn cấp quyền** | Gửi tên tài khoản GitHub cho noti.vn để được thêm quyền đọc. Nên dùng **tài khoản riêng cho việc này** (không dùng tài khoản cá nhân chứa dự án khác).             |
 | **Máy tính**                                     | Windows 10/11 hoặc macOS, có trình duyệt.                                                                                                                          |
