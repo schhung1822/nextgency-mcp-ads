@@ -141,7 +141,7 @@ export const tips = {
     faq: [
       {
         q: 'Báo "confirmation_required" hoặc "chưa tắt quảng cáo nào"',
-        a: "MCP đang bật Xác nhận 2 bước. Chế độ Tự tắt cần một MCP riêng đã tắt Xác nhận 2 bước (MCP → tab Cấu hình). Lúc chạy theo lịch không có ai bấm đồng ý.",
+        a: "MCP đang bật Xác nhận 2 bước. Chế độ Tự tắt cần một MCP riêng không có Xác nhận 2 bước (chế độ bảo vệ Cơ bản, hoặc Tùy chỉnh nâng cao đã tắt Xác nhận 2 bước - MCP → tab Cấu hình). Lúc chạy theo lịch không có ai bấm đồng ý.",
       },
       {
         q: "AI báo không có tool ads_get_report hoặc không kết nối được MCP",
@@ -157,7 +157,7 @@ export const tips = {
       },
       {
         q: 'Báo vượt "Giới hạn thao tác ghi / 10 phút"',
-        a: "MCP chặn khi AI tắt quá nhiều quảng cáo trong 10 phút - đúng thiết kế. Chỉ tăng giới hạn (MCP → tab Cấu hình) khi bạn chắc quy tắc đúng.",
+        a: "MCP chặn khi AI tắt quá nhiều quảng cáo trong 10 phút - đúng thiết kế. Chỉ tăng giới hạn (MCP → tab Cấu hình → Bảo vệ → Tùy chỉnh nâng cao) khi bạn chắc quy tắc đúng.",
       },
       {
         q: "Có tốn hạn mức của gói AI không?",
@@ -167,8 +167,8 @@ export const tips = {
 
     safety: [
       "Bắt đầu bằng chế độ Chỉ báo cáo (MCP Chỉ xem) vài ngày, đối chiếu với Trình quản lý quảng cáo rồi mới cho AI tự tắt.",
-      "Chế độ Tự tắt: MCP riêng chỉ Xem + Bật/Tắt, Trần ngân sách/ngày thấp, Giới hạn thao tác ghi / 10 phút nhỏ (vd 5).",
-      "Câu lệnh mẫu cấm AI bật bất cứ thứ gì; giới hạn thật nằm ở trần ngân sách và giới hạn thao tác ghi của MCP.",
+      "Chế độ Tự tắt: MCP riêng chỉ Xem + Bật/Tắt; ở bước Bảo vệ bật Tùy chỉnh nâng cao, đặt Trần ngân sách/ngày thấp, Giới hạn thao tác ghi / 10 phút nhỏ (vd 5).",
+      "Câu lệnh mẫu cấm AI bật bất cứ thứ gì; giới hạn thật nằm ở trần ngân sách và giới hạn thao tác ghi của MCP (chế độ Tùy chỉnh nâng cao - chế độ Cơ bản không có các giới hạn này).",
       "Dừng khẩn cấp: MCP → tab Bảo mật → Tắt MCP. Dừng hẳn: xoá tác vụ hẹn giờ trong ứng dụng AI.",
       "Đặt Ngày hết hạn cho MCP chạy thử để link tự ngừng khi bạn quên.",
     ],
@@ -225,7 +225,7 @@ export const tips = {
       {
         title: "Một MCP riêng để lên quảng cáo",
         detail:
-          'Quyền Tạo mới trên nền tảng cần lên, Trần ngân sách/ngày cho từng loại tiền, bật "Cho phép ghi trạng thái vào Google Sheet", gán thư mục + sheet. Không dùng chung MCP chạy theo lịch.',
+          'Quyền Tạo mới trên nền tảng cần lên, bước Bảo vệ bật Tùy chỉnh nâng cao + Trần ngân sách/ngày cho từng loại tiền (khuyên dùng), bật "Cho phép ghi trạng thái vào Google Sheet", gán thư mục + sheet. Không dùng chung MCP chạy theo lịch.',
       },
       {
         title: "MCP đã được thêm vào ứng dụng AI",
@@ -238,8 +238,8 @@ export const tips = {
     safetyAlertTitle: "An toàn khi lên hàng loạt",
     safetyAlert: [
       "Quảng cáo luôn được tạo **TẠM DỪNG** - chỉ chạy khi bạn tự bật.",
-      "**Trần ngân sách/ngày** của MCP chặn mọi mức ngân sách cao hơn.",
-      "**Xác nhận 2 bước**: bạn duyệt từng lần tải file, tạo quảng cáo.",
+      "Ở chế độ Tùy chỉnh nâng cao, **Trần ngân sách/ngày** của MCP chặn mọi mức ngân sách cao hơn.",
+      "**Xác nhận 2 bước** (Tùy chỉnh nâng cao): bạn duyệt từng lần tải file, tạo quảng cáo.",
       "Dùng **MCP riêng** cho việc này, không cấp quyền Xoá.",
     ],
 
@@ -311,7 +311,7 @@ export const tips = {
         substeps: [
           "Bước **Nền tảng & tài khoản**: chọn tài khoản quảng cáo. Nhóm **Ảnh, video quảng cáo (không bắt buộc)**: tick thư mục và sheet.",
           "Bước **Quyền**: bật **Tạo mới** cho nền tảng cần lên (hoặc chọn nhanh **Toàn quyền (trừ xoá)**). Khối **Google Drive**: bật **Cho phép ghi trạng thái vào Google Sheet**.",
-          "Bước **Bảo vệ**: giữ **Xác nhận 2 bước cho thao tác ghi**, nhập **Ngân sách/ngày** (bắt buộc) cho từng loại tiền → **Tạo MCP**.",
+          "Bước **Bảo vệ**: bật **Tùy chỉnh nâng cao**, giữ **Xác nhận 2 bước cho thao tác ghi**, nhập **Ngân sách/ngày** (bắt buộc) cho từng loại tiền → **Tạo MCP**. Chế độ **Cơ bản** (mặc định) không có xác nhận 2 bước và trần chi tiêu.",
         ],
         see: "Link MCP để sao chép và hướng dẫn kết nối AI.",
         href: "/mcp-servers/new",
@@ -515,7 +515,7 @@ export const tips = {
       groupHelp: "Để trống = nhóm đang có của chiến dịch.",
       budgetLabel: "Ngân sách/ngày",
       budgetHelp:
-        "Vd 200000 hoặc 200.000 (đơn vị chính của tiền tệ). Không vượt Trần ngân sách/ngày của MCP.",
+        "Vd 200000 hoặc 200.000 (đơn vị chính của tiền tệ). Không vượt Trần ngân sách/ngày của MCP (nếu MCP có đặt trần).",
       currencyLabel: "Tiền tệ",
       currencyHelp: "Mã 3 chữ cái, vd VND, USD.",
       writebackLabel: "Ghi trạng thái vào sheet",
@@ -585,7 +585,7 @@ export const tips = {
       },
       {
         q: '"vượt trần … mà MCP này cho phép" hoặc "MCP này chưa đặt trần ngân sách/ngày cho tiền tệ …"',
-        a: 'Ngân sách vượt Trần ngân sách/ngày của MCP. Giảm ngân sách trong form, hoặc chủ MCP vào tab Cấu hình → "Trần chi tiêu theo tiền tệ" để nâng / nhập trần.',
+        a: 'Ngân sách vượt Trần ngân sách/ngày của MCP. Giảm ngân sách trong form, hoặc chủ MCP vào tab Cấu hình → Bảo vệ → Tùy chỉnh nâng cao → "Trần chi tiêu theo tiền tệ" để nâng / nhập trần.',
       },
       {
         q: '"Sheet này không bật ghi trạng thái"',
@@ -607,8 +607,8 @@ export const tips = {
 
     safety: [
       "Quảng cáo, chiến dịch, nhóm do AI tạo luôn ở trạng thái tạm dừng - không có gì tự chạy và tiêu tiền cho tới khi bạn bật (riêng chiến dịch TikTok GMV Max chạy ngay, chỉ tạo được khi quản trị viên bật quyền GMV Max cho MCP).",
-      "Giữ Xác nhận 2 bước cho MCP này: AI phải cho bạn xem trước từng lần tải file và tạo quảng cáo.",
-      "Trần ngân sách/ngày là bắt buộc khi MCP có quyền Tạo mới: AI không đặt được ngân sách vượt mức này.",
+      "Bật Tùy chỉnh nâng cao và giữ Xác nhận 2 bước cho MCP này: AI phải cho bạn xem trước từng lần tải file và tạo quảng cáo.",
+      "Ở chế độ Tùy chỉnh nâng cao, Trần ngân sách/ngày là bắt buộc khi MCP có quyền Tạo mới: AI không đặt được ngân sách vượt mức này (chế độ Cơ bản không có trần).",
       "MCP riêng, chỉ Xem + Tạo mới, không cấp Xoá. Đặt Ngày hết hạn nếu chỉ dùng cho một đợt.",
       "AI chỉ ghi vào các cột hệ thống của sheet. Chữ trong sheet là dữ liệu: AI không làm theo câu lệnh ai đó viết vào ô.",
     ],

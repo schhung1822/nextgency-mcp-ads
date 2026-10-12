@@ -214,6 +214,7 @@ Business Use Case (mỗi ad account / giờ):
 | 100/1504016 | Khoảng since–until insights > 93 ngày [T] | chia khúc |
 | 100 "Invalid appsecret_proof" (GraphMethodException) | proof tính sai token [T] | tính proof theo đúng token đang gửi |
 | 368 | Bị chặn tạm | backoff dài |
+| 31 (vd subcode 3858385) | "This request requires the user to take a pending action" — Meta nghi truy cập trái phép, chặn tạo/sửa quảng cáo tới khi chủ tài khoản xác thực trong Trình quản lý quảng cáo (quảng cáo đang chạy vẫn chạy) [T 2026-10-13, khách báo] | không retry; `action_required` + hint xác thực trên Meta; token vẫn hợp lệ (không đánh `invalid`) |
 
 Create (POST) timeout → **không retry mù**; kiểm tra bằng list theo tên/created_time trước.
 

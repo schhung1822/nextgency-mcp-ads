@@ -92,6 +92,8 @@ import {
   GMV_MAX_CREATIVES_WARNING,
   GMV_MAX_DELETE_WARNING,
   GMV_MAX_GUARD_MISSING,
+  gmvMaxBasicProtectionHint,
+  gmvMaxBasicProtectionMessage,
   GMV_MAX_LEGACY_AUTO_BUDGET_ON,
   GMV_MAX_LOCKED_HINT,
   GMV_MAX_OCCUPIED_HINT,
@@ -249,6 +251,27 @@ export function assertGmvMaxWrite(opts: MutationOptions, ids: string[]): void {
   assertGmvMaxConfirmed(opts, ids)
 }
 
+/**
+ * Create / copy start a NEW GMV Max campaign running at once: only an explicit "advanced" protection mode (set by
+ * mcp-core from the grant; the strict daily-spend guard then requires a daily cap) lets them through. "basic" (no money
+ * caps) or absent → refused before anything is sent (fail closed).
+ */
+export function assertGmvMaxStartAllowed(
+  opts: MutationOptions,
+  currency: string,
+  op: "create" | "copy"
+): void {
+  if (opts.protectionMode === "advanced") return
+  throw new ProviderError({
+    platform: "tiktok",
+    code: "feature_not_enabled",
+    message: `gmv_max_basic_protection: GMV Max ${op} needs the advanced protection mode (got ${opts.protectionMode ?? "none"})`,
+    userMessageVi: gmvMaxBasicProtectionMessage(op, currency),
+    hint: gmvMaxBasicProtectionHint(currency),
+    retryable: false,
+  })
+}
+
 /** A campaign starting (or raising its worst case) now: `id` = campaign id, null for a create (keyed by `key`). */
 export interface StartingSpend {
   id: string | null
@@ -276,12 +299,15 @@ export function startedRequestKey(requestId: string): string {
  * (fail closed). On EXECUTION the read + check + reservation run under the per MCP + ad account lock of mcp-core
  * (opts.startedSpendLedger, M1) and the reservation is returned: the caller settles it (create: request key → id) or
  * releases it on a definite failure. Returns a preview note when earlier starts were counted.
+ * Basic protection mode (no money caps): nothing to check → no read, no reservation (create / copy never get here:
+ * assertGmvMaxStartAllowed).
  */
 export async function assertStartedWithinCap(
   tt: TT,
   opts: MutationOptions,
   starting: StartingSpend[]
 ): Promise<StartedCheck> {
+  if (opts.protectionMode === "basic") return { notes: [], reservation: null }
   const guardMissing = (what: string) =>
     new ProviderError({
       platform: "tiktok",
@@ -1692,6 +1718,8 @@ async function prepareGmvMaxCreate(
   now: Date,
   exclude?: string
 ): Promise<PreparedCreate> {
+  // defence in depth: create and copy both come through here (each already refused upfront in basic mode)
+  assertGmvMaxStartAllowed(opts, tt.currency, "create")
   const warnings = [GMV_MAX_RUNS_NOW_WARNING]
   const { bcId } = await readyShop(tt, plan.storeId)
   const body: Raw = {
@@ -2052,6 +2080,8 @@ export async function routeGmvMaxCopy(
   const hit = await gmvMaxHitFor(tt, r.id, found, true)
   if (!hit) return null
   assertGmvMaxWrite(opts, [r.id])
+  // basic protection mode (no money caps): the copy would start running uncapped → refused before any other read
+  assertGmvMaxStartAllowed(opts, tt.currency, "copy")
   // S1: never copy a deleted GMV Max campaign (the copy would start RUNNING)
   if (isDeleted(hit.row)) throw invalid(gmvMaxCopyDeletedMessage(r.id))
   const now = opts.now ?? new Date()
@@ -2948,6 +2978,8 @@ export async function runGmvMaxCreate(
 ): Promise<GmvWriteResult> {
   const tt = ttFromCtx(ctx)
   assertGmvMaxWrite(opts, ["mới"])
+  // basic protection mode (no money caps): a new campaign would start running uncapped → refused before any read
+  assertGmvMaxStartAllowed(opts, tt.currency, "create")
   const now = opts.now ?? new Date()
   if (input.type === "PRODUCT" && input.products === undefined) {
     throw invalid(
@@ -3285,7 +3317,7 @@ export const gmvMaxWriteExtensions: ProviderExtension<TikTokCredentials>[] = [
     description:
       "Dùng khi người dùng yêu cầu rõ ràng đổi ROI mục tiêu (roas_bid), bật/tắt tăng ngân sách tự động (auto_budget), ngày khuyến mãi (promotion_days) hoặc danh sách sản phẩm (item_group_ids, thay thế toàn bộ) của một chiến dịch GMV Max. " +
       "Ngân sách ngày đổi bằng ads_update_budget; tên / ngày kết thúc bằng ads_update_object; bật/tắt bằng ads_set_status. " +
-      "TikTok khuyên giữ mỗi mức ROI ít nhất 3 ngày trọn vẹn (LIVE tối đa 1 lần/ngày); tăng ROI hoặc giảm lần 2 trong ngày, sửa sản phẩm làm mất Bảo vệ ROI ngày đó. Bật tăng ngân sách tự động / ngày khuyến mãi cần trần ngân sách ngày đủ cho mức chi tối đa có thể (tới ~31 lần ngân sách). " +
+      "TikTok khuyên giữ mỗi mức ROI ít nhất 3 ngày trọn vẹn (LIVE tối đa 1 lần/ngày); tăng ROI hoặc giảm lần 2 trong ngày, sửa sản phẩm làm mất Bảo vệ ROI ngày đó. Khi MCP có trần ngân sách ngày, bật tăng ngân sách tự động / ngày khuyến mãi cần trần đủ cho mức chi tối đa có thể (tới ~31 lần ngân sách). " +
       "Gọi ads_list_accounts và tiktok_gmv_max_campaigns (include_details) trước. " +
       WRITE_PREREQ,
     input: gmvMaxUpdateInput,
@@ -3319,7 +3351,7 @@ export const gmvMaxWriteExtensions: ProviderExtension<TikTokCredentials>[] = [
     title: "Tạo chiến dịch GMV Max (chạy ngay)",
     description:
       "Dùng khi người dùng yêu cầu rõ ràng tạo chiến dịch GMV Max mới (Product: tất cả hoặc các sản phẩm chọn; LIVE: 1 tài khoản TikTok nguồn LIVE). CẢNH BÁO: chiến dịch GMV Max tạo qua API CHẠY NGAY (TikTok không cho tạo ở trạng thái tạm dừng; có thể hẹn giờ bắt đầu bằng start_time) và có thể tự tạm dừng quảng cáo Shop khác dùng cùng cửa hàng / sản phẩm / tài khoản TikTok ở mọi tài khoản QC. " +
-      "Kiểm tra trước: cửa hàng sẵn sàng cho tài khoản QC này, mỗi sản phẩm chỉ ở 1 chiến dịch Product GMV Max đang bật. Ngân sách ngày phải nằm trong trần ngân sách ngày của MCP (bắt buộc có trần), tính cộng dồn với các chiến dịch GMV Max MCP này đã cho chạy trong 24 giờ qua. " +
+      "Kiểm tra trước: cửa hàng sẵn sàng cho tài khoản QC này, mỗi sản phẩm chỉ ở 1 chiến dịch Product GMV Max đang bật. Ngân sách ngày phải nằm trong trần ngân sách ngày của MCP (bắt buộc có trần; MCP ở chế độ bảo vệ Cơ bản không tạo được), tính cộng dồn với các chiến dịch GMV Max MCP này đã cho chạy trong 24 giờ qua. " +
       "Gọi trước: ads_list_accounts, tiktok_gmv_max_shops, tiktok_gmv_max_products / tiktok_gmv_max_identities, tiktok_gmv_max_bid_recommend. Sao chép chiến dịch GMV Max có sẵn: ads_copy_object. " +
       WRITE_PREREQ,
     input: gmvMaxCreateInput,

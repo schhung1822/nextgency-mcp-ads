@@ -223,6 +223,16 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] Chủ dự án quyết: **hiện 1 lần cho mỗi người dùng và mỗi phiên bản** (trang server tra xác nhận, không giới hạn thời gian; bỏ cửa sổ 12 giờ); tên trong 2 bản nội dung: "Ads MCP Simple by noti.vn" (giữ vai trò Đơn vị vận hành / noti.vn)
 - [ ] Chủ dự án quyết: có thêm popup cho "service account riêng" Google Drive (tab Google Drive) / credential Drive hệ thống (Cài đặt) không
 
+## Chế độ bảo vệ MCP Cơ bản / Tùy chỉnh nâng cao + Meta lỗi 31 (2026-10-13), phát hành v1.0.10
+- [x] Chủ dự án quyết (2026-10-13): MCP mới mặc định **Cơ bản** (chỉ ngày hết hạn); MCP có sẵn (không có `protection_mode`) giữ **Tùy chỉnh nâng cao** + cấu hình hiện tại; trần ngày bắt buộc chỉ ở nâng cao; GMV Max ở Cơ bản: tạo / sao chép bị từ chối, bật/tắt + đổi ngân sách vẫn được (luôn xác nhận); luôn giữ: xoá + GMV Max luôn xác nhận, object mới tạm dừng, hết hạn, owner/grant, 404 + chặn dò key, giới hạn body (D6)
+- [x] Hợp đồng: `PROTECTION_MODES` / `UNLIMITED` / `isUnlimited` (`types.ts`), `parseMcpSettings` + `effectiveMcpSettings` (`settings.ts`), grant dùng giá trị hiệu lực (`grant.ts`), schema + form (`mcp-servers.ts`: mặc định basic, `sanitizeHiddenAdvanced`, `validateProtectionStep`)
+- [x] Meta lỗi 31 (subcode 3858385, khách báo) → `ProviderErrorCode` `action_required` (không retry, không đánh kết nối invalid, log `denied`) + `providers/meta.md`
+- [x] Runtime: bỏ qua giới hạn `UNLIMITED` (serve rate limit, hạn mức ghi, Telegram/giờ, % ngân sách), không `legacyCapWarning` ở Cơ bản, GMV Max tạo / sao chép bị từ chối ở Cơ bản, service lưu Cơ bản không đòi trần, nhân viên chuyển nâng cao → Cơ bản trên MCP có công tắc GMV Max = mở rộng (từ chối), diff log có `protectionMode`
+- [ ] UI: công tắc "Tùy chỉnh nâng cao" ở bước Bảo vệ (wizard + tab Cấu hình), ghi chú Cơ bản, tổng quan MCP hiện chế độ, không badge thiếu trần cho MCP Cơ bản; sáng/tối + 390/1440
+- [x] Tài liệu: 01 (§4 bước 4, D2, D6), 03 (`protection_mode`), 04 (§1, §5 `action_required`, §6 Chế độ bảo vệ, GMV Max C5), 05 (§2, §4, checklist), 06 (wireframe ④), 14 (giới hạn tin/giờ chỉ ở nâng cao), `docs/ket-noi-ai.md`, `docs/huong-dan-google-drive.md`, `docs/huong-dan-telegram.md`, `docs/huong-dan-lay-token-tiktok.md`, `docs/huong-dan-lay-token-meta.md` (lỗi 31), `release-notes/v1.0.10.md` (nháp)
+- [x] Rà câu chữ pháp lý / miễn trừ / mẹo trong `src/lib/i18n/vi/*` còn nói "luôn xác nhận 2 bước / luôn có trần" (danh sách do agent tài liệu báo cáo) - đã sửa legal.ts (cập nhật 13/10/2026), tips.ts, automation.ts, guides.ts, mcp.ts; disclaimers.ts giữ nguyên (vẫn đúng, đổi sẽ bắt mọi người đồng ý lại)
+- [ ] Kiểm chứng: lint + typecheck + unit + build + e2e; `security-reviewer`, `ui-reviewer`; build image + smoke production; rc → v1.0.10
+
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.
 2. GitHub: tổ chức **notivn**, repo **Ads-MCP-simple** → image `ghcr.io/notivn/ads-mcp-simple`.

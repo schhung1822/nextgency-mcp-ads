@@ -83,7 +83,19 @@ test.describe("MCP servers", () => {
       .click()
     await page.getByRole("button", { name: "Tiếp tục" }).click()
 
-    // ④ protection defaults: two-step ON, 50 %, 60/min; invalid IP blocks submit
+    // ④ protection: a new MCP starts in "Cơ bản" (only the expiry date) - the advanced groups are hidden
+    const advanced = page.getByRole("switch", { name: "Tùy chỉnh nâng cao" })
+    await expect(advanced).toHaveAttribute("data-state", "unchecked")
+    await expect(page.locator("#mcp-expires")).toBeVisible()
+    await expect(
+      page.getByText("Không giới hạn trong chế độ Cơ bản")
+    ).toBeVisible()
+    await expect(page.locator("#mcp-two-step")).toHaveCount(0)
+    await expect(page.locator("#mcp-ips")).toHaveCount(0)
+    await shot(page, "e2e-protection-basic")
+
+    // advanced defaults: two-step ON, 50 %, 60/min; invalid IP blocks submit
+    await advanced.click()
     await expect(
       page.getByRole("switch", { name: /Xác nhận 2 bước/ })
     ).toHaveAttribute("data-state", "checked")
@@ -102,6 +114,12 @@ test.describe("MCP servers", () => {
     expect(await dailyCaps.count()).toBeGreaterThan(0)
     for (const input of await dailyCaps.all()) await input.fill("5000000")
     await page.fill("#mcp-ips", "")
+    await shot(page, "e2e-protection-advanced")
+    // back to basic: the advanced values are kept (shown again when switched on) but only the expiry applies
+    await advanced.click()
+    await expect(page.locator("#mcp-two-step")).toHaveCount(0)
+    await advanced.click()
+    await expect(dailyCaps.first()).toHaveValue("5000000")
     await page.getByRole("button", { name: "Tạo MCP" }).click()
 
     // re-authentication before the link is handed out

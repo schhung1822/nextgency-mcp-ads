@@ -8,6 +8,7 @@
    https://mcp.congty.vn/mcp/amcp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    ```
    Xem lại link sau này: trang MCP → tab **Kết nối AI** → **Xem lại link** (phải nhập lại mật khẩu/OTP).
+   Bước **Bảo vệ**: MCP mới mặc định chế độ **Cơ bản** — chỉ đặt **ngày hết hạn**; AI thay đổi quảng cáo ngay, không hỏi lại (trừ **xoá** và **TikTok GMV Max** — luôn hỏi), không có trần ngân sách, giới hạn tốc độ hay danh sách IP. Muốn AI luôn cho xem trước (xác nhận 2 bước), đặt trần ngân sách, giới hạn tốc độ hoặc danh sách IP → bật **Tùy chỉnh nâng cao** (bật sau trong tab **Cấu hình** cũng được). MCP tạo trước bản 1.0.10 giữ nguyên chế độ Tùy chỉnh nâng cao và cấu hình cũ.
 2. **Link = mật khẩu.** Không dán vào nhóm chat, tài liệu chia sẻ, ảnh chụp màn hình. Lộ link → **Bảo mật → Xoay key**.
 3. Server phải truy cập được từ Internet qua **HTTPS hợp lệ** và **IPv4** (bản ghi A).
 4. Mở link bằng trình duyệt sẽ thấy trang “Đây là endpoint MCP…” — nghĩa là link đúng và máy chủ đang chạy.
@@ -24,7 +25,7 @@
 **Team / Enterprise**: chỉ **Owner/Primary owner** thêm được: **Organization settings → Connectors → Add → Custom → Web** → dán link. Cả workspace dùng chung **1 link** (= 1 MCP, cùng phạm vi quyền) → nên tạo MCP riêng cho workspace với quyền phù hợp. Thành viên bấm **Connect** ở **Customize → Connectors** của mình.
 
 **Lưu ý**:
-- Claude kết nối từ dải IP `160.79.104.0/21` — nếu MCP có **danh sách IP cho phép**, phải thêm dải này; nếu VPS có tường lửa, không chặn dải này.
+- Claude kết nối từ dải IP `160.79.104.0/21` — nếu MCP có **danh sách IP cho phép** (chế độ bảo vệ Tùy chỉnh nâng cao), phải thêm dải này; nếu VPS có tường lửa, không chặn dải này.
 - Mỗi lệnh tool tối đa ~240 giây, kết quả ~150.000 ký tự — app tự chia trang khi dữ liệu lớn.
 - Claude hỏi quyền trước khi chạy tool ghi: chọn *Allow once* để xem từng thao tác.
 
@@ -79,8 +80,8 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 - “Báo cáo các chiến dịch YouTube tuần qua của tài khoản Google Ads X: lượt xem, tỉ lệ xem, CPV, tỉ lệ xem hết video.”
 - “Từ khoá nào của chiến dịch Search Y có chi phí cao nhưng không có chuyển đổi trong 14 ngày qua?”
 - “Báo cáo theo ngày từ 1/9 đến 30/9 của chiến dịch X.”
-- “Tắt các quảng cáo có CPA trên 200.000đ trong 7 ngày qua.” → AI hiện **bản xem trước** → bạn đồng ý → AI xác nhận.
-- “Tăng ngân sách nhóm Y lên 1 triệu/ngày.” *(bị chặn nếu vượt giới hạn % thay đổi đã cấu hình)*
+- “Tắt các quảng cáo có CPA trên 200.000đ trong 7 ngày qua.” → AI hiện **bản xem trước** → bạn đồng ý → AI xác nhận. *(khi MCP bật xác nhận 2 bước ở chế độ Tùy chỉnh nâng cao; chế độ Cơ bản làm luôn)*
+- “Tăng ngân sách nhóm Y lên 1 triệu/ngày.” *(bị chặn nếu vượt giới hạn % thay đổi đã cấu hình ở chế độ Tùy chỉnh nâng cao)*
 - “Nhân bản chiến dịch Z, thêm hậu tố ‘T10’.” *(bản sao luôn ở trạng thái tạm dừng - trừ GMV Max: bản sao chạy ngay, xem lưu ý bên dưới)*
 - “Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team.” *(cần MCP được cấp kênh Telegram và bật “AI được gửi tin”)*
 - “Trong thư mục Drive ‘Creative T10’ có những video nào mới tuần này?” *(cần MCP được cấp thư mục Google Drive — xem mục Google Drive bên dưới)*
@@ -91,7 +92,7 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 ## Lưu ý theo nền tảng
 - **Meta**: số liệu trong ngày có độ trễ, chuyển đổi được ghi nhận muộn.
 - **TikTok Ads**: số liệu chậm khoảng 30 phút, có lúc tới 2 giờ. Đổi ngân sách có thể chỉ có hiệu lực từ 00:00 hôm sau — AI sẽ báo thời điểm có hiệu lực. TikTok ngừng cho tạo chiến dịch thủ công (Manual) qua API từ 31/12/2026; sửa, bật/tắt chiến dịch có sẵn vẫn dùng được.
-- **TikTok GMV Max (TikTok Shop)**: dùng chung kết nối TikTok Ads (app cần **đủ quyền** - tick tất cả, kể cả mọi ô GMV MAX - xem [huong-dan-lay-token-tiktok.md — GMV Max](huong-dan-lay-token-tiktok.md#gmv-max-tiktok-shop)). **Dùng AI để xem và phân tích chỉ số; hạn chế bật/tắt hay sửa** vì GMV Max tự tối ưu theo ngày: TikTok khuyên giữ mỗi mức ROI mục tiêu ít nhất 3 ngày, và tạm dừng / xoá / sửa ROI hoặc sản phẩm trong ngày làm mất Bảo vệ ROI của ngày đó. Mặc định MCP **chỉ xem** GMV Max; AI chỉ bật/tắt, sửa (ngân sách, ROI, sản phẩm, video), sao chép, tạo mới hay xoá chiến dịch GMV Max khi **quản trị viên bật “Cho phép AI thay đổi GMV Max (TikTok Shop)”** ở bước **Chọn quyền** của MCP (nhân viên không tự bật được). Mọi thay đổi GMV Max **luôn phải xác nhận 2 bước** và **bắt buộc có trần ngân sách/ngày** (tính theo mức chi tối đa có thể mỗi ngày, gồm tăng ngân sách tự động, ngày khuyến mãi). Chiến dịch GMV Max **tạo mới / sao chép chạy NGAY** (không tạo ở trạng thái tạm dừng được). GMV Max không có nhóm quảng cáo; đổi tài khoản GMV Max độc quyền của cửa hàng và phiên Max delivery / Creative boost không làm qua MCP - xem [Cho AI thay đổi GMV Max](huong-dan-lay-token-tiktok.md#cho-ai-thay-đổi-gmv-max-chỉ-quản-trị-viên). ROI và số đơn GMV Max gồm cả đơn tự nhiên; chi tiêu GMV Max có thể không nằm (đầy đủ) trong báo cáo TikTok thường — không cộng hai báo cáo vì có thể bị trùng hoặc sai. Câu hỏi mẫu:
+- **TikTok GMV Max (TikTok Shop)**: dùng chung kết nối TikTok Ads (app cần **đủ quyền** - tick tất cả, kể cả mọi ô GMV MAX - xem [huong-dan-lay-token-tiktok.md — GMV Max](huong-dan-lay-token-tiktok.md#gmv-max-tiktok-shop)). **Dùng AI để xem và phân tích chỉ số; hạn chế bật/tắt hay sửa** vì GMV Max tự tối ưu theo ngày: TikTok khuyên giữ mỗi mức ROI mục tiêu ít nhất 3 ngày, và tạm dừng / xoá / sửa ROI hoặc sản phẩm trong ngày làm mất Bảo vệ ROI của ngày đó. Mặc định MCP **chỉ xem** GMV Max; AI chỉ bật/tắt, sửa (ngân sách, ROI, sản phẩm, video), sao chép, tạo mới hay xoá chiến dịch GMV Max khi **quản trị viên bật “Cho phép AI thay đổi GMV Max (TikTok Shop)”** ở bước **Chọn quyền** của MCP (nhân viên không tự bật được). Mọi thay đổi GMV Max **luôn phải xác nhận 2 bước** (ở cả 2 chế độ bảo vệ). Ở chế độ **Tùy chỉnh nâng cao** **bắt buộc có trần ngân sách/ngày** (tính theo mức chi tối đa có thể mỗi ngày, gồm tăng ngân sách tự động, ngày khuyến mãi); ở chế độ **Cơ bản** (không có trần) AI vẫn bật/tắt và đổi ngân sách GMV Max được nhưng **không tạo mới / sao chép** được chiến dịch GMV Max. Chiến dịch GMV Max **tạo mới / sao chép chạy NGAY** (không tạo ở trạng thái tạm dừng được). GMV Max không có nhóm quảng cáo; đổi tài khoản GMV Max độc quyền của cửa hàng và phiên Max delivery / Creative boost không làm qua MCP - xem [Cho AI thay đổi GMV Max](huong-dan-lay-token-tiktok.md#cho-ai-thay-đổi-gmv-max-chỉ-quản-trị-viên). ROI và số đơn GMV Max gồm cả đơn tự nhiên; chi tiêu GMV Max có thể không nằm (đầy đủ) trong báo cáo TikTok thường — không cộng hai báo cáo vì có thể bị trùng hoặc sai. Câu hỏi mẫu:
   - “Kiểm tra cửa hàng GMV Max của TKQC X - cửa hàng nào sẵn sàng, cửa hàng nào chưa và vì sao?”
   - “So sánh các chiến dịch GMV Max sản phẩm tháng này: chiến dịch nào ROI thấp hơn mục tiêu?”
   - “Top 10 sản phẩm theo doanh thu tuần qua trong chiến dịch GMV Max Y; sản phẩm nào tốn tiền mà ít đơn?”
@@ -104,7 +105,7 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 Ads MCP gửi tin vào nhóm / kênh / chat riêng trên Telegram qua bot của bạn. Hướng dẫn đầy đủ (tạo bot, lấy Chat ID / Thread ID, giới hạn, xử lý lỗi): **[huong-dan-telegram.md](huong-dan-telegram.md)**.
 
 1. **Kết nối → tab Telegram → Thêm kết nối Telegram**: dán bot token (tạo bot với **@BotFather**), Chat ID (và Thread ID nếu nhóm bật Chủ đề), chọn sự kiện hệ thống → **Kiểm tra & lưu** → **Gửi tin thử**. Thêm bot vào nhóm/kênh và cấp quyền gửi tin trước.
-2. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn kết nối Telegram (chỉ kết nối của chủ MCP); bước Quyền bật **AI được gửi tin** và/hoặc **Tự báo khi AI thay đổi quảng cáo** (mặc định tắt); bước Bảo vệ đặt **Giới hạn tin Telegram / giờ**.
+2. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn kết nối Telegram (chỉ kết nối của chủ MCP); bước Quyền bật **AI được gửi tin** và/hoặc **Tự báo khi AI thay đổi quảng cáo** (mặc định tắt); bước Bảo vệ đặt **Giới hạn tin Telegram / giờ** (bật **Tùy chỉnh nâng cao**; chế độ Cơ bản không giới hạn).
 3. Trong AI: “Gửi tóm tắt chi tiêu hôm qua vào nhóm Marketing.” Tin luôn có tiêu đề “🤖 Tin từ AI · MCP <tên>” và dòng ghi nguồn “Ads MCP Simple” ở cuối; AI không bao giờ thấy bot token hay Chat ID.
 
 **Kèm ảnh / video / tệp** (1 tệp mỗi tin, chú thích ≤ 800 ký tự, ảnh ≤ 10 MB, mọi tệp ≤ 50 MB, 20 lượt gửi tệp / 10 phút / MCP): link https công khai tải trực tiếp (mọi AI), tệp đính kèm trong **ChatGPT bản web**, hoặc tệp chữ AI tự viết (CSV/TSV/TXT/MD/JSON ≤ 256 KB). Ảnh do ChatGPT/Gemini tự tạo chưa gửi được. Chi tiết: [huong-dan-telegram.md — Bước 6](huong-dan-telegram.md#bước-6--nhờ-ai-gửi-tin-ảnh-video-tệp).
@@ -125,10 +126,12 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 | Hiện tượng | Xử lý |
 |---|---|
 | **404** / “server not found” | Link sai hoặc MCP đã tắt / hết hạn / xoá / xoay key → lấy lại link trong tab **Kết nối AI** |
-| **403** | IP không nằm trong danh sách cho phép của MCP |
-| **429** | Vượt giới hạn lệnh/phút → đợi, hoặc tăng giới hạn trong cấu hình MCP |
+| **403** | IP không nằm trong danh sách cho phép của MCP (chế độ bảo vệ Tùy chỉnh nâng cao) |
+| **429** | Vượt giới hạn lệnh/phút → đợi, hoặc tăng giới hạn trong cấu hình MCP (**Bảo vệ → Tùy chỉnh nâng cao**) |
 | Không thấy tool ghi | MCP chưa cấp quyền tương ứng (Bật/Tắt, Sửa, Sao chép…) hoặc ChatGPT Business chưa *Refresh* |
-| AI báo “MCP này chưa được quản trị viên cho phép thay đổi chiến dịch GMV Max” | Mặc định MCP chỉ xem GMV Max → nhờ **quản trị viên** mở MCP → tab **Cấu hình** → **Chọn quyền** → thẻ TikTok Ads → bật **Cho phép AI thay đổi GMV Max (TikTok Shop)**, rồi đặt **Trần ngân sách/ngày** cho loại tiền của TKQC |
+| AI báo “MCP này chưa được quản trị viên cho phép thay đổi chiến dịch GMV Max” | Mặc định MCP chỉ xem GMV Max → nhờ **quản trị viên** mở MCP → tab **Cấu hình** → **Chọn quyền** → thẻ TikTok Ads → bật **Cho phép AI thay đổi GMV Max (TikTok Shop)**; muốn tạo / sao chép GMV Max thì bước **Bảo vệ** bật **Tùy chỉnh nâng cao** và đặt **Trần ngân sách/ngày** cho loại tiền của TKQC |
+| AI báo MCP đang ở chế độ bảo vệ **Cơ bản** khi tạo / sao chép chiến dịch GMV Max | Chế độ Cơ bản không có trần chi tiêu → mở MCP → tab **Cấu hình** → **Bảo vệ** → bật **Tùy chỉnh nâng cao** và đặt **Trần ngân sách/ngày** cho loại tiền của TKQC TikTok (nhân viên: nhờ quản trị viên nếu MCP có quyền GMV Max) |
+| Meta báo cần **chủ tài khoản hoàn tất một bước xác thực** (lỗi Meta 31) | Meta nghi truy cập trái phép và tạm chặn tạo / sửa quảng cáo (quảng cáo đang chạy vẫn chạy). Người sở hữu token hoặc admin TKQC / Business đăng nhập **Trình quản lý quảng cáo**, làm theo yêu cầu xác thực, rồi thử lại. Không cần thay token; AI không tự thử lại |
 | Lệnh dài bị ngắt sau 125 giây (lỗi 524) | Tên miền đi qua Cloudflare proxy → chia nhỏ yêu cầu, hoặc chuyển tên miền sang *DNS only* (cần chứng chỉ công khai) - xem [deploy-vps.md §9.7](deploy-vps.md#97-giới-hạn-thời-gian-125-giây-và-mcp) |
 | Claude không thêm được connector | Kiểm tra bản ghi A IPv4, chứng chỉ HTTPS, tường lửa cho dải `160.79.104.0/21` |
 | Không thấy tool `drive_*` | MCP chưa được cấp thư mục / sheet Google Drive và (link công khai tắt hoặc chưa có API key hệ thống, hoặc MCP không có quyền Tạo mới); `drive_sheet_update_rows` chỉ có khi sheet bật ghi trạng thái + MCP bật “ghi trạng thái vào Google Sheet” |

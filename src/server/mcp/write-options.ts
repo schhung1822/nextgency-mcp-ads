@@ -1,5 +1,7 @@
 // MutationOptions that mcp-core hands to the adapters on every write (preview AND execution):
 // - gmvMaxWrite: the admin-only MCP switch "tiktok_gmv_max_write" (TikTok GMV Max campaigns; fail closed when off);
+// - protectionMode: "basic" (no money caps: the strict guard below lets everything through, GMV Max create / copy are
+//   refused by the adapter) or "advanced";
 // - dailySpendGuard: STRICT worst-case daily-spend check (a daily cap for the currency is mandatory, even on a legacy
 //   MCP) for writes that start or raise spend beyond what the generic guardrails see (GMV Max create / copy / auto
 //   budget / promotion days / budget changes);
@@ -45,10 +47,13 @@ export function dailyCapRequiredError(currency: string, label: string) {
 /**
  * STRICT guard: every item needs a daily cap for its currency (legacy MCPs included) and must fit it. Amounts are the
  * worst-case spend of ONE day (major units). Throws McpToolError(denied).
+ * Basic protection mode: no money caps on purpose → no-op (writes that need a cap - GMV Max create / copy - are
+ * refused by the adapter from MutationOptions.protectionMode instead).
  */
 export function strictDailySpendGuard(
   settings: McpSettings
 ): (items: DailySpendCheck[]) => void {
+  if (settings.protectionMode === "basic") return () => {}
   return (items) => {
     for (const it of items) {
       const cur = it.currency.toUpperCase()
@@ -221,6 +226,7 @@ export function writeOptions(
 ): Pick<
   MutationOptions,
   | "gmvMaxWrite"
+  | "protectionMode"
   | "dailySpendGuard"
   | "fieldHistory"
   | "startedSpend24h"
@@ -230,6 +236,12 @@ export function writeOptions(
   return {
     // fail closed: only an explicit true (parseMcpSettings) enables GMV Max writes
     gmvMaxWrite: grant.settings.tiktokGmvMaxWrite === true,
+    // only an explicit "advanced" lets GMV Max create / copy through (the adapter refuses anything else); an unknown
+    // value is passed as undefined (never coerced to "basic", which would also skip the S5 24 h cumulative check)
+    protectionMode:
+      grant.settings.protectionMode === "advanced" || grant.settings.protectionMode === "basic"
+        ? grant.settings.protectionMode
+        : undefined,
     dailySpendGuard: strictDailySpendGuard(grant.settings),
     fieldHistory: (q) => loadFieldHistory(account, q),
     startedSpend24h: async () => {

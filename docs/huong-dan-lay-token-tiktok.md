@@ -175,7 +175,7 @@ Mặc định MCP **chỉ xem** GMV Max. Muốn AI bật/tắt, sửa, sao chép
 
 1. **Quản trị viên** mở **MCP → Tạo MCP** (hoặc MCP có sẵn → tab **Cấu hình**) → bước **Chọn quyền** → thẻ **TikTok Ads**: chọn các quyền cần dùng (Bật/Tắt, Sửa, Sao chép, Tạo mới, Xoá/Lưu trữ) rồi bật **Cho phép AI thay đổi GMV Max (TikTok Shop)** (mặc định tắt).
    - Nếu TKQC đã chọn có cửa hàng GMV Max (theo lần **Kiểm tra kết nối** gần nhất), cảnh báo hiện nổi bật ngay dưới công tắc.
-2. Bước **Bảo vệ**: nhập **Trần ngân sách/ngày** cho loại tiền của TKQC — bắt buộc với mọi thay đổi GMV Max.
+2. Bước **Bảo vệ**: bật **Tùy chỉnh nâng cao** và nhập **Trần ngân sách/ngày** cho loại tiền của TKQC. Ở chế độ **Cơ bản** (mặc định của MCP mới, không có trần) AI vẫn bật/tắt và đổi ngân sách GMV Max được (luôn xác nhận 2 bước) nhưng **không tạo mới / sao chép** được chiến dịch GMV Max.
 3. **Nhân viên** thấy công tắc bị khoá với dòng “Chỉ quản trị viên bật được - nhờ quản trị viên mở MCP này để bật”. Nhân viên tắt được nếu quản trị viên đã bật, nhưng sau khi lưu chỉ quản trị viên bật lại được.
 4. Trang tổng quan MCP hiện dòng **AI thay đổi GMV Max: Bật / Tắt**.
 
@@ -188,7 +188,7 @@ Mặc định MCP **chỉ xem** GMV Max. Muốn AI bật/tắt, sửa, sao chép
 | **Sao chép / Tạo mới** | Chiến dịch mới **CHẠY NGAY**, tiêu tiền ngay. Mỗi sản phẩm chỉ ở **1** chiến dịch GMV Max sản phẩm đang bật; có thể tự tạm dừng quảng cáo Shop khác.                                                                                                                         |
 | **Xoá/Lưu trữ**        | **Không hoàn tác**, mất dữ liệu tối ưu đã học và mất Bảo vệ ROI của ngày xoá.                                                                                                                                                                                                 |
 
-Luôn áp dụng: **mọi thay đổi GMV Max phải xác nhận 2 bước** (kể cả khi MCP tắt xác nhận 2 bước) và **bắt buộc có trần ngân sách/ngày**, tính theo **mức chi tối đa có thể mỗi ngày** (gồm tự tăng ngân sách, ngày khuyến mãi). Khi AI đổi ROI mục tiêu quá sớm (GMV Max sản phẩm: chưa đủ 3 ngày; LIVE: đã đổi trong ngày), bản xem trước có cảnh báo.
+Luôn áp dụng: **mọi thay đổi GMV Max phải xác nhận 2 bước** (kể cả khi MCP tắt xác nhận 2 bước hoặc ở chế độ bảo vệ Cơ bản). Ở chế độ **Tùy chỉnh nâng cao**: **bắt buộc có trần ngân sách/ngày**, tính theo **mức chi tối đa có thể mỗi ngày** (gồm tự tăng ngân sách, ngày khuyến mãi). Ở chế độ **Cơ bản**: tạo mới / sao chép GMV Max bị từ chối (bật/tắt, đổi ngân sách không có trần). Khi AI đổi ROI mục tiêu quá sớm (GMV Max sản phẩm: chưa đủ 3 ngày; LIVE: đã đổi trong ngày), bản xem trước có cảnh báo.
 
 Không làm qua MCP: đổi **tài khoản GMV Max độc quyền** của cửa hàng (exclusive authorization — làm vậy sẽ tạm dừng mọi chiến dịch GMV Max ở TKQC cũ), phiên **Max delivery / Creative boost**. GMV Max không có nhóm quảng cáo — muốn đổi nội dung thì sửa **sản phẩm** và **video** của chiến dịch.
 

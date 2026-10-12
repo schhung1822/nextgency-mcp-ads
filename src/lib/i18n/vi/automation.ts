@@ -12,7 +12,7 @@ export const automation = {
       {
         title: "Tạo MCP riêng",
         detail:
-          "Chỉ cấp đúng quyền tác vụ cần, đặt trần ngân sách và giới hạn thao tác ghi thấp.",
+          "Chỉ cấp đúng quyền tác vụ cần; bật Tùy chỉnh nâng cao ở bước Bảo vệ để đặt trần ngân sách và giới hạn thao tác ghi thấp.",
       },
       {
         title: "Soạn quy tắc",
@@ -52,14 +52,14 @@ export const automation = {
         summary: "AI tự tạm dừng quảng cáo vượt ngưỡng ngay trong lượt chạy.",
         items: [
           "Quyền: Xem + Bật/Tắt. Không cấp Sửa, Sao chép, Tạo mới, Xoá.",
-          'Tắt "Xác nhận 2 bước cho thao tác ghi" - lúc chạy theo lịch không có ai bấm đồng ý. Đây là lý do phải dùng MCP riêng.',
+          'Bước Bảo vệ: bật "Tùy chỉnh nâng cao" (để đặt được trần và giới hạn bên dưới), tắt "Xác nhận 2 bước cho thao tác ghi" - lúc chạy theo lịch không có ai bấm đồng ý. Đây là lý do phải dùng MCP riêng.',
           "Nhập Trần ngân sách/ngày (bắt buộc) ở mức thấp: kể cả khi AI làm sai, nó không bật được quảng cáo có ngân sách vượt trần.",
           'Đặt "Giới hạn thao tác ghi / 10 phút" nhỏ, vd 5.',
           "Chỉ chọn những tài khoản quảng cáo cần kiểm tra.",
         ],
       },
     },
-    note: "Quyền Bật/Tắt cho phép cả tạm dừng lẫn bật chạy. Câu lệnh mẫu cấm AI bật bất cứ thứ gì, nhưng giới hạn thật nằm ở trần ngân sách và giới hạn thao tác ghi của MCP.",
+    note: "Quyền Bật/Tắt cho phép cả tạm dừng lẫn bật chạy. Câu lệnh mẫu cấm AI bật bất cứ thứ gì, nhưng giới hạn thật nằm ở trần ngân sách và giới hạn thao tác ghi của MCP (chế độ Tùy chỉnh nâng cao).",
   },
 
   builder: {

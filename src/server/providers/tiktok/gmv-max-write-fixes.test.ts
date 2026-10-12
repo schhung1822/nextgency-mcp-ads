@@ -154,6 +154,7 @@ function testLedger(log: { op: string; args: unknown[] }[] = []): StartedSpendLe
 const ON = (extra: MutationOptions = {}): MutationOptions => ({
   gmvMaxWrite: true,
   confirmed: true,
+  protectionMode: "advanced",
   dailySpendGuard: () => {},
   budgetChangeGuard: async () => {},
   startedSpend24h: async () => [],

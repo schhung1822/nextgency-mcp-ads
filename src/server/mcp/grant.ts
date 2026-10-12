@@ -23,7 +23,7 @@ import { loadBlockedFolderIds, sourceIsBlocked } from "../drive/blocked"
 import { normalizeFolderConfig, normalizeSheetConfig } from "../drive/store"
 import { PLATFORMS, type Platform } from "../providers/types"
 import { denied } from "./errors"
-import { parseMcpSettings } from "./settings"
+import { effectiveMcpSettings, parseMcpSettings } from "./settings"
 import {
   PERMISSIONS,
   grantAllows,
@@ -355,7 +355,8 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
     ownerId: m.ownerId,
     ownerEmail: m.ownerEmail,
     ownerRole: ownerIsAdmin ? "admin" : "staff",
-    settings: parseMcpSettings(m.settings),
+    // what the endpoint enforces: basic mode switches every limit off except the expiry date
+    settings: effectiveMcpSettings(parseMcpSettings(m.settings)),
     permissions,
     accounts,
     pages,

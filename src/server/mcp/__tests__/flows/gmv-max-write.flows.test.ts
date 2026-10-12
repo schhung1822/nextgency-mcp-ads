@@ -447,6 +447,49 @@ describe.skipIf(!hasDb)(
       expect(ok.isError, ok.text).toBe(false)
     })
 
+    it("basic protection mode: GMV Max writes still ALWAYS confirm; no cap needed (guard no-op, S5 skipped); the adapter gets protectionMode=basic (create / copy refused there)", async () => {
+      const mcp = await w.mcp(
+        w.users.admin,
+        cfg(adminConn, { tiktokGmvMaxWrite: true, protectionMode: "basic", twoStepConfirm: true })
+      )
+      seen.guardCurrency = "XAF" // no cap for it anywhere: refused in advanced (test above)
+      const args = { account_id: acct(adminConn), campaign_id: "gmv1", roas_bid: 2.5 }
+      const p = await w.call(mcp.key, WRITE_TOOL, args)
+      expect(p.isError, p.text).toBe(false)
+      expect(p.sc.status).toBe("confirmation_required")
+      expect(seen.tool[0]).toMatchObject({ gmvMaxWrite: true, protectionMode: "basic", dryRun: true })
+      const done = await w.call(mcp.key, WRITE_TOOL, { ...args, confirm_token: p.sc.confirm_token })
+      expect(done.sc.status).toBe("success")
+      // on/off of a GMV Max campaign: the provider hook still forces the confirmation (two-step is off in basic)
+      const off = await w.call(mcp.key, "ads_set_status", {
+        platform: "tiktok",
+        account_id: acct(adminConn),
+        level: "campaign",
+        ids: ["gmv1"],
+        status: "paused",
+      })
+      expect(off.sc.status).toBe("confirmation_required")
+      expect(seen.status.at(-1)).toMatchObject({ protectionMode: "basic", dryRun: true })
+      // a non-GMV Max write runs at once (no two-step confirmation in basic)
+      const c1 = await w.call(mcp.key, "ads_set_status", {
+        platform: "tiktok",
+        account_id: acct(adminConn),
+        level: "campaign",
+        ids: ["c1"],
+        status: "paused",
+      })
+      expect(c1.sc.status).toBe("success")
+      // S5 cumulative check skipped: a start far above any cap passes the preview
+      const start = await w.call(mcp.key, START_TOOL, { account_id: acct(adminConn), campaign_id: "newbasic", amount: 9e12 })
+      expect(start.isError, start.text).toBe(false)
+      expect(start.sc.status).toBe("confirmation_required")
+      // the same MCP in advanced: the adapter gets "advanced"
+      const adv = await w.mcp(w.users.admin, cfg(adminConn, { tiktokGmvMaxWrite: true }))
+      seen.guardCurrency = null
+      await w.call(adv.key, WRITE_TOOL, args)
+      expect(seen.tool.at(-1)).toMatchObject({ protectionMode: "advanced" })
+    })
+
     it("ads_update_budget asks the provider hook with op 'update': a flagged campaign needs confirmation; others execute directly", async () => {
       const mcp = await w.mcp(
         w.users.admin,

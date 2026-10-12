@@ -11,7 +11,28 @@ import type { Platform } from "../providers/types"
 export const PERMISSIONS = ["read", "status", "update", "copy", "create", "delete"] as const
 export type Permission = (typeof PERMISSIONS)[number]
 
+/**
+ * MCP protection mode. "basic": only the expiry date applies - no two-step confirmation (ads_delete_object and TikTok
+ * GMV Max writes still always confirm), no budget-change % limit, no per-currency money caps, no request / write rate
+ * limit, no Telegram hourly limit, any IP; TikTok GMV Max create / copy need "advanced" + a daily cap. The advanced
+ * values stay stored (applied again when switched back). "advanced": every setting below applies (behaviour before
+ * the mode existed). Rows saved before the feature have no key → "advanced".
+ */
+export const PROTECTION_MODES = ["basic", "advanced"] as const
+export type ProtectionMode = (typeof PROTECTION_MODES)[number]
+
+/** Value of a numeric limit that does not apply (basic mode). Check with isUnlimited() - never do arithmetic on it. */
+export const UNLIMITED = Number.POSITIVE_INFINITY
+
+/** true when a numeric limit of the effective settings does not apply (basic mode). Only UNLIMITED itself - a NaN
+ * computed by mistake must never open a limit. */
+export function isUnlimited(n: number): boolean {
+  return n === UNLIMITED
+}
+
 export interface McpSettings {
+  /** basic / advanced (see PROTECTION_MODES). Grant settings are already effective (effectiveMcpSettings). */
+  protectionMode: ProtectionMode
   /** require preview + confirm_token for write tools (delete always requires it) */
   twoStepConfirm: boolean
   /** max % change of a budget in one call (e.g. 50 → ±50%) */
@@ -65,6 +86,8 @@ export const TELEGRAM_MESSAGES_PER_HOUR = { min: 1, max: 200, default: 20 } as c
 export const LIFETIME_DEFAULT_DAYS = 30
 
 export const DEFAULT_MCP_SETTINGS: McpSettings = {
+  // runtime default for a stored row without the key (saved before the mode existed); new MCPs default to basic in the form
+  protectionMode: "advanced",
   twoStepConfirm: true,
   budgetChangeMaxPct: 50,
   maxDailyBudget: {},

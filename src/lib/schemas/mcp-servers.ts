@@ -8,7 +8,7 @@ import {
   MULTILINE_FORBIDDEN_CHARS,
   NAME_FORBIDDEN_CHARS,
 } from "@/lib/text-safety"
-import type { Permission } from "@/server/mcp/types"
+import type { Permission, ProtectionMode } from "@/server/mcp/types"
 import type { Platform } from "@/server/providers/types"
 
 /** Platforms an MCP can use in this build (src/lib/platforms.ts). */
@@ -54,6 +54,9 @@ export function missingDailyCapCurrencies(
   }
   return [...missing].sort()
 }
+
+/** Protection modes (same values as PROTECTION_MODES in src/server/mcp/types.ts - client code must not import it). */
+export const MCP_PROTECTION_MODES = ["basic", "advanced"] as const satisfies readonly ProtectionMode[]
 
 export const MCP_LIMITS = {
   nameMax: 80,
@@ -155,6 +158,11 @@ export const MCP_CAP_FIELDS = [
 export type McpCapField = (typeof MCP_CAP_FIELDS)[number]
 
 export const mcpSettingsSchema = z.object({
+  /**
+   * basic = only the expiry applies (every limit below is kept but not enforced); advanced = all of them apply.
+   * Omitted on input (older clients) → advanced, the behaviour before the mode existed.
+   */
+  protectionMode: z.enum(MCP_PROTECTION_MODES).default("advanced"),
   twoStepConfirm: z.boolean(),
   budgetChangeMaxPct: z
     .number({ error: msg.budgetPct })
@@ -208,6 +216,8 @@ export const mcpSettingsSchema = z.object({
 export type McpSettingsInput = z.infer<typeof mcpSettingsSchema>
 
 export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
+  /** new MCPs start in basic mode (owner decision 2026-10-13); stored rows without the key read as advanced */
+  protectionMode: "basic",
   twoStepConfirm: true,
   budgetChangeMaxPct: 50,
   maxDailyBudget: {},
@@ -226,6 +236,7 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
 
 /** Shape stored in `mcp_servers.settings` (snake_case, as documented in 03-database-schema.md). */
 export interface StoredMcpSettings {
+  protection_mode: ProtectionMode
   two_step_confirm: boolean
   budget_change_max_pct: number
   max_daily_budget: Record<string, number>
@@ -253,6 +264,7 @@ function sortedCaps(r: Record<string, number>): Record<string, number> {
 /** Validated settings → jsonb (read back with parseMcpSettings in src/server/mcp/settings.ts). */
 export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
   return {
+    protection_mode: s.protectionMode,
     two_step_confirm: s.twoStepConfirm,
     budget_change_max_pct: s.budgetChangeMaxPct,
     max_daily_budget: sortedCaps(s.maxDailyBudget),
@@ -443,6 +455,8 @@ export type McpFormValues = {
   name: string
   description: string
   platforms: Record<ReleasedPlatform, PlatformDraft>
+  /** basic = only the expiry applies (the advanced fields below are hidden, kept and not enforced) */
+  protectionMode: ProtectionMode
   twoStepConfirm: boolean
   budgetChangeMaxPct: string
   /** currency → amount text ("" = no cap) */
@@ -503,6 +517,7 @@ export function defaultMcpFormValues(): McpFormValues {
       google_ads: emptyPlatformDraft(),
       openai_ads: emptyPlatformDraft(),
     },
+    protectionMode: DEFAULT_SETTINGS_INPUT.protectionMode,
     twoStepConfirm: DEFAULT_SETTINGS_INPUT.twoStepConfirm,
     budgetChangeMaxPct: String(DEFAULT_SETTINGS_INPUT.budgetChangeMaxPct),
     maxDailyBudget: {},
@@ -587,10 +602,49 @@ export function capsNumbersToText(
   )
 }
 
+/**
+ * Basic mode hides the advanced fields: keep their valid values (applied again when the owner switches back to
+ * advanced) and reset invalid ones to the defaults, so a hidden field can never block a save.
+ */
+export function sanitizeHiddenAdvanced(v: McpFormValues): McpFormValues {
+  const e = validateProtectionStep(
+    { ...v, protectionMode: "advanced", expiresOn: "" },
+    { requireFutureExpiry: false }
+  )
+  // no early return: the currency-count limit below is not part of validateProtectionStep
+  const d = defaultMcpFormValues()
+  const out: McpFormValues = { ...v }
+  if (e.budgetChangeMaxPct) out.budgetChangeMaxPct = d.budgetChangeMaxPct
+  if (e.rateLimitPerMin) out.rateLimitPerMin = d.rateLimitPerMin
+  if (e.writeRateLimitPer10Min)
+    out.writeRateLimitPer10Min = d.writeRateLimitPer10Min
+  if (e.telegramMessagesPerHour)
+    out.telegramMessagesPerHour = d.telegramMessagesPerHour
+  for (const field of MCP_CAP_FIELDS) {
+    const kept = Object.entries(v[field] ?? {}).filter(
+      ([cur]) => !e[`${field}.${cur}`]
+    )
+    // a currency limit (more than currenciesMax entries) would fail the server schema: keep the first ones
+    out[field] = Object.fromEntries(
+      kept
+        .filter(([, text]) => text.trim() !== "")
+        .slice(0, MCP_LIMITS.currenciesMax)
+    )
+  }
+  if (e.allowedIps)
+    out.allowedIpsText = parseIpList(v.allowedIpsText)
+      .filter(isValidIpOrCidr)
+      .slice(0, MCP_LIMITS.allowedIpsMax)
+      .join("\n")
+  return out
+}
+
 /** Steps 2–4 of the form → API config (validated again on the server). */
 export function formValuesToConfig(
-  v: McpFormValues
+  values: McpFormValues
 ): z.input<typeof mcpConfigSchema> {
+  const v =
+    values.protectionMode === "basic" ? sanitizeHiddenAdvanced(values) : values
   const platforms = MCP_PLATFORMS.filter((p) => v.platforms[p]?.enabled).map(
     (p) => ({
       platform: p,
@@ -608,6 +662,9 @@ export function formValuesToConfig(
   return {
     platforms,
     settings: {
+      // a value missing here (never for a form built by defaultMcpFormValues / configToFormValues) must not loosen an
+      // existing MCP: same fallback as the server schema
+      protectionMode: v.protectionMode ?? "advanced",
       twoStepConfirm: v.twoStepConfirm,
       budgetChangeMaxPct: Number(v.budgetChangeMaxPct),
       maxDailyBudget: capsTextToNumbers(v.maxDailyBudget),
@@ -678,6 +735,8 @@ export function configToFormValues(config: {
       })),
     }
   }
+  // missing on rows saved before the mode existed → advanced (same default as the runtime parser)
+  v.protectionMode = config.settings.protectionMode ?? "advanced"
   v.twoStepConfirm = config.settings.twoStepConfirm
   v.budgetChangeMaxPct = String(config.settings.budgetChangeMaxPct)
   v.maxDailyBudget = capsNumbersToText(config.settings.maxDailyBudget)
@@ -776,6 +835,9 @@ export function validateProtectionStep(
   } = {}
 ): StepErrors {
   const e: StepErrors = {}
+  validateExpiry(v, opts, e)
+  // basic mode: only the expiry applies; the hidden advanced fields are sanitized on submit (sanitizeHiddenAdvanced)
+  if (v.protectionMode === "basic") return e
   const pct = Number(v.budgetChangeMaxPct)
   if (
     !mcpSettingsSchema.shape.budgetChangeMaxPct.safeParse(pct).success ||
@@ -822,16 +884,22 @@ export function validateProtectionStep(
   const bad = ips.find((ip) => !isValidIpOrCidr(ip))
   if (bad) e.allowedIps = msg.ip(bad)
   else if (ips.length > MCP_LIMITS.allowedIpsMax) e.allowedIps = msg.tooManyIps
-  if (v.expiresOn) {
-    const iso = expiryDateToIso(v.expiresOn)
-    if (!iso) e.expiresOn = msg.expiresAt
-    else if (
-      opts.requireFutureExpiry !== false &&
-      new Date(iso).getTime() <= Date.now()
-    )
-      e.expiresOn = msg.expiresFuture
-  }
   return e
+}
+
+function validateExpiry(
+  v: McpFormValues,
+  opts: { requireFutureExpiry?: boolean },
+  e: StepErrors
+): void {
+  if (!v.expiresOn) return
+  const iso = expiryDateToIso(v.expiresOn)
+  if (!iso) e.expiresOn = msg.expiresAt
+  else if (
+    opts.requireFutureExpiry !== false &&
+    new Date(iso).getTime() <= Date.now()
+  )
+    e.expiresOn = msg.expiresFuture
 }
 
 // ---------------------------------------------------------------------------

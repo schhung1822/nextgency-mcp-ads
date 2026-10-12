@@ -529,6 +529,33 @@ describe.skipIf(!hasDb)(
       expect(rows).toHaveLength(1)
     })
 
+    it("basic protection mode: no hourly limit (the stored one is kept, not applied); messages_per_hour = null for the AI", async () => {
+      const mcp = await w.mcp(w.users.staff, {
+        platforms: metaRead(),
+        notificationChannelIds: [staffCh],
+        settings: { protectionMode: "basic", telegramTool: true, telegramMessagesPerHour: 1 },
+      })
+      const listed = await w.call(mcp.key, "telegram_list_channels", {})
+      expect(listed.isError, listed.text).toBe(false)
+      expect(listed.sc).toMatchObject({ can_send: true, messages_per_hour: null })
+      for (const [i, text] of ["một", "hai", "ba"].entries()) {
+        const r = await w.call(mcp.key, "telegram_send_message", { text })
+        expect(r.isError, r.text).toBe(false)
+        expect(r.sc).toMatchObject({ status: "sent", sent_last_hour: i + 1, messages_per_hour: null })
+        expect(JSON.stringify(r.sc)).not.toMatch(/Infinity/)
+      }
+      expect(api.sent).toHaveLength(3)
+      // the same stored limit in advanced applies
+      const adv = await w.mcp(w.users.staff, {
+        platforms: metaRead(),
+        notificationChannelIds: [staffCh],
+        settings: { telegramTool: true, telegramMessagesPerHour: 1 },
+      })
+      expect((await w.call(adv.key, "telegram_list_channels", {})).sc.messages_per_hour).toBe(1)
+      expect((await w.call(adv.key, "telegram_send_message", { text: "1" })).isError).toBe(false)
+      expect((await w.call(adv.key, "telegram_send_message", { text: "2" })).sc.code).toBe("telegram_rate_limited")
+    })
+
     it("telegram_send_message: a Telegram failure is a tool error (Vietnamese), counted in the quota", async () => {
       const mcp = await w.mcp(w.users.staff, {
         platforms: metaRead(),

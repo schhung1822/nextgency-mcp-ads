@@ -264,7 +264,7 @@ export const guides = {
           {
             title: "GMV Max (TikTok Shop) - chỉ quản trị viên",
             detail:
-              "Thẻ TikTok Ads có công tắc Cho phép AI thay đổi GMV Max (mặc định tắt: AI chỉ xem chỉ số GMV Max). Chỉ quản trị viên bật được; nhân viên nhờ quản trị viên mở MCP để bật. Khi bật, mọi thay đổi GMV Max luôn phải xác nhận 2 bước và cần trần ngân sách/ngày; chiến dịch GMV Max tạo mới / sao chép chạy ngay. Đọc kỹ ảnh hưởng của từng quyền hiện ngay dưới công tắc.",
+              "Thẻ TikTok Ads có công tắc Cho phép AI thay đổi GMV Max (mặc định tắt: AI chỉ xem chỉ số GMV Max). Chỉ quản trị viên bật được; nhân viên nhờ quản trị viên mở MCP để bật. Khi bật, mọi thay đổi GMV Max luôn phải xác nhận 2 bước; ở chế độ bảo vệ Tùy chỉnh nâng cao còn cần trần ngân sách/ngày, ở chế độ Cơ bản AI không tạo mới / sao chép được chiến dịch GMV Max. Chiến dịch GMV Max tạo mới / sao chép chạy ngay. Đọc kỹ ảnh hưởng của từng quyền hiện ngay dưới công tắc.",
           },
           {
             title: "Google Drive",
@@ -282,32 +282,37 @@ export const guides = {
       {
         title: "Bước 4 · Bảo vệ",
         summary:
-          "Đã có mặc định an toàn, bạn có thể bấm Tạo MCP ngay hoặc siết thêm.",
+          "Mặc định là chế độ Cơ bản: chỉ đặt ngày hết hạn. Bật Tùy chỉnh nâng cao nếu muốn siết thêm.",
         steps: [
+          {
+            title: "Cơ bản hoặc Tùy chỉnh nâng cao",
+            detail:
+              "Cơ bản (mặc định): chỉ áp dụng ngày hết hạn - không xác nhận 2 bước, không trần chi tiêu, không giới hạn tốc độ, mọi IP. Xoá vẫn luôn cần xác nhận và đối tượng tạo mới vẫn ở trạng thái tạm dừng.\nBật Tùy chỉnh nâng cao để đặt các giới hạn bên dưới. Tắt lại thì giá trị đã nhập được giữ, bật lại là áp dụng.",
+          },
           {
             title: "Xác nhận 2 bước cho thao tác ghi",
             detail:
               "AI cho bạn xem trước thay đổi (ví dụ ngân sách cũ → mới) và chỉ làm khi bạn đồng ý. Nên để bật.",
           },
           {
-            title: "Giới hạn ngân sách",
+            title: "Giới hạn ngân sách (nâng cao)",
             detail:
               "Giới hạn % thay đổi mỗi lần và trần theo từng loại tiền (ngày, trọn đời, giá thầu/CPA). Tiền tệ không bao giờ bị cộng chéo.",
           },
           {
-            title: "Giới hạn tốc độ",
+            title: "Giới hạn tốc độ (nâng cao)",
             detail:
               "Số lệnh mỗi phút và số thao tác ghi mỗi 10 phút, để AI không gọi dồn dập.",
           },
           {
-            title: "Giới hạn tin Telegram / giờ",
+            title: "Giới hạn tin Telegram / giờ (nâng cao)",
             detail:
               "Chỉ hiện khi MCP dùng kết nối Telegram: số tin AI được gửi mỗi giờ (mặc định 20).",
           },
           {
             title: "Thời hạn & IP",
             detail:
-              "Ngày hết hạn (link tự ngừng) và danh sách IP được phép. Để trống nếu không cần.",
+              "Ngày hết hạn (link tự ngừng, có ở cả hai chế độ) và danh sách IP được phép (nâng cao). Để trống nếu không cần.",
           },
           {
             title: "Bấm Tạo MCP",
@@ -317,7 +322,7 @@ export const guides = {
         ],
         warnings: [
           "Đặt danh sách IP sẽ chặn Claude Code/Gemini CLI chạy trên máy cá nhân có IP thay đổi.",
-          "Tắt xác nhận 2 bước nghĩa là AI sửa quảng cáo ngay khi được yêu cầu.",
+          "Tắt xác nhận 2 bước (hoặc dùng chế độ Cơ bản) nghĩa là AI sửa quảng cáo ngay khi được yêu cầu.",
         ],
       },
     ] satisfies readonly GuideDef[],
@@ -383,7 +388,7 @@ export const guides = {
         {
           title: "Telegram",
           detail:
-            "Chọn kết nối Telegram ở khung Nền tảng, bật AI được gửi tin / Tự báo khi AI thay đổi quảng cáo ở khung Quyền, giới hạn tin/giờ ở khung Bảo vệ.",
+            "Chọn kết nối Telegram ở khung Nền tảng, bật AI được gửi tin / Tự báo khi AI thay đổi quảng cáo ở khung Quyền, giới hạn tin/giờ ở khung Bảo vệ (chế độ Tùy chỉnh nâng cao).",
         },
         {
           title: "Google Drive",
@@ -752,7 +757,7 @@ export const guides = {
       {
         title: "Tạo MCP riêng",
         detail:
-          "Chế độ Chỉ báo cáo: quyền Chỉ xem. Chế độ Tự tắt: Xem + Bật/Tắt, tắt Xác nhận 2 bước, trần ngân sách thấp.",
+          "Chế độ Chỉ báo cáo: quyền Chỉ xem. Chế độ Tự tắt: Xem + Bật/Tắt, bật Tùy chỉnh nâng cao ở bước Bảo vệ, tắt Xác nhận 2 bước, trần ngân sách thấp.",
       },
       {
         title: "Soạn quy tắc",
@@ -796,7 +801,7 @@ export const guides = {
       {
         title: "MCP riêng",
         detail:
-          'Quyền Tạo mới, Trần ngân sách/ngày, bật "Cho phép ghi trạng thái vào Google Sheet", gán thư mục + sheet.',
+          'Quyền Tạo mới, bước Bảo vệ bật Tùy chỉnh nâng cao + Trần ngân sách/ngày (khuyên dùng), bật "Cho phép ghi trạng thái vào Google Sheet", gán thư mục + sheet.',
       },
       {
         title: "Chạy theo lượt nhỏ",

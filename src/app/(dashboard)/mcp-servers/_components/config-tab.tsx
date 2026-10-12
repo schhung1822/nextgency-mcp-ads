@@ -40,6 +40,7 @@ import {
 import {
   CAPS_SECTION_ID,
   NameSection,
+  PROTECTION_MODE_SWITCH_ID,
   PermissionsSection,
   PlatformsSection,
   ProtectionSection,
@@ -67,10 +68,14 @@ const NO_GMV_MAX: GmvMaxFormContext = { isAdmin: false, flags: {} }
 /**
  * Scroll the per-currency caps section into view (smooth unless reduced motion) and focus the first
  * required daily cap that is still empty (else the first required one, else the section heading).
+ * The section only exists in advanced mode: in basic mode land on the mode switch instead.
  */
 function focusCapsSection() {
   const section = document.getElementById(CAPS_SECTION_ID)
-  if (!section) return
+  if (!section) {
+    focusProtectionModeSwitch()
+    return
+  }
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
   section.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" })
   const required = [
@@ -83,6 +88,15 @@ function focusCapsSection() {
     required[0] ??
     section.querySelector<HTMLElement>("h3")
   target?.focus({ preventScroll: true })
+}
+
+/** Bring the protection mode switch (Cơ bản / Tùy chỉnh nâng cao) into view and focus it. */
+function focusProtectionModeSwitch() {
+  const el = document.getElementById(PROTECTION_MODE_SWITCH_ID)
+  if (!el) return
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" })
+  el.focus({ preventScroll: true })
 }
 
 /**
@@ -217,17 +231,33 @@ export function ConfigTab({
     return () => onDirtyChange?.(false)
   }, [dirty, onDirtyChange])
 
+  const savedMode = mcp.settings.protectionMode
   // ?tab=config&focus=caps (link / reload) or the banner action: land on the caps section once
   React.useEffect(() => {
     const url = new URL(window.location.href)
     if (capsFocusSignal === 0 && url.searchParams.get("focus") !== "caps")
       return
     // the tab content was hidden until this render: wait for layout before scrolling
-    const raf = requestAnimationFrame(focusCapsSection)
+    let inner = 0
+    const raf = requestAnimationFrame(() => {
+      // the caps live in the advanced groups. The banner only shows for a saved advanced MCP, but the form may have
+      // been switched to basic without saving: show the advanced groups again, then scroll once they are rendered
+      // (a saved basic MCP is left as it is and lands on the mode switch)
+      if (savedMode !== "basic")
+        update((v) =>
+          v.protectionMode === "basic"
+            ? { ...v, protectionMode: "advanced" }
+            : v
+        )
+      inner = requestAnimationFrame(focusCapsSection)
+    })
     url.searchParams.delete("focus")
     window.history.replaceState(window.history.state, "", url)
-    return () => cancelAnimationFrame(raf)
-  }, [capsFocusSignal])
+    return () => {
+      cancelAnimationFrame(raf)
+      cancelAnimationFrame(inner)
+    }
+  }, [capsFocusSignal, savedMode, update])
 
   const save = (e: React.FormEvent) => {
     e.preventDefault()
@@ -263,6 +293,8 @@ export function ConfigTab({
       setErrors(mapped)
       toast.error(r.error)
       if (mapped.tiktokGmvMaxWrite) requestAnimationFrame(focusGmvMaxSwitch)
+      else if (mapped.protectionMode)
+        requestAnimationFrame(focusProtectionModeSwitch)
     })
   }
 
@@ -405,6 +437,8 @@ export function ConfigTab({
             toast.error(r.error)
             if (mapped.errors.tiktokGmvMaxWrite)
               requestAnimationFrame(focusGmvMaxSwitch)
+            else if (mapped.errors.protectionMode)
+              requestAnimationFrame(focusProtectionModeSwitch)
             return true
           }}
         />

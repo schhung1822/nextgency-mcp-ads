@@ -322,6 +322,13 @@ export interface MutationOptions {
    */
   dailySpendGuard?: (items: DailySpendCheck[]) => void
   /**
+   * MCP protection mode, set by mcp-core from the grant. "basic" = the MCP has NO money caps on purpose: mcp-core's
+   * dailySpendGuard lets everything through and the adapters skip their cumulative started-spend check (S5), but a
+   * write that starts a NEW object running at once (TikTok GMV Max create / copy) is refused - it needs "advanced" +
+   * a daily cap. Such writes run ONLY with an explicit "advanced" (absent → refused, fail closed).
+   */
+  protectionMode?: "basic" | "advanced"
+  /**
    * Successful executed changes of one field on one object made through ANY MCP of this app (mcp_call_logs), newest
    * first, within the last `sinceHours`. Used for warnings only (TikTok GMV Max ROI changes). Absent → no history.
    */

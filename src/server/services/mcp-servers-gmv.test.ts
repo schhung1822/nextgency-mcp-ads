@@ -367,5 +367,67 @@ describe.skipIf(!hasDb)(
       const d = (await getMcpServer(staff, mcpId))!
       expect(d.settings.allowedIps).toEqual(["198.51.100.7"])
     })
+
+    it("protection mode: staff switching advanced → basic while the switch is on is a widening; admin may; staff may switch back", async () => {
+      const d = (await getMcpServer(staff, mcpId))!
+      expect(d.settings.protectionMode).toBe("advanced")
+      const same = (protectionMode: "basic" | "advanced") =>
+        ({
+          ...cfg({ accountIds: null, settings: on({ allowedIps: d.settings.allowedIps, protectionMode }) }),
+          expiresAt: d.expiresAt,
+        }) as unknown as ReturnType<typeof cfg>
+      await expect(upd(staff, same("basic"))).rejects.toMatchObject({
+        code: "invalid",
+        message: MCP_ERRORS.gmvMaxStaffWidening,
+        fieldErrors: { "settings.protectionMode": MCP_ERRORS.gmvMaxStaffWidening },
+      })
+      expect((await getMcpServer(staff, mcpId))!.protectionMode).toBe("advanced")
+      expect((await upd(admin, same("basic"))).changed).toBe(true)
+      const basic = (await getMcpServer(staff, mcpId))!
+      expect([basic.protectionMode, basic.settings.protectionMode]).toEqual(["basic", "basic"])
+      // the hidden advanced values are kept
+      expect(basic.settings.allowedIps).toEqual(d.settings.allowedIps)
+      // the stored (hidden) values still bound a staff save: raising one while basic is refused
+      await expect(
+        upd(staff, {
+          ...same("basic"),
+          settings: { ...same("basic").settings, budgetChangeMaxPct: 99 },
+        } as unknown as ReturnType<typeof cfg>)
+      ).rejects.toMatchObject({ message: MCP_ERRORS.gmvMaxStaffWidening })
+      // basic → advanced with the same values: narrowing
+      expect((await upd(staff, same("advanced"))).changed).toBe(true)
+      expect((await getMcpServer(staff, mcpId))!.protectionMode).toBe("advanced")
+    })
+
+    it("protection mode: a basic MCP saves without daily caps, shows no missing-cap warning and logs the mode in the diff", async () => {
+      const noCaps = (protectionMode: "basic" | "advanced") =>
+        cfg({ settings: { protectionMode, maxDailyBudget: {}, maxLifetimeBudget: {}, maxBid: {} } })
+      await expect(createMcpServer(staff, noCaps("advanced"), okVerify)).rejects.toMatchObject({
+        code: "invalid",
+        message: MCP_ERRORS.dailyCapRequired(["VND"]),
+      })
+      const { id } = await createMcpServer(staff, noCaps("basic"), okVerify)
+      const d = (await getMcpServer(staff, id))!
+      expect(d).toMatchObject({ protectionMode: "basic", capsMissing: [] })
+      expect(d.settings).toMatchObject({ protectionMode: "basic", maxDailyBudget: {} })
+      const item = (await listMcpServers(staff)).find((m) => m.id === id)!
+      expect(item).toMatchObject({ protectionMode: "basic", capsMissing: [] })
+      // the stored row carries the mode
+      const [row] = await db.select({ settings: mcpServers.settings }).from(mcpServers).where(eq(mcpServers.id, id))
+      expect((row!.settings as Record<string, unknown>).protection_mode).toBe("basic")
+      // back to advanced: the daily cap rule applies again
+      await expect(updateMcpServer(staff, { ...noCaps("advanced"), id })).rejects.toMatchObject({
+        message: MCP_ERRORS.dailyCapRequired(["VND"]),
+      })
+      expect(
+        (await updateMcpServer(staff, { ...cfg({ settings: { protectionMode: "advanced" } }), id })).changed
+      ).toBe(true)
+      expect((await getMcpServer(staff, id))!.protectionMode).toBe("advanced")
+      const logs = await db
+        .select({ metadata: activityLogs.metadata })
+        .from(activityLogs)
+        .where(and(eq(activityLogs.targetId, id), eq(activityLogs.action, "mcp.update")))
+      expect(JSON.stringify(logs.map((l) => l.metadata))).toMatch(/"protectionMode":"basic".*"protectionMode":"advanced"|"protectionMode":"advanced".*"protectionMode":"basic"/)
+    })
   }
 )

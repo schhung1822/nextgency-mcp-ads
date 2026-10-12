@@ -137,7 +137,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Token, API key, khoá service account, bot token Telegram và đường dẫn MCP được mã hoá AES-256-GCM; khoá mã hoá được giữ tách khỏi cơ sở dữ liệu.",
             "Mật khẩu được băm một chiều; hỗ trợ xác thực 2 bước (TOTP); tạm khoá khi nhập sai nhiều lần.",
             "Phân quyền theo vai trò Quản trị viên / Nhân viên; nhân viên chỉ thấy kết nối, kênh Telegram và MCP của chính mình; thư mục / sheet Google Drive riêng chỉ chủ sở hữu và quản trị viên thấy.",
-            "Thao tác ghi do trợ lý AI đề xuất có thể yêu cầu xác nhận 2 bước và bị giới hạn ngân sách; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng, trừ chiến dịch TikTok GMV Max: TikTok không cho tạo ở trạng thái tạm dừng nên chiến dịch GMV Max tạo mới hoặc sao chép sẽ chạy và phát sinh chi phí ngay - chỉ làm được khi quản trị viên đã bật quyền thay đổi GMV Max cho MCP và người dùng xác nhận.",
+            "Thao tác ghi do trợ lý AI đề xuất có thể yêu cầu xác nhận 2 bước và bị giới hạn ngân sách tuỳ chế độ bảo vệ của từng MCP (chế độ Cơ bản chỉ áp dụng thời hạn MCP; xoá và thay đổi TikTok GMV Max luôn cần xác nhận); quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng, trừ chiến dịch TikTok GMV Max: TikTok không cho tạo ở trạng thái tạm dừng nên chiến dịch GMV Max tạo mới hoặc sao chép sẽ chạy và phát sinh chi phí ngay - chỉ làm được khi quản trị viên đã bật quyền thay đổi GMV Max cho MCP và người dùng xác nhận.",
             "Đường dẫn MCP sai, đã tắt hoặc hết hạn không trả về dữ liệu."
           ),
           p(
@@ -306,7 +306,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Tokens, API keys, service account keys, Telegram bot tokens and MCP links are encrypted with AES-256-GCM; encryption keys are kept separate from the database.",
             "Passwords are hashed; two-factor authentication (TOTP) is supported; repeated wrong attempts trigger a temporary lock.",
             "Role-based access (Administrator / Staff); staff only see their own connections, Telegram channels and MCP servers; personal Google Drive folders / sheets are only visible to their owner and administrators.",
-            "Write actions proposed by an AI assistant can require two-step confirmation and are subject to budget limits; newly created or copied ads always start paused, except TikTok GMV Max campaigns: TikTok does not allow creating them paused, so a newly created or copied GMV Max campaign starts delivering and spending immediately - this is only possible after an administrator has enabled GMV Max changes for the MCP and the user has confirmed.",
+            "Write actions proposed by an AI assistant can require two-step confirmation and be subject to budget limits, depending on each MCP's protection mode (Basic mode only applies the MCP expiry date; deletions and TikTok GMV Max changes always require confirmation); newly created or copied ads always start paused, except TikTok GMV Max campaigns: TikTok does not allow creating them paused, so a newly created or copied GMV Max campaign starts delivering and spending immediately - this is only possible after an administrator has enabled GMV Max changes for the MCP and the user has confirmed.",
             "Invalid, disabled or expired MCP links return no data."
           ),
           p(
@@ -436,7 +436,7 @@ function termsVi(c: LegalInfo): LegalDoc {
         blocks: [
           ul(
             "Mọi thay đổi trên tài khoản quảng cáo, kể cả thay đổi do trợ lý AI thực hiện qua MCP, đều dùng token hoặc API key do bạn cung cấp và có thể phát sinh chi phí thật. Bạn và đơn vị của bạn chịu trách nhiệm về ngân sách, chi tiêu và nội dung quảng cáo.",
-            "Hệ thống có các lớp bảo vệ: xác nhận 2 bước cho thao tác ghi (khi bật), giới hạn mức thay đổi ngân sách, trần ngân sách, giới hạn số thao tác; quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng, trừ chiến dịch TikTok GMV Max (tạo mới hoặc sao chép sẽ chạy và tiêu tiền ngay, chỉ khi quản trị viên đã bật quyền thay đổi GMV Max cho MCP). Các lớp này giúp giảm rủi ro nhưng không thay thế việc bạn kiểm tra trước khi xác nhận và trước khi bật quảng cáo.",
+            "Hệ thống có các lớp bảo vệ tuỳ chọn cho từng MCP (chế độ Tùy chỉnh nâng cao): xác nhận 2 bước cho thao tác ghi, giới hạn mức thay đổi ngân sách, trần ngân sách, giới hạn số thao tác, giới hạn địa chỉ IP; chế độ Cơ bản chỉ áp dụng thời hạn MCP (xoá và thay đổi TikTok GMV Max vẫn luôn cần xác nhận); quảng cáo tạo mới hoặc sao chép luôn ở trạng thái tạm dừng, trừ chiến dịch TikTok GMV Max (tạo mới hoặc sao chép sẽ chạy và tiêu tiền ngay, chỉ khi quản trị viên đã bật quyền thay đổi GMV Max cho MCP). Các lớp này giúp giảm rủi ro nhưng không thay thế việc bạn kiểm tra trước khi xác nhận và trước khi bật quảng cáo.",
             "Trợ lý AI có thể hiểu sai yêu cầu: hãy đọc kỹ bản xem trước trước khi xác nhận. Thao tác xoá không hoàn tác được."
           ),
         ],
@@ -585,7 +585,7 @@ function termsEn(c: LegalInfo): LegalDoc {
         blocks: [
           ul(
             "Every change to an ad account, including changes made by an AI assistant through MCP, uses the token or API key you provided and may incur real costs. You and your organisation are responsible for budgets, spend and ad content.",
-            "The System adds safeguards: two-step confirmation for write actions (when enabled), budget change limits, budget caps and write-rate limits; newly created or copied ads always start paused, except TikTok GMV Max campaigns (a newly created or copied GMV Max campaign starts delivering and spending immediately, and only when an administrator has enabled GMV Max changes for the MCP). These reduce risk but do not replace your own review before confirming and before activating ads.",
+            "The System offers optional per-MCP safeguards (Advanced protection mode): two-step confirmation for write actions, budget change limits, budget caps, write-rate limits and an IP allowlist; Basic mode only applies the MCP expiry date (deletions and TikTok GMV Max changes still always require confirmation); newly created or copied ads always start paused, except TikTok GMV Max campaigns (a newly created or copied GMV Max campaign starts delivering and spending immediately, and only when an administrator has enabled GMV Max changes for the MCP). These reduce risk but do not replace your own review before confirming and before activating ads.",
             "An AI assistant can misunderstand a request: read the preview carefully before confirming. Deletions cannot be undone."
           ),
         ],
@@ -904,9 +904,9 @@ export const legal = {
     terms: "Điều khoản",
     dataDeletion: "Xoá dữ liệu",
   },
-  updatedAt: "10/10/2026",
-  updatedAtIso: "2026-10-10",
-  updatedAtEn: "October 10, 2026",
+  updatedAt: "13/10/2026",
+  updatedAtIso: "2026-10-13",
+  updatedAtEn: "October 13, 2026",
   /** prefilled subject of the mailto link on /data-deletion */
   deletionMailSubject: "Yêu cầu xoá dữ liệu",
   updatedLabel: { vi: "Cập nhật lần cuối", en: "Last updated" },

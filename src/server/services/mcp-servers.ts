@@ -80,7 +80,7 @@ import {
 import type { McpDriveSourceRef } from "@/lib/schemas/drive"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import { parseMcpSettings } from "@/server/mcp/settings"
-import type { McpSettings, Permission } from "@/server/mcp/types"
+import type { McpSettings, Permission, ProtectionMode } from "@/server/mcp/types"
 import type { Platform } from "@/server/providers/types"
 import { disclaimerAuditMeta, type CreateAudit } from "@/server/services/disclaimers"
 
@@ -125,7 +125,7 @@ export const MCP_ERRORS = {
     `MCP có quyền ghi phải đặt trần ngân sách/ngày cho: ${curs.join(", ")}.`,
   gmvMaxAdminOnly: "Chỉ quản trị viên được bật quyền thay đổi GMV Max.",
   gmvMaxStaffWidening:
-    "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt. Mở rộng tài khoản, quyền, hạn mức TikTok, danh sách IP được phép hoặc ngày hết hạn cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
+    "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt. Mở rộng tài khoản, quyền, hạn mức TikTok, danh sách IP được phép, ngày hết hạn hoặc chuyển sang chế độ bảo vệ Cơ bản cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
 } as const
 
 /**
@@ -147,6 +147,8 @@ export interface McpListItem {
   id: string
   /** settings.tiktokGmvMaxWrite: an admin allowed the AI to change TikTok GMV Max campaigns (list badge) */
   tiktokGmvMaxWrite: boolean
+  /** settings.protectionMode: basic = only the expiry applies (rows saved before the mode existed: advanced) */
+  protectionMode: ProtectionMode
   name: string
   description: string | null
   ownerId: string
@@ -169,6 +171,7 @@ export interface McpListItem {
   /**
    * Currencies of the ad accounts reachable with money-write permissions (status/update/copy/create) that
    * have no daily cap - always [] right after a save (enforced); legacy MCPs or accounts synced later may show some.
+   * Always [] for a basic-mode MCP (no caps on purpose).
    */
   capsMissing: string[]
 }
@@ -540,12 +543,17 @@ async function requiredCapCurrencies(
   return [...new Set(rows.map((r) => r.currency.toUpperCase()))].sort()
 }
 
-/** Save-time rule: an MCP with money-write permissions needs a daily cap for every currency in that scope. */
+/**
+ * Save-time rule: an MCP with money-write permissions needs a daily cap for every currency in that scope.
+ * Basic protection mode: no caps apply (the hidden advanced values were validated by the schema) - checked again
+ * when the MCP is switched back to advanced.
+ */
 async function assertDailyCaps(
   tx: Tx | typeof db,
   platforms: PlatformScopes,
   settings: McpSettingsInput
 ): Promise<void> {
+  if (settings.protectionMode === "basic") return
   const missing = missingDailyCapCurrencies(
     settings.maxDailyBudget,
     await requiredCapCurrencies(tx, platforms)
@@ -564,12 +572,18 @@ async function assertDailyCaps(
 
 /**
  * Per MCP: currencies of the ENABLED ad accounts in a money-write scope that have no daily cap in `settings`
- * (one query for all ids). Feeds the "no spending cap" warning of legacy MCPs.
+ * (one query for all ids). Feeds the "no spending cap" warning of legacy MCPs. Basic-mode MCPs: none (no caps on
+ * purpose).
  */
 async function capsMissingFor(
-  rows: { id: string; settings: unknown }[]
+  all: { id: string; settings: unknown }[]
 ): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>()
+  const rows = all.filter((r) => {
+    const basic = parseMcpSettings(r.settings).protectionMode === "basic"
+    if (basic) out.set(r.id, [])
+    return !basic
+  })
   if (rows.length === 0) return out
   const found = await db
     .selectDistinct({
@@ -1062,6 +1076,7 @@ export async function listMcpServers(actor: McpActor): Promise<McpListItem[]> {
       createdAt: r.createdAt.toISOString(),
       capsMissing: missing.get(r.id) ?? [],
       tiktokGmvMaxWrite: parseMcpSettings(r.settings).tiktokGmvMaxWrite,
+      protectionMode: parseMcpSettings(r.settings).protectionMode,
     }
   })
 }
@@ -1210,6 +1225,7 @@ export async function getMcpServer(
     stats,
     capsMissing: missing.get(r.id) ?? [],
     tiktokGmvMaxWrite: parseMcpSettings(r.settings).tiktokGmvMaxWrite,
+    protectionMode: parseMcpSettings(r.settings).protectionMode,
     notificationChannels: notificationChannelRefs,
     driveSources: driveSourceRefs,
   }
@@ -1511,7 +1527,9 @@ async function tiktokScopeCurrencies(
  * the TikTok side, never widen it: no new TikTok account / connection / "all accounts", no new TikTok permission, no
  * higher daily / lifetime / bid cap for a currency of the TikTok accounts (removing a cap = higher), no higher
  * budgetChangeMaxPct or write rate limit, no looser IP allowlist (emptied = every IP, or an entry not in the stored
- * list) and no later / removed expiry (L3). Refused with a field error on settings.tiktokGmvMaxWrite.
+ * list), no later / removed expiry (L3) and no switch from the advanced to the basic protection mode (basic lifts every
+ * limit). The stored values are compared even while the MCP is basic (hidden but applied again when switched back to
+ * advanced). Refused with a field error on settings.tiktokGmvMaxWrite.
  */
 export async function assertNoStaffGmvMaxWidening(
   tx: Tx | typeof db,
@@ -1525,6 +1543,12 @@ export async function assertNoStaffGmvMaxWidening(
   const refuse = (): never => {
     throw invalid(MCP_ERRORS.gmvMaxStaffWidening, {
       "settings.tiktokGmvMaxWrite": MCP_ERRORS.gmvMaxStaffWidening,
+    })
+  }
+  // basic switches off every limit (caps, % change, rate limits, IP allowlist): widening - reported on the mode switch
+  if (stored.protectionMode !== "basic" && data.settings.protectionMode === "basic") {
+    throw invalid(MCP_ERRORS.gmvMaxStaffWidening, {
+      "settings.protectionMode": MCP_ERRORS.gmvMaxStaffWidening,
     })
   }
   // L3: the IP allowlist and the expiry are part of the approved scope (an empty allowlist = every IP)

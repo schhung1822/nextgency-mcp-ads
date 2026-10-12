@@ -222,6 +222,19 @@ export function mapGraphError(
       retryAfterMs: extra.retryAfterMs ?? 15 * 60_000,
     })
   }
+  // 31 "This request requires the user to take a pending action" (e.g. subcode 3858385: Meta suspects unauthorized
+  // access and blocks creating / editing ads until the account is verified in Ads Manager). Only the account owner can
+  // clear it on Meta; retrying is useless and the token itself is still valid (not permission_denied: a health check
+  // must not mark the connection invalid).
+  if (code === 31) {
+    return make(
+      "action_required",
+      userMsg ?? "Meta yêu cầu chủ tài khoản hoàn tất một bước xác thực trước khi tiếp tục (ví dụ xác thực bảo mật trong Trình quản lý quảng cáo).",
+      {
+        hint: "Không thử lại. Nhờ người sở hữu token (hoặc admin tài khoản quảng cáo / Business) đăng nhập Trình quản lý quảng cáo, làm theo yêu cầu xác thực của Meta, rồi thử lại. Không cần thay token.",
+      }
+    )
+  }
   if (code === 10 || code === 294 || (code !== undefined && code >= 200 && code <= 299)) {
     return make(
       "permission_denied",

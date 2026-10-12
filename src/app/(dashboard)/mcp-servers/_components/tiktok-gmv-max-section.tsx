@@ -124,14 +124,24 @@ function ImpactList({ perms }: { perms: ReadonlySet<Permission> }) {
   )
 }
 
-/** Impact list + the rules that always apply (2-step confirmation, daily cap) + what is never done via MCP. */
-function ImpactBody({ perms }: { perms: ReadonlySet<Permission> }) {
+/**
+ * Impact list + the rules that always apply (2-step confirmation; advanced: daily cap, basic: no create / copy)
+ * + what is never done via MCP.
+ */
+function ImpactBody({
+  perms,
+  basic,
+}: {
+  perms: ReadonlySet<Permission>
+  /** protection mode Cơ bản: no money caps, GMV Max create / copy are refused */
+  basic: boolean
+}) {
   return (
     <div className="flex flex-col gap-2.5 text-[13px] leading-5">
       <p className="text-pretty text-foreground/90">{s.impactIntro}</p>
       <ImpactList perms={perms} />
       <p className="text-pretty text-foreground/90">
-        <Rich text={s.always} />
+        <Rich text={basic ? s.alwaysBasic : s.always} />
       </p>
       <p className="flex items-start gap-1.5 text-pretty text-muted-foreground">
         <HugeiconsIcon
@@ -167,6 +177,7 @@ export function TiktokGmvMaxBlock({
   const checked = values.tiktokGmvMaxWrite
   const perms = new Set<Permission>(values.platforms.tiktok.permissions)
   const writes = [...perms].some((p) => p !== "read")
+  const basic = values.protectionMode === "basic"
   const detected = selectedGmvMaxAccounts(values, connections, gmv.flags)
   const { disabled, locked } = gmvMaxSwitchState({
     isAdmin: gmv.isAdmin,
@@ -263,7 +274,7 @@ export function TiktokGmvMaxBlock({
                 : s.detectedBodyStaff(names, detected.length - NAMES_SHOWN)}
             </p>
           )}
-          <ImpactBody perms={perms} />
+          <ImpactBody perms={perms} basic={basic} />
         </div>
       ) : (
         <Collapsible open={open} onOpenChange={setOpen}>
@@ -290,7 +301,7 @@ export function TiktokGmvMaxBlock({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="mt-2 rounded-xl bg-muted/50 p-3">
-              <ImpactBody perms={perms} />
+              <ImpactBody perms={perms} basic={basic} />
             </div>
           </CollapsibleContent>
         </Collapsible>

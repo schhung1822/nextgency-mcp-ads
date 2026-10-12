@@ -87,8 +87,11 @@ import { TelegramLimitSection } from "./telegram-sections"
 
 export type FormUpdater = (fn: (prev: McpFormValues) => McpFormValues) => void
 
-/** id of the per-currency caps section (the overview "set caps" action scrolls here) */
+/** id of the per-currency caps section (the overview "set caps" action scrolls here; rendered in advanced mode only) */
 export const CAPS_SECTION_ID = "mcp-caps"
+
+/** id of the protection mode switch (off = Cơ bản, on = Tùy chỉnh nâng cao) */
+export const PROTECTION_MODE_SWITCH_ID = "mcp-protection-mode"
 
 function setPlatform(
   update: FormUpdater,
@@ -1035,6 +1038,47 @@ function ExpiryField({
   )
 }
 
+/** Basic mode: what is not limited + what always applies (calm, informative - basic is a valid choice). */
+function BasicModeNote() {
+  const s = t.protectionStep
+  return (
+    <section
+      aria-label={s.basicNoteLabel}
+      className="flex flex-col gap-3 rounded-xl bg-muted/50 p-4 text-[13px] text-muted-foreground"
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <h3 className="font-medium text-foreground">
+            {s.basicNotLimitedTitle}
+          </h3>
+          <ul className="flex list-disc flex-col gap-1 pl-4">
+            {s.basicNotLimited.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <h3 className="font-medium text-foreground">{s.basicAlwaysTitle}</h3>
+          <ul className="flex list-disc flex-col gap-1 pl-4">
+            {s.basicAlways.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <p className="flex items-start gap-1.5">
+        <HugeiconsIcon
+          icon={InformationCircleIcon}
+          strokeWidth={2}
+          className="mt-0.5 size-3.5 shrink-0"
+          aria-hidden
+        />
+        <span className="min-w-0">{s.basicKept}</span>
+      </p>
+    </section>
+  )
+}
+
 export function ProtectionSection({
   values,
   update,
@@ -1061,242 +1105,283 @@ export function ProtectionSection({
     ]),
   ].sort()
   const ipCount = parseIpList(values.allowedIpsText).length
+  const advanced = values.protectionMode !== "basic"
   return (
     <div className="flex flex-col gap-8">
-      {/* 1 · safety */}
-      <section aria-labelledby="prot-safety" className="flex flex-col gap-5">
-        <GroupHeading
-          id="prot-safety"
-          title={s.groupSafety}
-          description={s.groupSafetyDesc}
-        />
-        <Field orientation="horizontal" className="rounded-xl border p-4">
-          <FieldContent>
-            <FieldLabel htmlFor="mcp-two-step">{s.twoStepLabel}</FieldLabel>
-            <FieldDescription>{s.twoStepHelp}</FieldDescription>
-            {!values.twoStepConfirm && (
-              <p className="flex items-start gap-1.5 text-[13px] text-warning-strong">
-                <HugeiconsIcon
-                  icon={Alert02Icon}
-                  strokeWidth={2}
-                  className="mt-0.5 size-3.5 shrink-0"
-                  aria-hidden
-                />
-                {s.twoStepOffWarning}
-              </p>
-            )}
-          </FieldContent>
-          <Switch
-            id="mcp-two-step"
-            checked={values.twoStepConfirm}
-            onCheckedChange={(on) =>
-              update((v) => ({ ...v, twoStepConfirm: on }))
-            }
-          />
-        </Field>
-
-        <Field data-invalid={!!errors.budgetChangeMaxPct || undefined}>
-          <FieldLabel htmlFor="mcp-budget-pct">{s.budgetPctLabel}</FieldLabel>
-          <InputGroup className="max-w-48">
-            <InputGroupInput
-              id="mcp-budget-pct"
-              inputMode="numeric"
-              value={values.budgetChangeMaxPct}
-              aria-invalid={!!errors.budgetChangeMaxPct || undefined}
-              onChange={(e) => {
-                const budgetChangeMaxPct = e.target.value.replace(/[^\d]/g, "")
-                update((v) => ({ ...v, budgetChangeMaxPct }))
-              }}
-            />
-            <InputGroupAddon align="inline-end">
-              <InputGroupText>{s.percentSuffix}</InputGroupText>
-            </InputGroupAddon>
-          </InputGroup>
-          <FieldDescription>{s.budgetPctHelp}</FieldDescription>
-          {errors.budgetChangeMaxPct && (
-            <FieldError>{errors.budgetChangeMaxPct}</FieldError>
-          )}
-        </Field>
-      </section>
-
-      <Separator />
-
-      {/* 2 · money caps per currency */}
-      <section
-        id={CAPS_SECTION_ID}
-        aria-labelledby="prot-spend"
-        className="flex scroll-mt-24 flex-col gap-4"
+      {/* mode: off = Cơ bản (only the expiry applies), on = every group below */}
+      <Field
+        orientation="horizontal"
+        data-invalid={!!errors.protectionMode || undefined}
+        className="rounded-xl border p-4"
       >
-        <GroupHeading
-          id="prot-spend"
-          title={s.groupSpend}
-          description={s.groupSpendDesc}
+        <FieldContent>
+          <FieldLabel htmlFor={PROTECTION_MODE_SWITCH_ID}>
+            {s.modeLabel}
+          </FieldLabel>
+          <FieldDescription id={`${PROTECTION_MODE_SWITCH_ID}-help`}>
+            {advanced ? s.modeHelpOn : s.modeHelpOff}
+          </FieldDescription>
+          {errors.protectionMode && (
+            <FieldError>{errors.protectionMode}</FieldError>
+          )}
+        </FieldContent>
+        <Switch
+          id={PROTECTION_MODE_SWITCH_ID}
+          checked={advanced}
+          aria-describedby={`${PROTECTION_MODE_SWITCH_ID}-help`}
+          aria-invalid={errors.protectionMode ? true : undefined}
+          onCheckedChange={(on) =>
+            // the advanced values stay in the form (and in the saved settings): switching back applies them again
+            update((v) => ({ ...v, protectionMode: on ? "advanced" : "basic" }))
+          }
         />
-        {currencies.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            {s.maxBudgetNoCurrency}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {currencies.map((cur) => (
-              <CurrencyCapsRow
-                key={cur}
-                cur={cur}
+      </Field>
+
+      {!advanced ? (
+        <>
+          <ExpiryField values={values} update={update} errors={errors} />
+          <BasicModeNote />
+        </>
+      ) : (
+        <>
+          <Separator />
+
+          {/* 1 · safety */}
+          <section aria-labelledby="prot-safety" className="flex flex-col gap-5">
+            <GroupHeading
+              id="prot-safety"
+              title={s.groupSafety}
+              description={s.groupSafetyDesc}
+            />
+            <Field orientation="horizontal" className="rounded-xl border p-4">
+              <FieldContent>
+                <FieldLabel htmlFor="mcp-two-step">{s.twoStepLabel}</FieldLabel>
+                <FieldDescription>{s.twoStepHelp}</FieldDescription>
+                {!values.twoStepConfirm && (
+                  <p className="flex items-start gap-1.5 text-[13px] text-warning-strong">
+                    <HugeiconsIcon
+                      icon={Alert02Icon}
+                      strokeWidth={2}
+                      className="mt-0.5 size-3.5 shrink-0"
+                      aria-hidden
+                    />
+                    {s.twoStepOffWarning}
+                  </p>
+                )}
+              </FieldContent>
+              <Switch
+                id="mcp-two-step"
+                checked={values.twoStepConfirm}
+                onCheckedChange={(on) =>
+                  update((v) => ({ ...v, twoStepConfirm: on }))
+                }
+              />
+            </Field>
+
+            <Field data-invalid={!!errors.budgetChangeMaxPct || undefined}>
+              <FieldLabel htmlFor="mcp-budget-pct">{s.budgetPctLabel}</FieldLabel>
+              <InputGroup className="max-w-48">
+                <InputGroupInput
+                  id="mcp-budget-pct"
+                  inputMode="numeric"
+                  value={values.budgetChangeMaxPct}
+                  aria-invalid={!!errors.budgetChangeMaxPct || undefined}
+                  onChange={(e) => {
+                    const budgetChangeMaxPct = e.target.value.replace(/[^\d]/g, "")
+                    update((v) => ({ ...v, budgetChangeMaxPct }))
+                  }}
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupText>{s.percentSuffix}</InputGroupText>
+                </InputGroupAddon>
+              </InputGroup>
+              <FieldDescription>{s.budgetPctHelp}</FieldDescription>
+              {errors.budgetChangeMaxPct && (
+                <FieldError>{errors.budgetChangeMaxPct}</FieldError>
+              )}
+            </Field>
+          </section>
+
+          <Separator />
+
+          {/* 2 · money caps per currency */}
+          <section
+            id={CAPS_SECTION_ID}
+            aria-labelledby="prot-spend"
+            className="flex scroll-mt-24 flex-col gap-4"
+          >
+            <GroupHeading
+              id="prot-spend"
+              title={s.groupSpend}
+              description={s.groupSpendDesc}
+            />
+            {currencies.length === 0 ? (
+              <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                {s.maxBudgetNoCurrency}
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {currencies.map((cur) => (
+                  <CurrencyCapsRow
+                    key={cur}
+                    cur={cur}
+                    values={values}
+                    update={update}
+                    errors={errors}
+                    required={required.has(cur)}
+                  />
+                ))}
+              </div>
+            )}
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="-ml-2">
+                  <HugeiconsIcon
+                    icon={InformationCircleIcon}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  {s.capsHelpToggle}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <dl className="mt-2 flex flex-col gap-3 rounded-xl bg-muted/50 p-3 text-[13px] text-muted-foreground">
+                  <div>
+                    <dt className="font-medium text-foreground">{s.capDaily}</dt>
+                    <dd>{s.maxBudgetHelp}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">{s.capLifetime}</dt>
+                    <dd>{s.maxLifetimeHelp}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-foreground">{s.capBid}</dt>
+                    <dd>{s.maxBidHelp}</dd>
+                  </div>
+                </dl>
+              </CollapsibleContent>
+            </Collapsible>
+          </section>
+
+          <Separator />
+
+          {/* 3 · request rate */}
+          <section aria-labelledby="prot-rate" className="flex flex-col gap-4">
+            <GroupHeading
+              id="prot-rate"
+              title={s.groupRate}
+              description={s.groupRateDesc}
+            />
+            <div className="grid gap-6 md:grid-cols-2">
+              <Field data-invalid={!!errors.rateLimitPerMin || undefined}>
+                <FieldLabel htmlFor="mcp-rate">{s.rateLimitLabel}</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="mcp-rate"
+                    inputMode="numeric"
+                    value={values.rateLimitPerMin}
+                    aria-invalid={!!errors.rateLimitPerMin || undefined}
+                    onChange={(e) => {
+                      const rateLimitPerMin = e.target.value.replace(/[^\d]/g, "")
+                      update((v) => ({ ...v, rateLimitPerMin }))
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupText>{s.perMinuteSuffix}</InputGroupText>
+                  </InputGroupAddon>
+                </InputGroup>
+                <FieldDescription>{s.rateLimitHelp}</FieldDescription>
+                {errors.rateLimitPerMin && (
+                  <FieldError>{errors.rateLimitPerMin}</FieldError>
+                )}
+              </Field>
+
+              <Field data-invalid={!!errors.writeRateLimitPer10Min || undefined}>
+                <FieldLabel htmlFor="mcp-write-rate">{s.writeRateLabel}</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="mcp-write-rate"
+                    inputMode="numeric"
+                    value={values.writeRateLimitPer10Min}
+                    aria-invalid={!!errors.writeRateLimitPer10Min || undefined}
+                    onChange={(e) => {
+                      const writeRateLimitPer10Min = e.target.value.replace(
+                        /[^\d]/g,
+                        ""
+                      )
+                      update((v) => ({ ...v, writeRateLimitPer10Min }))
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupText>{s.perTenMinutesSuffix}</InputGroupText>
+                  </InputGroupAddon>
+                </InputGroup>
+                <FieldDescription>{s.writeRateHelp}</FieldDescription>
+                {errors.writeRateLimitPer10Min && (
+                  <FieldError>{errors.writeRateLimitPer10Min}</FieldError>
+                )}
+              </Field>
+            </div>
+          </section>
+
+          <Separator />
+
+          {/* 4 · expiry + IP allowlist */}
+          <section aria-labelledby="prot-access" className="flex flex-col gap-5">
+            <GroupHeading
+              id="prot-access"
+              title={s.groupAccess}
+              description={s.groupAccessDesc}
+            />
+            <ExpiryField values={values} update={update} errors={errors} />
+
+            <Field data-invalid={!!errors.allowedIps || undefined}>
+              <FieldLabel htmlFor="mcp-ips">
+                {s.allowedIpsLabel}
+                {ipCount > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {s.ipCount(ipCount)}
+                  </span>
+                )}
+              </FieldLabel>
+              <Textarea
+                id="mcp-ips"
+                rows={4}
+                className="font-mono text-[13px]"
+                placeholder={s.allowedIpsPlaceholder}
+                value={values.allowedIpsText}
+                aria-invalid={!!errors.allowedIps || undefined}
+                onChange={(e) => {
+                  const allowedIpsText = e.target.value
+                  update((v) => ({ ...v, allowedIpsText }))
+                }}
+              />
+              <FieldDescription>{s.allowedIpsHelp}</FieldDescription>
+              {errors.allowedIps && <FieldError>{errors.allowedIps}</FieldError>}
+              <Alert
+                className={cn(ipCount > 0 && "border-warning/40 bg-warning/10")}
+              >
+                <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
+                <AlertDescription
+                  className={cn(ipCount > 0 && "text-warning-strong")}
+                >
+                  {s.allowedIpsWarning}
+                </AlertDescription>
+              </Alert>
+            </Field>
+          </section>
+
+          {/* 5 · Telegram (only when the MCP uses a channel) */}
+          {values.notificationChannelIds.length > 0 && (
+            <>
+              <Separator />
+              <TelegramLimitSection
                 values={values}
                 update={update}
                 errors={errors}
-                required={required.has(cur)}
               />
-            ))}
-          </div>
-        )}
-        <Collapsible>
-          <CollapsibleTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="-ml-2">
-              <HugeiconsIcon
-                icon={InformationCircleIcon}
-                strokeWidth={2}
-                aria-hidden
-              />
-              {s.capsHelpToggle}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <dl className="mt-2 flex flex-col gap-3 rounded-xl bg-muted/50 p-3 text-[13px] text-muted-foreground">
-              <div>
-                <dt className="font-medium text-foreground">{s.capDaily}</dt>
-                <dd>{s.maxBudgetHelp}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-foreground">{s.capLifetime}</dt>
-                <dd>{s.maxLifetimeHelp}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-foreground">{s.capBid}</dt>
-                <dd>{s.maxBidHelp}</dd>
-              </div>
-            </dl>
-          </CollapsibleContent>
-        </Collapsible>
-      </section>
-
-      <Separator />
-
-      {/* 3 · request rate */}
-      <section aria-labelledby="prot-rate" className="flex flex-col gap-4">
-        <GroupHeading
-          id="prot-rate"
-          title={s.groupRate}
-          description={s.groupRateDesc}
-        />
-        <div className="grid gap-6 md:grid-cols-2">
-          <Field data-invalid={!!errors.rateLimitPerMin || undefined}>
-            <FieldLabel htmlFor="mcp-rate">{s.rateLimitLabel}</FieldLabel>
-            <InputGroup>
-              <InputGroupInput
-                id="mcp-rate"
-                inputMode="numeric"
-                value={values.rateLimitPerMin}
-                aria-invalid={!!errors.rateLimitPerMin || undefined}
-                onChange={(e) => {
-                  const rateLimitPerMin = e.target.value.replace(/[^\d]/g, "")
-                  update((v) => ({ ...v, rateLimitPerMin }))
-                }}
-              />
-              <InputGroupAddon align="inline-end">
-                <InputGroupText>{s.perMinuteSuffix}</InputGroupText>
-              </InputGroupAddon>
-            </InputGroup>
-            <FieldDescription>{s.rateLimitHelp}</FieldDescription>
-            {errors.rateLimitPerMin && (
-              <FieldError>{errors.rateLimitPerMin}</FieldError>
-            )}
-          </Field>
-
-          <Field data-invalid={!!errors.writeRateLimitPer10Min || undefined}>
-            <FieldLabel htmlFor="mcp-write-rate">{s.writeRateLabel}</FieldLabel>
-            <InputGroup>
-              <InputGroupInput
-                id="mcp-write-rate"
-                inputMode="numeric"
-                value={values.writeRateLimitPer10Min}
-                aria-invalid={!!errors.writeRateLimitPer10Min || undefined}
-                onChange={(e) => {
-                  const writeRateLimitPer10Min = e.target.value.replace(
-                    /[^\d]/g,
-                    ""
-                  )
-                  update((v) => ({ ...v, writeRateLimitPer10Min }))
-                }}
-              />
-              <InputGroupAddon align="inline-end">
-                <InputGroupText>{s.perTenMinutesSuffix}</InputGroupText>
-              </InputGroupAddon>
-            </InputGroup>
-            <FieldDescription>{s.writeRateHelp}</FieldDescription>
-            {errors.writeRateLimitPer10Min && (
-              <FieldError>{errors.writeRateLimitPer10Min}</FieldError>
-            )}
-          </Field>
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* 4 · expiry + IP allowlist */}
-      <section aria-labelledby="prot-access" className="flex flex-col gap-5">
-        <GroupHeading
-          id="prot-access"
-          title={s.groupAccess}
-          description={s.groupAccessDesc}
-        />
-        <ExpiryField values={values} update={update} errors={errors} />
-
-        <Field data-invalid={!!errors.allowedIps || undefined}>
-          <FieldLabel htmlFor="mcp-ips">
-            {s.allowedIpsLabel}
-            {ipCount > 0 && (
-              <span className="text-xs font-normal text-muted-foreground">
-                {s.ipCount(ipCount)}
-              </span>
-            )}
-          </FieldLabel>
-          <Textarea
-            id="mcp-ips"
-            rows={4}
-            className="font-mono text-[13px]"
-            placeholder={s.allowedIpsPlaceholder}
-            value={values.allowedIpsText}
-            aria-invalid={!!errors.allowedIps || undefined}
-            onChange={(e) => {
-              const allowedIpsText = e.target.value
-              update((v) => ({ ...v, allowedIpsText }))
-            }}
-          />
-          <FieldDescription>{s.allowedIpsHelp}</FieldDescription>
-          {errors.allowedIps && <FieldError>{errors.allowedIps}</FieldError>}
-          <Alert
-            className={cn(ipCount > 0 && "border-warning/40 bg-warning/10")}
-          >
-            <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
-            <AlertDescription
-              className={cn(ipCount > 0 && "text-warning-strong")}
-            >
-              {s.allowedIpsWarning}
-            </AlertDescription>
-          </Alert>
-        </Field>
-      </section>
-
-      {/* 5 · Telegram (only when the MCP uses a channel) */}
-      {values.notificationChannelIds.length > 0 && (
-        <>
-          <Separator />
-          <TelegramLimitSection
-            values={values}
-            update={update}
-            errors={errors}
-          />
+            </>
+          )}
         </>
       )}
     </div>

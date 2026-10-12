@@ -61,8 +61,12 @@ export function requireMoneyCaps(s: McpSettings, currency: string, action: strin
   )
 }
 
-/** Preview warning for a legacy MCP (created before caps became mandatory) without a daily cap for this currency. */
+/**
+ * Preview warning for a legacy MCP (created before caps became mandatory) without a daily cap for this currency.
+ * None in basic protection mode: the owner chose no caps on purpose.
+ */
 export function legacyCapWarning(s: McpSettings, currency: string): string[] {
+  if (s.protectionMode === "basic") return []
   const cur = currency.toUpperCase()
   return !s.moneyCapsRequired && capOf(s.maxDailyBudget, cur) === undefined
     ? [`MCP này chưa đặt trần ngân sách/ngày cho ${cur} - AI có thể đặt/bật ngân sách không giới hạn. Nên đặt trần trong cấu hình MCP.`]

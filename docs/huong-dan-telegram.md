@@ -154,7 +154,7 @@ Bot token được mã hoá trước khi lưu và **không bao giờ hiển th�
    - **AI được gửi tin** — AI gửi báo cáo/thông báo khi bạn yêu cầu, có thể kèm 1 ảnh, video hoặc tệp.
    - **Tự báo khi AI thay đổi quảng cáo** — mỗi thao tác ghi thành công gửi 1 tin tóm tắt trước → sau vào **mọi** kết nối Telegram đã chọn.
    - Cả hai **mặc định tắt**.
-3. Bước **Bảo vệ** → **Giới hạn tin Telegram / giờ**: số tin AI được chủ động gửi trong 1 giờ (1–200, mặc định 20). Tin tự báo khi AI thay đổi quảng cáo **không** tính vào giới hạn này.
+3. Bước **Bảo vệ** → bật **Tùy chỉnh nâng cao** → **Giới hạn tin Telegram / giờ**: số tin AI được chủ động gửi trong 1 giờ (1–200, mặc định 20). Ở chế độ **Cơ bản** (mặc định của MCP mới) không giới hạn số tin / giờ. Tin tự báo khi AI thay đổi quảng cáo **không** tính vào giới hạn này.
 
 **Quy tắc quan trọng:** MCP chỉ dùng được **kết nối Telegram của chính chủ MCP** — kể cả MCP của quản trị viên cũng không dùng kết nối Telegram của người khác. Quản trị viên sửa MCP của nhân viên sẽ chỉ thấy kết nối Telegram của nhân viên đó.
 
@@ -263,7 +263,7 @@ Tin hệ thống trùng lặp được gộp: mỗi kết nối quảng cáo ch�
 | Ảnh gửi dạng ảnh                     | ≤ 10 MB (lớn hơn tự gửi dạng tệp)                                                     |
 | Mọi tệp                              | ≤ 50 MB                                                                               |
 | Tệp chữ AI tự viết                   | ≤ 256 KB                                                                              |
-| Tin AI gửi mỗi giờ (mỗi MCP)         | Theo **Giới hạn tin Telegram / giờ** (1–200, mặc định 20). Tin có tệp cũng tính 1 tin |
+| Tin AI gửi mỗi giờ (mỗi MCP)         | Theo **Giới hạn tin Telegram / giờ** (1–200, mặc định 20; chế độ bảo vệ Cơ bản: không giới hạn). Tin có tệp cũng tính 1 tin |
 | Lượt gửi tệp mỗi MCP                 | 20 lượt / 10 phút, **tính cả lần tải lỗi**                                            |
 | Gửi tệp đồng thời                    | 1 tệp mỗi lúc cho mỗi MCP; tối đa 2 tệp cùng lúc trên máy chủ                         |
 | Thời gian một lần gửi tệp            | Khoảng 50 giây (tải tệp ≤ 25 giây + gửi lên Telegram ≤ 30 giây)                       |
@@ -307,7 +307,7 @@ ChatGPT đôi khi gọi tool **hai lần** với cùng một tệp đính kèm: 
 
 | Mã lỗi                                         | Thông báo                                                                                             | Cách xử lý                                                                                                |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `telegram_rate_limited`                        | MCP này đã gửi N tin Telegram trong 1 giờ qua - vượt giới hạn…                                        | Đợi, hoặc tăng **Giới hạn tin Telegram / giờ** trong MCP.                                                 |
+| `telegram_rate_limited`                        | MCP này đã gửi N tin Telegram trong 1 giờ qua - vượt giới hạn…                                        | Đợi, hoặc tăng **Giới hạn tin Telegram / giờ** trong MCP (**Bảo vệ → Tùy chỉnh nâng cao**).                                                 |
 | `telegram_media_rate_limited`                  | MCP này đã thử gửi 20 tệp Telegram trong 10 phút qua…                                                 | Đợi 10 phút.                                                                                              |
 | `telegram_busy`                                | MCP này đang gửi một tệp khác vào Telegram… / Máy chủ đang gửi tệp khác…                              | Đợi lần gửi trước xong (≤ 1 phút) rồi thử lại.                                                            |
 | `telegram_file_fetch_failed`                   | Không tải được tệp từ đường dẫn.                                                                      | Link không phải tệp tải trực tiếp, cần đăng nhập, hoặc máy chủ nguồn báo lỗi → dùng link khác / đính kèm. |
@@ -334,7 +334,7 @@ ChatGPT đôi khi gọi tool **hai lần** với cùng một tệp đính kèm: 
 - Link trong nội dung tin AI gửi bị cắt bỏ phần sau dấu `?` (tránh lộ link có chữ ký / mã truy cập).
 - MCP chỉ gửi vào kết nối Telegram **của chủ MCP** và đã được gán.
 - Tên nhóm, tên kênh, dữ liệu quảng cáo là **dữ liệu** — AI không làm theo câu lệnh nằm trong đó.
-- Rủi ro cần biết: AI có quyền gửi tin có thể gửi số liệu quảng cáo vào nhóm đã chọn. Chỉ gán Telegram cho MCP cần dùng, đặt giới hạn tin/giờ hợp lý, và chỉ chọn nhóm mà mọi thành viên được phép xem số liệu.
+- Rủi ro cần biết: AI có quyền gửi tin có thể gửi số liệu quảng cáo vào nhóm đã chọn. Chỉ gán Telegram cho MCP cần dùng, bật **Tùy chỉnh nâng cao** và đặt giới hạn tin/giờ hợp lý, và chỉ chọn nhóm mà mọi thành viên được phép xem số liệu.
 - Mọi tin AI gửi được ghi ở **Nhật ký → Nhật ký MCP** và **Lần gửi gần đây** của kết nối. Thao tác thêm / sửa / thay token / xoá kết nối ghi ở nhật ký nhân sự.
 
 ---

@@ -2,11 +2,17 @@
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
 //    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required,
 //    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback,
-//    tiktok_gmv_max_write })
+//    tiktok_gmv_max_write, protection_mode })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields.
 import { z } from "zod"
-import { DEFAULT_MCP_SETTINGS, TELEGRAM_MESSAGES_PER_HOUR, type McpSettings } from "./types"
+import {
+  DEFAULT_MCP_SETTINGS,
+  PROTECTION_MODES,
+  TELEGRAM_MESSAGES_PER_HOUR,
+  UNLIMITED,
+  type McpSettings,
+} from "./types"
 
 const fields = {
   twoStepConfirm: z.boolean(),
@@ -15,6 +21,7 @@ const fields = {
   writeRateLimitPer10Min: z.number().int().min(1).max(10_000),
   allowedIps: z.array(z.string().max(64)).max(200),
   telegramMessagesPerHour: z.number().int().min(TELEGRAM_MESSAGES_PER_HOUR.min).max(TELEGRAM_MESSAGES_PER_HOUR.max),
+  protectionMode: z.enum(PROTECTION_MODES),
 }
 
 const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
@@ -33,6 +40,7 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   drive_public_links: "drivePublicLinks",
   drive_sheet_writeback: "driveSheetWriteback",
   tiktok_gmv_max_write: "tiktokGmvMaxWrite",
+  protection_mode: "protectionMode",
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -64,6 +72,8 @@ export function parseMcpSettings(raw: unknown): McpSettings {
   }
   const d = DEFAULT_MCP_SETTINGS
   return {
+    // missing (rows saved before the mode existed) or corrupt → advanced: every stored limit keeps applying (fail closed)
+    protectionMode: pick(fields.protectionMode, n.protectionMode, d.protectionMode),
     twoStepConfirm: pick(fields.twoStepConfirm, n.twoStepConfirm, d.twoStepConfirm),
     budgetChangeMaxPct: pick(fields.budgetChangeMaxPct, n.budgetChangeMaxPct, d.budgetChangeMaxPct),
     maxDailyBudget: parseCaps(n.maxDailyBudget),
@@ -88,5 +98,27 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     driveSheetWriteback: n.driveSheetWriteback !== false,
     // TikTok GMV Max writes: OFF unless explicitly true (admin-only switch; fail closed)
     tiktokGmvMaxWrite: n.tiktokGmvMaxWrite === true,
+  }
+}
+
+/**
+ * Settings the MCP endpoint and its tools enforce. "basic" switches off every limit except the expiry date (see
+ * PROTECTION_MODES); the stored advanced values are kept in the row and come back with "advanced". Numeric limits
+ * that do not apply are UNLIMITED (callers check isUnlimited before using them).
+ */
+export function effectiveMcpSettings(s: McpSettings): McpSettings {
+  if (s.protectionMode !== "basic") return s
+  return {
+    ...s,
+    twoStepConfirm: false,
+    budgetChangeMaxPct: UNLIMITED,
+    maxDailyBudget: {},
+    maxLifetimeBudget: {},
+    maxBid: {},
+    rateLimitPerMin: UNLIMITED,
+    writeRateLimitPer10Min: UNLIMITED,
+    allowedIps: [],
+    moneyCapsRequired: false,
+    telegramMessagesPerHour: UNLIMITED,
   }
 }

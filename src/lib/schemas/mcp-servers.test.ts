@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import { mcp } from "@/lib/i18n/vi/mcp"
 
 import {
+  MCP_LIMITS,
   analyzeScope,
   configToFormValues,
   createMcpSchema,
@@ -23,6 +24,7 @@ import {
   pruneChannelsToSelectable,
   pruneDriveSourcesToSelectable,
   pruneToSelectable,
+  sanitizeHiddenAdvanced,
   summarizeScopeIssues,
   toStoredMcpSettings,
   validateNameStep,
@@ -152,6 +154,8 @@ describe("mcp-servers schemas", () => {
       }).success
     ).toBe(false)
     expect(toStoredMcpSettings(mcpSettingsSchema.parse(ok))).toEqual({
+      // omitted on input (older clients) → advanced
+      protection_mode: "advanced",
       two_step_confirm: false,
       budget_change_max_pct: 1,
       max_daily_budget: { USD: 12.5 },
@@ -187,8 +191,8 @@ describe("mcp-servers schemas", () => {
       mcpSettingsSchema.parse({ ...base, telegramTool: true, telegramNotifyWrites: true, telegramMessagesPerHour: 200 })
     )
     expect([s.telegram_tool, s.telegram_notify_writes, s.telegram_messages_per_hour]).toEqual([true, true, 200])
-    // form round trip
-    const v = defaultMcpFormValues()
+    // form round trip (advanced: the Telegram hourly limit is only validated there)
+    const v = { ...defaultMcpFormValues(), protectionMode: "advanced" as const }
     expect([v.notificationChannelIds, v.telegramTool, v.telegramNotifyWrites, v.telegramMessagesPerHour]).toEqual([[], false, false, "20"])
     v.telegramMessagesPerHour = "0"
     expect(validateProtectionStep(v).telegramMessagesPerHour).toBeDefined()
@@ -253,7 +257,7 @@ describe("mcp-servers schemas", () => {
   })
 
   it("lifetime/bid caps and write rate limit round-trip through the form", () => {
-    const v = defaultMcpFormValues()
+    const v = { ...defaultMcpFormValues(), protectionMode: "advanced" as const }
     expect(v.writeRateLimitPer10Min).toBe("20")
     v.name = "x"
     v.platforms.meta = {
@@ -350,7 +354,7 @@ describe("mcp-servers schemas", () => {
   })
 
   it("step validators", () => {
-    const v = defaultMcpFormValues()
+    const v = { ...defaultMcpFormValues(), protectionMode: "advanced" as const }
     expect(validateNameStep(v).name).toBeTruthy()
     expect(validatePlatformsStep(v).platforms).toBeTruthy()
     v.platforms.meta = {
@@ -710,7 +714,7 @@ describe("mandatory daily caps", () => {
   })
 
   it("validateProtectionStep flags a missing daily cap for each required currency", () => {
-    const v = defaultMcpFormValues()
+    const v = { ...defaultMcpFormValues(), protectionMode: "advanced" as const }
     expect(validateProtectionStep(v, { requiredCapCurrencies: [] })).toEqual({})
     const e = validateProtectionStep(v, { requiredCapCurrencies: ["VND", "USD"] })
     expect(e).toEqual({
@@ -823,5 +827,118 @@ describe("TikTok GMV Max write switch in the MCP config", () => {
       expiresAt: null,
     })
     expect(on.tiktokGmvMaxWrite).toBe(true)
+  })
+})
+
+describe("protection mode (basic / advanced)", () => {
+  const base = {
+    twoStepConfirm: true,
+    budgetChangeMaxPct: 50,
+    maxDailyBudget: {},
+    rateLimitPerMin: 60,
+    allowedIps: [],
+  }
+  const future = () => isoToExpiryDate(new Date(Date.now() + 10 * 86_400_000).toISOString())
+
+  it("new MCPs default to basic; input without the key (older clients) is advanced; stored snake_case", () => {
+    expect(DEFAULT_SETTINGS_INPUT.protectionMode).toBe("basic")
+    expect(defaultMcpFormValues().protectionMode).toBe("basic")
+    expect(mcpSettingsSchema.parse(base).protectionMode).toBe("advanced")
+    expect(toStoredMcpSettings(mcpSettingsSchema.parse({ ...base, protectionMode: "basic" })).protection_mode).toBe("basic")
+    expect(mcpSettingsSchema.safeParse({ ...base, protectionMode: "none" }).success).toBe(false)
+    expect(formValuesToConfig(defaultMcpFormValues()).settings.protectionMode).toBe("basic")
+  })
+
+  it("configToFormValues: rows saved before the mode existed open as advanced, stored values as saved", () => {
+    const cfg = (settings: Record<string, unknown>) =>
+      configToFormValues({ name: "x", description: null, platforms: [], settings: { ...base, ...settings }, expiresAt: null })
+    expect(cfg({}).protectionMode).toBe("advanced")
+    expect(cfg({ protectionMode: "basic" }).protectionMode).toBe("basic")
+    expect(cfg({ protectionMode: "advanced" }).protectionMode).toBe("advanced")
+  })
+
+  it("validateProtectionStep in basic validates ONLY the expiry (hidden advanced fields never block)", () => {
+    const v = {
+      ...defaultMcpFormValues(),
+      budgetChangeMaxPct: "abc",
+      rateLimitPerMin: "0",
+      writeRateLimitPer10Min: "-1",
+      telegramMessagesPerHour: "9999",
+      maxDailyBudget: { VND: "-5" },
+      allowedIpsText: "not an ip",
+    }
+    expect(validateProtectionStep(v, { requiredCapCurrencies: ["VND", "USD"] })).toEqual({})
+    expect(Object.keys(validateProtectionStep({ ...v, expiresOn: "2000-01-01" }))).toEqual(["expiresOn"])
+    expect(validateProtectionStep({ ...v, expiresOn: future() })).toEqual({})
+    // the same values in advanced are all flagged
+    expect(Object.keys(validateProtectionStep({ ...v, protectionMode: "advanced" }, { requiredCapCurrencies: ["USD"] })).sort()).toEqual([
+      "allowedIps",
+      "budgetChangeMaxPct",
+      "maxDailyBudget.USD",
+      "maxDailyBudget.VND",
+      "rateLimitPerMin",
+      "telegramMessagesPerHour",
+      "writeRateLimitPer10Min",
+    ])
+  })
+
+  it("sanitizeHiddenAdvanced keeps valid hidden values and resets invalid ones to the defaults", () => {
+    const d = defaultMcpFormValues()
+    const valid = {
+      ...d,
+      budgetChangeMaxPct: "15",
+      rateLimitPerMin: "30",
+      maxDailyBudget: { VND: "2000000" },
+      maxBid: { USD: "3" },
+      allowedIpsText: "10.0.0.0/8",
+    }
+    expect(sanitizeHiddenAdvanced(valid)).toEqual(valid)
+    // more than currenciesMax valid caps: only the first ones are kept (the server schema would refuse the save)
+    const many = Object.fromEntries(
+      Array.from({ length: MCP_LIMITS.currenciesMax + 3 }, (_, i) => [
+        `C${String.fromCharCode(65 + Math.floor(i / 26))}${String.fromCharCode(65 + (i % 26))}`,
+        "1000",
+      ])
+    )
+    expect(
+      Object.keys(sanitizeHiddenAdvanced({ ...valid, maxBid: many }).maxBid)
+    ).toHaveLength(MCP_LIMITS.currenciesMax)
+    const out = sanitizeHiddenAdvanced({
+      ...valid,
+      budgetChangeMaxPct: "abc",
+      writeRateLimitPer10Min: "0",
+      telegramMessagesPerHour: "9999",
+      maxDailyBudget: { VND: "2000000", USD: "-1" },
+      allowedIpsText: "10.0.0.0/8\nnot an ip",
+    })
+    expect(out.budgetChangeMaxPct).toBe(d.budgetChangeMaxPct)
+    expect(out.writeRateLimitPer10Min).toBe(d.writeRateLimitPer10Min)
+    expect(out.telegramMessagesPerHour).toBe(d.telegramMessagesPerHour)
+    expect(out.rateLimitPerMin).toBe("30")
+    expect(out.maxDailyBudget).toEqual({ VND: "2000000" })
+    expect(out.maxBid).toEqual({ USD: "3" })
+    expect(out.allowedIpsText).toBe("10.0.0.0/8")
+  })
+
+  it("formValuesToConfig: a basic submit with invalid hidden values still passes the server schema and keeps the valid ones", () => {
+    const v = {
+      ...defaultMcpFormValues(),
+      name: "MCP cơ bản",
+      budgetChangeMaxPct: "abc",
+      rateLimitPerMin: "30",
+      maxDailyBudget: { VND: "2000000", USD: "-1" },
+      allowedIpsText: "garbage",
+    }
+    const cfg = formValuesToConfig(v)
+    expect(cfg.settings).toMatchObject({
+      protectionMode: "basic",
+      budgetChangeMaxPct: Number(defaultMcpFormValues().budgetChangeMaxPct),
+      rateLimitPerMin: 30,
+      maxDailyBudget: { VND: 2_000_000 },
+      allowedIps: [],
+    })
+    expect(mcpSettingsSchema.safeParse(cfg.settings).success).toBe(true)
+    // advanced submits the values as typed (the step validator blocks them before)
+    expect(formValuesToConfig({ ...v, protectionMode: "advanced" }).settings).toMatchObject({ protectionMode: "advanced", rateLimitPerMin: 30 })
   })
 })

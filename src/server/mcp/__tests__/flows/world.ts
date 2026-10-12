@@ -101,6 +101,8 @@ export interface ToolResult {
 export const DEFAULT_TEST_DAILY_CAPS: Record<string, number> = { VND: 1e12, USD: 1e12, JPY: 1e12, EUR: 1e12 }
 
 export const DEFAULT_SETTINGS: McpSettingsInput = {
+  // flows assert the limits / caps: advanced unless a test is about the basic mode
+  protectionMode: "advanced",
   twoStepConfirm: true,
   budgetChangeMaxPct: 50,
   maxDailyBudget: {},

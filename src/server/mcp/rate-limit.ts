@@ -9,6 +9,7 @@
 // All of this lives in process memory and resets on restart (accepted: one web instance).
 import { LRUCache } from "lru-cache"
 import { ipBucketKey } from "./net"
+import { DEFAULT_MCP_SETTINGS } from "./types"
 
 interface Bucket {
   tokens: number
@@ -48,7 +49,10 @@ export interface RateDecision {
  * capacity is refused outright (it could never be served within the configured limit).
  */
 export function consumeMcpRate(mcpId: string, perMin: number, now = Date.now(), cost = 1): RateDecision {
-  const capacity = Math.max(1, Math.floor(perMin))
+  // no limit (basic protection mode; callers skip this already): Infinity in the bucket math would give NaN tokens
+  if (perMin === Number.POSITIVE_INFINITY) return { ok: true, retryAfterSec: 0 }
+  // any other non-finite value (NaN…) is a bug: fall back to the default limit, never "unlimited"
+  const capacity = Number.isFinite(perMin) ? Math.max(1, Math.floor(perMin)) : DEFAULT_MCP_SETTINGS.rateLimitPerMin
   const need = Math.max(1, Math.floor(cost))
   const refillPerMs = capacity / 60_000
   const map = buckets()
@@ -76,7 +80,9 @@ export const WRITE_WINDOW_MS = 10 * 60_000
 
 /** Record one executed write for this MCP, or refuse when `limit` writes already ran in the window. */
 export function consumeWriteRate(mcpId: string, limit: number, now = Date.now()): RateDecision {
-  const max = Math.max(1, Math.floor(limit))
+  // no limit (basic protection mode; callers skip this already) - nothing to record
+  if (limit === Number.POSITIVE_INFINITY) return { ok: true, retryAfterSec: 0 }
+  const max = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : DEFAULT_MCP_SETTINGS.writeRateLimitPer10Min
   const map = writes()
   const recent = (map.get(mcpId) ?? []).filter((t) => now - t < WRITE_WINDOW_MS)
   if (recent.length >= max) {

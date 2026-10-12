@@ -103,6 +103,27 @@ describe("Graph error mapping", () => {
     expect(e.userMessageVi).toBe("Ngân sách quá thấp: Tối thiểu 26.484đ")
   })
 
+  it("31 (pending user action, e.g. security checkpoint) → action_required, not retryable, with hint", () => {
+    const e = mapGraphError(
+      {
+        code: 31,
+        error_subcode: 3858385,
+        message: "This request requires the user to take a pending action",
+        error_user_title: "Vui lòng xác thực tài khoản",
+        error_user_msg: "Bạn sẽ không thể tạo hoặc chỉnh sửa quảng cáo cho đến khi xác thực tài khoản.",
+      },
+      200,
+      null
+    )
+    expect(e.code).toBe("action_required")
+    expect(e.retryable).toBe(false)
+    expect(e.userMessageVi).toBe(
+      "Vui lòng xác thực tài khoản: Bạn sẽ không thể tạo hoặc chỉnh sửa quảng cáo cho đến khi xác thực tài khoản."
+    )
+    expect(e.hint).toMatch(/Trình quản lý quảng cáo/)
+    expect(mapGraphError({ code: 31, message: "x" }, 400, null).userMessageVi).toMatch(/xác thực/)
+  })
+
   it("10 / 200 / 294 → permission_denied", () => {
     for (const code of [10, 200, 294]) expect(mapGraphError({ code }, 403, null).code).toBe("permission_denied")
   })

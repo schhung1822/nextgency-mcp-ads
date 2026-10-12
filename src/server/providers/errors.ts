@@ -4,6 +4,7 @@ export type ProviderErrorCode =
   | "invalid_credentials_input"
   | "auth_invalid" // token revoked/expired/invalid → mark connection invalid
   | "permission_denied" // missing scope / not assigned to asset
+  | "action_required" // the account owner must act on the platform first (security checkpoint…); token still valid
   | "not_found"
   | "invalid_request" // bad params, validation rejected by platform
   | "rate_limited"

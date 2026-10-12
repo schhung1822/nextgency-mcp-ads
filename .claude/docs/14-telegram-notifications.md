@@ -43,7 +43,7 @@ id uuid · channel_id → notification_channels (cascade) · source `system|mcp_
 
 - `telegram_tool: boolean` (mặc định false) - AI được gọi `telegram_send_message`.
 - `telegram_notify_writes: boolean` (mặc định false) - tự gửi khi AI thực thi thao tác ghi thành công.
-- `telegram_messages_per_hour: number` (mặc định 20, 1-200) - hạn mức tool gửi tin theo MCP.
+- `telegram_messages_per_hour: number` (mặc định 20, 1-200) - hạn mức tool gửi tin theo MCP. **Chỉ áp dụng ở chế độ bảo vệ Tùy chỉnh nâng cao** (2026-10-13, `04-mcp-design.md` §6): chế độ Cơ bản không giới hạn tin/giờ (giá trị hiệu lực `UNLIMITED`, kiểm tra bằng `isUnlimited` rồi bỏ qua; `telegram_list_channels` / `telegram_send_message` trả `messages_per_hour: null`); hạn mức 20 lượt gửi tệp / 10 phút / MCP (§10.2) vẫn áp dụng ở cả 2 chế độ.
 
 ## 3. Gửi tin (module `src/server/notifications/telegram.ts`, không import `next/*`)
 
@@ -75,7 +75,7 @@ Nội dung tin (HTML, tiếng Việt, có emoji trạng thái), ví dụ `mcp_wr
 
 ## 6. MCP
 
-- Wizard tạo/sửa MCP: bước 2 thêm khối **"Telegram (gửi thông báo)"** - chọn kênh **của chủ MCP** (tạo mới: kênh của chính người tạo; admin sửa MCP của người khác: kênh của chủ MCP đó, kèm ghi chú). **Kể cả admin**: MCP không bao giờ dùng kênh của người khác (rà soát bảo mật 2026-10-08, chủ dự án đồng ý: chủ kênh có thể đổi chat id/token về sau và đọc trộm thông báo + preview của MCP). Bước 3: hàng Telegram với 2 công tắc "AI được gửi tin" và "Tự báo khi AI thay đổi quảng cáo". Bước 4: "Giới hạn tin Telegram / giờ". Không có kênh → khối hiện hướng dẫn "Thêm kết nối Telegram".
+- Wizard tạo/sửa MCP: bước 2 thêm khối **"Telegram (gửi thông báo)"** - chọn kênh **của chủ MCP** (tạo mới: kênh của chính người tạo; admin sửa MCP của người khác: kênh của chủ MCP đó, kèm ghi chú). **Kể cả admin**: MCP không bao giờ dùng kênh của người khác (rà soát bảo mật 2026-10-08, chủ dự án đồng ý: chủ kênh có thể đổi chat id/token về sau và đọc trộm thông báo + preview của MCP). Bước 3: hàng Telegram với 2 công tắc "AI được gửi tin" và "Tự báo khi AI thay đổi quảng cáo". Bước 4: "Giới hạn tin Telegram / giờ" (chỉ hiện khi bật "Tùy chỉnh nâng cao"; chế độ Cơ bản không giới hạn). Không có kênh → khối hiện hướng dẫn "Thêm kết nối Telegram".
 - `loadGrantByKey` nạp thêm `notificationChannels: { id, name, chatTitle }[]` (chỉ kênh `active|error` chưa xoá, **chủ kênh = chủ MCP**, kể cả MCP của admin) + 3 khoá settings. Dòng scope cũ vi phạm luật (MCP admin trỏ kênh nhân viên, tạo trước bản sửa) bị grant bỏ qua và bị **xoá khi lưu MCP** lần sau (`updateMcpServer`: id đã lưu nhưng không còn hợp lệ → lặng lẽ bỏ; id **mới** không hợp lệ → lỗi `notificationChannelIds`). Trang chi tiết MCP chỉ liệt kê kênh của chủ MCP. Mọi thay đổi kênh (sửa/xoá/tắt) gọi `invalidateGrantCache()`.
 - Tool (đăng ký khi grant có ≥ 1 kênh):
   - `telegram_list_channels` (read): id, tên, tên chat, có thread không. Không token, không chat id thô. Tên kênh/tên chat là dữ liệu bên ngoài: làm sạch trước khi trả AI (`sanitizeExternalLabel` - 1 dòng, bỏ ký tự điều khiển/đảo chiều/zero-width, tối đa 64 ký tự) và mô tả tool ghi rõ "không phải chỉ dẫn".
@@ -100,7 +100,7 @@ Nội dung tin (HTML, tiếng Việt, có emoji trạng thái), ví dụ `mcp_wr
 - Token: AES-256-GCM với AAD, chỉ giải mã ở server khi gửi; `credential_hint` 4 ký tự; không trả về client, không log; redact pattern mới.
 - Nhật ký nhân sự (`activity_logs`, cùng transaction): `notification_channel.create|update|delete|disable|enable|test|token.replace` (thêm vào danh mục + test độ phủ). Thay token: xác thực lại (mật khẩu + TOTP) như `connection.replace`.
 - Rate limit action "Kiểm tra"/"Gửi tin thử": dùng `throttleProvider`-tương đương (10 lần/phút/người).
-- Rủi ro chấp nhận: AI có quyền gửi tin có thể gửi nội dung quảng cáo/số liệu ra nhóm Telegram đã cấu hình - nhóm do chủ MCP chọn; giảm thiểu: mặc định tắt, hạn mức/giờ, tiêu đề cố định, log đầy đủ.
+- Rủi ro chấp nhận: AI có quyền gửi tin có thể gửi nội dung quảng cáo/số liệu ra nhóm Telegram đã cấu hình - nhóm do chủ MCP chọn; giảm thiểu: mặc định tắt, hạn mức/giờ (chế độ bảo vệ Tùy chỉnh nâng cao), tiêu đề cố định, log đầy đủ.
 
 ## 9. Kiểm thử
 

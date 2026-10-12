@@ -75,6 +75,7 @@ export interface MappedError {
 const PROVIDER_HINTS: Partial<Record<string, string>> = {
   auth_invalid: "Token của kết nối đã hết hạn hoặc bị thu hồi - cập nhật token trong trang Kết nối của Ads MCP.",
   permission_denied: "Token thiếu quyền với tài sản này - kiểm tra quyền của app/token trên nền tảng.",
+  action_required: "Chủ tài khoản cần hoàn tất yêu cầu của nền tảng (vd xác thực bảo mật) rồi thử lại - không thử lại tự động.",
   not_found: "Gọi ads_list_objects để lấy đúng id.",
   rate_limited: "Nền tảng đang giới hạn tần suất - thử lại sau ít phút.",
   quota_exceeded: "Đã hết hạn mức gọi API trong ngày của nền tảng - thử lại sau.",
@@ -123,7 +124,7 @@ export function mapToolError(e: unknown): MappedError {
         hint: redactString(j.hint ?? PROVIDER_HINTS[j.code] ?? "").slice(0, 500) || null,
         retryable: j.retryable,
       },
-      logStatus: j.code === "permission_denied" ? "denied" : j.code === "invalid_request" ? "invalid_request" : "error",
+      logStatus: j.code === "permission_denied" || j.code === "action_required" ? "denied" : j.code === "invalid_request" ? "invalid_request" : "error",
       logMessage: redactString(`${e.message}${up?.message ? ` | ${up.message}` : ""}`).slice(0, 2000),
       upstreamRequestId: up?.requestId ?? null,
     }

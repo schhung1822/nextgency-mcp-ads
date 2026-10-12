@@ -81,6 +81,7 @@ Token cá nhân sống khoảng **60 ngày**. Trước 7 ngày app cảnh báo t
 | `4`, `17`, `32`, `613`, `80004`…                 | Vượt hạn mức gọi API (rate limit)                                                    | App tự giảm tốc; đợi vài phút                                                            |
 | `2635`                                           | Phiên bản API đã ngừng                                                               | Cập nhật Ads MCP lên bản mới                                                             |
 | `368`                                            | Bị chặn tạm thời                                                                     | Đợi, giảm tần suất thao tác                                                              |
+| `31` (vd subcode 3858385)                        | Meta yêu cầu chủ tài khoản làm một bước xác thực (nghi truy cập trái phép) — chặn tạo / sửa quảng cáo, quảng cáo đang chạy vẫn chạy | Người sở hữu token hoặc admin TKQC / Business đăng nhập Trình quản lý quảng cáo, làm theo yêu cầu xác thực rồi thử lại. Không cần thay token |
 
 ## Lưu ý
 

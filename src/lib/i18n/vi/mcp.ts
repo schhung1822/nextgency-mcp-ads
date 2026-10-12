@@ -123,7 +123,7 @@ export const mcp = {
   permissionsStep: {
     cardTitle: "Chọn quyền cho từng nền tảng",
     cardDescription:
-      "Quyền Xem luôn bật. Các thao tác ghi đều có xác nhận 2 bước nếu bạn bật ở bước Bảo vệ.",
+      "Quyền Xem luôn bật. Thao tác ghi có xác nhận 2 bước khi bạn bật Tùy chỉnh nâng cao và Xác nhận 2 bước ở bước Bảo vệ (xoá và GMV Max luôn cần xác nhận).",
     presets: "Chọn nhanh",
     presetReadOnly: "Chỉ xem",
     presetOperate: "Vận hành (xem + bật/tắt + sửa)",
@@ -152,7 +152,32 @@ export const mcp = {
   protectionStep: {
     cardTitle: "Bảo vệ",
     cardDescription:
-      "Đã có giá trị mặc định an toàn. Nếu MCP có quyền ghi, hãy nhập trần Ngân sách/ngày cho từng loại tiền rồi bấm Tạo MCP.",
+      "Mặc định là chế độ Cơ bản: chỉ cần chọn ngày hết hạn (nếu muốn) rồi bấm Tạo MCP. Bật Tùy chỉnh nâng cao để tự đặt xác nhận 2 bước, trần chi tiêu, giới hạn tốc độ và IP được phép.",
+    /** mode switch (off = Cơ bản / basic, on = Tùy chỉnh nâng cao / advanced) */
+    modeLabel: "Tùy chỉnh nâng cao",
+    modeHelpOff:
+      "Đang dùng chế độ Cơ bản: chỉ áp dụng ngày hết hạn. Bật để tự đặt xác nhận 2 bước, giới hạn đổi ngân sách, trần chi tiêu, giới hạn tốc độ và IP được phép.",
+    modeHelpOn:
+      "Đang bật: mọi giới hạn bên dưới được áp dụng. Tắt để quay về chế độ Cơ bản - giá trị bạn đã nhập được giữ lại, bật lại là áp dụng.",
+    basicNoteLabel: "Chế độ Cơ bản",
+    basicNotLimitedTitle: "Không giới hạn trong chế độ Cơ bản",
+    basicNotLimited: [
+      "Xác nhận 2 bước cho thao tác ghi",
+      "Giới hạn thay đổi ngân sách mỗi lần",
+      "Trần chi tiêu theo tiền tệ (ngân sách/ngày, trọn đời, giá thầu/CPA)",
+      "Giới hạn tốc độ (lệnh/phút, thao tác ghi / 10 phút)",
+      "Giới hạn tin Telegram / giờ",
+      "IP được phép (mọi IP đều dùng được)",
+    ],
+    basicAlwaysTitle: "Luôn áp dụng",
+    basicAlways: [
+      "Xoá (không hoàn tác) luôn cần bạn xác nhận",
+      "Đối tượng tạo mới hoặc sao chép luôn ở trạng thái tạm dừng",
+      "TikTok GMV Max: mọi thay đổi luôn cần xác nhận; tạo mới / sao chép GMV Max cần chế độ Tùy chỉnh nâng cao và trần Ngân sách/ngày",
+      "Ngày hết hạn của MCP",
+    ],
+    basicKept:
+      "Giá trị nâng cao đã nhập (nếu có) được giữ lại - bật lại Tùy chỉnh nâng cao là áp dụng.",
     twoStepLabel: "Xác nhận 2 bước cho thao tác ghi",
     twoStepHelp:
       "AI phải cho bạn xem trước thay đổi (vd ngân sách cũ → mới) và chỉ thực hiện khi bạn đồng ý. Thao tác xoá luôn cần xác nhận.",
@@ -249,7 +274,7 @@ export const mcp = {
       "Chưa chọn kết nối Telegram nào - chọn ở bước Nền tảng nếu muốn AI gửi thông báo.",
     toolLabel: "AI được gửi tin",
     toolHelp:
-      "AI gửi báo cáo hoặc thông báo vào Telegram khi bạn yêu cầu, có thể kèm 1 ảnh, video hoặc tệp (ảnh ≤ 10 MB, tệp ≤ 50 MB). Tin luôn có tiêu đề \"Tin từ AI\", dòng ghi nguồn \"Ads MCP Simple\" ở cuối và có giới hạn số tin mỗi giờ.",
+      "AI gửi báo cáo hoặc thông báo vào Telegram khi bạn yêu cầu, có thể kèm 1 ảnh, video hoặc tệp (ảnh ≤ 10 MB, tệp ≤ 50 MB). Tin luôn có tiêu đề \"Tin từ AI\" và dòng ghi nguồn \"Ads MCP Simple\" ở cuối. Ở chế độ bảo vệ Tùy chỉnh nâng cao có thêm giới hạn số tin mỗi giờ.",
     notifyLabel: "Tự báo khi AI thay đổi quảng cáo",
     notifyHelp:
       "Sau mỗi lần AI bật/tắt, đổi ngân sách, sửa, tạo, sao chép hoặc xoá thành công, hệ thống tự gửi 1 tin tóm tắt (trước → sau) vào các kết nối Telegram đã chọn.",
@@ -370,6 +395,11 @@ export const mcp = {
     summaryTitle: "Phạm vi MCP",
     summaryAccounts: "Tài khoản",
     summaryPermissions: "Quyền",
+    summaryMode: "Chế độ bảo vệ",
+    modeBasic: "Cơ bản",
+    modeAdvanced: "Tùy chỉnh nâng cao",
+    /** basic mode: a limit that does not apply */
+    unlimited: "Không giới hạn",
     summaryTwoStep: "Xác nhận 2 bước",
     summaryBudgetPct: "Giới hạn đổi ngân sách",
     summaryMaxBudget: "Trần ngân sách/ngày",

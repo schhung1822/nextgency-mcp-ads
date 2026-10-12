@@ -15,7 +15,7 @@ import { consumeMcpRate, notFoundBlocked, recordNotFound } from "./rate-limit"
 import { COMMON_TOOL_PERMISSIONS } from "./registry"
 import { buildAuthInfo, detectClient, peekMessages, type PeekedMessage, type RequestState } from "./request-state"
 import type { CallLogStatus } from "./errors"
-import type { McpGrant } from "./types"
+import { isUnlimited, type McpGrant } from "./types"
 
 const BASE_HEADERS: Record<string, string> = {
   "Referrer-Policy": "no-referrer",
@@ -278,9 +278,12 @@ export async function serveMcp(request: Request, rawKey: string): Promise<Respon
     return browserPage()
   }
 
-  const rate = consumeMcpRate(grant.mcpId, grant.settings.rateLimitPerMin)
+  // basic protection mode: no request limit (UNLIMITED never reaches the token bucket)
+  const perMin = grant.settings.rateLimitPerMin
+  const limited = !isUnlimited(perMin)
+  const rate = limited ? consumeMcpRate(grant.mcpId, perMin) : { ok: true, retryAfterSec: 0 }
   if (!rate.ok) {
-    logRejected(grant, reqState, "rate_limited", "rate_limited", `Vượt giới hạn ${grant.settings.rateLimitPerMin} lệnh/phút`)
+    logRejected(grant, reqState, "rate_limited", "rate_limited", `Vượt giới hạn ${perMin} lệnh/phút`)
     return json(429, { error: "rate_limited" }, { "Retry-After": String(rate.retryAfterSec) })
   }
 
@@ -301,10 +304,10 @@ export async function serveMcp(request: Request, rawKey: string): Promise<Respon
     }
     // a JSON-RPC batch is charged per message (the first one was charged above)
     const extra = rateCost(parsed) - 1
-    if (extra > 0) {
-      const more = consumeMcpRate(grant.mcpId, grant.settings.rateLimitPerMin, Date.now(), extra)
+    if (limited && extra > 0) {
+      const more = consumeMcpRate(grant.mcpId, perMin, Date.now(), extra)
       if (!more.ok) {
-        logRejected(grant, reqState, "rate_limited", "rate_limited", `Vượt giới hạn ${grant.settings.rateLimitPerMin} lệnh/phút (batch)`)
+        logRejected(grant, reqState, "rate_limited", "rate_limited", `Vượt giới hạn ${perMin} lệnh/phút (batch)`)
         return json(429, { error: "rate_limited" }, { "Retry-After": String(more.retryAfterSec) })
       }
     }

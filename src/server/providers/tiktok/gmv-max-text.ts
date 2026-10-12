@@ -237,7 +237,7 @@ export const GMV_MAX_DELETE_WARNING =
 /** Auto budget increase / promotion days switched on. */
 export const GMV_MAX_BOOST_WARNING =
   "Tăng ngân sách tự động / ngày khuyến mãi: ngân sách ngày có thể tự tăng nhiều lần (tới ~31 lần với 300% × 10 lần); " +
-  "trần ngân sách ngày của MCP được so với mức chi tối đa có thể này. Ngày khuyến mãi còn hạ ROI mục tiêu 10-30% trong các ngày đó; " +
+  "khi MCP có trần ngân sách ngày (chế độ Tùy chỉnh nâng cao), trần được so với mức chi tối đa có thể này. Ngày khuyến mãi còn hạ ROI mục tiêu 10-30% trong các ngày đó; " +
   "TikTok khuyên bật ngày khuyến mãi trước sự kiện 3-5 ngày."
 
 /** Create / copy: not copied settings. */
@@ -255,6 +255,18 @@ export function gmvMaxCopyAllProductsMessage(id: string): string {
 /** Hint when products / identities are still occupied (create / copy / update). */
 export const GMV_MAX_OCCUPIED_HINT =
   "Tạm dừng chiến dịch đang dùng chúng (ads_set_status) hoặc chọn sản phẩm khác (xem tiktok_gmv_max_products: chỉ dùng sản phẩm AVAILABLE + UNOCCUPIED) - tạo bằng tiktok_gmv_max_create."
+
+/** GMV Max create / copy refused: the MCP is in the basic protection mode (no money caps). */
+export function gmvMaxBasicProtectionMessage(op: "create" | "copy", currency: string): string {
+  return (
+    `MCP đang ở chế độ bảo vệ Cơ bản (không có trần chi tiêu) nên không ${op === "create" ? "tạo" : "sao chép"} được chiến dịch GMV Max - chiến dịch mới chạy ngay. ` +
+    `Tạo / sao chép chiến dịch GMV Max cần chế độ Tùy chỉnh nâng cao và trần Ngân sách/ngày cho ${currency}. Bật/tắt và đổi ngân sách GMV Max vẫn dùng được.`
+  )
+}
+
+export function gmvMaxBasicProtectionHint(currency: string): string {
+  return `Nhờ chủ MCP vào trang quản trị Ads MCP → MCP → mở MCP này → tab Cấu hình → mục Bảo vệ → bật "Tùy chỉnh nâng cao", nhập Ngân sách/ngày cho ${currency} rồi lưu; sau đó thử lại.`
+}
 
 /** The adapter got a GMV Max write without mcp-core's strict daily-spend guard (fail closed). */
 export const GMV_MAX_GUARD_MISSING =

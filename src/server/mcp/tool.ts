@@ -16,7 +16,7 @@ import { CallLog } from "./logging"
 import { notifyWriteExecuted } from "./notify"
 import { consumeWriteRate } from "./rate-limit"
 import type { RequestState } from "./request-state"
-import type { GrantAccount, McpGrant } from "./types"
+import { isUnlimited, type GrantAccount, type McpGrant } from "./types"
 
 // ---------------------------------------------------------------------------
 // Annotations (04-mcp-design.md §3)
@@ -253,6 +253,8 @@ export function writeIdempotencyKey(
  */
 export function admitWrite(grant: McpGrant, o: { confirmable?: boolean } = {}): void {
   const limit = grant.settings.writeRateLimitPer10Min
+  // basic protection mode: no write limit (UNLIMITED never reaches the sliding window)
+  if (isUnlimited(limit)) return
   const d = consumeWriteRate(grant.mcpId, limit)
   if (d.ok) return
   throw new McpToolError({

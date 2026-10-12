@@ -231,6 +231,8 @@ export function OverviewTab({
   const bidCaps = Object.entries(mcp.settings.maxBid)
   const hasTiktok = mcp.config.some((p) => p.platform === "tiktok")
   const gmvWrite = hasTiktok && mcp.settings.tiktokGmvMaxWrite === true
+  // basic mode: only the expiry applies - the stored advanced values are kept but not enforced, so show what applies
+  const basic = mcp.settings.protectionMode === "basic"
   return (
     <div className="flex flex-col gap-5">
       {mcp.status === "expired" && (
@@ -252,7 +254,7 @@ export function OverviewTab({
           <AlertDescription>{o.disabledNotice}</AlertDescription>
         </Alert>
       )}
-      {mcp.capsMissing.length > 0 && (
+      {!basic && mcp.capsMissing.length > 0 && (
         <CapsMissingAlert
           currencies={mcp.capsMissing}
           required={mcp.settings.moneyCapsRequired}
@@ -431,8 +433,11 @@ export function OverviewTab({
               </div>
             ))}
             <dl className="divide-y">
+              <SummaryRow label={o.summaryMode}>
+                {basic ? o.modeBasic : o.modeAdvanced}
+              </SummaryRow>
               <SummaryRow label={o.summaryTwoStep}>
-                {mcp.settings.twoStepConfirm ? o.on : o.off}
+                {!basic && mcp.settings.twoStepConfirm ? o.on : o.off}
               </SummaryRow>
               {hasTiktok && (
                 <SummaryRow label={gmv.summaryLabel}>
@@ -442,9 +447,12 @@ export function OverviewTab({
                 </SummaryRow>
               )}
               <SummaryRow label={o.summaryBudgetPct}>
-                ±{mcp.settings.budgetChangeMaxPct}%
+                {basic ? o.unlimited : `±${mcp.settings.budgetChangeMaxPct}%`}
               </SummaryRow>
-              {caps.length > 0 && (
+              {basic && (
+                <SummaryRow label={o.summaryMaxBudget}>{o.unlimited}</SummaryRow>
+              )}
+              {!basic && caps.length > 0 && (
                 <SummaryRow label={o.summaryMaxBudget}>
                   {caps.map(([cur, n]) => (
                     <span key={cur} className="block tabular-nums">
@@ -453,7 +461,7 @@ export function OverviewTab({
                   ))}
                 </SummaryRow>
               )}
-              {lifetimeCaps.length > 0 && (
+              {!basic && lifetimeCaps.length > 0 && (
                 <SummaryRow label={o.summaryMaxLifetime}>
                   {lifetimeCaps.map(([cur, n]) => (
                     <span key={cur} className="block tabular-nums">
@@ -462,7 +470,7 @@ export function OverviewTab({
                   ))}
                 </SummaryRow>
               )}
-              {bidCaps.length > 0 && (
+              {!basic && bidCaps.length > 0 && (
                 <SummaryRow label={o.summaryMaxBid}>
                   {bidCaps.map(([cur, n]) => (
                     <span key={cur} className="block tabular-nums">
@@ -472,16 +480,16 @@ export function OverviewTab({
                 </SummaryRow>
               )}
               <SummaryRow label={o.summaryRateLimit}>
-                {mcp.settings.rateLimitPerMin}
+                {basic ? o.unlimited : mcp.settings.rateLimitPerMin}
               </SummaryRow>
               <SummaryRow label={o.summaryWriteRate}>
-                {mcp.settings.writeRateLimitPer10Min}
+                {basic ? o.unlimited : mcp.settings.writeRateLimitPer10Min}
               </SummaryRow>
               <SummaryRow label={o.summaryExpires}>
                 {mcp.expiresAt ? formatDate(mcp.expiresAt) : o.noExpiry}
               </SummaryRow>
               <SummaryRow label={o.summaryAllowedIps}>
-                {mcp.settings.allowedIps.length
+                {!basic && mcp.settings.allowedIps.length
                   ? o.nIps(mcp.settings.allowedIps.length)
                   : o.anyIp}
               </SummaryRow>
@@ -523,7 +531,9 @@ export function OverviewTab({
                   </SummaryRow>
                   {mcp.settings.telegramTool && (
                     <SummaryRow label={t.telegram.summaryPerHour}>
-                      {mcp.settings.telegramMessagesPerHour}
+                      {basic
+                        ? o.unlimited
+                        : mcp.settings.telegramMessagesPerHour}
                     </SummaryRow>
                   )}
                 </>

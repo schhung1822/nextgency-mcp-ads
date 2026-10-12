@@ -18,7 +18,7 @@ import {
 } from "../../guardrails"
 import { accountIdSchema, objectIdSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext } from "../../tool"
-import { grantPlatformsWith, type McpSettings } from "../../types"
+import { grantPlatformsWith, isUnlimited, type McpSettings } from "../../types"
 import { writeOptions } from "../../write-options"
 import { alwaysConfirmFor } from "./set-status"
 import { mutationOut, previewFromMutation } from "./write-common"
@@ -48,7 +48,8 @@ export function checkBudgetGuardrails(
   let changePct: number | null = null
   if (current && current.type === next.type && current.amount > 0) {
     changePct = ((next.amount - current.amount) / current.amount) * 100
-    if (Math.abs(changePct) > settings.budgetChangeMaxPct + 1e-9) {
+    // UNLIMITED (basic protection mode): no % limit - never compared / printed
+    if (!isUnlimited(settings.budgetChangeMaxPct) && Math.abs(changePct) > settings.budgetChangeMaxPct + 1e-9) {
       const maxUp = current.amount * (1 + settings.budgetChangeMaxPct / 100)
       const maxDown = current.amount * (1 - settings.budgetChangeMaxPct / 100)
       throw denied(
@@ -84,6 +85,7 @@ export function checkCumulativeBudget(
   baseline: { amount: number; type: "daily" | "lifetime" } | null,
   next: { type: "daily" | "lifetime"; amount: number; currency: string }
 ): void {
+  if (isUnlimited(settings.budgetChangeMaxPct)) return // basic protection mode: no % limit
   if (!baseline || baseline.type !== next.type || !(baseline.amount > 0)) return
   const cur = next.currency.toUpperCase()
   const pct = ((next.amount - baseline.amount) / baseline.amount) * 100
@@ -184,11 +186,15 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
           : { startTime: obj.startTime, endTime: obj.endTime }
       const guard = checkBudgetGuardrails(env.grant.settings, current, next, flight)
       const warnings = [...legacyCapWarning(env.grant.settings, currency), ...guard.warnings]
-      checkCumulativeBudget(
-        env.grant.settings,
-        await budgetBaseline24h({ platform: account.platform, accountExternalId: account.externalId, level: args.level, id: args.id, type: args.budget_type }),
-        next
-      )
+      // basic protection mode (no % limit): the 24 h baseline is not even read
+      const pctLimited = !isUnlimited(env.grant.settings.budgetChangeMaxPct)
+      if (pctLimited) {
+        checkCumulativeBudget(
+          env.grant.settings,
+          await budgetBaseline24h({ platform: account.platform, accountExternalId: account.externalId, level: args.level, id: args.id, type: args.budget_type }),
+          next
+        )
+      }
       const update = { level: args.level, id: args.id, type: args.budget_type, amount: args.amount }
       // e.g. TikTok GMV Max: always two-step confirmation; GMV Max switch + strict worst-case guard in the adapter
       const confirm = await alwaysConfirmFor(env, account, provider, args.level, [args.id], "update", args)
@@ -203,6 +209,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
             { type: "daily", amount: q.current, currency: cur, level: args.level },
             { type: "daily", amount: q.next, currency: cur }
           )
+          if (!pctLimited) return
           checkCumulativeBudget(
             env.grant.settings,
             await budgetBaseline24h({ platform: account.platform, accountExternalId: account.externalId, level: args.level, id: args.id, type: "daily" }),

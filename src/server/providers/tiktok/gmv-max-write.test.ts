@@ -47,6 +47,8 @@ import {
   GMV_MAX_BOOST_WARNING,
   GMV_MAX_DELETE_WARNING,
   GMV_MAX_GUARD_MISSING,
+  gmvMaxBasicProtectionHint,
+  gmvMaxBasicProtectionMessage,
   GMV_MAX_PRODUCTS_EDIT_WARNING,
   GMV_MAX_ROI_HISTORY_SCOPE,
   GMV_MAX_ROI_PROTECTION_NOTE,
@@ -158,6 +160,7 @@ function testLedger(log: { op: string; args: unknown[] }[] = []): StartedSpendLe
 const ON = (extra: MutationOptions = {}): MutationOptions => ({
   gmvMaxWrite: true,
   confirmed: true,
+  protectionMode: "advanced",
   dailySpendGuard: () => {},
   budgetChangeGuard: async () => {},
   startedSpend24h: async () => [],
@@ -1442,5 +1445,83 @@ describe("extension declarations", () => {
       expect(by(n).requiresSetting).toBeUndefined()
       expect(by(n).write).toBe(false)
     }
+  })
+})
+
+describe("basic protection mode (no money caps)", () => {
+  const input = {
+    type: "PRODUCT" as const,
+    store_id: STORE,
+    name: "GMV Max mới",
+    budget: 500_000,
+    roas_bid: 2.5,
+    products: ["1729000000000000003"],
+    identity_ids: ["7200000000000000002"],
+  }
+  const BASIC = (extra: MutationOptions = {}) =>
+    ON({ protectionMode: "basic", dailySpendGuard: () => {}, ...extra })
+
+  it("tiktok_gmv_max_create: refused before any request (preview and execution), message names advanced + the daily cap", async () => {
+    const m = mockTikTok({})
+    for (const opts of [BASIC({ dryRun: true }), BASIC({ idempotencyKey: "k1" })]) {
+      await expect(runGmvMaxCreate(makeCtx(), input, opts)).rejects.toMatchObject({
+        code: "feature_not_enabled",
+        retryable: false,
+        userMessageVi: gmvMaxBasicProtectionMessage("create", "VND"),
+        hint: gmvMaxBasicProtectionHint("VND"),
+      })
+    }
+    expect(gmvMaxBasicProtectionMessage("create", "VND")).toMatch(/chế độ bảo vệ Cơ bản.*Tùy chỉnh nâng cao.*Ngân sách\/ngày cho VND/)
+    expect(gmvMaxBasicProtectionHint("VND")).toMatch(/tab Cấu hình → mục Bảo vệ → bật "Tùy chỉnh nâng cao"/)
+    expect(m.calls).toHaveLength(0)
+  })
+
+  it("fail closed: create without an explicit protection mode is refused too", async () => {
+    const m = mockTikTok({})
+    const { protectionMode: _p, ...noMode } = ON({ dryRun: true })
+    await expect(runGmvMaxCreate(makeCtx(), input, noMode)).rejects.toMatchObject({
+      code: "feature_not_enabled",
+      userMessageVi: gmvMaxBasicProtectionMessage("create", "VND"),
+    })
+    expect(m.calls).toHaveLength(0)
+  })
+
+  it("ads_copy_object on a GMV Max campaign: refused after the GMV Max lookup, before reading its settings; nothing written", async () => {
+    const m = mockTikTok(baseRoutes({ [CREATE]: ok(createFixture.data) }))
+    await expect(
+      copyTikTokObject(makeCtx(), { level: "campaign", id: CID, deep: false }, BASIC({ dryRun: true }))
+    ).rejects.toMatchObject({
+      code: "feature_not_enabled",
+      userMessageVi: gmvMaxBasicProtectionMessage("copy", "VND"),
+    })
+    expect(m.callsTo(INFO)).toHaveLength(0)
+    expect(m.posts()).toHaveLength(0)
+  })
+
+  it("enable and budget changes keep working without a cap; the started-spend history is not read", async () => {
+    const m = mockTikTok(
+      baseRoutes({
+        [GMV_GET]: gmvGet({
+          PRODUCT_GMV_MAX: [
+            productRow({
+              operation_status: "DISABLE",
+              secondary_status: "CAMPAIGN_STATUS_DISABLE",
+            }),
+          ],
+        }),
+      })
+    )
+    const history = vi.fn(async () => {
+      throw new Error("history must not be read in basic mode")
+    })
+    await setTikTokStatus(makeCtx(), "campaign", [CID], "active", BASIC({ startedSpend24h: history }))
+    expect(m.callsTo(STATUS)[0]!.body).toMatchObject({ campaign_ids: [CID], operation_status: "ENABLE" })
+    await updateTikTokBudget(
+      makeCtx(),
+      { level: "campaign", id: CID, type: "daily", amount: 330_000 },
+      BASIC({ startedSpend24h: history })
+    )
+    expect(m.callsTo(UPDATE).map((c) => c.body)).toEqual([{ advertiser_id: ADV, campaign_id: CID, budget: 330_000 }])
+    expect(history).not.toHaveBeenCalled()
   })
 })

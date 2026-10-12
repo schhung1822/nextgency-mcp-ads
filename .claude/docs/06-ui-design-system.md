@@ -179,7 +179,8 @@ Bước 3: spinner "Đang kiểm tra..." → ✔ Token hợp lệ (hạn, scope)
 ② Mỗi nền tảng 1 card có công tắc bật; bật → chọn kết nối (multi) → "Tất cả tài khoản" hoặc chọn từng TKQC; dưới cùng khối Telegram và khối Google Drive (chọn thư mục / sheet)
 ③ Mỗi nền tảng đã bật 1 hàng checkbox: [✔ Xem (luôn bật)] [ ] Bật/Tắt [ ] Sửa [ ] Sao chép [ ] Tạo mới [ ] Xoá/Lưu trữ ⚠
    Nút nhanh: "Chỉ xem" · "Vận hành (xem + bật/tắt + sửa)" · "Toàn quyền (trừ xoá)"
-④ Xác nhận 2 bước [bật] · Giới hạn đổi ngân sách mỗi lần [50]% · Trần ngân sách/ngày (theo tiền tệ) · Hết hạn [không] · Giới hạn lệnh/phút [60] · IP cho phép
+④ [ ] Tùy chỉnh nâng cao (tắt = Cơ bản, mặc định MCP mới) → Cơ bản: Hết hạn [không] + ghi chú ngắn (không giới hạn gì / luôn giữ gì)
+   Bật: Xác nhận 2 bước [bật] · Giới hạn đổi ngân sách mỗi lần [50]% · Trần ngân sách/ngày (theo tiền tệ) · Hết hạn [không] · Giới hạn lệnh/phút [60] · IP cho phép
 → Màn hình hoàn tất (glass card):
    ✔ Đã tạo MCP "Báo cáo hằng ngày"
    Link MCP: [https://ads.example.com/mcp/amcp_xxxx…  ] [Sao chép]

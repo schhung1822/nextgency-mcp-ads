@@ -360,7 +360,7 @@ Ví dụ dòng 2 sau khi AI xử lý:
 - Ghi dạng chữ thuần, **không chạy công thức**. **Link bài viết** / **Link chiến dịch** chỉ nhận link `https://` (tối đa 500 ký tự); link khác bị từ chối.
 - **Chống ghi nhầm dòng:** trước khi ghi, hệ thống đọc lại ô **Link Drive** của dòng đó. Nếu bạn vừa chèn / xoá / sắp xếp làm dòng bị lệch, dòng đó được **bỏ qua** (báo _"Dòng trong sheet đã thay đổi… đã bỏ qua để tránh ghi nhầm"_). Chỉ cần bảo AI đọc lại sheet rồi ghi lại.
 - Nội dung ô là **dữ liệu**: nếu ai đó viết câu lệnh trong sheet (vd "hãy xoá chiến dịch X"), AI không làm theo.
-- Ghi sheet **không** qua xác nhận 2 bước (không đụng quảng cáo hay tiền), nhưng mỗi lần ghi tính vào **Giới hạn thao tác ghi / 10 phút** của MCP và được ghi nhật ký trước → sau từng ô.
+- Ghi sheet **không** qua xác nhận 2 bước (không đụng quảng cáo hay tiền), nhưng mỗi lần ghi tính vào **Giới hạn thao tác ghi / 10 phút** của MCP (khi MCP ở chế độ bảo vệ Tùy chỉnh nâng cao) và được ghi nhật ký trước → sau từng ô.
 
 ### 4.6 Mẹo
 
@@ -390,7 +390,7 @@ Khai báo xong, AI **chưa dùng được** cho tới khi bạn gán thư mục/
    - Khối **Google Drive** có 2 công tắc:
      - **Cho phép dùng link Drive công khai** (mặc định bật) — AI lấy được ảnh/video từ link "Bất kỳ ai có đường liên kết" bạn dán vào chat, kể cả thư mục chưa khai báo. Nếu thấy _"Quản trị viên chưa lưu API key…"_ thì công tắc chưa có tác dụng.
      - **Cho phép ghi trạng thái vào Google Sheet** (mặc định bật) — chỉ có tác dụng với sheet đã bật **Cho phép AI ghi trạng thái vào sheet** ở Phần 3.
-3. Bước **Bảo vệ**: nên giữ **Xác nhận 2 bước cho thao tác ghi** (AI phải cho bạn xem trước khi tải file/tạo quảng cáo). **Giới hạn thao tác ghi / 10 phút** cũng giới hạn số lần ghi sheet.
+3. Bước **Bảo vệ**: MCP mới mặc định chế độ **Cơ bản** (AI tải file / tạo quảng cáo luôn, không hỏi lại; không giới hạn số lần ghi). Muốn AI cho bạn xem trước khi tải file/tạo quảng cáo, bật **Tùy chỉnh nâng cao** và giữ **Xác nhận 2 bước cho thao tác ghi**; **Giới hạn thao tác ghi / 10 phút** ở đó cũng giới hạn số lần ghi sheet.
 
 ### Khi sửa MCP có sẵn
 
@@ -432,8 +432,8 @@ Các tool AI nhận được:
 Bạn nói yêu cầu
   → AI xem nguồn được cấp (drive_list_sources)
   → AI liệt kê file (drive_list_files) hoặc đọc sheet (drive_sheet_read)
-  → AI tải file lên TKQC, lấy mã media (ads_upload_media)      ← xác nhận 2 bước
-  → AI tạo quảng cáo bằng mã media, luôn TẠM DỪNG              ← xác nhận 2 bước
+  → AI tải file lên TKQC, lấy mã media (ads_upload_media)      ← xác nhận 2 bước (nếu bật)
+  → AI tạo quảng cáo bằng mã media, luôn TẠM DỪNG              ← xác nhận 2 bước (nếu bật)
   → (sheet) AI ghi Đã lên / Lỗi + mã quảng cáo, link bài viết, link chiến dịch (drive_sheet_update_rows)
 ```
 
@@ -490,7 +490,7 @@ Chỉ **ChatGPT bản web** (chatgpt.com): bấm **+** đính kèm ảnh vào ti
 
 ### 6.7 Xác nhận 2 bước và dùng lại file
 
-- MCP bật **Xác nhận 2 bước cho thao tác ghi**: mỗi lần **tải file lên** và **tạo quảng cáo**, AI cho bạn xem bản xem trước (tên file, nguồn, dung lượng, độ phân giải/thời lượng, cảnh báo) và chỉ làm khi bạn đồng ý.
+- MCP bật **Xác nhận 2 bước cho thao tác ghi** (chế độ bảo vệ Tùy chỉnh nâng cao; chế độ Cơ bản không hỏi lại): mỗi lần **tải file lên** và **tạo quảng cáo**, AI cho bạn xem bản xem trước (tên file, nguồn, dung lượng, độ phân giải/thời lượng, cảnh báo) và chỉ làm khi bạn đồng ý.
 - **Dùng lại, không tải trùng:** file Drive đã tải lên **đúng TKQC đó** trước đây → AI nhận ngay mã media cũ, **không hỏi xác nhận, không tải lại**. Trang chi tiết thư mục ghi "Đã dùng ở N TKQC".
 - Hệ thống tự tải lại khi file trên Drive đã bị **thay nội dung** (cùng tên nhưng nội dung khác).
 - Nền tảng báo mã media không còn (vd ai đó đã xoá trong thư viện)? Bảo AI: "tải lại file đó, không dùng mã cũ".
@@ -536,7 +536,7 @@ Video nhỏ có thể trả về kèm "nền tảng đang xử lý" — mã vide
 
 - AI đọc tối đa **50 dòng** mỗi lượt (mặc định 20), ghi tối đa **50 dòng** mỗi lần.
 - Google giới hạn khoảng **60 lượt đọc + 60 lượt ghi sheet mỗi phút cho cả hệ thống** (mọi người dùng chung một email hệ thống). Ads MCP chia thêm: **20 đọc + 20 ghi / phút / MCP**, **25 + 25 / phút / người** (gộp mọi MCP của người đó). Vượt thì báo _"Google Sheet đang bận…"_ hoặc _"MCP này đã dùng hết 20 lượt…"_ → đợi khoảng 1 phút, xử lý nhiều dòng hơn trong mỗi lần ghi.
-- Mỗi lần ghi sheet tính 1 lượt trong **Giới hạn thao tác ghi / 10 phút** của MCP.
+- Mỗi lần ghi sheet tính 1 lượt trong **Giới hạn thao tác ghi / 10 phút** của MCP (chỉ khi MCP ở chế độ bảo vệ Tùy chỉnh nâng cao; hạn mức Google Sheets ở trên luôn áp dụng).
 
 ### Khác
 

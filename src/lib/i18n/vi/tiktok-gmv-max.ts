@@ -57,7 +57,7 @@ export const tiktokGmvMax = {
       "TikTok khuyên **giữ mỗi mức ROI mục tiêu ít nhất 3 ngày trọn vẹn** (GMV Max cho LIVE: sửa ROI tối đa 1 lần/ngày).",
       "Tạm dừng, xoá, sửa ROI hoặc sửa sản phẩm trong ngày sẽ **mất Bảo vệ ROI** (tín dụng quảng cáo) của ngày đó.",
       "Mặc định AI **chỉ xem**. AI chỉ bật/tắt, sửa (ngân sách, ROI, sản phẩm, video), sao chép, tạo mới hay xoá chiến dịch GMV Max khi **quản trị viên bật “Cho phép AI thay đổi GMV Max”** trong MCP (bước Chọn quyền), và **luôn phải xác nhận 2 bước**.",
-      "Mọi thay đổi GMV Max **bắt buộc có trần ngân sách/ngày** trong MCP, tính theo **mức chi tối đa có thể mỗi ngày** (gồm tăng ngân sách tự động và ngày khuyến mãi); không đọc được ngân sách thì AI không làm.",
+      "MCP ở chế độ bảo vệ **Tùy chỉnh nâng cao**: mọi thay đổi GMV Max **bắt buộc có trần ngân sách/ngày**, tính theo **mức chi tối đa có thể mỗi ngày** (gồm tăng ngân sách tự động và ngày khuyến mãi); không đọc được ngân sách thì AI không làm. MCP ở chế độ **Cơ bản** (không có trần): AI **không tạo mới / sao chép** được chiến dịch GMV Max.",
     ],
     runsNowTitle: "Tạo mới / sao chép GMV Max: chạy ngay",
     runsNow:
@@ -364,8 +364,12 @@ export const tiktokGmvMaxMcp = {
       "**Không hoàn tác**, mất dữ liệu tối ưu đã học và mất Bảo vệ ROI của ngày xoá.",
   },
   copyCreateLabel: "Sao chép / Tạo mới",
+  /** protection mode Tùy chỉnh nâng cao (advanced) */
   always:
     "Luôn áp dụng: **mọi thay đổi GMV Max phải xác nhận 2 bước** (kể cả khi tắt xác nhận 2 bước ở bước Bảo vệ) và **bắt buộc có trần ngân sách/ngày** cho loại tiền của tài khoản - tính theo mức chi tối đa có thể (gồm tự tăng ngân sách, ngày khuyến mãi).",
+  /** protection mode Cơ bản (basic): no caps, so GMV Max create / copy are refused */
+  alwaysBasic:
+    "Luôn áp dụng: **mọi thay đổi GMV Max phải xác nhận 2 bước**, kể cả ở chế độ bảo vệ Cơ bản. Chế độ Cơ bản không có trần chi tiêu nên AI **không tạo mới / sao chép** được chiến dịch GMV Max - muốn làm, bật **Tùy chỉnh nâng cao** ở bước Bảo vệ và nhập **trần Ngân sách/ngày**. Bật/tắt và sửa vẫn làm được.",
   notOpened:
     "Không làm qua MCP: đổi tài khoản GMV Max độc quyền của cửa hàng (exclusive authorization), phiên Max delivery / Creative boost. GMV Max không có nhóm quảng cáo nên không thêm nhóm quảng cáo được.",
   readOnlyNote:
