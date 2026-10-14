@@ -239,3 +239,11 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 3. D1–D5 giữ mặc định như `01-product-spec.md` §9.
 4. shadcn preset **radix-maia** (bo tròn, thoáng); preset dùng bộ icon **Hugeicons** (`@hugeicons/react` + `@hugeicons/core-free-icons`) — giữ nguyên, KHÔNG trộn lucide; font đổi Figtree → **Inter**.
 5. Chủ dự án có TKQC thật để test (giai đoạn 5–6: chỉ thao tác trên object thử nghiệm được chỉ định).
+
+## Giãn cách lệnh ghi (write delay) ở chế độ Tùy chỉnh nâng cao (2026-10-14)
+- [x] Chủ dự án quyết (D7): tự chờ rồi chạy, theo từng MCP, mọi lệnh ghi lên nền tảng, mặc định tắt; trần chờ + giãn cách tối đa 30 s (không phải 60 s: ChatGPT cắt tool call ở 60 s)
+- [x] `write_delay_seconds` (types / parser / `effectiveMcpSettings` basic → 0 / schema + form / service: nhân viên không giảm được trên MCP GMV Max đã duyệt)
+- [x] `src/server/mcp/write-pacing.ts` (hàng đợi FIFO theo MCP, chờ từ lúc lệnh trước xong, `write_cooldown` khi chờ > 30 s (từ chối ngay nếu hàng đợi chắc chắn vượt), `write_cancelled` khi client huỷ) + gắn vào `runWrite` trước luồng xác nhận
+- [x] UI: ô "Giãn cách giữa các lệnh ghi" trong nhóm Giới hạn tốc độ; dòng tổng quan; ghi chú Cơ bản
+- [x] Test: unit (đồng hồ giả), tích hợp qua endpoint, schema / parser / nhân viên; tài liệu 01 (D7), 03, 04 §6, `docs/ket-noi-ai.md`
+- [x] Phát hành v1.0.11 (2026-10-14, qua rc)

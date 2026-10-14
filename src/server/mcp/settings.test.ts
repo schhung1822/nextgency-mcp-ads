@@ -2,7 +2,7 @@
 // them off, so MCPs saved before the feature (no key in jsonb) get the owner's default without a data migration.
 import { describe, expect, it } from "vitest"
 
-import { parseMcpSettings } from "./settings"
+import { effectiveMcpSettings, parseMcpSettings } from "./settings"
 import { DEFAULT_MCP_SETTINGS } from "./types"
 
 describe("parseMcpSettings - TikTok GMV Max write switch", () => {
@@ -76,5 +76,25 @@ describe("parseMcpSettings - Google Drive", () => {
       rateLimitPerMin: 7,
       drivePublicLinks: false,
     })
+  })
+})
+
+describe("parseMcpSettings - write delay (write_delay_seconds)", () => {
+  it("missing (rows saved before the setting) or invalid → 0 = off; valid values kept, snake_case and camelCase", () => {
+    expect(DEFAULT_MCP_SETTINGS.writeDelaySeconds).toBe(0)
+    expect(parseMcpSettings(null).writeDelaySeconds).toBe(0)
+    expect(parseMcpSettings({ two_step_confirm: true }).writeDelaySeconds).toBe(0)
+    expect(parseMcpSettings({ write_delay_seconds: 5 }).writeDelaySeconds).toBe(5)
+    expect(parseMcpSettings({ writeDelaySeconds: 30 }).writeDelaySeconds).toBe(30)
+    for (const bad of [-1, 31, 60, 2.5, "5", null, true])
+      expect(parseMcpSettings({ write_delay_seconds: bad }).writeDelaySeconds).toBe(0)
+  })
+
+  it("effective settings: kept in advanced, always 0 in basic (the stored value stays in the row)", () => {
+    const advanced = parseMcpSettings({ protection_mode: "advanced", write_delay_seconds: 7 })
+    expect(effectiveMcpSettings(advanced).writeDelaySeconds).toBe(7)
+    const basic = parseMcpSettings({ protection_mode: "basic", write_delay_seconds: 7 })
+    expect(basic.writeDelaySeconds).toBe(7)
+    expect(effectiveMcpSettings(basic).writeDelaySeconds).toBe(0)
   })
 })

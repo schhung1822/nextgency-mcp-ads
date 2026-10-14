@@ -147,6 +147,14 @@ function imageRule(platform: Platform) {
 }
 
 /** the video deadline handed to the adapter: upload timeout + processing polling end there */
+/** Media uploads keep this much of their call budget for the work itself; the write pacing may wait the rest. */
+const PACED_MEDIA_WORK_MS = 30_000
+
+/** Longest write-pacing wait of a media upload whose call budget ends at `deadline` (settings.writeDelaySeconds). */
+function pacedMediaWait(deadline: number): number {
+  return Math.max(0, deadline - Date.now() - PACED_MEDIA_WORK_MS)
+}
+
 function videoDeadline(deadline: number): number {
   return deadline - VIDEO_WAIT_MARGIN_MS
 }
@@ -333,6 +341,7 @@ export function register(
       return runWrite(env, {
         args,
         account,
+        pacingMaxWaitMs: pacedMediaWait(deadline),
         preview: async () => ({
           changes: [
             {
@@ -722,6 +731,7 @@ async function uploadFromDrive(
   return runWrite(env, {
     args,
     account,
+    pacingMaxWaitMs: pacedMediaWait(deadline),
     preview: async () => ({
       changes: [
         {
@@ -1017,6 +1027,7 @@ async function queueDriveVideo(
   return runWrite(env, {
     args,
     account,
+    pacingMaxWaitMs: pacedMediaWait(o.deadline),
     preview: async () => ({
       changes: [
         {
@@ -1319,6 +1330,7 @@ async function uploadChatgptFile(
     return runWrite(env, {
       args: hashArgs,
       account,
+      pacingMaxWaitMs: pacedMediaWait(deadline),
       preview: async () => ({
         changes: [
           {
@@ -1377,6 +1389,7 @@ async function uploadChatgptFile(
   return runWrite(env, {
     args: hashArgs,
     account,
+    pacingMaxWaitMs: pacedMediaWait(deadline),
     preview: async () => ({
       changes: [
         {

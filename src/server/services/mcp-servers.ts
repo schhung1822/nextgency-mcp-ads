@@ -1526,7 +1526,7 @@ async function tiktokScopeCurrencies(
  * S3: while the stored GMV Max switch is on (approved by an admin) and stays on, a NON-admin save may keep or narrow
  * the TikTok side, never widen it: no new TikTok account / connection / "all accounts", no new TikTok permission, no
  * higher daily / lifetime / bid cap for a currency of the TikTok accounts (removing a cap = higher), no higher
- * budgetChangeMaxPct or write rate limit, no looser IP allowlist (emptied = every IP, or an entry not in the stored
+ * budgetChangeMaxPct or write rate limit, no shorter write delay, no looser IP allowlist (emptied = every IP, or an entry not in the stored
  * list), no later / removed expiry (L3) and no switch from the advanced to the basic protection mode (basic lifts every
  * limit). The stored values are compared even while the MCP is basic (hidden but applied again when switched back to
  * advanced). Refused with a field error on settings.tiktokGmvMaxWrite.
@@ -1574,6 +1574,7 @@ export async function assertNoStaffGmvMaxWidening(
   }
   if (data.settings.budgetChangeMaxPct > stored.budgetChangeMaxPct) refuse()
   if (data.settings.writeRateLimitPer10Min > stored.writeRateLimitPer10Min) refuse()
+  if (data.settings.writeDelaySeconds < stored.writeDelaySeconds) refuse()
   const currencies = await tiktokScopeCurrencies(tx, [
     ...before.connections.map((c) => ({ connectionId: c.connectionId, accountIds: c.accountIds })),
     ...after.connections,

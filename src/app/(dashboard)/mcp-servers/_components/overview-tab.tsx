@@ -485,6 +485,11 @@ export function OverviewTab({
               <SummaryRow label={o.summaryWriteRate}>
                 {basic ? o.unlimited : mcp.settings.writeRateLimitPer10Min}
               </SummaryRow>
+              <SummaryRow label={o.summaryWriteDelay}>
+                {!basic && (mcp.settings.writeDelaySeconds ?? 0) > 0
+                  ? o.nSeconds(mcp.settings.writeDelaySeconds ?? 0)
+                  : o.off}
+              </SummaryRow>
               <SummaryRow label={o.summaryExpires}>
                 {mcp.expiresAt ? formatDate(mcp.expiresAt) : o.noExpiry}
               </SummaryRow>

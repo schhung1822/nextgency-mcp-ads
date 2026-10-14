@@ -64,6 +64,8 @@ export const MCP_LIMITS = {
   budgetChangeMaxPct: { min: 1, max: 500 },
   rateLimitPerMin: { min: 1, max: 600 },
   writeRateLimitPer10Min: { min: 1, max: 1000 },
+  /** seconds between two ad-platform writes of the MCP (0 = off); same bounds as WRITE_DELAY_SECONDS */
+  writeDelaySeconds: { min: 0, max: 30 },
   allowedIpsMax: 50,
   maxDailyBudgetMax: 1_000_000_000_000,
   currenciesMax: 20,
@@ -92,6 +94,7 @@ const msg = {
   budgetPct: `Giới hạn đổi ngân sách phải từ ${MCP_LIMITS.budgetChangeMaxPct.min} đến ${MCP_LIMITS.budgetChangeMaxPct.max}%.`,
   rateLimit: `Giới hạn lệnh/phút phải từ ${MCP_LIMITS.rateLimitPerMin.min} đến ${MCP_LIMITS.rateLimitPerMin.max}.`,
   writeRateLimit: `Giới hạn thao tác ghi / 10 phút phải từ ${MCP_LIMITS.writeRateLimitPer10Min.min} đến ${MCP_LIMITS.writeRateLimitPer10Min.max}.`,
+  writeDelay: `Giãn cách giữa các lệnh ghi phải từ ${MCP_LIMITS.writeDelaySeconds.min} đến ${MCP_LIMITS.writeDelaySeconds.max} giây (0 = tắt).`,
   telegramPerHour: `Giới hạn tin Telegram / giờ phải từ ${MCP_LIMITS.telegramMessagesPerHour.min} đến ${MCP_LIMITS.telegramMessagesPerHour.max}.`,
   currency: "Mã tiền tệ phải gồm 3 chữ cái in hoa (vd VND, USD).",
   maxBudget: "Trần ngân sách phải là số dương hợp lệ.",
@@ -184,6 +187,13 @@ export const mcpSettingsSchema = z.object({
     .min(MCP_LIMITS.writeRateLimitPer10Min.min, msg.writeRateLimit)
     .max(MCP_LIMITS.writeRateLimitPer10Min.max, msg.writeRateLimit)
     .default(20),
+  /** pacing of ad-platform writes, seconds (0 = off). Optional on input (older clients) → 0 */
+  writeDelaySeconds: z
+    .number({ error: msg.writeDelay })
+    .int(msg.writeDelay)
+    .min(MCP_LIMITS.writeDelaySeconds.min, msg.writeDelay)
+    .max(MCP_LIMITS.writeDelaySeconds.max, msg.writeDelay)
+    .default(0),
   allowedIps: z
     .array(
       z
@@ -225,6 +235,7 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
   maxBid: {},
   rateLimitPerMin: 60,
   writeRateLimitPer10Min: 20,
+  writeDelaySeconds: 0,
   allowedIps: [],
   telegramTool: false,
   telegramNotifyWrites: false,
@@ -244,6 +255,7 @@ export interface StoredMcpSettings {
   max_bid: Record<string, number>
   rate_limit_per_min: number
   write_rate_limit_per_10min: number
+  write_delay_seconds: number
   allowed_ips: string[]
   /** written on every create/save since the security release; rows without it are legacy (caps optional) */
   money_caps_required: true
@@ -272,6 +284,7 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     max_bid: sortedCaps(s.maxBid),
     rate_limit_per_min: s.rateLimitPerMin,
     write_rate_limit_per_10min: s.writeRateLimitPer10Min,
+    write_delay_seconds: s.writeDelaySeconds,
     allowed_ips: [...s.allowedIps],
     money_caps_required: true,
     telegram_tool: s.telegramTool,
@@ -469,6 +482,8 @@ export type McpFormValues = {
   expiresOn: string
   rateLimitPerMin: string
   writeRateLimitPer10Min: string
+  /** seconds between two ad-platform writes ("0" = off) */
+  writeDelaySeconds: string
   allowedIpsText: string
   /** Telegram channels in scope (notification_channels ids) */
   notificationChannelIds: string[]
@@ -528,6 +543,7 @@ export function defaultMcpFormValues(): McpFormValues {
     writeRateLimitPer10Min: String(
       DEFAULT_SETTINGS_INPUT.writeRateLimitPer10Min
     ),
+    writeDelaySeconds: String(DEFAULT_SETTINGS_INPUT.writeDelaySeconds),
     allowedIpsText: "",
     notificationChannelIds: [],
     telegramTool: DEFAULT_SETTINGS_INPUT.telegramTool,
@@ -618,6 +634,7 @@ export function sanitizeHiddenAdvanced(v: McpFormValues): McpFormValues {
   if (e.rateLimitPerMin) out.rateLimitPerMin = d.rateLimitPerMin
   if (e.writeRateLimitPer10Min)
     out.writeRateLimitPer10Min = d.writeRateLimitPer10Min
+  if (e.writeDelaySeconds) out.writeDelaySeconds = d.writeDelaySeconds
   if (e.telegramMessagesPerHour)
     out.telegramMessagesPerHour = d.telegramMessagesPerHour
   for (const field of MCP_CAP_FIELDS) {
@@ -672,6 +689,8 @@ export function formValuesToConfig(
       maxBid: capsTextToNumbers(v.maxBid),
       rateLimitPerMin: Number(v.rateLimitPerMin),
       writeRateLimitPer10Min: Number(v.writeRateLimitPer10Min),
+      // missing on a form built before the field existed → 0 (off)
+      writeDelaySeconds: Number(v.writeDelaySeconds ?? "0"),
       allowedIps: parseIpList(v.allowedIpsText),
       telegramTool: v.telegramTool,
       telegramNotifyWrites: v.telegramNotifyWrites,
@@ -746,6 +765,9 @@ export function configToFormValues(config: {
   v.writeRateLimitPer10Min = String(
     config.settings.writeRateLimitPer10Min ??
       DEFAULT_SETTINGS_INPUT.writeRateLimitPer10Min
+  )
+  v.writeDelaySeconds = String(
+    config.settings.writeDelaySeconds ?? DEFAULT_SETTINGS_INPUT.writeDelaySeconds
   )
   v.allowedIpsText = config.settings.allowedIps.join("\n")
   v.expiresOn = isoToExpiryDate(config.expiresAt)
@@ -857,6 +879,12 @@ export function validateProtectionStep(
     v.writeRateLimitPer10Min.trim() === ""
   )
     e.writeRateLimitPer10Min = msg.writeRateLimit
+  const writeDelay = Number(v.writeDelaySeconds ?? "0")
+  if (
+    !mcpSettingsSchema.shape.writeDelaySeconds.safeParse(writeDelay).success ||
+    (v.writeDelaySeconds ?? "0").trim() === ""
+  )
+    e.writeDelaySeconds = msg.writeDelay
   const tgRate = Number(v.telegramMessagesPerHour)
   if (
     !mcpSettingsSchema.shape.telegramMessagesPerHour.safeParse(tgRate)

@@ -396,6 +396,18 @@ describe.skipIf(!hasDb)(
       ).rejects.toMatchObject({ message: MCP_ERRORS.gmvMaxStaffWidening })
       // basic → advanced with the same values: narrowing
       expect((await upd(staff, same("advanced"))).changed).toBe(true)
+      // write delay: an admin sets one; a staff member may lengthen it but not shorten / remove it
+      const delayed = (writeDelaySeconds: number) =>
+        ({
+          ...same("advanced"),
+          settings: { ...same("advanced").settings, writeDelaySeconds },
+        }) as unknown as ReturnType<typeof cfg>
+      expect((await upd(admin, delayed(10))).changed).toBe(true)
+      await expect(upd(staff, delayed(5))).rejects.toMatchObject({ message: MCP_ERRORS.gmvMaxStaffWidening })
+      await expect(upd(staff, delayed(0))).rejects.toMatchObject({ message: MCP_ERRORS.gmvMaxStaffWidening })
+      expect((await upd(staff, delayed(20))).changed).toBe(true)
+      expect((await getMcpServer(staff, mcpId))!.settings.writeDelaySeconds).toBe(20)
+      expect((await upd(admin, delayed(0))).changed).toBe(true)
       expect((await getMcpServer(staff, mcpId))!.protectionMode).toBe("advanced")
     })
 

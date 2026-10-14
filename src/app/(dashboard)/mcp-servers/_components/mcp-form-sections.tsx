@@ -1321,6 +1321,32 @@ export function ProtectionSection({
                   <FieldError>{errors.writeRateLimitPer10Min}</FieldError>
                 )}
               </Field>
+
+              <Field data-invalid={!!errors.writeDelaySeconds || undefined}>
+                <FieldLabel htmlFor="mcp-write-delay">{s.writeDelayLabel}</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="mcp-write-delay"
+                    inputMode="numeric"
+                    value={values.writeDelaySeconds ?? "0"}
+                    aria-invalid={!!errors.writeDelaySeconds || undefined}
+                    onChange={(e) => {
+                      const writeDelaySeconds = e.target.value.replace(
+                        /[^\d]/g,
+                        ""
+                      )
+                      update((v) => ({ ...v, writeDelaySeconds }))
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupText>{s.secondsSuffix}</InputGroupText>
+                  </InputGroupAddon>
+                </InputGroup>
+                <FieldDescription>{s.writeDelayHelp}</FieldDescription>
+                {errors.writeDelaySeconds && (
+                  <FieldError>{errors.writeDelaySeconds}</FieldError>
+                )}
+              </Field>
             </div>
           </section>
 

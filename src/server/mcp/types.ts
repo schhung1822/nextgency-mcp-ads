@@ -51,6 +51,12 @@ export interface McpSettings {
   rateLimitPerMin: number
   /** executed write operations (set_status, budget, create, copy, delete, upload…) per 10 minutes */
   writeRateLimitPer10Min: number
+  /**
+   * Pacing of ad-platform writes (runWrite: status, budget, update, create, copy, delete, media upload): an executed
+   * write starts at least this many seconds after the previous one of this MCP finished; the server waits on its own
+   * (write-pacing.ts). 0 = off (default; always 0 in basic mode). Telegram messages and sheet write-back are not paced.
+   */
+  writeDelaySeconds: number
   /** empty = any IP; supports single IPs and CIDR */
   allowedIps: string[]
   /**
@@ -82,6 +88,12 @@ export interface McpSettings {
 /** Bounds of McpSettings.telegramMessagesPerHour */
 export const TELEGRAM_MESSAGES_PER_HOUR = { min: 1, max: 200, default: 20 } as const
 
+/**
+ * Bounds of McpSettings.writeDelaySeconds (0 = off). The max is also the longest pacing wait of one call: ChatGPT cuts
+ * a tool call at 60 s, so wait + the write itself must fit well below that.
+ */
+export const WRITE_DELAY_SECONDS = { min: 0, max: 30 } as const
+
 /** Lifetime budget without a known end date: at most maxDailyBudget × this many days. */
 export const LIFETIME_DEFAULT_DAYS = 30
 
@@ -95,6 +107,7 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   maxBid: {},
   rateLimitPerMin: 60,
   writeRateLimitPer10Min: 20,
+  writeDelaySeconds: 0,
   allowedIps: [],
   moneyCapsRequired: false,
   telegramTool: false,

@@ -7,7 +7,15 @@ import { safeErrorForLog } from "../audit/safe-error"
 import { isProviderError } from "../providers/errors"
 import { getProvider } from "../providers/registry"
 import type { AdsProvider, Capability, FieldChange, Platform } from "../providers/types"
-import { argsHash, runConfirmFlow, type PreviewInfo, type StoredOutcome } from "./confirm"
+import {
+  argsHash,
+  confirmTokenExecutable,
+  isExecutingCall,
+  needsConfirmation,
+  runConfirmFlow,
+  type PreviewInfo,
+  type StoredOutcome,
+} from "./confirm"
 import { noteAuthFailure } from "./connection-health"
 import { providerContextFactory, type ProviderContextFactory } from "./context"
 import { McpToolError, mapToolError, type CallLogStatus, type ToolErrorPayload } from "./errors"
@@ -17,6 +25,7 @@ import { notifyWriteExecuted } from "./notify"
 import { consumeWriteRate } from "./rate-limit"
 import type { RequestState } from "./request-state"
 import { isUnlimited, type GrantAccount, type McpGrant } from "./types"
+import { acquireWritePacing } from "./write-pacing"
 
 // ---------------------------------------------------------------------------
 // Annotations (04-mcp-design.md §3)
@@ -266,9 +275,9 @@ export function admitWrite(grant: McpGrant, o: { confirmable?: boolean } = {}): 
 }
 
 /**
- * Standard write path: write rate limit → two-step confirmation (when enabled / always for delete) →
- * execute once (deterministic idempotency key) → changes recorded in the call log. Guardrails must be
- * checked by the caller BEFORE this (on both steps).
+ * Standard write path: write pacing (settings.writeDelaySeconds) → write rate limit → two-step confirmation (when
+ * enabled / always for delete) → execute once (deterministic idempotency key) → changes recorded in the call log.
+ * Guardrails must be checked by the caller BEFORE this (on both steps).
  */
 export async function runWrite(
   env: ToolEnv,
@@ -279,29 +288,59 @@ export async function runWrite(
     preview: () => Promise<PreviewInfo>
     /** meta.confirmed: this execution consumed a two-step confirmation (confirm_token) - never true without one */
     execute: (idempotencyKey: string, meta: { confirmed: boolean }) => Promise<WriteExecution>
+    /**
+     * Longest wait for the write pacing of this call (default write-pacing MAX_WAIT_MS) - media uploads pass what is
+     * left of their own call budget so the wait never eats the time the upload needs.
+     */
+    pacingMaxWaitMs?: number
   }
 ): Promise<ToolOutcome> {
   const base = { platform: o.account.platform, account_id: o.account.externalId }
   let executed: FieldChange[] | null = null
-  const flow = await runConfirmFlow({
-    grant: env.grant,
-    toolName: env.toolName,
-    args: o.args,
-    storedArgs: env.storedArgs,
-    alwaysConfirm: o.alwaysConfirm,
-    preview: o.preview,
-    // the write quota is spent by real executions only (not by previews, replays of a consumed token or invalid tokens)
-    admit: () => admitWrite(env.grant, { confirmable: true }),
-    execute: async (pendingActionId): Promise<StoredOutcome> => {
-      const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }), {
-        confirmed: pendingActionId !== null,
-      })
-      // the logs UI ("Trước → Sau") reads only the changes column: never leave it empty for an executed write
-      executed = r.changes?.length ? r.changes : [{ objectId: "-", field: env.toolName, before: null, after: r.structured.result ?? r.summary }]
-      env.log.setChanges(executed)
-      return { ok: true, structured: { status: "success", ...base, ...r.structured }, summary: r.summary }
-    },
-  })
+  // the automatic idempotency key's minute bucket is the ARRIVAL time: a duplicate call queued behind the original
+  // by the pacing still gets the same key (the platform returns the existing object instead of a second one)
+  const arrivedAt = Date.now()
+  // pacing (settings.writeDelaySeconds): a call that will EXECUTE waits for its turn + the delay BEFORE the
+  // confirmation flow (a confirm_token is only consumed once the write may really run). Previews, replays of a
+  // consumed token and invalid / expired tokens never wait. The lane is released when the flow ends.
+  const delay = env.grant.settings.writeDelaySeconds
+  const pacing =
+    delay > 0 &&
+    isExecutingCall(env.grant, o.args, o.alwaysConfirm) &&
+    (!needsConfirmation(env.grant, o.alwaysConfirm) || (await confirmTokenExecutable(env.grant, env.toolName, o.args)))
+      ? await acquireWritePacing(env.grant.mcpId, delay, env.signal, o.pacingMaxWaitMs, {
+          confirmable: needsConfirmation(env.grant, o.alwaysConfirm),
+        })
+      : null
+  let attempted = false
+  let flow: Awaited<ReturnType<typeof runConfirmFlow>>
+  try {
+    flow = await runConfirmFlow({
+      grant: env.grant,
+      toolName: env.toolName,
+      args: o.args,
+      storedArgs: env.storedArgs,
+      alwaysConfirm: o.alwaysConfirm,
+      preview: o.preview,
+      // the write quota is spent by real executions only (not by previews, replays of a consumed token or invalid tokens)
+      admit: () => admitWrite(env.grant, { confirmable: true }),
+      execute: async (pendingActionId): Promise<StoredOutcome> => {
+        attempted = true
+        const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }, arrivedAt), {
+          confirmed: pendingActionId !== null,
+        })
+        // the logs UI ("Trước → Sau") reads only the changes column: never leave it empty for an executed write
+        executed = r.changes?.length ? r.changes : [{ objectId: "-", field: env.toolName, before: null, after: r.structured.result ?? r.summary }]
+        env.log.setChanges(executed)
+        return { ok: true, structured: { status: "success", ...base, ...r.structured }, summary: r.summary }
+      },
+    })
+  } finally {
+    // a write that reached the platform (success or failure) starts the next delay; nothing executed → unchanged
+    pacing?.release(attempted)
+  }
+  const waitedSec = pacing && attempted ? Math.round(pacing.waitedMs / 1000) : 0
+  const paced = waitedSec > 0 ? ` (đã chờ ${waitedSec} giây theo giãn cách lệnh ghi của MCP)` : ""
   if (flow.kind === "pending") {
     env.log.pendingActionId = flow.pendingActionId
     const n = flow.preview.changes.length
@@ -325,7 +364,7 @@ export async function runWrite(
       summary: `${flow.outcome.summary} (kết quả của lần thực thi trước - không thực thi lại)`,
     }
   }
-  return { structured: { ...flow.outcome.structured, replayed: false }, summary: flow.outcome.summary }
+  return { structured: { ...flow.outcome.structured, replayed: false }, summary: `${flow.outcome.summary}${paced}` }
 }
 
 /** JSON length helper for size budgeting. */

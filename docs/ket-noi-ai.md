@@ -128,6 +128,8 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 | **404** / “server not found” | Link sai hoặc MCP đã tắt / hết hạn / xoá / xoay key → lấy lại link trong tab **Kết nối AI** |
 | **403** | IP không nằm trong danh sách cho phép của MCP (chế độ bảo vệ Tùy chỉnh nâng cao) |
 | **429** | Vượt giới hạn lệnh/phút → đợi, hoặc tăng giới hạn trong cấu hình MCP (**Bảo vệ → Tùy chỉnh nâng cao**) |
+| AI báo "đã chờ N giây theo giãn cách lệnh ghi" | Bình thường: MCP bật **Giãn cách giữa các lệnh ghi** (Bảo vệ → Tùy chỉnh nâng cao), hệ thống tự chờ giữa các lệnh sửa / bật tắt / tạo mới để tránh gọi API dồn dập |
+| `write_cooldown` | Nhiều lệnh ghi xếp hàng, phải chờ quá 30 giây → lệnh **chưa** chạy; đợi rồi gửi lại từng lệnh, hoặc giảm giãn cách trong cấu hình MCP |
 | Không thấy tool ghi | MCP chưa cấp quyền tương ứng (Bật/Tắt, Sửa, Sao chép…) hoặc ChatGPT Business chưa *Refresh* |
 | AI báo “MCP này chưa được quản trị viên cho phép thay đổi chiến dịch GMV Max” | Mặc định MCP chỉ xem GMV Max → nhờ **quản trị viên** mở MCP → tab **Cấu hình** → **Chọn quyền** → thẻ TikTok Ads → bật **Cho phép AI thay đổi GMV Max (TikTok Shop)**; muốn tạo / sao chép GMV Max thì bước **Bảo vệ** bật **Tùy chỉnh nâng cao** và đặt **Trần ngân sách/ngày** cho loại tiền của TKQC |
 | AI báo MCP đang ở chế độ bảo vệ **Cơ bản** khi tạo / sao chép chiến dịch GMV Max | Chế độ Cơ bản không có trần chi tiêu → mở MCP → tab **Cấu hình** → **Bảo vệ** → bật **Tùy chỉnh nâng cao** và đặt **Trần ngân sách/ngày** cho loại tiền của TKQC TikTok (nhân viên: nhờ quản trị viên nếu MCP có quyền GMV Max) |

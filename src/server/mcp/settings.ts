@@ -1,6 +1,6 @@
 // Parse mcp_servers.settings (jsonb) into McpSettings. Accepts the documented snake_case shape
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
-//    rate_limit_per_min, write_rate_limit_per_10min, allowed_ips, money_caps_required,
+//    rate_limit_per_min, write_rate_limit_per_10min, write_delay_seconds, allowed_ips, money_caps_required,
 //    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback,
 //    tiktok_gmv_max_write, protection_mode })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
@@ -11,6 +11,7 @@ import {
   PROTECTION_MODES,
   TELEGRAM_MESSAGES_PER_HOUR,
   UNLIMITED,
+  WRITE_DELAY_SECONDS,
   type McpSettings,
 } from "./types"
 
@@ -19,6 +20,7 @@ const fields = {
   budgetChangeMaxPct: z.number().min(0).max(10_000),
   rateLimitPerMin: z.number().int().min(1).max(10_000),
   writeRateLimitPer10Min: z.number().int().min(1).max(10_000),
+  writeDelaySeconds: z.number().int().min(WRITE_DELAY_SECONDS.min).max(WRITE_DELAY_SECONDS.max),
   allowedIps: z.array(z.string().max(64)).max(200),
   telegramMessagesPerHour: z.number().int().min(TELEGRAM_MESSAGES_PER_HOUR.min).max(TELEGRAM_MESSAGES_PER_HOUR.max),
   protectionMode: z.enum(PROTECTION_MODES),
@@ -32,6 +34,7 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   max_bid: "maxBid",
   rate_limit_per_min: "rateLimitPerMin",
   write_rate_limit_per_10min: "writeRateLimitPer10Min",
+  write_delay_seconds: "writeDelaySeconds",
   allowed_ips: "allowedIps",
   money_caps_required: "moneyCapsRequired",
   telegram_tool: "telegramTool",
@@ -81,6 +84,8 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     maxBid: parseCaps(n.maxBid),
     rateLimitPerMin: pick(fields.rateLimitPerMin, n.rateLimitPerMin, d.rateLimitPerMin),
     writeRateLimitPer10Min: pick(fields.writeRateLimitPer10Min, n.writeRateLimitPer10Min, d.writeRateLimitPer10Min),
+    // missing (rows saved before the setting existed) or invalid → 0 = no pacing (the behaviour before it existed)
+    writeDelaySeconds: pick(fields.writeDelaySeconds, n.writeDelaySeconds, d.writeDelaySeconds),
     // fail closed: a present but corrupt allowlist matches nothing (never "any IP")
     allowedIps:
       n.allowedIps === undefined || n.allowedIps === null
@@ -117,6 +122,7 @@ export function effectiveMcpSettings(s: McpSettings): McpSettings {
     maxBid: {},
     rateLimitPerMin: UNLIMITED,
     writeRateLimitPer10Min: UNLIMITED,
+    writeDelaySeconds: 0,
     allowedIps: [],
     moneyCapsRequired: false,
     telegramMessagesPerHour: UNLIMITED,

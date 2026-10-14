@@ -110,6 +110,7 @@ export const DEFAULT_SETTINGS: McpSettingsInput = {
   maxBid: {},
   rateLimitPerMin: 600,
   writeRateLimitPer10Min: 1000,
+  writeDelaySeconds: 0,
   allowedIps: [],
   telegramTool: false,
   telegramNotifyWrites: false,

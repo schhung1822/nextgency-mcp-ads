@@ -163,6 +163,8 @@ describe("mcp-servers schemas", () => {
       max_bid: {},
       rate_limit_per_min: 600,
       write_rate_limit_per_10min: 20,
+      // omitted on input → 0 (off)
+      write_delay_seconds: 0,
       allowed_ips: ["::1"],
       money_caps_required: true,
       telegram_tool: false,
@@ -940,5 +942,53 @@ describe("protection mode (basic / advanced)", () => {
     expect(mcpSettingsSchema.safeParse(cfg.settings).success).toBe(true)
     // advanced submits the values as typed (the step validator blocks them before)
     expect(formValuesToConfig({ ...v, protectionMode: "advanced" }).settings).toMatchObject({ protectionMode: "advanced", rateLimitPerMin: 30 })
+  })
+})
+
+describe("write delay (writeDelaySeconds)", () => {
+  it("defaults to 0 (off) for new MCPs and for older inputs without the field", () => {
+    expect(DEFAULT_SETTINGS_INPUT.writeDelaySeconds).toBe(0)
+    expect(defaultMcpFormValues().writeDelaySeconds).toBe("0")
+    const { writeDelaySeconds: _omit, ...older } = DEFAULT_SETTINGS_INPUT
+    expect(mcpSettingsSchema.parse(older).writeDelaySeconds).toBe(0)
+  })
+
+  it("accepts 0-30 whole seconds, refuses anything else with a Vietnamese message", () => {
+    for (const ok of [0, 1, 15, 30])
+      expect(mcpSettingsSchema.shape.writeDelaySeconds.safeParse(ok).success).toBe(true)
+    for (const bad of [-1, 31, 60, 1.5]) {
+      const r = mcpSettingsSchema.shape.writeDelaySeconds.safeParse(bad)
+      expect(r.success).toBe(false)
+      expect(r.error?.issues[0]?.message).toMatch(/Giãn cách giữa các lệnh ghi/)
+    }
+  })
+
+  it("is stored as write_delay_seconds and read back into the form (missing → 0)", () => {
+    const stored = toStoredMcpSettings({ ...DEFAULT_SETTINGS_INPUT, writeDelaySeconds: 8 })
+    expect(stored.write_delay_seconds).toBe(8)
+    const base = {
+      name: "x",
+      description: null,
+      platforms: [],
+      expiresAt: null,
+    }
+    expect(
+      configToFormValues({ ...base, settings: { ...DEFAULT_SETTINGS_INPUT, writeDelaySeconds: 8 } }).writeDelaySeconds
+    ).toBe("8")
+    const { writeDelaySeconds: _omit, ...older } = DEFAULT_SETTINGS_INPUT
+    expect(configToFormValues({ ...base, settings: older }).writeDelaySeconds).toBe("0")
+  })
+
+  it("advanced validates the field; basic does not, and a hidden invalid value is reset to 0 on submit", () => {
+    const adv = { ...defaultMcpFormValues(), protectionMode: "advanced" as const, writeDelaySeconds: "90" }
+    expect(validateProtectionStep(adv).writeDelaySeconds).toMatch(/Giãn cách/)
+    expect(validateProtectionStep({ ...adv, writeDelaySeconds: "" }).writeDelaySeconds).toMatch(/Giãn cách/)
+    expect(validateProtectionStep({ ...adv, writeDelaySeconds: "15" }).writeDelaySeconds).toBeUndefined()
+    const basic = { ...adv, protectionMode: "basic" as const }
+    expect(validateProtectionStep(basic).writeDelaySeconds).toBeUndefined()
+    expect(sanitizeHiddenAdvanced(basic).writeDelaySeconds).toBe("0")
+    expect(formValuesToConfig(basic).settings.writeDelaySeconds).toBe(0)
+    // a valid hidden value is kept (applied again when switched back to advanced)
+    expect(formValuesToConfig({ ...basic, writeDelaySeconds: "15" }).settings.writeDelaySeconds).toBe(15)
   })
 })

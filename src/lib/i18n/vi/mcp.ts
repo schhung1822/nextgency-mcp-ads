@@ -165,7 +165,7 @@ export const mcp = {
       "Xác nhận 2 bước cho thao tác ghi",
       "Giới hạn thay đổi ngân sách mỗi lần",
       "Trần chi tiêu theo tiền tệ (ngân sách/ngày, trọn đời, giá thầu/CPA)",
-      "Giới hạn tốc độ (lệnh/phút, thao tác ghi / 10 phút)",
+      "Giới hạn tốc độ (lệnh/phút, thao tác ghi / 10 phút, giãn cách giữa các lệnh ghi)",
       "Giới hạn tin Telegram / giờ",
       "IP được phép (mọi IP đều dùng được)",
     ],
@@ -206,6 +206,10 @@ export const mcp = {
     writeRateHelp:
       "Số thao tác thay đổi quảng cáo (bật/tắt, sửa, tạo, sao chép, xoá…) AI được thực hiện trong 10 phút. Mặc định 20.",
     perTenMinutesSuffix: "thao tác/10 phút",
+    writeDelayLabel: "Giãn cách giữa các lệnh ghi",
+    writeDelayHelp:
+      "Lệnh sửa, bật/tắt, tạo mới, sao chép, xoá, tải ảnh/video chỉ chạy sau khi lệnh trước của MCP này xong ít nhất bấy nhiêu giây, tránh gọi API dồn dập dễ bị coi là spam. Hệ thống tự chờ (tối đa 30 giây). Từ 0 đến 30, 0 = tắt.",
+    secondsSuffix: "giây",
     expiresLabel: "Ngày hết hạn (tuỳ chọn)",
     expiresHelp:
       "Sau ngày này (23:59 giờ Việt Nam) link MCP tự ngừng hoạt động. Để trống = không hết hạn.",
@@ -407,6 +411,8 @@ export const mcp = {
     summaryMaxLifetime: "Trần ngân sách trọn đời",
     summaryMaxBid: "Trần giá thầu/CPA",
     summaryWriteRate: "Giới hạn thao tác ghi / 10 phút",
+    summaryWriteDelay: "Giãn cách lệnh ghi",
+    nSeconds: (n: number) => `${n} giây`,
     summaryExpires: "Hết hạn",
     summaryAllowedIps: "IP được phép",
     on: "Bật",

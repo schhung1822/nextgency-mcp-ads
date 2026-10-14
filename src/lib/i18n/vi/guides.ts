@@ -302,7 +302,7 @@ export const guides = {
           {
             title: "Giới hạn tốc độ (nâng cao)",
             detail:
-              "Số lệnh mỗi phút và số thao tác ghi mỗi 10 phút, để AI không gọi dồn dập.",
+              "Số lệnh mỗi phút, số thao tác ghi mỗi 10 phút và giãn cách giữa các lệnh ghi (giây), để AI không gọi API dồn dập.",
           },
           {
             title: "Giới hạn tin Telegram / giờ (nâng cao)",

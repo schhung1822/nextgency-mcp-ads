@@ -101,6 +101,8 @@ test.describe("MCP servers", () => {
     ).toHaveAttribute("data-state", "checked")
     await expect(page.locator("#mcp-budget-pct")).toHaveValue("50")
     await expect(page.locator("#mcp-rate")).toHaveValue("60")
+    // write delay: off by default
+    await expect(page.locator("#mcp-write-delay")).toHaveValue("0")
     await page.fill("#mcp-ips", "not-an-ip")
     await page.getByRole("button", { name: "Tạo MCP" }).click()
     await expect(page.getByText(/không phải địa chỉ IP/)).toBeVisible()
