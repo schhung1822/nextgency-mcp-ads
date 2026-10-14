@@ -16,6 +16,7 @@ import * as setStatus from "./tools/common/set-status"
 import * as updateBudget from "./tools/common/update-budget"
 import * as updateObject from "./tools/common/update-object"
 import * as uploadMedia from "./tools/common/upload-media"
+import { apifyToolsAllowed, registerApifyTools } from "./tools/apify"
 import { driveToolsAllowed, registerDriveTools } from "./tools/drive"
 import { registerExtensions } from "./tools/extensions"
 import { metaPagesAllowed, registerMetaPageTools } from "./tools/meta-pages"
@@ -87,6 +88,13 @@ export const TOOLSETS: ToolsetDef[] = [
     register: (server, ctx, taken) => registerDriveTools(server, ctx, taken),
   },
   {
+    // Apify (16-apify.md §7): setting apify_enabled + >= 1 token in the MCP pool; independent of the ad platforms
+    name: "apify",
+    permission: "read",
+    isAllowed: (grant) => apifyToolsAllowed(grant),
+    register: (server, ctx, taken) => registerApifyTools(server, ctx, taken),
+  },
+  {
     name: "platform_extensions",
     permission: "read",
     isAllowed: (grant) => grantPlatformsWith(grant, "read").length > 0,
@@ -96,7 +104,9 @@ export const TOOLSETS: ToolsetDef[] = [
 
 /** Names of the common tools (for docs / UI). */
 export const COMMON_TOOL_PERMISSIONS: Record<string, Permission> = Object.fromEntries(
-  TOOLSETS.filter((t) => t.name !== "platform_extensions" && t.name !== "meta_pages" && t.name !== "telegram" && t.name !== "drive").map((t) => [
+  TOOLSETS.filter(
+    (t) => !["platform_extensions", "meta_pages", "telegram", "drive", "apify"].includes(t.name)
+  ).map((t) => [
     t.name,
     t.permission,
   ])

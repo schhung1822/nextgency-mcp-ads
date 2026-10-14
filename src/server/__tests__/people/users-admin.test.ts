@@ -35,7 +35,10 @@ import { and, desc, eq } from "drizzle-orm"
 import { db } from "@/server/db/client"
 import {
   activityLogs,
+  apifyRuns,
+  apifyTokens,
   connections,
+  mcpServers,
   notificationChannels,
   notificationDeliveries,
   session as sessionTable,
@@ -567,6 +570,44 @@ describe.skipIf(!hasDb)("admin user management (DB + Better Auth)", () => {
         reason: "user.delete",
         ownerId: owner.id,
       })
+    })
+
+    it("token Apify còn sống (kể cả token công ty do người đó thêm) → từ chối; token đã xoá mềm → xoá hẳn kèm lần chạy + nhật ký", async () => {
+      const { deleteUserAction } = await actions()
+      // (staff owner: deleting an admin would also need a re-auth, tested below)
+      const owner = await createTestUser(P, "delapify", { role: "staff" })
+      const other = await createTestUser(P, "delapify-mcp", { role: "staff" })
+      const tokenId = crypto.randomUUID()
+      await db.insert(apifyTokens).values({
+        id: tokenId,
+        scope: "company",
+        ownerId: owner.id,
+        name: `${P} apify`,
+        credentialsEncrypted: encryptSecret("apify_api_x", `apify_token:${tokenId}:credentials`),
+        credentialHint: "abcd",
+      })
+      // a run of SOMEBODY ELSE's MCP pinned to this company token
+      const mcpId = crypto.randomUUID()
+      await db.insert(mcpServers).values({ id: mcpId, ownerId: other.id, name: `${P} mcp`, keyHash: `h-${mcpId}`, keyPrefix: "amcp_x", keyEncrypted: "v1.x.y.z" })
+      await db.insert(apifyRuns).values({ mcpId, tokenId, actorId: "apify~x", runId: `r${tokenId.slice(0, 8)}`, status: "SUCCEEDED", maxChargeUsd: 1 })
+      actAs(sA)
+      const blocked = await deleteUserAction({ userId: owner.id })
+      expect(blocked.ok).toBe(false)
+      if (!blocked.ok) expect(blocked.error).toMatch(/1 token Apify/)
+      expect(await row(owner.id)).toBeTruthy()
+
+      await db.update(apifyTokens).set({ deletedAt: new Date() }).where(eq(apifyTokens.id, tokenId))
+      expect((await deleteUserAction({ userId: owner.id })).ok).toBe(true)
+      expect(await db.select().from(user).where(eq(user.id, owner.id))).toHaveLength(0)
+      expect(await db.select().from(apifyTokens).where(eq(apifyTokens.id, tokenId))).toHaveLength(0)
+      expect(await db.select().from(apifyRuns).where(eq(apifyRuns.tokenId, tokenId))).toHaveLength(0)
+      expect((await lastLog("apify_token.delete", tokenId))!.metadata).toMatchObject({
+        purged: true,
+        reason: "user.delete",
+        ownerId: owner.id,
+        runsDeleted: 1,
+      })
+      await db.delete(mcpServers).where(eq(mcpServers.id, mcpId))
     })
 
     it("xoá ADMIN cần xác thực lại: thiếu → _reauth, sai → nhật ký reauth, đúng → xoá", async () => {

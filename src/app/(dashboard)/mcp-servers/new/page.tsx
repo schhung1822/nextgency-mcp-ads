@@ -7,6 +7,7 @@ import { acceptDisclaimerAction } from "@/server/actions/legal"
 import { createMcpAction } from "@/server/actions/mcp-servers"
 import { requireUser } from "@/server/auth/session"
 import { hasAcceptedDisclaimer } from "@/server/services/disclaimers"
+import { getMcpApifyPoolSummary } from "@/server/services/apify-tokens"
 import { getDriveSystemInfo } from "@/server/services/drive-credentials"
 import { listDriveSourcesForMcpScope } from "@/server/services/drive-sources"
 import { gmvMaxFlagsForMcpScope } from "@/server/services/mcp-gmv-max"
@@ -20,12 +21,14 @@ export const metadata: Metadata = { title: t.meta.newTitle }
 export default async function NewMcpPage() {
   const { user } = await requireUser()
   const actor = { id: user.id, email: user.email, role: user.role }
-  const [connections, channels, driveSources, driveInfo, accepted] = await Promise.all([
+  const [connections, channels, driveSources, driveInfo, accepted, apifyPool] = await Promise.all([
     listSelectableConnections(actor),
     listChannelsForMcpScope(actor),
     listDriveSourcesForMcpScope(actor, { id: actor.id, role: actor.role }),
     getDriveSystemInfo(),
     hasAcceptedDisclaimer(actor.id, "mcp"),
+    // the creator owns the new MCP: company Apify tokens + the creator's personal tokens
+    getMcpApifyPoolSummary({ id: actor.id, role: actor.role }),
   ])
   // TikTok accounts with TikTok Shop / GMV Max (connection check summary) - for the admin-only GMV Max switch
   const gmvFlags = await gmvMaxFlagsForMcpScope(actor, connections)
@@ -52,6 +55,7 @@ export default async function NewMcpPage() {
           createAction={createMcpAction}
           twoFactorEnabled={user.twoFactorEnabled}
           gmvMax={{ isAdmin: actor.role === "admin", flags: gmvFlags }}
+          apifyPool={apifyPool}
         />
       </DisclaimerGate>
     </div>

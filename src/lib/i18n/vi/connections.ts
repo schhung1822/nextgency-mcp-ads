@@ -7,14 +7,16 @@ export const connections = {
     title: "Kết nối",
     metaTitle: "Kết nối",
     description:
-      "Kết nối tài khoản quảng cáo, bot Telegram nhận thông báo và thư mục / sheet Google Drive cho AI dùng.",
-    /** per top tab (Quảng cáo · Telegram · Google Drive) */
+      "Kết nối tài khoản quảng cáo, bot Telegram nhận thông báo, thư mục / sheet Google Drive và token Apify cho AI dùng.",
+    /** per top tab (Quảng cáo · Telegram · Google Drive · Apify) */
     descriptionAds:
       "Dán token từ app developer để kết nối tài khoản quảng cáo cho AI xem chỉ số và điều khiển chiến dịch.",
     descriptionTelegram:
       "Thêm bot Telegram để nhận cảnh báo kết nối, thay đổi do AI thực hiện và tin nhắn từ AI.",
     descriptionDrive:
       "Khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo.",
+    descriptionApify:
+      "Thêm API token Apify để AI lấy dữ liệu sàn TMĐT, mạng xã hội, Google Maps… qua MCP; hệ thống tự xoay vòng token.",
     add: "Thêm kết nối",
     tabAll: "Tất cả nền tảng",
     /** top tab of the ad connections (the platform is a filter inside it) */
@@ -48,6 +50,8 @@ export const connections = {
     emptyFilteredDescription: "Thử đổi từ khoá tìm kiếm hoặc bỏ bớt bộ lọc.",
     openDetail: (name: string) => `Mở kết nối ${name}`,
     tabsLabel: "Loại kết nối",
+    /** short tab label on phones (< sm): four tabs must fit 360 px */
+    tabDriveShort: "Drive",
   },
 
   new: {
@@ -90,6 +94,8 @@ export const connections = {
     groupNotifyHint: "Nhận cảnh báo kết nối, thay đổi do AI thực hiện và tin nhắn từ AI.",
     groupCreative: "Kho creative",
     groupCreativeHint: "Khai báo thư mục hoặc Google Sheet để AI lấy ảnh, video lên quảng cáo.",
+    groupData: "Nguồn dữ liệu",
+    groupDataHint: "Cho AI lấy dữ liệu sàn TMĐT, mạng xã hội, Google Maps… để phân tích (qua Apify).",
     /** Google Ads card label: YouTube ads run through a Google Ads connection */
     googleWithYoutube: "Google Ads (gồm YouTube)",
     /** YouTube ads run through the Google Ads connection (one card, one form) */
@@ -109,6 +115,10 @@ export const connections = {
     drive: {
       label: "Google Drive",
       card: "Thư mục ảnh, video hoặc Google Sheet kế hoạch creative - AI lấy file từ đây khi lên quảng cáo",
+    },
+    apify: {
+      label: "Apify",
+      card: "API token Apify - AI lấy dữ liệu Shopee, TikTok, Facebook, Google Maps… rồi phân tích giúp bạn",
     },
     modeLabel: "Cách nhập",
     modeToken: "Dán access token",

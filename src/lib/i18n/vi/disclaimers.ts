@@ -1,5 +1,5 @@
 // Chuỗi giao diện - nhóm "disclaimers": popup "Miễn trừ trách nhiệm" bắt buộc đọc + xác nhận trước khi thêm kết nối
-// (quảng cáo, Telegram, Google Drive) và trước khi tạo MCP. Logic chặn: src/lib/disclaimers.ts; ghi nhận + kiểm tra
+// (quảng cáo, Telegram, Google Drive, Apify) và trước khi tạo MCP. Logic chặn: src/lib/disclaimers.ts; ghi nhận + kiểm tra
 // phía máy chủ: src/server/services/disclaimers.ts (activity_logs `legal.disclaimer_accept`).
 //
 // SỬA NỘI DUNG `docs.*` = PHẢI tăng DISCLAIMER_VERSIONS trong src/lib/disclaimers.ts (mọi người xác nhận lại) và cập
@@ -26,7 +26,7 @@ export interface DisclaimerDoc {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// K1 - trước khi thêm kết nối (tài khoản quảng cáo, Trang, TikTok Shop, Telegram, Google Drive / Google Sheet)
+// K1 - trước khi thêm kết nối (tài khoản quảng cáo, Trang, TikTok Shop, Telegram, Google Drive / Google Sheet, Apify)
 // ---------------------------------------------------------------------------------------------------------------
 
 const connection: DisclaimerDoc = {
@@ -34,7 +34,7 @@ const connection: DisclaimerDoc = {
   summary:
     "Đọc hết nội dung bên dưới, đánh dấu đồng ý rồi mới bắt đầu thêm kết nối.",
   intro: [
-    "Bạn sắp kết nối tài khoản quảng cáo, Trang Facebook, cửa hàng TikTok Shop, bot Telegram hoặc thư mục / sheet Google Drive vào hệ thống Ads MCP Simple by noti.vn (“Hệ thống”). Hệ thống do **Đơn vị vận hành** - tổ chức đã cài đặt và quản trị Hệ thống này, là bên kiểm soát dữ liệu - cung cấp cho nhân sự được cấp quyền. Phần mềm Ads MCP Simple by noti.vn do **noti.vn** phát triển; noti.vn không vận hành Hệ thống này và không truy cập dữ liệu của Hệ thống.",
+    "Bạn sắp kết nối tài khoản quảng cáo, Trang Facebook, cửa hàng TikTok Shop, bot Telegram, thư mục / sheet Google Drive hoặc token Apify vào hệ thống Ads MCP Simple by noti.vn (“Hệ thống”). Hệ thống do **Đơn vị vận hành** - tổ chức đã cài đặt và quản trị Hệ thống này, là bên kiểm soát dữ liệu - cung cấp cho nhân sự được cấp quyền. Phần mềm Ads MCP Simple by noti.vn do **noti.vn** phát triển; noti.vn không vận hành Hệ thống này và không truy cập dữ liệu của Hệ thống.",
     "Nội dung dưới đây là một phần của Điều khoản dịch vụ và Chính sách quyền riêng tư của Hệ thống. Bạn chỉ có thể bắt đầu kết nối sau khi đã đọc hết và xác nhận đồng ý.",
   ],
   sections: [
@@ -42,16 +42,16 @@ const connection: DisclaimerDoc = {
       id: "quyen-hop-phap",
       title: "1. Bạn phải có quyền hợp pháp",
       items: [
-        "Bạn cam kết **là chủ sở hữu hoặc được uỷ quyền hợp lệ** để quản lý tài khoản quảng cáo, Trang Facebook, cửa hàng TikTok Shop, bot và nhóm / kênh Telegram, thư mục / sheet Google Drive mà bạn kết nối, và được phép cho Hệ thống truy cập chúng thay mặt bạn hoặc đơn vị của bạn.",
+        "Bạn cam kết **là chủ sở hữu hoặc được uỷ quyền hợp lệ** để quản lý tài khoản quảng cáo, Trang Facebook, cửa hàng TikTok Shop, bot và nhóm / kênh Telegram, thư mục / sheet Google Drive, tài khoản Apify mà bạn kết nối, và được phép cho Hệ thống truy cập chúng thay mặt bạn hoặc đơn vị của bạn.",
         "Không kết nối tài sản của người khác khi chưa có sự đồng ý rõ ràng của họ. Không dùng Hệ thống cho quảng cáo trái pháp luật, gian dối, spam hoặc xâm phạm quyền của người khác.",
-        "Bạn tự chịu trách nhiệm tuân thủ điều khoản, chính sách quảng cáo và chính sách dành cho nhà phát triển của **Meta, TikTok, Google** (gồm YouTube, Google Drive, Google Sheets), **OpenAI, Telegram**, cùng pháp luật Việt Nam về quảng cáo, thương mại điện tử và bảo vệ dữ liệu cá nhân.",
+        "Bạn tự chịu trách nhiệm tuân thủ điều khoản, chính sách quảng cáo và chính sách dành cho nhà phát triển của **Meta, TikTok, Google** (gồm YouTube, Google Drive, Google Sheets), **OpenAI, Telegram, Apify**, cùng pháp luật Việt Nam về quảng cáo, thương mại điện tử và bảo vệ dữ liệu cá nhân.",
       ],
     },
     {
       id: "token",
       title: "2. Token, khoá truy cập và quyền của ứng dụng",
       items: [
-        "Access token, App Secret, refresh token, khoá service account, API key và bot token mà bạn nhập **cấp quyền rất rộng, kể cả quyền tạo, sửa, bật quảng cáo và chi tiêu ngân sách thật**. Ai có được chúng có thể làm mọi việc mà chúng cho phép, kể cả bên ngoài Hệ thống.",
+        "Access token, App Secret, refresh token, khoá service account, API key, bot token và token Apify mà bạn nhập **cấp quyền rất rộng, kể cả quyền tạo, sửa, bật quảng cáo và chi tiêu ngân sách thật**. Ai có được chúng có thể làm mọi việc mà chúng cho phép, kể cả bên ngoài Hệ thống.",
         "Hệ thống mã hoá các thông tin này (AES-256-GCM), không hiển thị lại, không ghi vào nhật ký và không gửi cho trợ lý AI, nhưng **không có biện pháp kỹ thuật nào an toàn tuyệt đối**.",
         "Bạn tự bảo vệ tài khoản đăng nhập Hệ thống (mật khẩu mạnh, bật xác thực 2 bước), không chia sẻ token cho người khác và **thu hồi token ngay trên nền tảng** (đồng thời báo quản trị viên) khi nghi bị lộ.",
         "**Chỉ cấp cho ứng dụng nhà phát triển (developer app) những quyền tối thiểu cần thiết.** Với TikTok: chỉ tick các nhóm quyền theo hướng dẫn kết nối; **không cấp quyền GMV MAX → Session và GMV MAX → Exclusive Authorization** - Hệ thống không dùng 2 quyền này, và nếu token bị lộ, Exclusive Authorization cho phép chuyển tài khoản GMV Max của cửa hàng sang nơi khác (làm tạm dừng mọi chiến dịch GMV Max của tài khoản cũ).",
@@ -70,13 +70,20 @@ const connection: DisclaimerDoc = {
       id: "ben-thu-ba",
       title: "4. Nền tảng bên thứ ba",
       items: [
-        "Meta, TikTok, Google, OpenAI và Telegram là dịch vụ độc lập. API của họ có thể thay đổi, bị giới hạn, gián đoạn hoặc trả dữ liệu trễ, thiếu, sai; chỉ số trong Hệ thống có thể chênh lệch với trình quản lý quảng cáo.",
+        "Meta, TikTok, Google, OpenAI, Telegram và Apify là dịch vụ độc lập. API của họ có thể thay đổi, bị giới hạn, gián đoạn hoặc trả dữ liệu trễ, thiếu, sai; chỉ số trong Hệ thống có thể chênh lệch với trình quản lý quảng cáo.",
         "Tài khoản quảng cáo, Trang, cửa hàng, bot hoặc tài khoản Google của bạn có thể bị nền tảng hạn chế, khoá, vô hiệu hoá hoặc từ chối quảng cáo theo chính sách của họ. Những việc này **không thuộc trách nhiệm của noti.vn hay Đơn vị vận hành**.",
       ],
     },
     {
+      id: "apify",
+      title: "5. Lấy dữ liệu qua Apify",
+      paragraphs: [
+        "Token Apify cho phép Hệ thống chạy các chương trình thu thập dữ liệu web (“Actor”, phần lớn do bên thứ ba viết) bằng credit của tài khoản Apify. **Mọi chi phí của các lần chạy - kể cả do trợ lý AI hoặc đồng nghiệp dùng chung token yêu cầu - tính vào tài khoản Apify của chủ token**; trần chi phí của Hệ thống chỉ giúp hạn chế, bạn nên đặt thêm giới hạn chi tiêu trong tài khoản Apify. Dữ liệu thu thập là **dữ liệu của bên thứ ba** và có thể sai hoặc lỗi thời; tác giả Actor có thể xem đầu vào và kết quả lần chạy. **Bạn tự chịu trách nhiệm bảo đảm việc thu thập và sử dụng dữ liệu là hợp pháp**: tuân thủ điều khoản của trang đích (sàn thương mại điện tử, mạng xã hội, website), quyền sở hữu trí tuệ và pháp luật Việt Nam về bảo vệ dữ liệu cá nhân. Bạn cũng phải tuân thủ điều khoản của Apify, trong đó **cấm một người tạo hoặc dùng nhiều tài khoản Apify cá nhân** - chỉ thêm token của tài khoản Apify hợp pháp mà bạn hoặc đơn vị của bạn sở hữu.",
+      ],
+    },
+    {
       id: "du-lieu",
-      title: "5. Dữ liệu và nhật ký",
+      title: "6. Dữ liệu và nhật ký",
       items: [
         "Token đã mã hoá, danh sách tài khoản quảng cáo, Trang, kênh Telegram, thư mục / sheet đã khai báo và nhật ký thao tác được lưu trên **máy chủ của Đơn vị vận hành**, không lưu ở noti.vn.",
         "Mọi thao tác của bạn trong Hệ thống và mọi lệnh MCP dùng kết nối này đều được ghi nhật ký (thời gian, người thực hiện, địa chỉ IP, thiết bị, nội dung thay đổi đã che thông tin bí mật) và lưu theo thời hạn quản trị viên cài đặt. Bạn đồng ý với việc ghi nhật ký này.",
@@ -85,21 +92,21 @@ const connection: DisclaimerDoc = {
     },
     {
       id: "gioi-han",
-      title: "6. Giới hạn trách nhiệm",
+      title: "7. Giới hạn trách nhiệm",
       paragraphs: [
         "Hệ thống được cung cấp “nguyên trạng” và “theo khả năng sẵn có”. **Trong phạm vi pháp luật cho phép, noti.vn và Đơn vị vận hành không chịu trách nhiệm** đối với bất kỳ thiệt hại trực tiếp hay gián tiếp nào, mất doanh thu hoặc lợi nhuận, mất dữ liệu, chi phí quảng cáo phát sinh, tài khoản bị hạn chế hoặc khoá, phát sinh từ việc kết nối hoặc sử dụng kết nối, kể cả khi đã được cảnh báo trước về khả năng xảy ra thiệt hại.",
       ],
     },
     {
       id: "boi-hoan",
-      title: "7. Bồi hoàn",
+      title: "8. Bồi hoàn",
       paragraphs: [
         "Bạn chịu trách nhiệm và **bồi hoàn cho noti.vn và Đơn vị vận hành** mọi thiệt hại, chi phí (kể cả chi phí pháp lý hợp lý) và khiếu nại của bên thứ ba phát sinh từ việc bạn kết nối tài sản không thuộc quyền của mình, cung cấp thông tin sai, hoặc vi phạm điều khoản, chính sách của nền tảng hay quy định pháp luật.",
       ],
     },
     {
       id: "ghi-nhan",
-      title: "8. Ghi nhận xác nhận của bạn",
+      title: "9. Ghi nhận xác nhận của bạn",
       items: [
         "Khi bạn bấm xác nhận, Hệ thống ghi lại **tài khoản của bạn, thời gian, địa chỉ IP, thiết bị và phiên bản nội dung** bạn đã đồng ý. Bản ghi này có giá trị như sự chấp thuận bằng văn bản của bạn.",
         "Bạn chỉ cần xác nhận một lần cho mỗi phiên bản nội dung. Nội dung này có thể được cập nhật; khi có phiên bản mới, bạn phải đọc và xác nhận lại trước khi thêm kết nối.",

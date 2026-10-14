@@ -21,11 +21,13 @@ import {
   pruneToSelectable,
   summarizeScopeIssues,
   validateNameStep,
+  validatePermissionsStep,
   validatePlatformsStep,
   validateProtectionStep,
   type McpFormValues,
   type StepErrors,
 } from "@/lib/schemas/mcp-servers"
+import type { McpApifyPoolSummary } from "@/lib/schemas/apify"
 import type { McpDriveSourceOption } from "@/lib/schemas/drive"
 import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type {
@@ -33,6 +35,13 @@ import type {
   SelectableConnection,
 } from "@/server/services/mcp-servers"
 
+import {
+  APIFY_DAILY_MAX_ID,
+  APIFY_ENABLE_SWITCH_ID,
+  APIFY_RUN_MAX_ID,
+  APIFY_STORE_SWITCH_ID,
+  ApifyPermissionsSection,
+} from "./apify-sections"
 import {
   DrivePermissionsSection,
   DriveSourcesSection,
@@ -99,16 +108,30 @@ function focusProtectionModeSwitch() {
   el.focus({ preventScroll: true })
 }
 
+/** Bring a form control (by id) into view and focus it. */
+function focusById(id: string) {
+  const el = document.getElementById(id)
+  if (!el) return
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" })
+  el.focus({ preventScroll: true })
+}
+
 /**
  * The server refused the save on the GMV Max switch (staff widening an admin-approved scope, admin-only switch):
  * bring the switch + its error into view (the save bar is usually far below it) and focus it.
  */
 function focusGmvMaxSwitch() {
-  const el = document.getElementById(GMV_MAX_SWITCH_ID)
-  if (!el) return
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" })
-  el.focus({ preventScroll: true })
+  focusById(GMV_MAX_SWITCH_ID)
+}
+
+/** A refused Apify field (admin-only switch, staff widening of the caps): focus it, like the GMV Max switch. */
+function apifyFieldToFocus(errors: StepErrors): string | null {
+  if (errors.apifyStoreActors) return APIFY_STORE_SWITCH_ID
+  if (errors.apifyRunMaxUsd) return APIFY_RUN_MAX_ID
+  if (errors.apifyDailyMaxUsd) return APIFY_DAILY_MAX_ID
+  if (errors.apifyEnabled) return APIFY_ENABLE_SWITCH_ID
+  return null
 }
 
 export type UpdateMcpActionFn = (
@@ -170,6 +193,7 @@ export function ConfigTab({
   capsFocusSignal = 0,
   gmvMax = NO_GMV_MAX,
   twoFactorEnabled = false,
+  apifyPool = null,
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
@@ -190,6 +214,8 @@ export function ConfigTab({
   gmvMax?: GmvMaxFormContext
   /** viewer's 2FA state: the re-auth dialog (turning the GMV Max switch on) asks for the TOTP code too */
   twoFactorEnabled?: boolean
+  /** Apify token pool of the MCP OWNER (company + the owner's personal tokens) - the Apify card */
+  apifyPool?: McpApifyPoolSummary | null
 }) {
   const router = useRouter()
   const initial = React.useMemo(
@@ -264,6 +290,7 @@ export function ConfigTab({
     const errs = {
       ...validateNameStep(values),
       ...validatePlatformsStep(values),
+      ...validatePermissionsStep(values),
       ...validateProtectionStep(values, {
         requireFutureExpiry: values.expiresOn !== initial.expiresOn,
         requiredCapCurrencies: moneyScopeCurrencies(values, connections),
@@ -292,9 +319,11 @@ export function ConfigTab({
       const mapped = mapServerErrors(r.fieldErrors).errors
       setErrors(mapped)
       toast.error(r.error)
+      const apifyField = apifyFieldToFocus(mapped)
       if (mapped.tiktokGmvMaxWrite) requestAnimationFrame(focusGmvMaxSwitch)
       else if (mapped.protectionMode)
         requestAnimationFrame(focusProtectionModeSwitch)
+      else if (apifyField) requestAnimationFrame(() => focusById(apifyField))
     })
   }
 
@@ -393,6 +422,15 @@ export function ConfigTab({
               sources={driveSources}
               publicLinksAvailable={drivePublicAvailable}
             />
+            <ApifyPermissionsSection
+              values={values}
+              update={update}
+              errors={errors}
+              pool={apifyPool}
+              isAdmin={gmvMax.isAdmin}
+              savedStoreOn={initial.apifyStoreActors}
+              ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
+            />
             <Alert>
               <HugeiconsIcon
                 icon={InformationCircleIcon}
@@ -419,7 +457,14 @@ export function ConfigTab({
           twoFactorEnabled={twoFactorEnabled}
           idPrefix="mcp-config-reauth"
           hint={null}
-          texts={tgm.reauth}
+          texts={
+            // the Apify "Actor ngoài danh mục" switch turned on without the GMV Max one: Apify wording
+            values.apifyStoreActors &&
+            !initial.apifyStoreActors &&
+            !(values.tiktokGmvMaxWrite && !initial.tiktokGmvMaxWrite)
+              ? t.apify.reauth
+              : tgm.reauth
+          }
           onSubmit={(fields) =>
             updateAction({ ...reauthPayload, reauth: fields })
           }
@@ -435,10 +480,13 @@ export function ConfigTab({
             if (mapped.step === null) return false
             setErrors(mapped.errors)
             toast.error(r.error)
+            const apifyField = apifyFieldToFocus(mapped.errors)
             if (mapped.errors.tiktokGmvMaxWrite)
               requestAnimationFrame(focusGmvMaxSwitch)
             else if (mapped.errors.protectionMode)
               requestAnimationFrame(focusProtectionModeSwitch)
+            else if (apifyField)
+              requestAnimationFrame(() => focusById(apifyField))
             return true
           }}
         />

@@ -32,10 +32,12 @@ import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PLATFORM_LABELS } from "@/lib/constants"
 import { formatDate } from "@/lib/format"
+import { apify as ta } from "@/lib/i18n/vi/apify"
 import { connections as m } from "@/lib/i18n/vi/connections"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import { guides as tg } from "@/lib/i18n/vi/guides"
 import { notifications as tn } from "@/lib/i18n/vi/notifications"
+import type { ApifyTokenDto } from "@/lib/schemas/apify"
 import {
   CONNECTION_PLATFORMS,
   statusTooltip,
@@ -48,6 +50,7 @@ import type {
 } from "@/lib/schemas/drive"
 import type { NotificationChannelDto } from "@/lib/schemas/notifications"
 
+import { ApifyTokensTable } from "./apify-tokens-table"
 import { DriveSourcesTable } from "./drive-sources-table"
 import { TelegramChannelsTable } from "./telegram-channels-table"
 
@@ -57,6 +60,8 @@ export const ADS_TAB = "all"
 export const TELEGRAM_TAB = "telegram"
 /** view tab of the Google Drive folders / sheets (creative sources) */
 export const DRIVE_TAB = "drive"
+/** view tab of the Apify API tokens (data source for the apify_* MCP tools) */
+export const APIFY_TAB = "apify"
 
 const NO_DRIVE_SYSTEM: DriveSystemInfo = {
   configured: false,
@@ -161,9 +166,9 @@ function buildColumns(isAdmin: boolean) {
 }
 
 /**
- * /connections: three top tabs - "Quảng cáo" (every ad platform; the platform is a multi-select filter pill in the
- * FilterBar, so the tab strip never scrolls sideways) · "Telegram" · "Google Drive". `?tab=` (all|telegram|drive)
- * selects the tab, the old `?platform=meta` links preselect the platform filter.
+ * /connections: four top tabs - "Quảng cáo" (every ad platform; the platform is a multi-select filter pill in the
+ * FilterBar) · "Telegram" · "Google Drive" · "Apify". `?tab=` (all|telegram|drive|apify) selects the tab, the old
+ * `?platform=meta` links preselect the platform filter.
  */
 export function ConnectionsTable({
   items,
@@ -171,6 +176,7 @@ export function ConnectionsTable({
   driveSources = [],
   driveSystem = NO_DRIVE_SYSTEM,
   drivePersonalCredentials = [],
+  apifyTokens = [],
   isAdmin,
   initialTab = ADS_TAB,
   initialPlatforms = [],
@@ -184,6 +190,8 @@ export function ConnectionsTable({
   driveSystem?: DriveSystemInfo
   /** "Service account riêng" (own; admin: all) */
   drivePersonalCredentials?: PersonalDriveCredentialDto[]
+  /** Apify API tokens (tab "Apify"; staff: company tokens read-only + own personal) - never a secret */
+  apifyTokens?: ApifyTokenDto[]
   isAdmin: boolean
   /** ?tab=… (e.g. "telegram" after deleting a channel) */
   initialTab?: string
@@ -216,9 +224,25 @@ export function ConnectionsTable({
     })
   }, [items, search, platformFilter, statusFilter, isAdmin])
 
-  const total = items.length + channels.length + driveSources.length
+  const total =
+    items.length + channels.length + driveSources.length + apifyTokens.length
   const onTelegram = tab === TELEGRAM_TAB
   const onDrive = tab === DRIVE_TAB
+  const onApify = tab === APIFY_TAB
+  // four tabs are tight on a 360px phone: keep the selected one in view inside the scrollable strip
+  const tabStripRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    const strip = tabStripRef.current
+    const active = strip?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]'
+    )
+    if (!strip || !active) return
+    const s = strip.getBoundingClientRect()
+    const r = active.getBoundingClientRect()
+    // horizontal only (scrollIntoView could also scroll the page vertically)
+    if (r.left < s.left) strip.scrollLeft -= s.left - r.left + 12
+    else if (r.right > s.right) strip.scrollLeft += r.right - s.right + 12
+  }, [tab])
   const header = (
     <PageHeader
       title={m.list.title}
@@ -230,10 +254,12 @@ export function ConnectionsTable({
             ? m.list.descriptionTelegram
             : onDrive
               ? m.list.descriptionDrive
-              : m.list.descriptionAds
+              : onApify
+                ? m.list.descriptionApify
+                : m.list.descriptionAds
       }
       // empty list: the empty state carries the one brand button instead;
-      // the Telegram / Drive views add a channel / source straight away (no platform picker)
+      // the Telegram / Drive / Apify views add a channel / source / token straight away (no platform picker)
       primaryAction={
         total > 0 || onDrive ? (
           <Button variant="brand" asChild>
@@ -243,7 +269,9 @@ export function ConnectionsTable({
                   ? "/connections/telegram/new"
                   : onDrive
                     ? "/connections/drive/new"
-                    : "/connections/new"
+                    : onApify
+                      ? "/connections/apify/new"
+                      : "/connections/new"
               }
             >
               <HugeiconsIcon
@@ -256,7 +284,9 @@ export function ConnectionsTable({
                 ? tn.list.add
                 : onDrive
                   ? driveUi.list.add
-                  : m.list.add}
+                  : onApify
+                    ? ta.list.add
+                    : m.list.add}
             </Link>
           </Button>
         ) : undefined
@@ -264,8 +294,9 @@ export function ConnectionsTable({
     />
   )
 
-  // ?tab=drive keeps the tabs: the Drive view explains the system email even before anything exists
-  if (total === 0 && !onDrive) {
+  // ?tab=drive / ?tab=apify keep the tabs: the Drive view explains the system email and the Apify view its guide
+  // (how to get a token, terms) even before anything exists
+  if (total === 0 && !onDrive && !onApify) {
     return (
       <>
         {header}
@@ -327,25 +358,32 @@ export function ConnectionsTable({
     <>
       {header}
       <Card className="@container gap-0 py-0">
-        {/* tab-aware guide: the Telegram / Drive views explain their own setup */}
+        {/* tab-aware guide: the Telegram / Drive / Apify views explain their own setup */}
         <PageGuide
           guide={
             onTelegram
               ? tg.telegramList
               : onDrive
                 ? driveUi.guides.list
-                : tg.connections
+                : onApify
+                  ? tg.apifyList
+                  : tg.connections
           }
         />
         <Tabs value={tab} onValueChange={setTab} className="gap-0">
-          {/* three short tabs fit a 360px phone; the scroll is only a safety net (no mask / auto-reveal needed) */}
-          <div className="[scrollbar-width:none] overflow-x-auto border-b px-3 pt-3 [&::-webkit-scrollbar]:hidden">
+          {/* four tabs on a 360px phone: below sm no icons, plain counts (no pill), tighter padding and "Drive" instead
+              of "Google Drive"; the strip still scrolls sideways if long counts do not fit, and the effect above keeps
+              the selected tab in view */}
+          <div
+            ref={tabStripRef}
+            className="[scrollbar-width:none] overflow-x-auto border-b px-3 pt-3 [&::-webkit-scrollbar]:hidden"
+          >
             <TabsList
               variant="line"
               aria-label={m.list.tabsLabel}
-              className="max-sm:h-11!"
+              className="max-sm:h-11! max-sm:gap-0.5"
             >
-              <TabsTrigger value={ADS_TAB}>
+              <TabsTrigger value={ADS_TAB} className="max-sm:gap-1 max-sm:px-1.5">
                 <HugeiconsIcon
                   icon={Plug01Icon}
                   strokeWidth={2}
@@ -355,15 +393,25 @@ export function ConnectionsTable({
                 {m.list.tabAds}
                 <TabCount n={items.length} />
               </TabsTrigger>
-              <TabsTrigger value={TELEGRAM_TAB}>
+              <TabsTrigger value={TELEGRAM_TAB} className="max-sm:gap-1 max-sm:px-1.5">
                 <BrandIcon brand="telegram" className="max-sm:hidden" />
                 {tn.list.tab}
                 <TabCount n={channels.length} />
               </TabsTrigger>
-              <TabsTrigger value={DRIVE_TAB}>
+              <TabsTrigger value={DRIVE_TAB} className="max-sm:gap-1 max-sm:px-1.5">
                 <BrandIcon brand="drive" className="max-sm:hidden" />
-                {driveUi.ui.tab}
+                {/* the accessible name stays "Google Drive" on a phone */}
+                <span className="max-sm:hidden">{driveUi.ui.tab}</span>
+                <span className="sm:hidden" aria-hidden>
+                  {m.list.tabDriveShort}
+                </span>
+                <span className="sr-only sm:hidden">{driveUi.ui.tab}</span>
                 <TabCount n={driveSources.length} />
+              </TabsTrigger>
+              <TabsTrigger value={APIFY_TAB} className="max-sm:gap-1 max-sm:px-1.5">
+                <BrandIcon brand="apify" className="max-sm:hidden" />
+                {ta.list.tab}
+                <TabCount n={apifyTokens.length} />
               </TabsTrigger>
             </TabsList>
           </div>
@@ -385,8 +433,16 @@ export function ConnectionsTable({
                 ctaVariant="outline"
               />
             </TabsContent>
+          ) : onApify ? (
+            <TabsContent value={APIFY_TAB} className="flex flex-col">
+              <ApifyTokensTable
+                tokens={apifyTokens}
+                isAdmin={isAdmin}
+                ctaVariant="outline"
+              />
+            </TabsContent>
           ) : items.length === 0 ? (
-            // only Telegram / Drive so far: no ad connection at all
+            // only Telegram / Drive / Apify so far: no ad connection at all
             <TabsContent value={ADS_TAB} className="flex flex-col">
               <EmptyState
                 icon={Plug01Icon}
@@ -518,8 +574,9 @@ export function ConnectionsTable({
 }
 
 function TabCount({ n }: { n: number }) {
+  // phones: a plain muted number instead of the pill - four tabs then fit a 360px screen without scrolling
   return (
-    <span className="rounded-full bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground tabular-nums">
+    <span className="rounded-full bg-muted px-1.5 py-px text-xs font-medium text-muted-foreground tabular-nums max-sm:bg-transparent max-sm:px-0">
       {n}
     </span>
   )

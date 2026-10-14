@@ -167,6 +167,7 @@ export const mcp = {
       "Trần chi tiêu theo tiền tệ (ngân sách/ngày, trọn đời, giá thầu/CPA)",
       "Giới hạn tốc độ (lệnh/phút, thao tác ghi / 10 phút, giãn cách giữa các lệnh ghi)",
       "Giới hạn tin Telegram / giờ",
+      "Trần Apify mỗi ngày",
       "IP được phép (mọi IP đều dùng được)",
     ],
     basicAlwaysTitle: "Luôn áp dụng",
@@ -174,6 +175,7 @@ export const mcp = {
       "Xoá (không hoàn tác) luôn cần bạn xác nhận",
       "Đối tượng tạo mới hoặc sao chép luôn ở trạng thái tạm dừng",
       "TikTok GMV Max: mọi thay đổi luôn cần xác nhận; tạo mới / sao chép GMV Max cần chế độ Tùy chỉnh nâng cao và trần Ngân sách/ngày",
+      "Trần chi phí mỗi lần chạy Apify; chạy Actor Apify ngoài danh mục luôn cần xác nhận",
       "Ngày hết hạn của MCP",
     ],
     basicKept:
@@ -350,6 +352,67 @@ export const mcp = {
     summaryPublic: "Link Drive công khai",
     summaryWriteback: "Ghi trạng thái vào Google Sheet",
     summaryNone: "Không dùng",
+  },
+
+  /** Apify block of the MCP form + overview (16-apify.md §8) */
+  apify: {
+    /** step "Chọn quyền" subheading separating the Apify block from the blocks above it */
+    optionalGroup: "Lấy dữ liệu (không bắt buộc)",
+    title: "Apify",
+    description:
+      "AI chạy các việc lấy dữ liệu đã chọn lọc (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Instagram, YouTube, Google Maps, trang web…) trên tài khoản Apify để phân tích.",
+    enableLabel: "Cho phép AI lấy dữ liệu qua Apify",
+    enableHelp:
+      "Mỗi lần chạy tốn credit của tài khoản Apify (token công ty + token cá nhân của chủ MCP, tự xoay vòng) và luôn có trần chi phí. Dữ liệu thu về là của bên thứ ba - AI chỉ dùng để phân tích.",
+    pool: (s: { tokens: number; accounts: number; usableNow: number }) =>
+      `Kho token: ${s.tokens} token · ${s.accounts} tài khoản Apify · ${s.usableNow} dùng được ngay`,
+    poolScopes: (company: number, personal: number) =>
+      `${company} token công ty, ${personal} token cá nhân`,
+    noToken:
+      "Chưa có token Apify nào dùng được cho MCP này. Thêm token ở trang Kết nối → Apify rồi quay lại.",
+    noTokenOwner: (email: string) =>
+      `Chưa có token Apify dùng được cho MCP của ${email} (token công ty hoặc token cá nhân của người này).`,
+    addToken: "Thêm token Apify",
+    notUsableNow:
+      "Hiện chưa có token nào dùng được ngay (hết credit hoặc đang lỗi) - AI sẽ nhận lỗi khi chạy cho tới khi tài khoản Apify có credit lại.",
+    tosNote:
+      "Điều khoản Apify cấm một người lập nhiều tài khoản Personal: chỉ thêm token của các tài khoản Apify hợp pháp khác nhau. Nhiều token cùng một tài khoản dùng chung credit.",
+    runMaxLabel: "Trần mỗi lần chạy (USD)",
+    runMaxHelp:
+      "Chi phí tối đa của 1 lần chạy, 0,05 - 20 USD (mặc định 1, tối đa 2 chữ số thập phân). Apify tự dừng lần chạy khi chạm trần. Luôn áp dụng, kể cả ở chế độ bảo vệ Cơ bản. Actor tính phí theo tài nguyên (vd đọc / crawl trang web) bị giới hạn thời gian chạy theo trần; phí lưu lượng proxy không nằm trong trần.",
+    usdSuffix: "USD",
+    storeLabel: "Cho phép Actor ngoài danh mục",
+    storeHelpOff:
+      "Mặc định AI chỉ chạy các việc trong danh mục (đã giới hạn sẵn input và số kết quả). Bật để AI tìm và chạy Actor khác trên Apify Store - vẫn chặn Actor rủi ro, trường đăng nhập / cookie và vẫn áp trần chi phí.",
+    storeHelpOn:
+      "AI được tìm và chạy Actor trên Apify Store (trừ Actor cần quyền đầy đủ, ngừng hỗ trợ, bảo trì hoặc thuê theo tháng). Mỗi lần chạy Actor ngoài danh mục LUÔN cần người dùng xác nhận trong khung chat (xem trước Actor, input, chi phí tối đa) ở mọi chế độ bảo vệ. Theo dõi chi phí trong Nhật ký.",
+    adminBadge: "Chỉ quản trị viên",
+    staffLocked: "Chỉ quản trị viên được bật công tắc này.",
+    staffCanTurnOff: "Quản trị viên đã bật cho MCP này - bạn có thể tắt.",
+    disabledNote: "Bật Apify để đặt trần chi phí và các tùy chọn khác.",
+    /** protection step (advanced) */
+    groupTitle: "Apify",
+    groupDescription: "Giới hạn tiền Apify AI được dùng mỗi ngày cho MCP này.",
+    dailyLabel: "Trần Apify mỗi ngày (USD)",
+    dailyHelp:
+      "Tổng chi phí các lần chạy trong 1 ngày (giờ Việt Nam) - lần chạy chưa xong tính theo trần của nó. 0 - 1.000 USD, mặc định 10; 0 = không giới hạn theo ngày. Trần mỗi lần chạy vẫn luôn áp dụng.",
+    basicNote: (runMax: string) =>
+      `Apify: chế độ Cơ bản không có trần theo ngày, nhưng trần mỗi lần chạy (${runMax} USD) vẫn áp dụng.`,
+    /** overview rows */
+    summaryEnabled: "Apify",
+    summaryRunMax: "Trần Apify mỗi lần chạy",
+    summaryDaily: "Trần Apify mỗi ngày",
+    summaryStore: "Actor ngoài danh mục Apify",
+    noDailyCap: "Không giới hạn",
+    usd: (text: string) => `${text} USD`,
+    /** re-authentication when an admin turns "Actor ngoài danh mục" on (config tab) */
+    reauth: {
+      title: "Xác minh để lưu thay đổi nhạy cảm",
+      description:
+        "Bật Actor ngoài danh mục Apify (hoặc quyền GMV Max) là thay đổi nhạy cảm (chi tiêu thật). Nhập lại mật khẩu (và mã 2FA nếu có) để lưu - thao tác này được ghi vào nhật ký.",
+      submit: "Xác minh và lưu",
+      submitting: "Đang lưu…",
+    },
   },
 
   success: {

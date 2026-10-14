@@ -128,6 +128,16 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     previewDriveSheetRowsAction: "any",
     listMcpDriveSourceOptionsAction: "any",
   },
+  // company tokens are admin-only inside the service (staff may still manage their personal tokens)
+  "@/server/actions/apify": {
+    previewApifyTokenAction: "any",
+    createApifyTokenAction: "any",
+    renameApifyTokenAction: "any",
+    setApifyTokenEnabledAction: "any",
+    recheckApifyTokenAction: "any",
+    replaceApifyTokenAction: "any",
+    deleteApifyTokenAction: "any",
+  },
 }
 
 // Pure expectation model (the documented rules of requireUserForAction):

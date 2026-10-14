@@ -66,6 +66,13 @@ const baseSchema = z.object({
     .refine((v) => !v || v.trim() === "" || isSafeHttpsBaseUrl(v.trim()), {
       message: "TIKTOK_BASE_URL phải là địa chỉ https://, không kèm user/mật khẩu hay query",
     }),
+  /** Apify API base (tests / a sandbox double): https only, no credentials / query; unset = https://api.apify.com */
+  APIFY_API_BASE_URL: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.trim() === "" || isSafeHttpsBaseUrl(v.trim()), {
+      message: "APIFY_API_BASE_URL phải là địa chỉ https://, không kèm user/mật khẩu hay query",
+    }),
   /** Telegram Bot API base (notification channels): https only (http for localhost); unset = https://api.telegram.org */
   TELEGRAM_API_BASE_URL: z
     .string()

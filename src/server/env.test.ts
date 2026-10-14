@@ -34,6 +34,15 @@ describe("env validation", () => {
     expect(parseEnv({ ...BASE, DATABASE_URL: url }).success).toBe(true)
   })
 
+  it("APIFY_API_BASE_URL is optional and https only (no credentials / query / http)", () => {
+    expect(parseEnv({ ...BASE }).success).toBe(true)
+    expect(parseEnv({ ...BASE, APIFY_API_BASE_URL: "" }).success).toBe(true)
+    expect(parseEnv({ ...BASE, APIFY_API_BASE_URL: "https://apify-double.example.vn" }).success).toBe(true)
+    for (const bad of ["http://api.apify.com", "http://localhost:9000", "https://u:p@api.apify.com", "https://api.apify.com/?token=x", "nope"]) {
+      expect(parseEnv({ ...BASE, APIFY_API_BASE_URL: bad }).success, bad).toBe(false)
+    }
+  })
+
   it("Google Ads / TikTok API versions default to v25 / v1.3; TIKTOK_BASE_URL is optional and https only", () => {
     const d = parseEnv({ ...BASE })
     expect(d.success && [d.data.GOOGLE_ADS_API_VERSION, d.data.TIKTOK_API_VERSION]).toEqual(["v25", "v1.3"])

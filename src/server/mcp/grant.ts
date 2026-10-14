@@ -2,6 +2,8 @@
 // Unknown / disabled / expired / deleted keys, banned owners → null (the endpoint answers 404, never 401).
 import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import { LRUCache } from "lru-cache"
+// the store module (not the server-only service): the worker reaches this file through apify health → pool
+import { loadGrantApifyTokens } from "../apify/store"
 import { hashMcpKey, isWellFormedMcpKey } from "../crypto/mcp-key"
 import { db } from "../db/client"
 import {
@@ -349,20 +351,24 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
     }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 
+  // what the endpoint enforces: basic mode switches every limit off except the expiry date
+  const settings = effectiveMcpSettings(parseMcpSettings(m.settings))
   return {
     mcpId: m.id,
     mcpName: m.name,
     ownerId: m.ownerId,
     ownerEmail: m.ownerEmail,
     ownerRole: ownerIsAdmin ? "admin" : "staff",
-    // what the endpoint enforces: basic mode switches every limit off except the expiry date
-    settings: effectiveMcpSettings(parseMcpSettings(m.settings)),
+    settings,
     permissions,
     accounts,
     pages,
     notificationChannels: notificationChannelsInScope,
     driveSources: await loadGrantDriveSources(m.id, m.ownerId, ownerIsAdmin),
     drivePublicAvailable: await systemDriveApiKeyAvailable(),
+    // Apify pool (16-apify.md §5): company tokens + the MCP OWNER's personal tokens (admin-owned MCP too), no secrets;
+    // read only when the MCP uses Apify (no query otherwise)
+    apifyTokens: settings.apifyEnabled ? await loadGrantApifyTokens(m.ownerId) : [],
   }
 }
 

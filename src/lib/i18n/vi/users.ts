@@ -190,10 +190,16 @@ export const users = {
     lastAdmin:
       "Cần luôn còn ít nhất 1 quản trị viên đang hoạt động (và đã bật 2FA nếu hệ thống bắt buộc). Hãy chỉ định quản trị viên khác trước.",
     notFound: "Không tìm thấy người dùng. Có thể người dùng đã bị xoá - tải lại trang.",
-    ownsResources: (connections: number, mcps: number, telegramChannels = 0) =>
-      telegramChannels > 0
-        ? `Người dùng còn ${connections} kết nối quảng cáo, ${mcps} MCP và ${telegramChannels} kết nối Telegram. Hãy xoá chúng trước khi xoá người dùng.`
-        : `Người dùng còn ${connections} kết nối và ${mcps} MCP. Hãy xoá chúng trước khi xoá người dùng.`,
+    ownsResources: (connections: number, mcps: number, telegramChannels = 0, apifyTokens = 0) => {
+      const extra = [
+        ...(telegramChannels > 0 ? [`${telegramChannels} kết nối Telegram`] : []),
+        ...(apifyTokens > 0 ? [`${apifyTokens} token Apify`] : []),
+      ]
+      if (extra.length === 0)
+        return `Người dùng còn ${connections} kết nối và ${mcps} MCP. Hãy xoá chúng trước khi xoá người dùng.`
+      const parts = [`${connections} kết nối quảng cáo`, `${mcps} MCP`, ...extra]
+      return `Người dùng còn ${parts.slice(0, -1).join(", ")} và ${parts[parts.length - 1]}. Hãy xoá chúng trước khi xoá người dùng.`
+    },
     sameRole: "Người dùng đã có vai trò này.",
   },
 

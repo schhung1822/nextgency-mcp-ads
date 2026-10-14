@@ -268,6 +268,7 @@ describe("nội dung miễn trừ trách nhiệm", () => {
   // tăng phiên bản (mọi người phải xác nhận lại) rồi cập nhật mã băm ở đây.
   const PINNED: Record<string, string> = {
     "connection@2026-10-10": "5e2a881d5823066e",
+    "connection@2026-10-14": "6205490ab098ecb4",
     "mcp@2026-10-10": "77eb64190b243d8a",
   }
 

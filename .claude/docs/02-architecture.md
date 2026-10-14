@@ -66,6 +66,7 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
                        └──────────────────────────────────────┘
         web/worker ──HTTPS──► Meta Graph · TikTok Business · Google Ads REST (gồm YouTube) · OpenAI Ads · Telegram Bot API
         web/worker ──HTTPS──► Google Drive v3 · Sheets v4 (host ghim: www/sheets.googleapis.com, *.googleusercontent.com cho thumbnail)
+        web/worker ──HTTPS──► Apify API v2 (api.apify.com — tool MCP apify_*, kiểm tra token; 16-apify.md)
 ```
 - 1 image Docker, nhiều entrypoint: `web` (`node server.js`), `worker` (`node dist/worker.mjs`), `migrate` (`node dist/migrate.mjs`, chạy 1 lần), CLI (`node dist/cli.mjs`).
 - Khi tải MCP lớn: thêm service `mcp` chạy **cùng image** như `web`, Caddy route `/mcp/*` sang đó. Code `src/server/mcp/**` không import `next/*` nên có thể chuyển sang Hono (`@modelcontextprotocol/hono`) nếu cần.
@@ -80,7 +81,7 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
 │  │  ├─ (auth)/login/  (auth)/login/2fa/  (auth)/setup/
 │  │  ├─ (dashboard)/layout.tsx         requireUser() + AppShell
 │  │  │   ├─ page.tsx                   Tổng quan
-│  │  │   ├─ connections/ [id]/ new/    Kết nối quảng cáo (+ telegram/{new,[id]}, drive/{new,[id]} — tab ?tab=telegram|drive)
+│  │  │   ├─ connections/ [id]/ new/    Kết nối quảng cáo (+ telegram/{new,[id]}, drive/{new,[id]}, apify/{new,[id]} — tab ?tab=telegram|drive|apify)
 │  │  │   ├─ mcp-servers/ [id]/ new/    MCP (quản lý; /mcp/* là endpoint)
 │  │  │   ├─ logs/                      Nhật ký (?tab=mcp|staff)
 │  │  │   ├─ users/                     (admin)
@@ -106,6 +107,7 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
 │  │  ├─ services/ users.ts connections.ts ad-accounts.ts mcp-servers.ts logs.ts settings.ts dashboard.ts
 │  │  │            notification-channels.ts (kênh Telegram: CRUD + owner check + enqueueNotification)
 │  │  │            drive-credentials.ts drive-sources.ts (Google Drive: credential hệ thống/riêng, nguồn thư mục/sheet, chống nhận vơ, quyền)
+│  │  │            apify-tokens.ts (token Apify công ty/cá nhân: CRUD + quyền + kiểm tra token + kho token cho MCP)
 │  │  ├─ google/                        KHÔNG import next/*: service-account.ts (JWT RS256 → access token, scope là tham số, cache theo scope; Google Ads + Drive dùng chung)
 │  │  ├─ drive/                         KHÔNG import next/*: client.ts (Drive v3 + Sheets v4 qua fetch, host ghim) links.ts files.ts sheets.ts rate-limit.ts
 │  │  │                                 store.ts (mã hoá/giải mã) blocked.ts file-ref.ts (drf_) media-uploads.ts relay-*.ts (link tạm /dl)
@@ -113,6 +115,9 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
 │  │  ├─ net/                           ssrf.ts (safeFetch ghim IP), media-type.ts (magic bytes), media-slots.ts (semaphore media chung Telegram + Drive)
 │  │  ├─ notifications/                 KHÔNG import next/*: telegram.ts (Bot API: sendMessage/getMe/getChat/getChatMember,
 │  │  │                                 escapeHtml, map lỗi, không log URL chứa token) + nội dung tin theo sự kiện (14-telegram-notifications.md)
+│  │  ├─ apify/                         KHÔNG import next/* (16-apify.md §4): client.ts (fetch api.apify.com/v2, header Bearer, không ?token=, retry GET)
+│  │  │                                 errors.ts (ApifyError + phân loại xoay token) store.ts (chỗ duy nhất mã hoá/giải mã token) pool.ts (kho token + xoay vòng,
+│  │  │                                 apify_runs) catalog.ts + catalog/*.ts (danh mục việc) actors.ts (chạy Actor, run, dataset, abort) health.ts types.ts
 │  │  ├─ actions/  *.ts                 server actions mỏng: requireUser → zod parse → service → activity log → revalidate
 │  │  ├─ providers/                     KHÔNG import next/*
 │  │  │   ├─ types.ts registry.ts errors.ts http.ts (fetch + retry + timeout) rate-limit.ts money.ts dates.ts
@@ -125,7 +130,7 @@ pnpm dlx shadcn@latest add sidebar-16 dashboard-01 login-03 chart sonner input-o
 ├─ tests/ e2e/                          Playwright
 ├─ Dockerfile  docker-compose.yml  Caddyfile  .env.example
 ```
-Quy tắc phụ thuộc: `app → server/actions → server/services → server/{db,providers,crypto,audit}`; `server/mcp → server/{services,providers,audit,crypto,db}`. Component client không import `server/*`. Thêm ESLint `no-restricted-imports` chặn `next/*` trong `src/server/providers/**` và `src/server/mcp/**` (`src/server/drive/**`, `src/server/google/**` cũng không import `next/*` vì chạy trong worker — hiện mới giữ bằng review, **chưa** có trong danh sách file của rule ESLint).
+Quy tắc phụ thuộc: `app → server/actions → server/services → server/{db,providers,crypto,audit}`; `server/mcp → server/{services,providers,audit,crypto,db}`. Component client không import `server/*`. Thêm ESLint `no-restricted-imports` chặn `next/*` trong `src/server/providers/**` và `src/server/mcp/**` (`src/server/drive/**`, `src/server/google/**`, `src/server/apify/**` cũng không import `next/*` vì chạy trong worker — hiện mới giữ bằng review, **chưa** có trong danh sách file của rule ESLint).
 
 ## 4. Provider adapter (giao diện chung)
 ```ts
@@ -173,7 +178,9 @@ export interface AdsProvider {
 
 **Google Drive → nền tảng** (`15-google-drive-media.md` §18): tool MCP `ads_upload_media(drive_file)` → `drive-access.ts` (file thuộc nguồn được cấp — service account — hoặc link công khai — API key) → ảnh: tải bytes từ Drive → adapter upload bytes; video nhỏ (TikTok ≤ 10 MB, Meta ≤ 50 MB): `createRelayLink` → nền tảng GET `/dl/<token>/<tên>` → `relay-serve.ts` stream từ Drive (Range, không đệm, không ghi đĩa); video lớn: `media_upload_jobs` + pg-boss `media.video_upload` → worker đọc Drive bằng Range và gọi `uploadVideoChunked` của adapter. Mã media lưu `drive_media_uploads` để tái dùng.
 
-**Job nền (worker)**: `logs.maintain` 03:15 hằng ngày (tạo trước partition 3 tháng, drop partition quá hạn theo setting) · `logs.rollup` mỗi 5 phút (`mcp_call_stats_hourly` cho biểu đồ) · `tokens.health` mỗi 6 giờ (validate credential, cập nhật trạng thái/hạn) · `accounts.sync` hằng ngày (đồng bộ danh sách tài khoản QC) · `pending_actions.cleanup` hằng giờ · `auth.cleanup` 03:45 hằng ngày (xoá hàng đã hết hạn của `verification` — bộ đếm khoá đăng nhập/quota/đánh dấu phiên tươi/thử thách 2FA —, `session`, `rate_limit`; nếu không chúng phình mãi vì mỗi lần đăng nhập sai tạo hàng mới) · `drive.health` phút 40 mỗi 6 giờ (kiểm tra lại credential + nguồn Drive) · `drive.cleanup` 03:50 hằng ngày (xoá link tạm hết hạn > 24 h, đánh dấu lỗi lượt tải video treo, xoá lượt tải > 30 ngày) · `media.upload_sweep` 10 phút/lần · `media.video_upload` theo yêu cầu (tải video Drive lớn theo từng phần, 1 job một lúc).
+**Apify** (`16-apify.md`): tool MCP `apify_run_task` / `apify_run_actor` → kiểm tra việc trong danh mục (hoặc Actor ngoài danh mục khi admin bật) + trần lần chạy / ngày → `pool.ts` chọn token trong kho của chủ MCP (ngẫu nhiên theo credit, xoay khi hết credit / token sai / bận) → `store.ts` giải mã (AAD `apify_token:<id>:credentials`) → `actors.ts` `POST /v2/actors/{id}/runs` (`maxTotalChargeUsd`, `timeout`, `memory`, `waitForFinish`) → ghi `apify_runs` (ghim token) → `apify_get_run` / `apify_get_results` đọc lại bằng đúng token đã chạy, làm sạch dữ liệu trước khi trả AI.
+
+**Job nền (worker)**: `logs.maintain` 03:15 hằng ngày (tạo trước partition 3 tháng, drop partition quá hạn theo setting) · `logs.rollup` mỗi 5 phút (`mcp_call_stats_hourly` cho biểu đồ) · `tokens.health` mỗi 6 giờ (validate credential, cập nhật trạng thái/hạn) · `accounts.sync` hằng ngày (đồng bộ danh sách tài khoản QC) · `pending_actions.cleanup` hằng giờ · `auth.cleanup` 03:45 hằng ngày (xoá hàng đã hết hạn của `verification` — bộ đếm khoá đăng nhập/quota/đánh dấu phiên tươi/thử thách 2FA —, `session`, `rate_limit`; nếu không chúng phình mãi vì mỗi lần đăng nhập sai tạo hàng mới) · `drive.health` phút 40 mỗi 6 giờ (kiểm tra lại credential + nguồn Drive) · `drive.cleanup` 03:50 hằng ngày (xoá link tạm hết hạn > 24 h, đánh dấu lỗi lượt tải video treo, xoá lượt tải > 30 ngày) · `media.upload_sweep` 10 phút/lần · `media.video_upload` theo yêu cầu (tải video Drive lớn theo từng phần, 1 job một lúc) · job kiểm tra token Apify mỗi 6 giờ (`src/server/jobs/apify-health.ts`: credit / trạng thái, gỡ "Hết credit" khi qua ngày reset) + dọn `apify_runs` > 90 ngày.
 
 ## 6. Ghi chú Next 16 quan trọng
 - `proxy.ts` thay `middleware.ts` (chạy Node runtime). Chỉ dùng redirect lạc quan khi thiếu cookie session; **kiểm tra thật trong layout + từng server action + route handler**. Matcher loại trừ `/mcp`, `/dl`, `/api/auth`, `/api/health`, `/login`, `/setup`, `/_next`, file tĩnh — proxy buffer body (mặc định 10MB, cắt im lặng) nên `/mcp` tuyệt đối không đi qua proxy.

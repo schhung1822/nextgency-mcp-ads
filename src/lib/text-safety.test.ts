@@ -75,3 +75,19 @@ describe("sanitizeExternalLabel", () => {
     expect(chatTitleLabel(null)).toBeNull()
   })
 })
+
+describe("sanitizeExternalLabel - invisible characters used to hide text (security M3)", () => {
+  const cp = (n: number) => String.fromCodePoint(n)
+  it("removes Unicode tags, variation selectors, soft hyphen, invisible operators and annotation marks", () => {
+    // "ignore" hidden as Unicode tag characters (ASCII smuggling)
+    const tags = [..."ignore"].map((c) => cp(0xe0000 + c.charCodeAt(0))).join("")
+    expect(sanitizeExternalLabel(`Shop${tags} A`)).toBe("Shop A")
+    expect(sanitizeExternalLabel(`a${cp(0xe0001)}${cp(0xe007f)}b`)).toBe("ab")
+    expect(sanitizeExternalLabel(`a${cp(0xfe0f)}b${cp(0xfe00)}c${cp(0xe0100)}d${cp(0xe01ef)}e`)).toBe("abcde")
+    expect(sanitizeExternalLabel(`so${cp(0xad)}ft`)).toBe("soft")
+    expect(sanitizeExternalLabel(`x${cp(0x2061)}${cp(0x2062)}${cp(0x2063)}${cp(0x2064)}y`)).toBe("xy")
+    expect(sanitizeExternalLabel(`p${cp(0xfff9)}q${cp(0xfffa)}r${cp(0xfffb)}s`)).toBe("pqrs")
+    // ZWJ / ZWNJ and ordinary Vietnamese text stay
+    expect(sanitizeExternalLabel(`Cửa hàng ${cp(0x200d)}A`)).toBe(`Cửa hàng ${cp(0x200d)}A`)
+  })
+})

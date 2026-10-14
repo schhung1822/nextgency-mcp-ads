@@ -126,6 +126,12 @@ export const MCP_ERRORS = {
   gmvMaxAdminOnly: "Chỉ quản trị viên được bật quyền thay đổi GMV Max.",
   gmvMaxStaffWidening:
     "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt. Mở rộng tài khoản, quyền, hạn mức TikTok, danh sách IP được phép, ngày hết hạn hoặc chuyển sang chế độ bảo vệ Cơ bản cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
+  apifyStoreAdminOnly:
+    "Chỉ quản trị viên được bật Actor ngoài danh mục Apify.",
+  gmvMaxStaffApifyWidening:
+    "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt: nâng trần chi phí Apify (mỗi lần chạy / mỗi ngày) cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
+  apifyStoreStaffWidening:
+    "MCP này đang được quản trị viên cho phép chạy Actor ngoài danh mục Apify: nâng trần chi phí Apify (mỗi lần chạy / mỗi ngày) hoặc chuyển sang chế độ bảo vệ Cơ bản cần quản trị viên lưu - hoặc tắt Actor ngoài danh mục rồi lưu.",
 } as const
 
 /**
@@ -140,6 +146,21 @@ function assertGmvMaxSwitchAllowed(
   if (actor.role === "admin" || !after || before) return
   throw invalid(MCP_ERRORS.gmvMaxAdminOnly, {
     "settings.tiktokGmvMaxWrite": MCP_ERRORS.gmvMaxAdminOnly,
+  })
+}
+
+/**
+ * Apify "Actor ngoài danh mục" switch (settings.apifyStoreActors) is admin-only, like the GMV Max switch: a non-admin
+ * may keep the stored value or turn it OFF, never turn it ON (create with true = turning it on).
+ */
+function assertApifyStoreSwitchAllowed(
+  actor: McpActor,
+  before: boolean,
+  after: boolean
+): void {
+  if (actor.role === "admin" || !after || before) return
+  throw invalid(MCP_ERRORS.apifyStoreAdminOnly, {
+    "settings.apifyStoreActors": MCP_ERRORS.apifyStoreAdminOnly,
   })
 }
 
@@ -1294,6 +1315,7 @@ export async function createMcpServer(
 ): Promise<{ id: string; name: string; url: string }> {
   const data = parseOrThrow(createMcpSchema, input)
   assertGmvMaxSwitchAllowed(actor, false, data.settings.tiktokGmvMaxWrite)
+  assertApifyStoreSwitchAllowed(actor, false, data.settings.apifyStoreActors)
   if (data.expiresAt && data.expiresAt.getTime() <= Date.now()) {
     throw invalid(MCP_SCHEMA_MESSAGES.expiresFuture, {
       expiresAt: MCP_SCHEMA_MESSAGES.expiresFuture,
@@ -1356,7 +1378,8 @@ export async function createMcpServer(
 
 /**
  * Updates name/description + steps 2–4. Takes effect on the next MCP request.
- * Turning the TikTok GMV Max switch ON (admin only) is a sensitive change: it needs re-authentication ("verify");
+ * Turning the TikTok GMV Max switch or the Apify "Actor ngoài danh mục" switch ON (admin only) is a sensitive change:
+ * it needs re-authentication ("verify");
  * without it the save is refused with the "re-auth required" field error and the UI asks for the password (S4).
  */
 export async function updateMcpServer(
@@ -1373,12 +1396,17 @@ export async function updateMcpServer(
       storedSettings.tiktokGmvMaxWrite,
       data.settings.tiktokGmvMaxWrite
     )
-    // S4: false → true (admin) is like the other sensitive MCP changes - re-authenticate first
-    if (
-      !storedSettings.tiktokGmvMaxWrite &&
-      data.settings.tiktokGmvMaxWrite &&
-      !reauthed
-    ) {
+    assertApifyStoreSwitchAllowed(
+      actor,
+      storedSettings.apifyStoreActors,
+      data.settings.apifyStoreActors
+    )
+    // S4: false → true (admin) is like the other sensitive MCP changes - re-authenticate first (same for the Apify
+    // "Actor ngoài danh mục" switch: Actors outside the curated catalog spend Apify money)
+    const switchedOn =
+      (!storedSettings.tiktokGmvMaxWrite && data.settings.tiktokGmvMaxWrite) ||
+      (!storedSettings.apifyStoreActors && data.settings.apifyStoreActors)
+    if (switchedOn && !reauthed) {
       throw reauthRequiredError()
     }
     const ownerRole = await ownerRoleOf(tx, row.ownerId)
@@ -1404,6 +1432,8 @@ export async function updateMcpServer(
     const beforeConfig = await loadConfig(tx, row.id)
     // S3: a staff save may keep or narrow an admin-approved GMV Max scope, never widen it
     await assertNoStaffGmvMaxWidening(tx, actor, storedSettings, beforeConfig, data, row.expiresAt)
+    // M1: same rule for the Apify caps while an admin-approved "Actor ngoài danh mục" switch stays on
+    assertNoStaffApifyStoreWidening(actor, storedSettings, data.settings)
     const beforeChannels = await loadChannelIds(tx, row.id)
     // Telegram channels of the MCP OWNER only (an admin editing a staff MCP cannot add the admin's channels, an
     // admin MCP cannot use a staff channel); omitted = keep the stored scope; stored foreign rows are pruned
@@ -1495,7 +1525,7 @@ export async function updateMcpServer(
         {
           action: "mcp.update",
           target: { type: "mcp", id: data.id, label: data.name },
-          metadata: { reason: "tiktok_gmv_max_write" },
+          metadata: { reason: reauthReason(data.settings) },
         },
         verify,
         (tx) => save(tx, true)
@@ -1503,6 +1533,55 @@ export async function updateMcpServer(
     : await db.transaction((tx) => save(tx, false))
   if (result.changed) invalidateGrantCache(data.id)
   return result
+}
+
+/**
+ * The Apify cap a save widens compared to the stored settings, as a form field path, or null: a higher per-run cap, or
+ * a higher / removed daily cap (0 = no daily cap).
+ */
+function widenedApifyCap(
+  stored: Pick<McpSettings, "apifyRunMaxUsd" | "apifyDailyMaxUsd">,
+  next: Pick<McpSettings, "apifyRunMaxUsd" | "apifyDailyMaxUsd">
+): "settings.apifyRunMaxUsd" | "settings.apifyDailyMaxUsd" | null {
+  if (next.apifyRunMaxUsd > stored.apifyRunMaxUsd) return "settings.apifyRunMaxUsd"
+  const before = stored.apifyDailyMaxUsd
+  const after = next.apifyDailyMaxUsd
+  if (before > 0 && (after === 0 || after > before)) return "settings.apifyDailyMaxUsd"
+  return null
+}
+
+/**
+ * Security M1: while an admin-approved "Actor ngoài danh mục" switch (settings.apifyStoreActors) is stored on and
+ * stays on, a NON-admin save may not raise the Apify per-run cap, raise / remove the daily cap, or switch the advanced
+ * protection mode to basic (basic drops the daily cap). Field error on the widened field.
+ */
+export function assertNoStaffApifyStoreWidening(
+  actor: McpActor,
+  stored: McpSettings,
+  next: Pick<
+    McpSettings,
+    "apifyStoreActors" | "apifyRunMaxUsd" | "apifyDailyMaxUsd" | "protectionMode"
+  >
+): void {
+  if (actor.role === "admin" || !stored.apifyStoreActors || !next.apifyStoreActors) return
+  const msg = MCP_ERRORS.apifyStoreStaffWidening
+  if (stored.protectionMode !== "basic" && next.protectionMode === "basic") {
+    throw invalid(msg, { "settings.protectionMode": msg })
+  }
+  const field = widenedApifyCap(stored, next)
+  if (field) throw invalid(msg, { [field]: msg })
+}
+
+/** Why a config save was re-authenticated (the sensitive switches ON in the saved settings), for the reauth log. */
+function reauthReason(s: {
+  tiktokGmvMaxWrite: boolean
+  apifyStoreActors: boolean
+}): string {
+  const reasons = [
+    s.tiktokGmvMaxWrite ? "tiktok_gmv_max_write" : null,
+    s.apifyStoreActors ? "apify_store_actors" : null,
+  ].filter(Boolean)
+  return reasons.length ? reasons.join(",") : "tiktok_gmv_max_write"
 }
 
 /** Currencies of the ad accounts reachable through TikTok scopes (any permission; null = all accounts). */
@@ -1528,8 +1607,9 @@ async function tiktokScopeCurrencies(
  * higher daily / lifetime / bid cap for a currency of the TikTok accounts (removing a cap = higher), no higher
  * budgetChangeMaxPct or write rate limit, no shorter write delay, no looser IP allowlist (emptied = every IP, or an entry not in the stored
  * list), no later / removed expiry (L3) and no switch from the advanced to the basic protection mode (basic lifts every
- * limit). The stored values are compared even while the MCP is basic (hidden but applied again when switched back to
- * advanced). Refused with a field error on settings.tiktokGmvMaxWrite.
+ * limit), no higher Apify per-run / daily cap (field error on that Apify field). The stored values are compared even
+ * while the MCP is basic (hidden but applied again when switched back to advanced). Refused with a field error on
+ * settings.tiktokGmvMaxWrite.
  */
 export async function assertNoStaffGmvMaxWidening(
   tx: Tx | typeof db,
@@ -1558,6 +1638,13 @@ export async function assertNoStaffGmvMaxWidening(
   // the save stores data.expiresAt as is (absent = null = no expiry)
   const nextExpiry = data.expiresAt ?? null
   if (storedExpiresAt && (!nextExpiry || nextExpiry.getTime() > storedExpiresAt.getTime())) refuse()
+  // Apify spend caps (16-apify.md §7): no higher per-run cap, no higher / removed daily cap (0 = no daily cap)
+  const apifyField = widenedApifyCap(stored, data.settings)
+  if (apifyField) {
+    throw invalid(MCP_ERRORS.gmvMaxStaffApifyWidening, {
+      [apifyField]: MCP_ERRORS.gmvMaxStaffApifyWidening,
+    })
+  }
   const after = data.platforms.find((p) => p.platform === "tiktok")
   if (!after) return // TikTok removed: narrowing
   const before = beforeConfig.find((p) => p.platform === "tiktok") ?? refuse()

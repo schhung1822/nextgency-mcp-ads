@@ -1,5 +1,6 @@
 // In-app disclaimers ("Miễn trừ trách nhiệm") shown as a blocking popup before a user starts adding a connection
-// (/connections/new, /connections/telegram/new, /connections/drive/new) or creating an MCP (/mcp-servers/new).
+// (/connections/new, /connections/telegram/new, /connections/drive/new, /connections/apify/new) or creating an MCP
+// (/mcp-servers/new).
 // Shared by the server (enforcement + audit) and the client (popup gating). No server imports here.
 //
 // Shown ONCE per user and kind: after a user accepted the CURRENT version of a text, the popup never shows again to
@@ -13,7 +14,7 @@ export type DisclaimerKind = (typeof DISCLAIMER_KINDS)[number]
 
 /** Current version of each text (ISO date it took effect). */
 export const DISCLAIMER_VERSIONS: Record<DisclaimerKind, string> = {
-  connection: "2026-10-10",
+  connection: "2026-10-14",
   mcp: "2026-10-10",
 }
 
@@ -21,7 +22,7 @@ export const DISCLAIMER_VERSIONS: Record<DisclaimerKind, string> = {
 export const DISCLAIMER_MIN_READ_MS = 10_000
 
 /**
- * Pages reached from the /connections/new chooser (Telegram, Google Drive) are the same "Thêm kết nối" flow. Their
+ * Pages reached from the /connections/new chooser (Telegram, Google Drive, Apify) are the same "Thêm kết nối" flow. Their
  * server component already finds the acceptance just given on the chooser; as a client-side fallback (e.g. a page
  * payload rendered before the acceptance) the chooser also hands it over (one-shot, same tab, this long).
  */

@@ -88,9 +88,9 @@ export const guides = {
             "Meta, TikTok, Google Ads (gồm YouTube) hoặc OpenAI Ads. Hướng dẫn lấy token đúng nền tảng sẽ hiện ở bước tiếp theo.",
         },
         {
-          title: "Kênh thông báo và kho creative",
+          title: "Kênh thông báo, kho creative và nguồn dữ liệu",
           detail:
-            "Telegram: bot gửi cảnh báo, thông báo vào nhóm / kênh.\nGoogle Drive: khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo. Hai mục này mở trang khai báo riêng.",
+            "Telegram: bot gửi cảnh báo, thông báo vào nhóm / kênh.\nGoogle Drive: khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo.\nApify: dán API token để AI lấy dữ liệu sàn TMĐT, mạng xã hội, Google Maps… Ba mục này mở trang khai báo riêng.",
         },
         {
           title: "Chuẩn bị app developer",
@@ -271,6 +271,11 @@ export const guides = {
             detail:
               "Cho phép dùng link Drive công khai (mặc định bật): AI lấy được ảnh, video từ link \"Bất kỳ ai có đường liên kết\" bạn dán vào chat - cần quản trị viên đã lưu API key.\nCho phép ghi trạng thái vào Google Sheet (mặc định bật): sau khi lên quảng cáo, AI ghi trạng thái, mã quảng cáo vào đúng dòng của sheet đã bật ghi; mỗi lần ghi tính vào giới hạn thao tác ghi / 10 phút.\nAI chỉ tải được ảnh, video lên khi MCP có quyền Tạo mới ở nền tảng đó. Video lớn (TikTok > 10 MB, Meta > 50 MB) được tải ở chế độ nền vài phút.",
           },
+          {
+            title: "Apify (tuỳ chọn)",
+            detail:
+              "Nhóm Lấy dữ liệu → thẻ Apify: bật Cho phép AI lấy dữ liệu qua Apify để AI chạy các việc lấy dữ liệu đã chọn lọc (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Google Maps…) bằng token Apify công ty + token cá nhân của chủ MCP (tự xoay vòng). Chưa có token? Thêm ở Kết nối → Apify.\nTrần mỗi lần chạy (mặc định 1 USD) luôn áp dụng, kể cả chế độ Cơ bản; mỗi lần chạy tốn credit Apify và tính vào giới hạn thao tác ghi.\nCho phép Actor ngoài danh mục: chỉ quản trị viên bật (khi sửa MCP phải nhập lại mật khẩu).",
+          },
         ],
         tips: [
           "Đối tượng mới tạo hoặc sao chép luôn ở trạng thái tạm dừng, bạn bật khi đã kiểm tra - trừ chiến dịch GMV Max (TikTok Shop): TikTok cho chạy ngay.",
@@ -308,6 +313,11 @@ export const guides = {
             title: "Giới hạn tin Telegram / giờ (nâng cao)",
             detail:
               "Chỉ hiện khi MCP dùng kết nối Telegram: số tin AI được gửi mỗi giờ (mặc định 20).",
+          },
+          {
+            title: "Trần Apify mỗi ngày (nâng cao)",
+            detail:
+              "Chỉ hiện khi MCP bật Apify: tổng chi phí Apify mỗi ngày (giờ Việt Nam), mặc định 10 USD, 0 = không giới hạn. Chế độ Cơ bản không có trần ngày, chỉ còn trần mỗi lần chạy - MCP dùng token Apify công ty nên bật Tùy chỉnh nâng cao.",
           },
           {
             title: "Thời hạn & IP",
@@ -745,6 +755,128 @@ export const guides = {
     ],
     warnings: [
       "Xoá kết nối sẽ gỡ kết nối Telegram khỏi mọi MCP đang dùng và không thể hoàn tác.",
+    ],
+  },
+
+  apifyList: {
+    title: "Về token Apify",
+    summary:
+      "Apify là nền tảng thu thập dữ liệu web. Thêm API token để AI lấy dữ liệu Shopee, TikTok, Facebook, Google Maps… qua MCP - hệ thống tự chọn Actor phù hợp và tự xoay vòng token.",
+    steps: [
+      {
+        title: "Lấy API token",
+        detail:
+          "Đăng nhập Apify Console → Settings → API & Integrations → sao chép Personal API token (dạng apify_api_…).",
+        link: {
+          label: "Mở Apify Console",
+          url: "https://console.apify.com/settings/integrations",
+        },
+      },
+      {
+        title: "Thêm token",
+        detail:
+          "Bấm Thêm token Apify, dán token, bấm Kiểm tra để xem tài khoản, gói và credit rồi bấm Kiểm tra & lưu.",
+      },
+      {
+        title: "Bật Apify trong MCP",
+        detail:
+          "Ở bước Quyền của MCP, bật Cho phép AI lấy dữ liệu qua Apify và đặt trần chi phí mỗi lần chạy.",
+      },
+      {
+        title: "Theo dõi trạng thái",
+        detail:
+          "Hoạt động: dùng được.\nHết credit: tạm bỏ qua tới ngày làm mới credit.\nToken không hợp lệ / Lỗi: mở token để xem cách sửa.\nĐã tắt: AI không dùng tới.",
+      },
+    ],
+    tips: [
+      "Token Công ty: mọi MCP bật Apify đều xoay vòng được (chỉ quản trị viên thêm). Token Cá nhân: chỉ MCP của chính người thêm.",
+      "Nhân viên thấy token công ty ở dạng chỉ xem cùng token cá nhân của mình; quản trị viên thấy tất cả.",
+      "Token hết credit được tự bỏ qua, AI chuyển sang token còn credit.",
+    ],
+    warnings: [
+      "Điều khoản Apify cấm một người lập nhiều tài khoản cá nhân: chỉ xoay vòng giữa các tài khoản Apify hợp pháp khác nhau. Nhiều token của cùng một tài khoản dùng chung credit.",
+      "Đặt giới hạn chi tiêu hằng tháng trong Apify Console → Billing → Limits để chặn chi phí ngoài ý muốn.",
+    ],
+    links: [
+      {
+        label: "Apify Console - API & Integrations",
+        url: "https://console.apify.com/settings/integrations",
+      },
+      {
+        label: "Điều khoản Apify (General Terms)",
+        url: "https://docs.apify.com/legal/general-terms-and-conditions",
+      },
+    ],
+  },
+
+  apifyNew: {
+    title: "Cách thêm token Apify",
+    summary:
+      "Chỉ cần API token của Apify. Kiểm tra cho xem tài khoản, gói và credit trước khi lưu.",
+    steps: [
+      {
+        title: "Mở trang API & Integrations",
+        detail:
+          "Đăng nhập Apify Console → Settings → API & Integrations. Tài khoản tổ chức: dùng token của tổ chức hoặc Personal API token trong tổ chức.",
+        link: {
+          label: "Mở Apify Console",
+          url: "https://console.apify.com/settings/integrations",
+        },
+      },
+      {
+        title: "Sao chép token",
+        detail:
+          "Sao chép Personal API token (dạng apify_api_…) rồi dán vào ô API token. Không dùng token giới hạn quyền (scoped) trừ khi bạn đã thử chạy được Actor bằng nó.",
+      },
+      {
+        title: "Chọn phạm vi",
+        detail:
+          "Quản trị viên: Dùng chung công ty (mọi MCP bật Apify dùng được) hoặc Cá nhân. Nhân viên: luôn là Cá nhân - chỉ MCP của chính bạn dùng.",
+      },
+      {
+        title: "Kiểm tra & lưu",
+        detail:
+          "Kiểm tra hiện tài khoản, gói, credit đã dùng / giới hạn và ngày làm mới credit mà chưa lưu gì. Kiểm tra & lưu sẽ lưu token để MCP bắt đầu xoay vòng qua token này.",
+      },
+    ],
+    warnings: [
+      "Điều khoản Apify cấm một người lập nhiều tài khoản cá nhân. Chỉ thêm token của các tài khoản Apify hợp pháp khác nhau; token cùng tài khoản dùng chung credit.",
+      "Token Apify có toàn quyền tài khoản (chạy Actor, chi tiền). Ứng dụng mã hoá token và không bao giờ hiển thị lại - đừng gửi token qua chat hay ảnh chụp màn hình.",
+    ],
+    tips: [
+      "Đặt giới hạn chi tiêu hằng tháng trong Apify Console → Billing → Limits - lớp bảo vệ cuối cùng nếu có sự cố.",
+      "Gói Free có $5 credit mỗi tháng; một số Actor sàn TMĐT chỉ trả dữ liệu mẫu với gói Free.",
+    ],
+  },
+
+  apifyDetail: {
+    title: "Quản lý token Apify",
+    summary:
+      "Xem credit còn lại, MCP dùng được token này và các lần chạy Actor gần đây.",
+    steps: [
+      {
+        title: "Kiểm tra lại",
+        detail:
+          "Gọi Apify để cập nhật tài khoản, gói và credit ngay (hệ thống cũng tự kiểm tra mỗi 6 giờ). Token hết credit hoạt động lại khi credit được làm mới.",
+      },
+      {
+        title: "Thay token",
+        detail:
+          "Khi tạo lại token trong Apify Console, dán token mới tại đây (cần nhập lại mật khẩu).",
+      },
+      {
+        title: "Tắt / bật",
+        detail:
+          "Token đang tắt không được MCP dùng tới, nhưng vẫn giữ nguyên để bật lại sau.",
+      },
+      {
+        title: "Lần chạy gần đây",
+        detail:
+          "20 lần chạy gần nhất kèm trạng thái và chi phí thực - giúp biết credit đã dùng vào việc gì.",
+      },
+    ],
+    warnings: [
+      "Xoá token không xoá token trên Apify. Nếu không dùng nữa, hãy xoá hoặc tạo lại token trong Apify Console.",
     ],
   },
 

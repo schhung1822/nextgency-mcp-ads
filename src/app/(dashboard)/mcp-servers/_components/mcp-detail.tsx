@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDateTime } from "@/lib/format"
 import { guides as tg } from "@/lib/i18n/vi/guides"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import type { McpApifyPoolSummary } from "@/lib/schemas/apify"
 import type { McpDriveSourceOption } from "@/lib/schemas/drive"
 import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type {
@@ -155,6 +156,7 @@ export function McpDetailView({
   initialTab,
   actions,
   gmvMax,
+  apifyPool = null,
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
@@ -171,6 +173,8 @@ export function McpDetailView({
   actions: McpDetailActions
   /** viewer role + TikTok accounts with GMV Max (config tab: admin-only switch) */
   gmvMax?: GmvMaxFormContext
+  /** Apify token pool of the MCP OWNER (config tab: Apify card) */
+  apifyPool?: McpApifyPoolSummary | null
 }) {
   const [tab, setTab] = React.useState<DetailTab>(initialTab)
   const [revealOpen, setRevealOpen] = React.useState(false)
@@ -265,6 +269,7 @@ export function McpDetailView({
             onDirtyChange={setConfigDirty}
             capsFocusSignal={capsFocus}
             gmvMax={gmvMax}
+            apifyPool={apifyPool}
           />
         </TabsContent>
         <TabsContent value="connect">

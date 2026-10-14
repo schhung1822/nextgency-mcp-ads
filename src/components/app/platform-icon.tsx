@@ -98,12 +98,24 @@ export function platformLabel(platform: Platform): string {
  * Non-platform brand marks (simple-icons, CC0 1.0): YouTube (badge on the Google Ads card - YouTube ads run through it),
  * Telegram (notification channel) and Google Drive (creative source). Always drawn in the official colours
  * (06-ui-design-system.md §2), like Google Ads. Google Drive = the simple-icons path split into its three parts
- * (green left, yellow right, blue bottom - Google brand colours).
+ * (green left, yellow right, blue bottom - Google brand colours). Apify (data source) is NOT the Apify logo: a plain
+ * rounded tile in the Apify brand green with a geometric "A" (own drawing, license-safe), ink = the logo text colour.
  */
 const BRAND_MARKS: Record<
-  "youtube" | "telegram" | "drive",
-  readonly { fill: string; d: string }[]
+  "youtube" | "telegram" | "drive" | "apify",
+  readonly { fill: string; d: string; fillRule?: "evenodd" }[]
 > = {
+  apify: [
+    {
+      fill: "#97D700",
+      d: "M5 1h14a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4z",
+    },
+    {
+      fill: "#1A1B1B",
+      fillRule: "evenodd",
+      d: "M12 5.5l5.8 13h-2.7l-1.115-2.5h-3.97L8.9 18.5H6.2zm0 6.05l.959 2.15h-1.918z",
+    },
+  ],
   drive: [
     {
       fill: "#34A853",
@@ -143,7 +155,7 @@ export interface BrandIconProps extends Omit<
   title?: string
 }
 
-/** Inline SVG brand mark for YouTube / Telegram / Google Drive (same sizing as PlatformIcon, default `size-4`). */
+/** Inline SVG brand mark for YouTube / Telegram / Google Drive / Apify (same sizing as PlatformIcon, default `size-4`). */
 export function BrandIcon({ brand, title, className, ...props }: BrandIconProps) {
   const parts = BRAND_MARKS[brand]
   return (
@@ -159,7 +171,7 @@ export function BrandIcon({ brand, title, className, ...props }: BrandIconProps)
     >
       {title ? <title>{title}</title> : null}
       {parts.map((p) => (
-        <path key={p.fill} d={p.d} fill={p.fill} />
+        <path key={p.fill} d={p.d} fill={p.fill} fillRule={p.fillRule} />
       ))}
     </svg>
   )

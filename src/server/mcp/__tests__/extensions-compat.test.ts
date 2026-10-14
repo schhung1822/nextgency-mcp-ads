@@ -125,6 +125,7 @@ describe("real adapter extensions", () => {
       notificationChannels: [],
       driveSources: [],
       drivePublicAvailable: false,
+      apifyTokens: [],
     }
     const req: RequestState = {
       startedAt: Date.now(),

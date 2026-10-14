@@ -83,6 +83,7 @@ import type { Permission } from "@/server/mcp/types"
 import type { ReleasedPlatform as Platform } from "@/lib/platforms"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
+import { ApifyBasicNote, ApifyLimitSection } from "./apify-sections"
 import { TelegramLimitSection } from "./telegram-sections"
 
 export type FormUpdater = (fn: (prev: McpFormValues) => McpFormValues) => void
@@ -1141,6 +1142,8 @@ export function ProtectionSection({
         <>
           <ExpiryField values={values} update={update} errors={errors} />
           <BasicModeNote />
+          {/* Apify: the per-run cap still applies in basic mode (A3) */}
+          {values.apifyEnabled && <ApifyBasicNote values={values} />}
         </>
       ) : (
         <>
@@ -1402,6 +1405,18 @@ export function ProtectionSection({
             <>
               <Separator />
               <TelegramLimitSection
+                values={values}
+                update={update}
+                errors={errors}
+              />
+            </>
+          )}
+
+          {/* 6 · Apify daily cap (only when the MCP uses Apify) */}
+          {values.apifyEnabled && (
+            <>
+              <Separator />
+              <ApifyLimitSection
                 values={values}
                 update={update}
                 errors={errors}

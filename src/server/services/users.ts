@@ -38,6 +38,8 @@ import { db, type Tx } from "@/server/db/client"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import {
   activityLogs,
+  apifyRuns,
+  apifyTokens,
   connections,
   mcpServers,
   notificationChannels,
@@ -605,6 +607,43 @@ async function purgeDeletedChannels(actor: AppSession, target: { id: string; ema
   })
 }
 
+/**
+ * Same as purgeDeletedChannels for Apify tokens the user already deleted (soft-deleted, secret wiped): their run
+ * records (apify_runs.token_id is RESTRICT; the results cannot be read without the token anyway) and the rows are
+ * deleted for good, one activity log per token, in their own transaction committed before removeUser.
+ */
+async function purgeDeletedApifyTokens(actor: AppSession, target: { id: string; email: string }): Promise<number> {
+  return db.transaction(async (ptx) => {
+    const dead = await ptx
+      .select({ id: apifyTokens.id, name: apifyTokens.name, scope: apifyTokens.scope })
+      .from(apifyTokens)
+      .where(and(eq(apifyTokens.ownerId, target.id), isNotNull(apifyTokens.deletedAt)))
+    if (dead.length === 0) return 0
+    const ids = dead.map((t) => t.id)
+    const runs = await ptx.delete(apifyRuns).where(inArray(apifyRuns.tokenId, ids)).returning({ id: apifyRuns.id })
+    await ptx.delete(apifyTokens).where(inArray(apifyTokens.id, ids))
+    for (const t of dead) {
+      await logActivity(
+        {
+          actor: actorOf(actor.user),
+          action: "apify_token.delete",
+          target: { type: "apify_token", id: t.id, label: t.name },
+          metadata: {
+            purged: true,
+            reason: "user.delete",
+            scope: t.scope,
+            ownerId: target.id,
+            ownerEmail: target.email,
+            runsDeleted: runs.length,
+          },
+        },
+        ptx
+      )
+    }
+    return dead.length
+  })
+}
+
 export async function deleteUserByAdmin(
   actor: AppSession,
   input: { userId: string },
@@ -619,20 +658,27 @@ export async function deleteUserByAdmin(
     await withUserGuard(actor, input.userId, "delete", async ({ tx, target }) => {
       // re-checked under the lock (the target may have been promoted meanwhile)
       if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action: "user.delete" }, undefined)
-      // connections/mcp_servers/notification_channels.owner_id are ON DELETE RESTRICT (also soft-deleted rows).
-      const [[c], [m], [t]] = await Promise.all([
+      // connections/mcp_servers/notification_channels/apify_tokens.owner_id are ON DELETE RESTRICT (also soft-deleted
+      // rows). A live Apify token blocks - also a company token the user added (an admin must delete it first).
+      const [[c], [m], [t], [a]] = await Promise.all([
         tx.select({ n: count() }).from(connections).where(eq(connections.ownerId, target.id)),
         tx.select({ n: count() }).from(mcpServers).where(eq(mcpServers.ownerId, target.id)),
         tx
           .select({ n: count() })
           .from(notificationChannels)
           .where(and(eq(notificationChannels.ownerId, target.id), isNull(notificationChannels.deletedAt))),
+        tx
+          .select({ n: count() })
+          .from(apifyTokens)
+          .where(and(eq(apifyTokens.ownerId, target.id), isNull(apifyTokens.deletedAt))),
       ])
       const nc = Number(c?.n ?? 0)
       const nm = Number(m?.n ?? 0)
       const nt = Number(t?.n ?? 0)
-      if (nc > 0 || nm > 0 || nt > 0) throw new UserFacingError(tUsers.errors.ownsResources(nc, nm, nt))
+      const na = Number(a?.n ?? 0)
+      if (nc > 0 || nm > 0 || nt > 0 || na > 0) throw new UserFacingError(tUsers.errors.ownsResources(nc, nm, nt, na))
       await purgeDeletedChannels(actor, target)
+      await purgeDeletedApifyTokens(actor, target)
       await getAuth().api.removeUser({ body: { userId: target.id }, headers: h })
       await logActivity(
         {

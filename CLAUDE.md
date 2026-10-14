@@ -1,6 +1,6 @@
 # Ads MCP by: noti.vn
 
-Web app **source-available** (giấy phép riêng của noti.vn — chỉ đơn vị được cấp quyền mới được dùng, xem `LICENSE`), tự host (VPS + Docker + PostgreSQL), cho phép đội marketing **dán token từ app developer** để kết nối tài khoản quảng cáo **Meta, TikTok Ads, Google Ads (gồm YouTube), OpenAI Ads**, **kênh thông báo Telegram** và **Google Drive / Google Sheet** (nguồn ảnh/video creative), rồi tạo **MCP server** (`https://<domain>/mcp/<key>`) để điều khiển quảng cáo từ **Claude, ChatGPT, Gemini**: kéo chỉ số theo ngày, sửa, bật/tắt, sao chép, tạo mới. Có phân quyền Admin/Nhân viên, 2FA, nhật ký chi tiết (MCP + nhân sự) lưu N tháng.
+Web app **source-available** (giấy phép riêng của noti.vn — chỉ đơn vị được cấp quyền mới được dùng, xem `LICENSE`), tự host (VPS + Docker + PostgreSQL), cho phép đội marketing **dán token từ app developer** để kết nối tài khoản quảng cáo **Meta, TikTok Ads, Google Ads (gồm YouTube), OpenAI Ads**, **kênh thông báo Telegram**, **Google Drive / Google Sheet** (nguồn ảnh/video creative) và **Apify** (token công ty / cá nhân, xoay vòng — AI lấy dữ liệu sàn TMĐT, mạng xã hội, Google để phân tích), rồi tạo **MCP server** (`https://<domain>/mcp/<key>`) để điều khiển quảng cáo từ **Claude, ChatGPT, Gemini**: kéo chỉ số theo ngày, sửa, bật/tắt, sao chép, tạo mới. Có phân quyền Admin/Nhân viên, 2FA, nhật ký chi tiết (MCP + nhân sự) lưu N tháng.
 
 ## Trạng thái hiện tại
 **Đang triển khai** (chủ dự án đã cho phép bắt đầu ngày 2026-10-02). Làm theo thứ tự trong `.claude/docs/08-roadmap.md`, cập nhật checklist ở đó sau mỗi phần việc.
@@ -11,7 +11,7 @@ Next.js 16 khác dữ liệu huấn luyện — trước khi dùng API Next, đ�
 ## Tài liệu (đọc file liên quan TRƯỚC khi làm phần đó)
 | File | Nội dung |
 |---|---|
-| `.claude/docs/01-product-spec.md` | Yêu cầu chức năng, vai trò & ma trận quyền, luồng tạo kết nối/MCP, log, quyết định mặc định D1–D5 |
+| `.claude/docs/01-product-spec.md` | Yêu cầu chức năng, vai trò & ma trận quyền, luồng tạo kết nối/MCP, log, quyết định mặc định D1–D8 |
 | `.claude/docs/02-architecture.md` | Stack + version đã kiểm tra, sơ đồ hệ thống, cây thư mục, interface provider adapter, ghi chú Next 16 |
 | `.claude/docs/03-database-schema.md` | Bảng, cột, index, partition log theo tháng, danh mục action log |
 | `.claude/docs/04-mcp-design.md` | Endpoint & key, danh mục tool, chuẩn hoá metric/tiền/ngày, xác nhận 2 bước, hướng dẫn kết nối từng AI client |
@@ -22,10 +22,12 @@ Next.js 16 khác dữ liệu huấn luyện — trước khi dùng API Next, đ�
 | `.claude/docs/11-meta-pages.md` | Tính năng Trang Facebook (danh sách Trang, bài viết, chỉ số — chỉ đọc): quyết định, bảng, tool, UI (đã làm 2026-10-04, §11 = bản thực tế) |
 | `.claude/docs/providers/{meta,tiktok,google-ads,openai-ads}.md` | API từng nền tảng: version, credential, endpoint, đơn vị tiền, copy, rate limit, lỗi |
 | `.claude/docs/providers/openai-ads.openapi.json` | OpenAPI chính thức OpenAI Ads — grep để lấy schema chính xác |
+| `.claude/docs/providers/apify.md` (+ `apify.openapi.json`) | API Apify v2: token, credit / giới hạn, chạy Actor, dataset, bảng lỗi + khi nào xoay token, rate limit, nghiên cứu Actor Store |
 | `.claude/docs/12-platform-rollout.md` | Bật/tắt nền tảng (`src/lib/platforms.ts`) + checklist phát hành nền tảng mới (Google Ads, TikTok Ads đã phát hành 2026-10-08) |
 | `.claude/docs/13-system-notices.md` | Thông báo hệ thống (webhook noti.vn 1 giờ/lần → chạy chữ top bar web); kết quả MCP không kèm thông báo |
 | `.claude/docs/14-telegram-notifications.md` | Kênh thông báo Telegram: bảng, gửi tin (Bot API), hàng đợi, sự kiện, tool MCP `telegram_*`, UI, bảo mật |
 | `.claude/docs/15-google-drive-media.md` | Google Drive & Google Sheet làm nguồn creative (thư mục công ty/riêng, link công khai, đọc + ghi ngược sheet, video nhỏ qua link tạm `/dl`, video lớn tải nền) — **đã triển khai 2026-10-09**; **§18 = bản thực tế** (tham chiếu chính khi sửa code Drive), hướng dẫn người dùng `docs/huong-dan-google-drive.md` |
+| `.claude/docs/16-apify.md` | Apify: token công ty / cá nhân (Kết nối → tab Apify), kho token của MCP + xoay vòng ngẫu nhiên theo credit, danh mục ~30 việc (Actor chính + dự phòng), tool MCP `apify_*`, trần chi phí mỗi lần chạy (luôn bật) / mỗi ngày (nâng cao), pháp lý — **đã triển khai 2026-10-15; §12 = bản thực tế** (quyết định A1–A4 = D8), hướng dẫn người dùng `docs/huong-dan-apify.md` |
 
 ## Stack (chi tiết + version: 02-architecture.md)
 Next.js 16.3.8 App Router · React 19 · TypeScript strict · Tailwind v4 · shadcn/ui (Radix, style `radix-maia`, icon Hugeicons) · Better Auth 1.7.7 (email/password, 2FA TOTP, admin) · Drizzle 0.45 + PostgreSQL 18 · pg-boss (worker) · MCP TS SDK v2 `@modelcontextprotocol/server` · Caddy · pnpm · Node 24 · Vitest + Playwright.
@@ -45,7 +47,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build  
 ## Quy tắc bắt buộc
 1. **Bảo mật trước hết** — app giữ token có toàn quyền chi tiền:
    - Mọi server action / route / tool MCP: `requireUser()` + kiểm tra role + **kiểm tra owner** (staff chỉ thấy/dùng tài nguyên của mình). Layout không phải ranh giới bảo mật.
-   - Credential nền tảng & key MCP (cả service account / API key / resource key Google Drive, token link tạm `adr_`): mã hoá AES-256-GCM (có AAD), **không bao giờ** trả về client, đưa cho AI, hay ghi log. Redact trước khi log.
+   - Credential nền tảng & key MCP (cả service account / API key / resource key Google Drive, token link tạm `adr_`, token Apify): mã hoá AES-256-GCM (có AAD), **không bao giờ** trả về client, đưa cho AI, hay ghi log. Redact trước khi log.
    - `auth.api.createUser` (và mọi API admin của Better Auth) **phải** kèm `headers: await headers()`.
    - MCP: key sai/tắt/hết hạn → **404, không bao giờ 401**. Mỗi tool tự kiểm tra lại platform/account/quyền theo grant.
 2. **An toàn thao tác quảng cáo**: object tạo mới/bản sao luôn **tạm dừng**; thao tác ghi qua luồng xác nhận 2 bước khi MCP bật; tôn trọng guardrail ngân sách; xoá không hoàn tác → luôn xác nhận.

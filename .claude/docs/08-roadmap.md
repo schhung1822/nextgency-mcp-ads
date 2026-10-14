@@ -231,7 +231,7 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [ ] UI: công tắc "Tùy chỉnh nâng cao" ở bước Bảo vệ (wizard + tab Cấu hình), ghi chú Cơ bản, tổng quan MCP hiện chế độ, không badge thiếu trần cho MCP Cơ bản; sáng/tối + 390/1440
 - [x] Tài liệu: 01 (§4 bước 4, D2, D6), 03 (`protection_mode`), 04 (§1, §5 `action_required`, §6 Chế độ bảo vệ, GMV Max C5), 05 (§2, §4, checklist), 06 (wireframe ④), 14 (giới hạn tin/giờ chỉ ở nâng cao), `docs/ket-noi-ai.md`, `docs/huong-dan-google-drive.md`, `docs/huong-dan-telegram.md`, `docs/huong-dan-lay-token-tiktok.md`, `docs/huong-dan-lay-token-meta.md` (lỗi 31), `release-notes/v1.0.10.md` (nháp)
 - [x] Rà câu chữ pháp lý / miễn trừ / mẹo trong `src/lib/i18n/vi/*` còn nói "luôn xác nhận 2 bước / luôn có trần" (danh sách do agent tài liệu báo cáo) - đã sửa legal.ts (cập nhật 13/10/2026), tips.ts, automation.ts, guides.ts, mcp.ts; disclaimers.ts giữ nguyên (vẫn đúng, đổi sẽ bắt mọi người đồng ý lại)
-- [ ] Kiểm chứng: lint + typecheck + unit + build + e2e; `security-reviewer`, `ui-reviewer`; build image + smoke production; rc → v1.0.10
+- [x] Kiểm chứng: lint + typecheck + unit + build + e2e; `security-reviewer`, `ui-reviewer`; build image + smoke production; rc → v1.0.10
 
 ## Quyết định đã chốt (2026-10-02)
 1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.
@@ -247,3 +247,15 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] UI: ô "Giãn cách giữa các lệnh ghi" trong nhóm Giới hạn tốc độ; dòng tổng quan; ghi chú Cơ bản
 - [x] Test: unit (đồng hồ giả), tích hợp qua endpoint, schema / parser / nhân viên; tài liệu 01 (D7), 03, 04 §6, `docs/ket-noi-ai.md`
 - [x] Phát hành v1.0.11 (2026-10-14, qua rc)
+
+## Apify — lấy dữ liệu qua MCP (2026-10-14 → 2026-10-15), thiết kế `16-apify.md` (§12 = bản thực tế) - chưa phát hành
+- [x] Chủ dự án quyết (A1–A4 = D8 ở `01-product-spec.md` §9): token công ty + cá nhân (kho MCP = công ty + cá nhân của chủ MCP); danh mục chọn lọc + công tắc "Actor ngoài danh mục" chỉ admin bật; trần mỗi lần chạy luôn bật ($1, cả Cơ bản), trần ngày chỉ ở Tùy chỉnh nâng cao; MCP vẫn cần ≥ 1 nền tảng quảng cáo
+- [x] Nghiên cứu API Apify + Actor Store, thiết kế `16-apify.md` (+ `providers/apify.md`, `providers/apify.openapi.json`)
+- [x] Backend: bảng `apify_tokens` / `apify_runs` (migration `0009_apify`), `src/server/apify/{client,errors,store,pool,actors,health}.ts`, job kiểm tra token + dọn `apify_runs` > 90 ngày, service + action (`apify_token.*` trong `activity_logs`), AAD + redact `apify_api_…`, `reencrypt`, xoá người dùng còn token
+- [x] Danh mục việc `src/server/apify/catalog*` (~30 việc lõi + beta ẩn; Actor chính + dự phòng; ép giới hạn; không cookie / login)
+- [x] UI Kết nối: tab Apify, `/connections/apify/new` (miễn trừ trách nhiệm), `/connections/apify/[id]`, nhóm "Nguồn dữ liệu" ở `/connections/new`, icon thương hiệu; 4 tab vừa 360 px; sáng/tối + 390/1440
+- [x] MCP: settings `apify_*` (parser + `effectiveMcpSettings`), grant (kho token), tool `apify_*`, `SERVER_INSTRUCTIONS`, thẻ Apify ở bước Quyền + trần ngày ở bước Bảo vệ + tổng quan, công tắc Actor ngoài danh mục chỉ admin bật
+- [x] Tài liệu + pháp lý: `CLAUDE.md`, 01 (§1, §2, §3c, §4, D8), 02, 04, 05, 06, 07, 08, `.claude/rules/{mcp-server,logging-and-secrets}.md`, `docs/huong-dan-apify.md`, `docs/ket-noi-ai.md`, `README.md`, `legal.ts` (VI + EN, cập nhật 14/10/2026), miễn trừ trách nhiệm `connection` (thêm mục Apify, phiên bản 2026-10-14 + mã băm test); đồng bộ với code 2026-10-15: `16-apify.md` §4/§5/§7 + §12 bản thực tế, 03 (khoá settings), 05 (xác thực lại, giữ chỗ trần ngày, rủi ro chế độ Cơ bản), 01 §4, hướng dẫn bước 3–4 của wizard MCP (`guides.ts`)
+- [x] Kiểm chứng (2026-10-15): lint + typecheck + unit + Postgres + flows (2848 test) + e2e (lỗi 2FA ở auth.spec có sẵn từ v1.0.11) + build + smoke production + ảnh chụp; 2 vòng `security-reviewer` + rà lỗi logic, đã sửa hết
+- [ ] Smoke test bằng token Apify thật (nên gói Starter — gói Free một số Actor Shopee trả dữ liệu mẫu; Shopee VN best-effort); bổ sung kết quả smoke test vào `16-apify.md` §12.4 + `providers/apify.md` §15
+- [x] Phát hành v1.1.0 (2026-10-15, qua rc; ghi chú phát hành: mọi người xác nhận lại miễn trừ trách nhiệm `connection`)

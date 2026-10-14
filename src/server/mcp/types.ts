@@ -6,6 +6,7 @@ import type {
   FolderSourceConfig,
   SheetSourceConfig,
 } from "../drive/types"
+import type { GrantApifyToken } from "../apify/types"
 import type { Platform } from "../providers/types"
 
 export const PERMISSIONS = ["read", "status", "update", "copy", "create", "delete"] as const
@@ -83,6 +84,26 @@ export interface McpSettings {
    * explicit true enables it.
    */
   tiktokGmvMaxWrite: boolean
+  /**
+   * Apify (16-apify.md §7): the apify_* tools (curated data tasks run on the Apify accounts of the MCP pool - needs
+   * ≥ 1 usable token). Default OFF; fail closed: only an explicit true enables it.
+   */
+  apifyEnabled: boolean
+  /**
+   * Apify: cost ceiling of ONE run (USD, maxTotalChargeUsd sent to Apify), 0.05–20, default 1. Always enforced, also
+   * in basic mode (owner decision A3).
+   */
+  apifyRunMaxUsd: number
+  /**
+   * Apify: money an MCP may commit per Asia/Ho_Chi_Minh day (USD, real cost of finished runs + the cap of unfinished
+   * ones), 0–1000, default 10, 0 = no daily cap. Advanced mode only: UNLIMITED in the effective basic settings.
+   */
+  apifyDailyMaxUsd: number
+  /**
+   * Apify: Actors outside the curated catalog (apify_search_actors / apify_get_actor / apify_run_actor). Default OFF;
+   * only an admin can turn it on (like tiktokGmvMaxWrite). Fail closed: only an explicit true enables it.
+   */
+  apifyStoreActors: boolean
 }
 
 /** Bounds of McpSettings.telegramMessagesPerHour */
@@ -116,6 +137,10 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   drivePublicLinks: true,
   driveSheetWriteback: true,
   tiktokGmvMaxWrite: false,
+  apifyEnabled: false,
+  apifyRunMaxUsd: 1,
+  apifyDailyMaxUsd: 10,
+  apifyStoreActors: false,
 }
 
 /** An ad account the MCP may act on (already filtered: enabled, connection active, owner rules applied). */
@@ -202,6 +227,11 @@ export interface McpGrant {
   driveSources: GrantDriveSource[]
   /** the system Drive credential is live (not disabled) AND has an API key: public "Anyone with the link" files readable */
   drivePublicAvailable: boolean
+  /**
+   * Apify tokens the MCP may rotate through (company tokens + the MCP owner's personal tokens, live, active /
+   * exhausted) - loaded only when settings.apifyEnabled (empty otherwise). Never carries a secret.
+   */
+  apifyTokens: GrantApifyToken[]
 }
 
 export function grantAllows(grant: McpGrant, platform: Platform, permission: Permission): boolean {

@@ -1,5 +1,6 @@
 // Navigation config + pure helpers (no React, no icon imports - icons live in nav-icons.ts so tests stay light).
 
+import { apify } from "@/lib/i18n/vi/apify"
 import { common } from "@/lib/i18n/vi/common"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import { notifications } from "@/lib/i18n/vi/notifications"
@@ -59,6 +60,10 @@ export const NAV_MAIN: NavItem[] = [
       "sheet",
       "thu muc",
       "creative",
+      "apify",
+      "du lieu",
+      "scrape",
+      "actor",
     ],
   },
   {
@@ -228,6 +233,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   ui: common.nav.crumbDevUi,
   telegram: notifications.ui.crumb,
   drive: driveUi.ui.crumb,
+  apify: apify.ui.crumb,
   // Mẹo sử dụng → /tips/<slug>
   automation: tips.pages.automation.label,
   "bulk-ads": tips.pages["bulk-ads"].label,

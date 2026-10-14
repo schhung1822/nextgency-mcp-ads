@@ -24,6 +24,12 @@ describe("job registry", () => {
     expect(JOBS.find((j) => j.name === "drive.cleanup")?.cron).toBe("50 3 * * *")
   })
 
+  it("có apify.health mỗi 6 giờ phút 10 (kiểm tra token Apify + dọn apify_runs)", () => {
+    const job = JOBS.find((j) => j.name === "apify.health")
+    expect(job?.cron).toBe("10 */6 * * *")
+    expect(job?.queue?.retryLimit).toBe(1)
+  })
+
   it("tên job hợp lệ cho pg-boss và không trùng; cron 5 trường; tz là IANA hợp lệ", () => {
     const names = JOBS.map((j) => j.name)
     expect(new Set(names).size).toBe(names.length)

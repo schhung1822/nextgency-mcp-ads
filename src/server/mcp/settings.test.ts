@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest"
 
 import { effectiveMcpSettings, parseMcpSettings } from "./settings"
-import { DEFAULT_MCP_SETTINGS } from "./types"
+import { DEFAULT_MCP_SETTINGS, isUnlimited } from "./types"
 
 describe("parseMcpSettings - TikTok GMV Max write switch", () => {
   it("OFF unless explicitly true (fail closed), snake_case and camelCase", () => {
@@ -96,5 +96,48 @@ describe("parseMcpSettings - write delay (write_delay_seconds)", () => {
     const basic = parseMcpSettings({ protection_mode: "basic", write_delay_seconds: 7 })
     expect(basic.writeDelaySeconds).toBe(7)
     expect(effectiveMcpSettings(basic).writeDelaySeconds).toBe(0)
+  })
+})
+
+describe("parseMcpSettings - Apify (16-apify.md §7)", () => {
+  it("defaults: off, $1 per run, $10 per day, Actors outside the catalog off", () => {
+    expect(parseMcpSettings(null)).toMatchObject({
+      apifyEnabled: false,
+      apifyRunMaxUsd: 1,
+      apifyDailyMaxUsd: 10,
+      apifyStoreActors: false,
+    })
+  })
+
+  it("switches only on an explicit true (fail closed), snake_case and camelCase", () => {
+    const on = parseMcpSettings({ apify_enabled: true, apify_store_actors: true })
+    expect([on.apifyEnabled, on.apifyStoreActors]).toEqual([true, true])
+    expect(parseMcpSettings({ apifyEnabled: true }).apifyEnabled).toBe(true)
+    for (const garbage of ["true", 1, {}, []]) {
+      const s = parseMcpSettings({ apify_enabled: garbage, apify_store_actors: garbage })
+      expect([s.apifyEnabled, s.apifyStoreActors]).toEqual([false, false])
+    }
+  })
+
+  it("caps: valid values kept, invalid / out of range → defaults (per field)", () => {
+    const s = parseMcpSettings({ apify_run_max_usd: 2.5, apify_daily_max_usd: 0, rate_limit_per_min: 7 })
+    expect([s.apifyRunMaxUsd, s.apifyDailyMaxUsd, s.rateLimitPerMin]).toEqual([2.5, 0, 7])
+    for (const bad of [0, 0.01, 21, -1, "2", null, Number.NaN])
+      expect(parseMcpSettings({ apify_run_max_usd: bad }).apifyRunMaxUsd).toBe(1)
+    for (const bad of [-1, 1001, "5", Number.POSITIVE_INFINITY])
+      expect(parseMcpSettings({ apify_daily_max_usd: bad }).apifyDailyMaxUsd).toBe(10)
+  })
+
+  it("effective settings: basic → no daily cap (UNLIMITED), the per-run cap always kept", () => {
+    const basic = effectiveMcpSettings(
+      parseMcpSettings({ protection_mode: "basic", apify_enabled: true, apify_run_max_usd: 3, apify_daily_max_usd: 5 })
+    )
+    expect(basic.apifyRunMaxUsd).toBe(3)
+    expect(isUnlimited(basic.apifyDailyMaxUsd)).toBe(true)
+    expect(basic.apifyEnabled).toBe(true)
+    const advanced = effectiveMcpSettings(
+      parseMcpSettings({ protection_mode: "advanced", apify_run_max_usd: 3, apify_daily_max_usd: 5 })
+    )
+    expect([advanced.apifyRunMaxUsd, advanced.apifyDailyMaxUsd]).toEqual([3, 5])
   })
 })

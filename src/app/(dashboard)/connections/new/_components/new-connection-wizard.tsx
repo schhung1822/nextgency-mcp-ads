@@ -444,6 +444,28 @@ export function NewConnectionWizard({
               />
             </div>
           </div>
+          <div
+            role="group"
+            aria-labelledby="choose-group-data"
+            className="flex flex-col gap-3"
+          >
+            <div>
+              <h3 id="choose-group-data" className="text-sm font-semibold">
+                {m.new.groupData}
+              </h3>
+              <p className="text-[13px] text-muted-foreground">
+                {m.new.groupDataHint}
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ChoiceCard
+                label={m.new.apify.label}
+                href="/connections/apify/new"
+                icon={<BrandIcon brand="apify" className="size-5" />}
+                description={m.new.apify.card}
+              />
+            </div>
+          </div>
           <Dialog
             open={notReady !== null}
             onOpenChange={(open) => !open && setNotReady(null)}

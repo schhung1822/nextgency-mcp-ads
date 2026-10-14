@@ -98,6 +98,11 @@ export interface ToolSpec<S extends z.ZodObject<any>> {
   output: z.ZodObject<any>
   /** transform args before they are logged / stored (e.g. strip signed URL query strings) */
   logArgs?(args: z.infer<S>): Record<string, unknown>
+  /**
+   * transform a successful structured result before it is stored in mcp_call_logs.response (e.g. Apify rows → count +
+   * field names: scraped third-party data is not kept in the call logs). The AI still gets the full result.
+   */
+  logResponse?(structured: Record<string, unknown>): Record<string, unknown>
   /** tool descriptor `_meta` (e.g. `{ "openai/fileParams": ["file"] }` - ChatGPT file inputs) */
   meta?: Record<string, unknown>
   handler(args: z.infer<S>, env: ToolEnv): Promise<ToolOutcome>
@@ -182,7 +187,7 @@ async function runTool<S extends z.ZodObject<any>>(
     }
     const structured = out.structured
     const status = out.status ?? "success"
-    await log.finish({ status, response: structured })
+    await log.finish({ status, response: spec.logResponse ? spec.logResponse(structured) : structured })
     if (status === "success") {
       for (const fn of env.afterSuccess) {
         try {

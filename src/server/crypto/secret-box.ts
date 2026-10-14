@@ -95,4 +95,6 @@ export const aad = {
   // background video uploads (media_upload_jobs) + opaque drf_ refs to public Drive files handed to the AI
   mediaUploadJobResourceKey: (jobId: string) => `media_upload_job:${jobId}:resource_key`,
   driveFileRef: (mcpId: string) => `drive_ref:${mcpId}`,
+  // Apify API tokens (16-apify.md §3): src/server/apify/store.ts is the only module that encrypts / decrypts them
+  apifyTokenCredentials: (tokenId: string) => `apify_token:${tokenId}:credentials`,
 }

@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { connections as m } from "@/lib/i18n/vi/connections"
 import { CONNECTION_PLATFORMS } from "@/lib/schemas/connections"
 import { requireUser } from "@/server/auth/session"
+import { listApifyTokens } from "@/server/services/apify-tokens"
 import { listConnections } from "@/server/services/connections"
 import {
   getDriveSystemInfo,
@@ -21,16 +22,25 @@ export default async function ConnectionsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { user } = await requireUser()
-  // Drive: only DTOs (system email, hints) - never a key; staff get company + own sources / own service accounts
-  const [items, channels, driveSources, driveSystem, drivePersonal, sp] =
-    await Promise.all([
-      listConnections(user),
-      listNotificationChannels(user),
-      listDriveSources(user),
-      getDriveSystemInfo(),
-      listPersonalDriveCredentials(user),
-      searchParams,
-    ])
+  // Drive: only DTOs (system email, hints) - never a key; staff get company + own sources / own service accounts.
+  // Apify: DTOs with the 4-char hint only; staff get company tokens (read-only) + own personal tokens.
+  const [
+    items,
+    channels,
+    driveSources,
+    driveSystem,
+    drivePersonal,
+    apifyTokens,
+    sp,
+  ] = await Promise.all([
+    listConnections(user),
+    listNotificationChannels(user),
+    listDriveSources(user),
+    getDriveSystemInfo(),
+    listPersonalDriveCredentials(user),
+    listApifyTokens(user),
+    searchParams,
+  ])
   // old platform-tab links (?platform=meta, also "meta,tiktok") preselect the "Nền tảng" filter of the ads tab
   const platforms = (typeof sp.platform === "string" ? sp.platform : "")
     .split(",")
@@ -48,10 +58,13 @@ export default async function ConnectionsPage({
         driveSources={driveSources}
         driveSystem={driveSystem}
         drivePersonalCredentials={drivePersonal}
+        apifyTokens={apifyTokens}
         isAdmin={user.role === "admin"}
         // a plain string: constants exported from a "use client" module are client references here
         initialTab={
-          sp.tab === "telegram" || sp.tab === "drive" ? sp.tab : "all"
+          sp.tab === "telegram" || sp.tab === "drive" || sp.tab === "apify"
+            ? sp.tab
+            : "all"
         }
         initialPlatforms={platforms}
       />

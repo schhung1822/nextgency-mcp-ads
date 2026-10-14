@@ -52,6 +52,7 @@ import type {
   SelectableConnection,
 } from "@/server/services/mcp-servers"
 
+import { ApifySummaryRows } from "./apify-sections"
 import { DriveSummaryRows } from "./drive-sections"
 
 const o = t.overview
@@ -547,6 +548,13 @@ export function OverviewTab({
                 sources={mcp.driveSources ?? []}
                 drivePublicLinks={mcp.settings.drivePublicLinks}
                 driveSheetWriteback={mcp.settings.driveSheetWriteback}
+                Row={SummaryRow}
+                on={o.on}
+                off={o.off}
+              />
+              <ApifySummaryRows
+                settings={mcp.settings}
+                basic={basic}
                 Row={SummaryRow}
                 on={o.on}
                 off={o.off}

@@ -26,6 +26,7 @@ export const ACTIVITY_GROUPS = [
   "notification_channel",
   "drive_credential",
   "drive_source",
+  "apify_token",
   "mcp",
   "settings",
   "logs",

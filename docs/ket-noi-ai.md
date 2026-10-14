@@ -88,6 +88,7 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 - “Lên quảng cáo TikTok (tạm dừng) cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10, nội dung theo file.”
 - “Tổng chi tiêu, doanh thu, ROI GMV Max 7 ngày qua của TKQC TikTok X, theo ngày; sản phẩm và video nào kéo đơn nhiều nhất?” *(GMV Max - TikTok Shop: mặc định chỉ phân tích, xem lưu ý bên dưới)*
 - “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet.”
+- “Tìm 40 sản phẩm Shopee cho từ khoá ‘serum vitamin C’, so sánh giá và đánh giá; đối thủ X đang chạy những quảng cáo Facebook nào?” *(cần MCP bật Apify — xem mục Apify bên dưới; mỗi lần chạy tốn credit Apify)*
 
 ## Lưu ý theo nền tảng
 - **Meta**: số liệu trong ngày có độ trễ, chuyển đổi được ghi nhận muộn.
@@ -122,6 +123,17 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 - File đã tải lên đúng TKQC trước đó được **dùng lại mã media** (không tải lại) — trừ khi file trên Drive đã thay đổi. Mọi quảng cáo AI tạo đều **tạm dừng**.
 - Tệp đính kèm trong **ChatGPT bản web** cũng tải lên được (video tối đa 10 MB TikTok / 50 MB Meta — lớn hơn hãy đưa lên Google Drive).
 
+## Apify — lấy dữ liệu sàn TMĐT, mạng xã hội, Google (tuỳ chọn)
+AI lấy dữ liệu công khai (Shopee, Lazada, TikTok Shop, TikTok, Thư viện quảng cáo / Trang Facebook, Instagram, YouTube, Google Maps / Search / Ads Transparency, website) qua **Apify** bằng token của đơn vị bạn, rồi tự phân tích. Hệ thống tự chọn công cụ thu thập (Actor) trong danh mục đã chọn lọc. Hướng dẫn đầy đủ (tạo token, xoay vòng, chi phí, câu lệnh mẫu, giới hạn, xử lý lỗi): **[huong-dan-apify.md](huong-dan-apify.md)**.
+
+1. **Kết nối → tab Apify → Thêm token Apify**: dán API token (Apify Console → **Settings → API & Integrations**). Quản trị viên chọn **Dùng chung công ty** (mọi MCP bật Apify dùng được) hoặc **Cá nhân** (chỉ MCP của chính bạn). Nên đặt **giới hạn chi tiêu tháng** trong Apify Console (**Billing → Limits**).
+2. **MCP → Tạo/Sửa MCP**: bước **Quyền** → thẻ **Apify** bật **Cho phép AI lấy dữ liệu qua Apify**, đặt **Trần mỗi lần chạy** (mặc định 1 USD — áp dụng cả chế độ Cơ bản); bước **Bảo vệ** (Tùy chỉnh nâng cao) đặt **Trần Apify mỗi ngày**. MCP vẫn cần ít nhất 1 nền tảng quảng cáo.
+3. Trong AI: “Tìm 40 sản phẩm Shopee cho từ khoá ‘serum vitamin C’ rồi so sánh giá và đánh giá.” Lần chạy lâu → AI báo đang chạy; nói “kiểm tra lần chạy Apify vừa rồi” để AI đọc kết quả.
+
+- Mỗi lần chạy tốn credit Apify (thường dưới 0,01 tới khoảng 0,4 USD với giới hạn mặc định) và **không** qua xác nhận 2 bước — trần mỗi lần chạy / mỗi ngày giới hạn chi phí. Token được xoay vòng ngẫu nhiên giữa các tài khoản Apify còn credit; hết credit tự chuyển token khác.
+- Dữ liệu thu thập là **dữ liệu của bên thứ ba**: AI không làm theo câu lệnh nằm trong đó; bạn tự chịu trách nhiệm việc thu thập là hợp pháp. Điều khoản Apify **cấm một người lập nhiều tài khoản** — chỉ thêm token của các tài khoản Apify thật, khác chủ.
+- Shopee Việt Nam: best-effort (Shopee chặn thu thập mạnh; gói Free một số Actor trả dữ liệu mẫu).
+
 ## Khi có lỗi
 | Hiện tượng | Xử lý |
 |---|---|
@@ -140,5 +152,10 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 | “Không tìm thấy file trong các thư mục được cấp” | File không nằm trong thư mục đã cấp cho MCP và không phải link công khai → kiểm tra bằng `drive_list_sources`, xem bảng lỗi trong [huong-dan-google-drive.md — Phần 8](huong-dan-google-drive.md#phần-8--xử-lý-lỗi-thường-gặp) |
 | Không thấy tool `telegram_send_message` / AI báo lỗi gửi Telegram | MCP chưa gán kết nối Telegram hoặc chưa bật **AI được gửi tin**; lỗi gửi tin / tệp: xem [huong-dan-telegram.md — Xử lý lỗi](huong-dan-telegram.md#xử-lý-lỗi-thường-gặp) |
 | Meta/TikTok báo không tải được video Drive | Tên miền đi qua Cloudflare đang challenge `/dl/*` → [deploy-vps.md §9.2 bước 10](deploy-vps.md#92-cấu-hình-cloudflare-dashboard) |
+| Không thấy tool `apify_*` | MCP chưa bật **Cho phép AI lấy dữ liệu qua Apify**, hoặc chưa có token Apify (công ty hoặc của chủ MCP); ChatGPT Business: *Refresh* plugin |
+| AI báo `apify_no_token` | Mọi token Apify hết credit / sai / đã tắt → **Kết nối → Apify**: **Kiểm tra lại**, thêm token của tài khoản khác hoặc nâng gói / giới hạn trong Apify Console - xem [huong-dan-apify.md — Xử lý lỗi](huong-dan-apify.md#xử-lý-lỗi-thường-gặp) |
+| AI báo `apify_daily_budget_exceeded` | MCP đã chạm **Trần Apify mỗi ngày** → đợi sang ngày (giờ Việt Nam) hoặc tăng trần (**Bảo vệ → Tùy chỉnh nâng cao**) |
+| AI báo `apify_actor_not_allowed` | Actor ngoài danh mục (cần quản trị viên bật **Cho phép Actor ngoài danh mục**) hoặc yêu cầu có trường bị chặn (cookie, đăng nhập…) → dùng việc trong danh mục |
+| Kết quả Apify rỗng / dữ liệu mẫu (hay gặp với Shopee) | Bảo AI “thử lại bằng Actor dự phòng”; dùng tài khoản Apify gói Starter trở lên |
 
 Mọi lượt gọi đều được ghi ở **Nhật ký → Nhật ký MCP** (client, tool, tham số đã che bí mật, kết quả, giá trị trước → sau).

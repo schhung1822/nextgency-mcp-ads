@@ -182,13 +182,13 @@ test("admin: settings card shows hints only, the tab lists every source with its
   ).toBeVisible()
 })
 
-test("connections: three top tabs, the platform is a filter; /connections/new offers Google Drive", async ({
+test("connections: four top tabs, the platform is a filter; /connections/new offers Google Drive", async ({
   page,
 }) => {
   await signIn(page, admin.email)
   await page.goto("/connections")
   const tabs = page.getByRole("tablist", { name: "Loại kết nối" })
-  await expect(tabs.getByRole("tab")).toHaveCount(3)
+  await expect(tabs.getByRole("tab")).toHaveCount(4)
   await expect(tabs.getByRole("tab", { name: /Quảng cáo/ })).toHaveAttribute(
     "aria-selected",
     "true"

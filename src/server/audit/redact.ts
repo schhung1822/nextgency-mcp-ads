@@ -58,6 +58,9 @@ export function isSecretKeyName(k: string): boolean {
 const SECRET_QUERY_PARAM =
   /((?:^|[?&])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|[a-z_-]*_token|appsecret_proof|client_secret|secret|key|api[_-]?key|resource[_-]?key|code|sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)=)[^&#\s"']+/gi
 
+/** 40-hex values (heuristic: also commit SHAs / content hashes - not used by containsSecretValue) */
+const HEX40_RE = /\b[a-f0-9]{40}\b/g
+
 const VALUE_PATTERNS: [RegExp, string][] = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted-private-key]"],
   [/\bEAA[A-Za-z0-9]{20,}/g, "EAA…[redacted]"], // Meta
@@ -73,7 +76,8 @@ const VALUE_PATTERNS: [RegExp, string][] = [
   [/\bct_[A-Za-z0-9_-]{24,}/g, "ct_…[redacted]"], // confirm tokens
   [/\badr_[A-Za-z0-9_-]{20,}/g, "adr_…[redacted]"], // Drive relay link tokens (/dl/<token>/<name>)
   [/\bAIza[0-9A-Za-z_-]{35}/g, "AIza…[redacted]"], // Google API keys
-  [/\b[a-f0-9]{40}\b/g, "[redacted-hex40]"], // 40-hex tokens (heuristic)
+  [/\bapify_api_[A-Za-z0-9]+/g, "apify_api_…[redacted]"], // Apify API tokens (16-apify.md §9)
+  [HEX40_RE, "[redacted-hex40]"], // 40-hex tokens (heuristic)
   // NOTE: no bare 32-hex pattern - Meta image_hash values are 32-hex and must stay readable
   [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/@]+@/gi, "$1[redacted]@"], // URL userinfo password (postgres://user:pass@host)
   [/\b(\d{6,20})\|[A-Za-z0-9_-]{16,}/g, "$1|[redacted]"], // Meta app access token "<app_id>|<app_secret>"
@@ -83,6 +87,20 @@ const VALUE_PATTERNS: [RegExp, string][] = [
   ], // secrets inside JSON text (error bodies, serialized requests)
   [SECRET_QUERY_PARAM, "$1[redacted]"],
 ]
+
+/** non-global copies of the secret VALUE patterns, without the 40-hex heuristic (too many false positives) */
+const SECRET_VALUE_TESTS: RegExp[] = VALUE_PATTERNS.filter(([re]) => re !== HEX40_RE).map(
+  ([re]) => new RegExp(re.source, re.flags.replace("g", ""))
+)
+
+/**
+ * true when a string carries something that looks like a secret (token / key / private key / signed or
+ * credentialed URL… - every VALUE_PATTERNS entry except the 40-hex heuristic). Used to refuse such values where they
+ * would leave the server (e.g. an Apify Actor input, readable by the Actor's author).
+ */
+export function containsSecretValue(s: string): boolean {
+  return SECRET_VALUE_TESTS.some((re) => re.test(s))
+}
 
 export function redactString(s: string): string {
   return VALUE_PATTERNS.reduce((acc, [re, rep]) => acc.replace(re, rep), s)

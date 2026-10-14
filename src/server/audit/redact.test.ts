@@ -142,6 +142,42 @@ describe("redact Telegram bot token", () => {
   })
 })
 
+describe("containsSecretValue", () => {
+  it("nhận ra token / key / URL có mật khẩu nhưng không coi chữ thường hay mã hash 40-hex là bí mật", async () => {
+    const { containsSecretValue } = await import("./redact")
+    const secrets = [
+      "apify_api_" + "Ab3x9QzK".repeat(4),
+      "123456789:" + "A".repeat(35),
+      "AIza" + "SyA1b2C3d4E5f6G7h8I9j0K_L-M3n4O5p6Q",
+      "1//" + "0g".repeat(15),
+      "ya29." + "a0".repeat(15),
+      "adr_" + "Ab3_-x".repeat(5),
+      "Bearer abcdefghijklmnopqrstu",
+      "http://user:pass@proxy.example:8000",
+      "https://x.example/cb?access_token=abc",
+      "EAAB" + "x".repeat(30),
+    ]
+    for (const s of secrets) expect(containsSecretValue(`note ${s}`), s).toBe(true)
+    for (const s of ["son môi giá rẻ", "https://shopee.vn/search?keyword=son", "a".repeat(10) + "0123456789abcdef0123456789abcdef01234567"])
+      expect(containsSecretValue(s), s).toBe(false)
+  })
+})
+
+describe("redact Apify API tokens", () => {
+  const token = "apify_api_" + "Ab3x9QzK".repeat(4) + "q1"
+  it("che token Apify ở mọi vị trí (chuỗi, JSON, header, URL) nhưng giữ chữ thường", () => {
+    const s = redactString(
+      `start run failed with ${token}; {"note":"${token}"}; Authorization: Bearer ${token}; https://api.apify.com/v2/users/me?token=${token}`
+    )
+    expect(s).not.toContain(token.slice(10, 30))
+    expect(s).toContain("apify_api_…[redacted]")
+    expect(redact({ note: `token ${token}` })).toEqual({ note: "token apify_api_…[redacted]" })
+    expect(redact({ apifyToken: token })).toEqual({ apifyToken: "[redacted]" })
+    const keep = "Apify actor apify~website-content-crawler, apify_runs, apify_token.create, apify_api_"
+    expect(redactString(keep)).toBe(keep)
+  })
+})
+
 describe("redact Google Drive secrets", () => {
   const relayToken = "adr_" + "Ab3_-x".repeat(7) + "q"
   const apiKey = "AIza" + "SyA1b2C3d4E5f6G7h8I9j0K_L-M3n4O5p6Q"

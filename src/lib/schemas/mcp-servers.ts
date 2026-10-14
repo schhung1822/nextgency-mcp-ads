@@ -3,6 +3,7 @@
 import { z } from "zod"
 
 import { isReleasedPlatform, RELEASED_PLATFORMS, type ReleasedPlatform } from "@/lib/platforms"
+import { APIFY_LIMITS } from "@/lib/schemas/apify"
 import { notifications as notificationsVi } from "@/lib/i18n/vi/notifications"
 import {
   MULTILINE_FORBIDDEN_CHARS,
@@ -75,6 +76,10 @@ export const MCP_LIMITS = {
   telegramChannelsMax: 20,
   /** Google Drive sources per MCP (mcp_drive_scopes) */
   driveSourcesMax: 50,
+  /** Apify per-run cost ceiling (USD, always enforced) - same bounds as APIFY_LIMITS.runMaxUsd */
+  apifyRunMaxUsd: APIFY_LIMITS.runMaxUsd,
+  /** Apify committed spend per day (USD, advanced only, 0 = no daily cap) - same bounds as APIFY_LIMITS.dailyMaxUsd */
+  apifyDailyMaxUsd: APIFY_LIMITS.dailyMaxUsd,
 } as const
 
 const msg = {
@@ -108,6 +113,9 @@ const msg = {
   expiresFuture: "Ngày hết hạn phải sau thời điểm hiện tại.",
   id: "Mã không hợp lệ.",
   tooManyDriveSources: `Tối đa ${MCP_LIMITS.driveSourcesMax} thư mục / sheet Google Drive cho mỗi MCP.`,
+  apifyRunMax: `Trần mỗi lần chạy Apify phải từ 0,05 đến ${MCP_LIMITS.apifyRunMaxUsd.max} USD (tối đa 2 chữ số thập phân).`,
+  apifyDailyMax:
+    "Trần Apify mỗi ngày phải từ 0 đến 1.000 USD (tối đa 2 chữ số thập phân, 0 = không giới hạn).",
 } as const
 export const MCP_SCHEMA_MESSAGES = msg
 
@@ -134,6 +142,21 @@ export function parseIpList(text: string): string[] {
 // Settings (McpSettings) - camelCase, exactly the McpSettings contract in src/server/mcp/types.ts
 // ---------------------------------------------------------------------------
 export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/, msg.currency)
+
+/** true when a USD amount has at most 2 decimals (float-safe) */
+function isCents(n: number): boolean {
+  return Math.abs(n * 100 - Math.round(n * 100)) < 1e-6
+}
+
+/** USD amount within [min, max] with at most 2 decimals (Apify caps) */
+function usdSchema(bounds: { min: number; max: number }, message: string) {
+  return z
+    .number({ error: message })
+    .finite(message)
+    .min(bounds.min, message)
+    .max(bounds.max, message)
+    .refine(isCents, message)
+}
 
 /** currency → positive amount in MAJOR units (per-currency caps: daily, lifetime, bid). */
 function capsSchema(message: string) {
@@ -222,6 +245,19 @@ export const mcpSettingsSchema = z.object({
    * within this MCP's TikTok permissions. Default OFF; only an admin may turn it on (enforced server-side).
    */
   tiktokGmvMaxWrite: z.boolean().default(false),
+  /**
+   * Apify (16-apify.md §7) - optional on input, safe defaults: tools off, $1 per run (always enforced), $10 per day
+   * (advanced only, 0 = no daily cap), Actors outside the catalog off (admin-only, enforced server-side).
+   */
+  apifyEnabled: z.boolean().default(false),
+  apifyRunMaxUsd: usdSchema(MCP_LIMITS.apifyRunMaxUsd, msg.apifyRunMax).default(
+    MCP_LIMITS.apifyRunMaxUsd.default
+  ),
+  apifyDailyMaxUsd: usdSchema(
+    MCP_LIMITS.apifyDailyMaxUsd,
+    msg.apifyDailyMax
+  ).default(MCP_LIMITS.apifyDailyMaxUsd.default),
+  apifyStoreActors: z.boolean().default(false),
 })
 export type McpSettingsInput = z.infer<typeof mcpSettingsSchema>
 
@@ -243,6 +279,10 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
   drivePublicLinks: true,
   driveSheetWriteback: true,
   tiktokGmvMaxWrite: false,
+  apifyEnabled: false,
+  apifyRunMaxUsd: APIFY_LIMITS.runMaxUsd.default,
+  apifyDailyMaxUsd: APIFY_LIMITS.dailyMaxUsd.default,
+  apifyStoreActors: false,
 }
 
 /** Shape stored in `mcp_servers.settings` (snake_case, as documented in 03-database-schema.md). */
@@ -265,6 +305,10 @@ export interface StoredMcpSettings {
   drive_public_links: boolean
   drive_sheet_writeback: boolean
   tiktok_gmv_max_write: boolean
+  apify_enabled: boolean
+  apify_run_max_usd: number
+  apify_daily_max_usd: number
+  apify_store_actors: boolean
 }
 
 function sortedCaps(r: Record<string, number>): Record<string, number> {
@@ -293,6 +337,10 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     drive_public_links: s.drivePublicLinks,
     drive_sheet_writeback: s.driveSheetWriteback,
     tiktok_gmv_max_write: s.tiktokGmvMaxWrite,
+    apify_enabled: s.apifyEnabled,
+    apify_run_max_usd: s.apifyRunMaxUsd,
+    apify_daily_max_usd: s.apifyDailyMaxUsd,
+    apify_store_actors: s.apifyStoreActors,
   }
 }
 
@@ -496,6 +544,14 @@ export type McpFormValues = {
   driveSheetWriteback: boolean
   /** TikTok GMV Max write switch (admin-only) */
   tiktokGmvMaxWrite: boolean
+  /** Apify tools on (needs >= 1 usable Apify token of the MCP owner / the company) */
+  apifyEnabled: boolean
+  /** USD text, e.g. "1" / "0,5" - per-run cost ceiling (always enforced) */
+  apifyRunMaxUsd: string
+  /** USD text ("0" = no daily cap) - advanced protection mode only */
+  apifyDailyMaxUsd: string
+  /** Actors outside the catalog (admin-only switch) */
+  apifyStoreActors: boolean
 }
 
 export const PERMISSION_PRESETS = {
@@ -553,6 +609,10 @@ export function defaultMcpFormValues(): McpFormValues {
     drivePublicLinks: DEFAULT_SETTINGS_INPUT.drivePublicLinks,
     driveSheetWriteback: DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
     tiktokGmvMaxWrite: DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite,
+    apifyEnabled: DEFAULT_SETTINGS_INPUT.apifyEnabled,
+    apifyRunMaxUsd: String(DEFAULT_SETTINGS_INPUT.apifyRunMaxUsd),
+    apifyDailyMaxUsd: String(DEFAULT_SETTINGS_INPUT.apifyDailyMaxUsd),
+    apifyStoreActors: DEFAULT_SETTINGS_INPUT.apifyStoreActors,
   }
 }
 
@@ -619,6 +679,57 @@ export function capsNumbersToText(
 }
 
 /**
+ * A USD amount typed in the Apify fields: digits with an optional "." or "," decimal separator and at most 2
+ * decimals ("1", "0,5", "0.05", "12.5"). No thousands groups - unlike parseAmountText ("0.125" / "1.000" → NaN, never
+ * 125 / 1000). NaN when invalid.
+ */
+export function parseUsdText(text: string): number {
+  const s = text.trim().replace(/\s/g, "")
+  if (!/^\d{1,7}([.,]\d{1,2})?$/.test(s)) return Number.NaN
+  return Number(s.replace(",", "."))
+}
+
+/** Vietnamese error of the Apify per-run cap text (form), undefined when valid. */
+export function apifyRunMaxError(text: string | undefined): string | undefined {
+  const s = (text ?? "").trim()
+  if (s === "") return msg.apifyRunMax
+  return mcpSettingsSchema.shape.apifyRunMaxUsd.safeParse(parseUsdText(s))
+    .success
+    ? undefined
+    : msg.apifyRunMax
+}
+
+/** Vietnamese error of the Apify daily cap text (form; "0" = no daily cap), undefined when valid. */
+export function apifyDailyMaxError(
+  text: string | undefined
+): string | undefined {
+  const s = (text ?? "").trim()
+  if (s === "") return msg.apifyDailyMax
+  return mcpSettingsSchema.shape.apifyDailyMaxUsd.safeParse(parseUsdText(s))
+    .success
+    ? undefined
+    : msg.apifyDailyMax
+}
+
+/**
+ * Apify switched off hides both Apify caps: an invalid hidden value goes back to its default so it never blocks a
+ * save (a valid one is kept for the next time Apify is switched on).
+ */
+export function sanitizeHiddenApify(v: McpFormValues): McpFormValues {
+  if (v.apifyEnabled) return v
+  const d = defaultMcpFormValues()
+  const run = apifyRunMaxError(v.apifyRunMaxUsd)
+    ? d.apifyRunMaxUsd
+    : v.apifyRunMaxUsd
+  const daily = apifyDailyMaxError(v.apifyDailyMaxUsd)
+    ? d.apifyDailyMaxUsd
+    : v.apifyDailyMaxUsd
+  return run === v.apifyRunMaxUsd && daily === v.apifyDailyMaxUsd
+    ? v
+    : { ...v, apifyRunMaxUsd: run, apifyDailyMaxUsd: daily }
+}
+
+/**
  * Basic mode hides the advanced fields: keep their valid values (applied again when the owner switches back to
  * advanced) and reset invalid ones to the defaults, so a hidden field can never block a save.
  */
@@ -637,6 +748,9 @@ export function sanitizeHiddenAdvanced(v: McpFormValues): McpFormValues {
   if (e.writeDelaySeconds) out.writeDelaySeconds = d.writeDelaySeconds
   if (e.telegramMessagesPerHour)
     out.telegramMessagesPerHour = d.telegramMessagesPerHour
+  // the Apify daily cap is an advanced limit (hidden in basic); the per-run cap stays visible (step "Chọn quyền")
+  if (apifyDailyMaxError(v.apifyDailyMaxUsd))
+    out.apifyDailyMaxUsd = d.apifyDailyMaxUsd
   for (const field of MCP_CAP_FIELDS) {
     const kept = Object.entries(v[field] ?? {}).filter(
       ([cur]) => !e[`${field}.${cur}`]
@@ -660,8 +774,9 @@ export function sanitizeHiddenAdvanced(v: McpFormValues): McpFormValues {
 export function formValuesToConfig(
   values: McpFormValues
 ): z.input<typeof mcpConfigSchema> {
-  const v =
+  const v = sanitizeHiddenApify(
     values.protectionMode === "basic" ? sanitizeHiddenAdvanced(values) : values
+  )
   const platforms = MCP_PLATFORMS.filter((p) => v.platforms[p]?.enabled).map(
     (p) => ({
       platform: p,
@@ -698,6 +813,16 @@ export function formValuesToConfig(
       drivePublicLinks: v.drivePublicLinks ?? DEFAULT_SETTINGS_INPUT.drivePublicLinks,
       driveSheetWriteback: v.driveSheetWriteback ?? DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
       tiktokGmvMaxWrite: v.tiktokGmvMaxWrite ?? DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite,
+      // missing on a form built before the fields existed → the safe defaults (off, $1 / run, $10 / day)
+      apifyEnabled: v.apifyEnabled ?? DEFAULT_SETTINGS_INPUT.apifyEnabled,
+      apifyRunMaxUsd: parseUsdText(
+        v.apifyRunMaxUsd ?? String(DEFAULT_SETTINGS_INPUT.apifyRunMaxUsd)
+      ),
+      apifyDailyMaxUsd: parseUsdText(
+        v.apifyDailyMaxUsd ?? String(DEFAULT_SETTINGS_INPUT.apifyDailyMaxUsd)
+      ),
+      apifyStoreActors:
+        v.apifyStoreActors ?? DEFAULT_SETTINGS_INPUT.apifyStoreActors,
     },
     expiresAt: v.expiresOn ? expiryDateToIso(v.expiresOn) : null,
     notificationChannelIds: [...new Set(v.notificationChannelIds)],
@@ -786,6 +911,17 @@ export function configToFormValues(config: {
     config.settings.driveSheetWriteback ?? DEFAULT_SETTINGS_INPUT.driveSheetWriteback
   // missing on rows saved before the feature → OFF (same default as the runtime parser)
   v.tiktokGmvMaxWrite = config.settings.tiktokGmvMaxWrite ?? DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite
+  // missing on rows saved before the feature → the safe defaults (same as the runtime parser)
+  v.apifyEnabled =
+    config.settings.apifyEnabled ?? DEFAULT_SETTINGS_INPUT.apifyEnabled
+  v.apifyRunMaxUsd = String(
+    config.settings.apifyRunMaxUsd ?? DEFAULT_SETTINGS_INPUT.apifyRunMaxUsd
+  )
+  v.apifyDailyMaxUsd = String(
+    config.settings.apifyDailyMaxUsd ?? DEFAULT_SETTINGS_INPUT.apifyDailyMaxUsd
+  )
+  v.apifyStoreActors =
+    config.settings.apifyStoreActors ?? DEFAULT_SETTINGS_INPUT.apifyStoreActors
   return v
 }
 
@@ -823,6 +959,16 @@ export function validateNameStep(v: McpFormValues): StepErrors {
   if (!r.success) e.name = r.error.issues[0]?.message ?? msg.nameRequired
   if (v.description.trim().length > MCP_LIMITS.descriptionMax)
     e.description = msg.descTooLong
+  return e
+}
+
+/** Step "Chọn quyền": the Apify per-run cap (shown and validated only while Apify is switched on). */
+export function validatePermissionsStep(v: McpFormValues): StepErrors {
+  const e: StepErrors = {}
+  if (v.apifyEnabled) {
+    const err = apifyRunMaxError(v.apifyRunMaxUsd)
+    if (err) e.apifyRunMaxUsd = err
+  }
   return e
 }
 
@@ -892,6 +1038,11 @@ export function validateProtectionStep(
     (v.telegramMessagesPerHour ?? "").trim() === ""
   )
     e.telegramMessagesPerHour = msg.telegramPerHour
+  // Apify daily cap: an advanced limit, shown (and validated) only while Apify is switched on
+  if (v.apifyEnabled) {
+    const apifyDaily = apifyDailyMaxError(v.apifyDailyMaxUsd)
+    if (apifyDaily) e.apifyDailyMaxUsd = apifyDaily
+  }
   for (const field of MCP_CAP_FIELDS) {
     for (const [cur, text] of Object.entries(v[field] ?? {})) {
       if (text.trim() === "") continue

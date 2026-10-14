@@ -87,8 +87,8 @@ async function visit(a: Actor, path: string): Promise<Outcome & { res: APIRespon
 }
 
 const NIL = "00000000-0000-4000-8000-000000000000"
-const APP_PAGES = ["/", "/account", "/connections", "/connections/new", "/connections/drive/new", "/mcp-servers", "/mcp-servers/new", "/logs"]
-const MISSING_PAGES = [`/connections/${NIL}`, `/connections/drive/${NIL}`, `/mcp-servers/${NIL}`]
+const APP_PAGES = ["/", "/account", "/connections", "/connections/new", "/connections/drive/new", "/connections/apify/new", "/mcp-servers", "/mcp-servers/new", "/logs"]
+const MISSING_PAGES = [`/connections/${NIL}`, `/connections/drive/${NIL}`, `/connections/apify/${NIL}`, `/mcp-servers/${NIL}`]
 const ADMIN_PAGES = ["/users", "/settings", "/settings/updates"]
 const POLICIES: { name: string; policy: Policy }[] = [
   { name: "2FA tuỳ chọn (mặc định)", policy: { admin: false, all: false } },

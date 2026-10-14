@@ -21,6 +21,7 @@ import {
   normalizePermissions,
   parseAmountText,
   parseIpList,
+  parseUsdText,
   pruneChannelsToSelectable,
   pruneDriveSourcesToSelectable,
   pruneToSelectable,
@@ -28,6 +29,7 @@ import {
   summarizeScopeIssues,
   toStoredMcpSettings,
   validateNameStep,
+  validatePermissionsStep,
   validatePlatformsStep,
   validateProtectionStep,
   type ScopeConfigConnection,
@@ -173,6 +175,11 @@ describe("mcp-servers schemas", () => {
       drive_public_links: true,
       drive_sheet_writeback: true,
       tiktok_gmv_max_write: false,
+      // omitted on input → Apify off, $1 per run, $10 per day, catalog only
+      apify_enabled: false,
+      apify_run_max_usd: 1,
+      apify_daily_max_usd: 10,
+      apify_store_actors: false,
     })
   })
 
@@ -990,5 +997,110 @@ describe("write delay (writeDelaySeconds)", () => {
     expect(formValuesToConfig(basic).settings.writeDelaySeconds).toBe(0)
     // a valid hidden value is kept (applied again when switched back to advanced)
     expect(formValuesToConfig({ ...basic, writeDelaySeconds: "15" }).settings.writeDelaySeconds).toBe(15)
+  })
+})
+
+describe("Apify settings (16-apify.md §7)", () => {
+  const base = {
+    twoStepConfirm: true,
+    budgetChangeMaxPct: 50,
+    maxDailyBudget: {},
+    rateLimitPerMin: 60,
+    allowedIps: [],
+  }
+
+  it("schema: safe defaults, bounds, at most 2 decimals, stored snake_case", () => {
+    const d = mcpSettingsSchema.parse(base)
+    expect([d.apifyEnabled, d.apifyRunMaxUsd, d.apifyDailyMaxUsd, d.apifyStoreActors]).toEqual([false, 1, 10, false])
+    expect([
+      DEFAULT_SETTINGS_INPUT.apifyEnabled,
+      DEFAULT_SETTINGS_INPUT.apifyRunMaxUsd,
+      DEFAULT_SETTINGS_INPUT.apifyDailyMaxUsd,
+      DEFAULT_SETTINGS_INPUT.apifyStoreActors,
+    ]).toEqual([false, 1, 10, false])
+    for (const ok of [0.05, 0.1, 1, 19.99, 20])
+      expect(mcpSettingsSchema.safeParse({ ...base, apifyRunMaxUsd: ok }).success).toBe(true)
+    for (const bad of [0, 0.04, 20.01, 1.234, Number.NaN, "1"])
+      expect(mcpSettingsSchema.safeParse({ ...base, apifyRunMaxUsd: bad }).success).toBe(false)
+    for (const ok of [0, 0.5, 1000])
+      expect(mcpSettingsSchema.safeParse({ ...base, apifyDailyMaxUsd: ok }).success).toBe(true)
+    for (const bad of [-1, 1000.01, 2.555])
+      expect(mcpSettingsSchema.safeParse({ ...base, apifyDailyMaxUsd: bad }).success).toBe(false)
+    const s = toStoredMcpSettings(
+      mcpSettingsSchema.parse({ ...base, apifyEnabled: true, apifyRunMaxUsd: 2.5, apifyDailyMaxUsd: 0, apifyStoreActors: true })
+    )
+    expect([s.apify_enabled, s.apify_run_max_usd, s.apify_daily_max_usd, s.apify_store_actors]).toEqual([true, 2.5, 0, true])
+  })
+
+  it("form round trip (text fields, vi-VN decimal comma), legacy rows → defaults", () => {
+    const v = defaultMcpFormValues()
+    expect([v.apifyEnabled, v.apifyRunMaxUsd, v.apifyDailyMaxUsd, v.apifyStoreActors]).toEqual([false, "1", "10", false])
+    const cfg = formValuesToConfig({ ...v, apifyEnabled: true, apifyRunMaxUsd: "0,5", apifyDailyMaxUsd: "25", apifyStoreActors: true })
+    expect(cfg.settings).toMatchObject({ apifyEnabled: true, apifyRunMaxUsd: 0.5, apifyDailyMaxUsd: 25, apifyStoreActors: true })
+    const back = configToFormValues({
+      name: "x",
+      description: null,
+      platforms: [],
+      expiresAt: null,
+      settings: { ...DEFAULT_SETTINGS_INPUT, apifyEnabled: true, apifyRunMaxUsd: 0.05, apifyDailyMaxUsd: 0 },
+    })
+    expect([back.apifyEnabled, back.apifyRunMaxUsd, back.apifyDailyMaxUsd]).toEqual([true, "0.05", "0"])
+    const { apifyEnabled: _a, apifyRunMaxUsd: _r, apifyDailyMaxUsd: _d, apifyStoreActors: _s, ...older } = DEFAULT_SETTINGS_INPUT
+    const legacy = configToFormValues({ name: "x", description: null, platforms: [], expiresAt: null, settings: older })
+    expect([legacy.apifyEnabled, legacy.apifyRunMaxUsd, legacy.apifyDailyMaxUsd, legacy.apifyStoreActors]).toEqual([false, "1", "10", false])
+  })
+
+  it("per-run cap validated in step Chọn quyền while Apify is on; daily cap only in advanced", () => {
+    const v = { ...defaultMcpFormValues(), apifyEnabled: true, apifyRunMaxUsd: "25" }
+    expect(validatePermissionsStep(v).apifyRunMaxUsd).toMatch(/Trần mỗi lần chạy Apify/)
+    expect(validatePermissionsStep({ ...v, apifyRunMaxUsd: "" }).apifyRunMaxUsd).toBeDefined()
+    expect(validatePermissionsStep({ ...v, apifyRunMaxUsd: "2" })).toEqual({})
+    expect(validatePermissionsStep({ ...v, apifyEnabled: false })).toEqual({})
+    const adv = { ...v, apifyRunMaxUsd: "2", protectionMode: "advanced" as const, apifyDailyMaxUsd: "5000" }
+    expect(validateProtectionStep(adv).apifyDailyMaxUsd).toMatch(/Trần Apify mỗi ngày/)
+    expect(validateProtectionStep({ ...adv, apifyDailyMaxUsd: "0" }).apifyDailyMaxUsd).toBeUndefined()
+    expect(validateProtectionStep({ ...adv, apifyEnabled: false }).apifyDailyMaxUsd).toBeUndefined()
+    expect(validateProtectionStep({ ...adv, protectionMode: "basic" }).apifyDailyMaxUsd).toBeUndefined()
+  })
+
+  it("hidden invalid values never block a save: basic resets the daily cap, Apify off resets both caps", () => {
+    const basic = {
+      ...defaultMcpFormValues(),
+      protectionMode: "basic" as const,
+      apifyEnabled: true,
+      apifyRunMaxUsd: "3",
+      apifyDailyMaxUsd: "abc",
+    }
+    expect(sanitizeHiddenAdvanced(basic).apifyDailyMaxUsd).toBe("10")
+    expect(formValuesToConfig(basic).settings).toMatchObject({ apifyRunMaxUsd: 3, apifyDailyMaxUsd: 10 })
+    // a valid hidden daily cap is kept (applied again in advanced)
+    expect(formValuesToConfig({ ...basic, apifyDailyMaxUsd: "7" }).settings.apifyDailyMaxUsd).toBe(7)
+    const off = { ...basic, protectionMode: "advanced" as const, apifyEnabled: false, apifyRunMaxUsd: "99" }
+    expect(formValuesToConfig(off).settings).toMatchObject({ apifyEnabled: false, apifyRunMaxUsd: 1, apifyDailyMaxUsd: 10 })
+    expect(mcpConfigSchema.shape.settings.safeParse(formValuesToConfig(off).settings).success).toBe(true)
+  })
+})
+
+describe("parseUsdText (Apify USD fields, fix #8)", () => {
+  it("dot or comma decimal, at most 2 decimals, never a thousands group", () => {
+    expect(parseUsdText("1")).toBe(1)
+    expect(parseUsdText(" 0,5 ")).toBe(0.5)
+    expect(parseUsdText("0.05")).toBe(0.05)
+    expect(parseUsdText("12.5")).toBe(12.5)
+    expect(parseUsdText("1000")).toBe(1000)
+    for (const bad of ["0.125", "1.000", "1,000", "1.000,5", "", "abc", "-1", "1e3", "0.1.2"])
+      expect(Number.isNaN(parseUsdText(bad))).toBe(true)
+    // the ad-budget parser would read "0.125" as 125: the Apify fields must not
+    expect(parseAmountText("0.125")).toBe(125)
+  })
+
+  it("the Apify form fields use it: '0.125' is an error, never 125 USD", () => {
+    const v = { ...defaultMcpFormValues(), apifyEnabled: true, protectionMode: "advanced" as const }
+    expect(validatePermissionsStep({ ...v, apifyRunMaxUsd: "0.125" }).apifyRunMaxUsd).toBeDefined()
+    expect(validateProtectionStep({ ...v, apifyDailyMaxUsd: "1.000" }).apifyDailyMaxUsd).toBeDefined()
+    expect(formValuesToConfig({ ...v, apifyRunMaxUsd: "0,25", apifyDailyMaxUsd: "7.5" }).settings).toMatchObject({
+      apifyRunMaxUsd: 0.25,
+      apifyDailyMaxUsd: 7.5,
+    })
   })
 })

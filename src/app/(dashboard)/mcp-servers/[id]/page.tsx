@@ -18,6 +18,7 @@ import {
   type McpDetail,
   type SelectableConnection,
 } from "@/server/services/mcp-servers"
+import { getMcpApifyPoolSummary } from "@/server/services/apify-tokens"
 import { getDriveSystemInfo } from "@/server/services/drive-credentials"
 import { gmvMaxFlagsForMcpScope } from "@/server/services/mcp-gmv-max"
 import { listDriveSourcesForMcpScope } from "@/server/services/drive-sources"
@@ -91,7 +92,7 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
   const actor = { id: user.id, email: user.email, role: user.role } as const
   const mcp = await getMcpServer(actor, id)
   if (!mcp) notFound()
-  const [connections, channels, driveSources, driveInfo] = await Promise.all([
+  const [connections, channels, driveSources, driveInfo, apifyPool] = await Promise.all([
     listSelectableConnections(actor, {
       id: mcp.ownerId,
       role: mcp.ownerRole,
@@ -101,6 +102,8 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
     // Drive sources usable by the MCP OWNER (company + the owner's; admin-owned MCP: any live source)
     listDriveSourcesForMcpScope(actor, { id: mcp.ownerId, role: mcp.ownerRole }),
     getDriveSystemInfo(),
+    // Apify pool of the MCP OWNER (from the MCP row, never from the client): company + the owner's personal tokens
+    getMcpApifyPoolSummary({ id: mcp.ownerId, role: mcp.ownerRole }),
   ])
   const [accountNames, gmvFlags] = await Promise.all([
     switchedOffAccountNames(actor, mcp, connections),
@@ -119,6 +122,7 @@ export default async function McpDetailPage({ params, searchParams }: Props) {
       twoFactorEnabled={user.twoFactorEnabled}
       initialTab={initialTab}
       gmvMax={{ isAdmin: actor.role === "admin", flags: gmvFlags }}
+      apifyPool={apifyPool}
       actions={{
         update: updateMcpAction,
         reveal: revealMcpUrlAction,

@@ -120,6 +120,12 @@ export const DEFAULT_SETTINGS: McpSettingsInput = {
   drivePublicLinks: false,
   driveSheetWriteback: true,
   tiktokGmvMaxWrite: false,
+  // off in the shared fixture: Apify tools must not join the exact tool lists of the other flows (apify.flows turns
+  // it on); company Apify tokens of other test files would otherwise be in every pool
+  apifyEnabled: false,
+  apifyRunMaxUsd: 1,
+  apifyDailyMaxUsd: 10,
+  apifyStoreActors: false,
 }
 
 export class World {

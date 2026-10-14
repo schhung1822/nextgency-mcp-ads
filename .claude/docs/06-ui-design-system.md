@@ -132,10 +132,10 @@ Responsive: ≥1024 sidebar mở; 768–1023 sidebar thu icon; <768 sidebar thà
 ### Kết nối `/connections` (tên menu cũ: Kết nối quảng cáo)
 ```
 [Kết nối]  Dán token từ app developer của bạn để kết nối tài khoản QC.  [+ Thêm kết nối]
-Tabs (3, không cuộn ngang): [🔌 Quảng cáo 25] · [Telegram 3] · [Google Drive 7]   (icon ẩn < sm; ?tab=all|telegram|drive)
+Tabs (4, không cuộn ngang — kiểm tra 360 px, rút gọn nhãn nếu cần): [🔌 Quảng cáo 25] · [Telegram 3] · [Google Drive 7] · [Apify 2]   (icon ẩn < sm; ?tab=all|telegram|drive|apify)
 Tab Quảng cáo: [Tìm kiếm...] [+ Nền tảng ▾ (Meta · TikTok · Google Ads · OpenAI Ads, đếm từng nền tảng, chọn nhiều)] [+ Trạng thái ▾]
   (link cũ ?platform=meta / ?platform=youtube → chọn sẵn bộ lọc Nền tảng; lọc đúng 1 nền tảng chưa có kết nối → Empty "Chưa có kết nối X" + [Thêm kết nối X])
-Mô tả PageHeader đổi theo tab: Quảng cáo "Dán token từ app developer…" · Telegram "Thêm bot Telegram để nhận cảnh báo…" · Google Drive "Khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo."
+Mô tả PageHeader đổi theo tab: Quảng cáo "Dán token từ app developer…" · Telegram "Thêm bot Telegram để nhận cảnh báo…" · Google Drive "Khai báo thư mục ảnh, video hoặc Google Sheet kế hoạch để AI lấy file lên quảng cáo." · Apify (thêm token Apify để AI lấy dữ liệu sàn TMĐT, mạng xã hội, Google…)
 | Tên            | Nền tảng | Người tạo* | TKQC | Trạng thái        | Hạn token  | Kiểm tra lúc |
 | BM chính       | (f) Meta | Thắng      | 12   | ● Hoạt động       | Không hạn  | 5 phút trước |
 | OpenAI Shop    | (◎)      | Lan        | 1    | ● Sắp hết hạn     | 07/10/2026 | 1 giờ trước  |
@@ -161,10 +161,24 @@ Khối "Service account riêng" [Nâng cao]: danh sách + Thêm (Dialog dán JSO
 - **Cài đặt → Google Drive hệ thống** (admin): Card đặc — trạng thái (Hoạt động / Lỗi / Chưa cấu hình), email + Sao chép, project, mã khoá, API key (`…abcd` hoặc "Chưa có - link công khai tắt"), kiểm tra lần cuối, số nguồn đang dùng; SecretInput nhiều dòng cho service account JSON (write-only, trống = giữ), SecretInput API key (chỉ hiện hint) + Checkbox "Xoá API key"; nút Kiểm tra / Lưu thông tin xác thực (`outline`, thành `brand` khi đã nhập gì đó - trang Cài đặt không có nút brand ở header) / Xoá (Lưu, Xoá mở hộp xác thực lại). Thẻ rộng (container ≥ 56rem, `@4xl`): form bên trái (7fr) + khung **"Hướng dẫn cấu hình"** bên phải (5fr, `settings/_components/drive-settings-help.tsx`, chuỗi `src/lib/i18n/vi/drive-settings-help.ts`, Accordion 4 mục: dùng để làm gì · lấy khoá JSON (Bắt buộc) · API key link công khai (Không bắt buộc) · sau khi lưu); thẻ hẹp / điện thoại: 1 cột, khung hướng dẫn nằm dưới form - **riêng khi chưa cấu hình** thì khung hướng dẫn lên trước form (`order-first`, mở sẵn mục khoá JSON) để quản trị viên đọc cách lấy JSON trước khi thấy ô trống. Bước "Google Drive hệ thống" đã rời khỏi panel Hướng dẫn của trang (`guides.settings`). Đây là **ngoại lệ được chủ dự án duyệt (2026-10-10)** cho quy tắc "không dựng aside hướng dẫn trong trang" ở §11.
 - **Khối Google Drive trong MCP** (`mcp-servers/_components/drive-sections.tsx`, wizard + tab Cấu hình + Tổng quan): bước ② tiêu đề nhóm "Ảnh, video quảng cáo (không bắt buộc)" → Card "Google Drive" với Checkbox nguồn theo nhóm Của công ty / Của tôi / Của nhân viên (admin), badge loại + trạng thái, nguồn lỗi/tắt có cảnh báo, trống → EmptyState + "Thêm thư mục / sheet"; bước ② nguồn "Đang tắt" không chọn mới được (Checkbox vô hiệu, vẫn bỏ chọn được nếu đã chọn); bước ③ Card "Google Drive": Switch "Cho phép dùng link Drive công khai" (mặc định bật - mô tả hiển thị nổi bằng `font-medium text-warning-strong`; vô hiệu + gợi ý khi chưa có API key) và "Cho phép ghi trạng thái vào Google Sheet" (mặc định bật) + ghi chú cần quyền Tạo mới (đã chọn nguồn Drive mà không nền tảng nào có Tạo mới → Alert vàng nhẹ); Tổng quan: 3 dòng tóm tắt (Google Drive · Link Drive công khai · Ghi trạng thái vào Google Sheet).
 
+### Apify (`/connections?tab=apify`, `/connections/apify/new`, `/connections/apify/[id]` — 2026-10-14, `16-apify.md` §8)
+Chuỗi: `src/lib/i18n/vi/apify.ts` (+ `connections.ts`, `guides.ts`, `mcp.ts`); icon thương hiệu Apify trong `BRAND_MARKS`. Theo khuôn trang Telegram; nút chính `brand` "Thêm token Apify".
+```
+Tab Apify:
+(PageGuide: lấy token ở Apify Console → Settings → API & Integrations · ⚠ điều khoản Apify cấm một người lập nhiều tài khoản · nên đặt giới hạn chi tiêu trong Apify Console)
+| Tên          | Phạm vi | Tài khoản Apify    | Credit                    | Trạng thái    | Kiểm tra lần cuối | ⋯ |
+| Token chung  | Công ty | congty · STARTER   | $4,20 / $19 · reset 01/11 | ● Hoạt động   | 5 phút trước      | ⋯ |
+| Của Lan      | Cá nhân | lan-mkt · FREE     | $5,00 / $5 · reset 20/10  | ● Hết credit  | 1 giờ trước       | ⋯ |
+(nhân viên: token công ty chỉ xem - không có menu thao tác)   Empty: chưa có token Apify + [Thêm token Apify]
+```
+- **Thêm** `/connections/apify/new`: `DisclaimerGate kind="connection"`; Card đặc: Tên, Token (`SecretInput`), Phạm vi (admin: Công ty / Cá nhân; nhân viên: cố định Cá nhân) → **Kiểm tra** (khung kết quả: username, gói, credit còn, ngày reset; token khác cùng tài khoản → ghi chú "dùng chung credit") → **Kiểm tra & lưu** → nút "Thêm token khác". Thẻ Apify ở `/connections/new` nằm trong nhóm mới "Nguồn dữ liệu".
+- **Chi tiết** `/connections/apify/[id]`: PageHeader (Kiểm tra lại · Đổi tên · Thay token (hộp xác thực lại) · Tắt/Bật · Xoá — `ConfirmDialog` gõ tên, liệt kê số MCP bị ảnh hưởng); Card Thông tin + Credit; "MCP dùng được token này" (ẩn danh với nhân viên); bảng 20 lần chạy gần nhất (MCP, việc / Actor, trạng thái, chi phí, thời điểm).
+- **Thẻ Apify trong MCP** (wizard + tab Cấu hình): bước ③ Card "Apify": Switch "Cho phép AI lấy dữ liệu qua Apify" (dòng phụ: N token · M tài khoản trong kho; kho trống → Switch vô hiệu + link "Thêm token Apify"), ô "Trần mỗi lần chạy (USD)", Switch "Cho phép Actor ngoài danh mục" + badge "Chỉ quản trị viên" (nhân viên: khoá, tắt được nếu đang bật); bước ④ Tùy chỉnh nâng cao: "Trần Apify mỗi ngày (USD)"; ghi chú Cơ bản: trần mỗi lần chạy vẫn áp dụng. Tab Tổng quan: các dòng Apify (bật/tắt, trần lần chạy, trần ngày, Actor ngoài danh mục).
+
 ### Thêm kết nối `/connections/new` (wizard 3 bước)
 ```
 ① Chọn nền tảng  ② Nhập thông tin  ③ Kiểm tra & chọn tài khoản
-Bước 1: lưới 2 cột thẻ lớn có logo + mô tả 1 dòng — nhóm "Quảng cáo": Meta · TikTok Ads · Google Ads (gồm YouTube) (một thẻ duy nhất: logo Google Ads + dấu YouTube nhỏ ở góc, mô tả thêm câu "Quảng cáo YouTube (chiến dịch Video, Demand Gen) cũng chạy qua kết nối này."; form luôn kèm Alert "YouTube Ads chạy qua Google Ads" và khung Hướng dẫn có phần YouTube; link cũ `?platform=youtube` vẫn mở form này) · OpenAI Ads; nhóm "Kênh thông báo": Telegram (→ `/connections/telegram/new`); nhóm "Kho creative" ("Khai báo thư mục hoặc Google Sheet để AI lấy ảnh, video lên quảng cáo."): Google Drive (→ `/connections/drive/new`). Thẻ "Sắp ra mắt" (nét đứt, mờ, popup "chưa sẵn sàng") chỉ hiện khi `UPCOMING_PLATFORMS` khác rỗng.
+Bước 1: lưới 2 cột thẻ lớn có logo + mô tả 1 dòng — nhóm "Quảng cáo": Meta · TikTok Ads · Google Ads (gồm YouTube) (một thẻ duy nhất: logo Google Ads + dấu YouTube nhỏ ở góc, mô tả thêm câu "Quảng cáo YouTube (chiến dịch Video, Demand Gen) cũng chạy qua kết nối này."; form luôn kèm Alert "YouTube Ads chạy qua Google Ads" và khung Hướng dẫn có phần YouTube; link cũ `?platform=youtube` vẫn mở form này) · OpenAI Ads; nhóm "Kênh thông báo": Telegram (→ `/connections/telegram/new`); nhóm "Kho creative" ("Khai báo thư mục hoặc Google Sheet để AI lấy ảnh, video lên quảng cáo."): Google Drive (→ `/connections/drive/new`); nhóm "Nguồn dữ liệu": Apify (→ `/connections/apify/new`, 2026-10-14). Thẻ "Sắp ra mắt" (nét đứt, mờ, popup "chưa sẵn sàng") chỉ hiện khi `UPCOMING_PLATFORMS` khác rỗng.
         TikTok bước 2 có SegmentedControl "Dán access token | Đổi auth_code"; Google Ads có chọn kiểu xác thực "Service account (khuyên dùng) | OAuth refresh token"
 Bước 2: ┌ Form (Card đặc) ─────────────┐ ┌ Panel Hướng dẫn: "Cách lấy token Meta" ─┐
         │Tên kết nối*                  │ │1. Vào Business Settings → ...      │
@@ -179,8 +193,9 @@ Bước 3: spinner "Đang kiểm tra..." → ✔ Token hợp lệ (hạn, scope)
 ② Mỗi nền tảng 1 card có công tắc bật; bật → chọn kết nối (multi) → "Tất cả tài khoản" hoặc chọn từng TKQC; dưới cùng khối Telegram và khối Google Drive (chọn thư mục / sheet)
 ③ Mỗi nền tảng đã bật 1 hàng checkbox: [✔ Xem (luôn bật)] [ ] Bật/Tắt [ ] Sửa [ ] Sao chép [ ] Tạo mới [ ] Xoá/Lưu trữ ⚠
    Nút nhanh: "Chỉ xem" · "Vận hành (xem + bật/tắt + sửa)" · "Toàn quyền (trừ xoá)"
+   Thẻ Apify: [ ] Cho phép AI lấy dữ liệu qua Apify · Trần mỗi lần chạy [1] USD · [ ] Cho phép Actor ngoài danh mục (Chỉ quản trị viên)
 ④ [ ] Tùy chỉnh nâng cao (tắt = Cơ bản, mặc định MCP mới) → Cơ bản: Hết hạn [không] + ghi chú ngắn (không giới hạn gì / luôn giữ gì)
-   Bật: Xác nhận 2 bước [bật] · Giới hạn đổi ngân sách mỗi lần [50]% · Trần ngân sách/ngày (theo tiền tệ) · Hết hạn [không] · Giới hạn lệnh/phút [60] · IP cho phép
+   Bật: Xác nhận 2 bước [bật] · Giới hạn đổi ngân sách mỗi lần [50]% · Trần ngân sách/ngày (theo tiền tệ) · Hết hạn [không] · Giới hạn lệnh/phút [60] · IP cho phép · Trần Apify mỗi ngày [10] USD (khi bật Apify)
 → Màn hình hoàn tất (glass card):
    ✔ Đã tạo MCP "Báo cáo hằng ngày"
    Link MCP: [https://ads.example.com/mcp/amcp_xxxx…  ] [Sao chép]

@@ -23,15 +23,18 @@ import {
   MCP_CAP_FIELDS,
   formValuesToCreateInput,
   validateNameStep,
+  validatePermissionsStep,
   validatePlatformsStep,
   validateProtectionStep,
   type McpFormValues,
   type StepErrors,
 } from "@/lib/schemas/mcp-servers"
+import type { McpApifyPoolSummary } from "@/lib/schemas/apify"
 import type { McpDriveSourceOption } from "@/lib/schemas/drive"
 import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
+import { ApifyPermissionsSection } from "./apify-sections"
 import {
   DrivePermissionsSection,
   DriveSourcesSection,
@@ -90,6 +93,7 @@ function validateStep(
 ): StepErrors {
   if (step === 0) return validateNameStep(v)
   if (step === 1) return validatePlatformsStep(v)
+  if (step === 2) return validatePermissionsStep(v)
   if (step === 3)
     return validateProtectionStep(v, {
       requiredCapCurrencies: moneyScopeCurrencies(v, connections),
@@ -129,6 +133,14 @@ export function mapServerErrors(
       // admin-only GMV Max switch: lives in step 3 (Chọn quyền), TikTok card
       errors.tiktokGmvMaxWrite = msg
       at(2)
+    } else if (
+      k === "settings.apifyEnabled" ||
+      k === "settings.apifyRunMaxUsd" ||
+      k === "settings.apifyStoreActors"
+    ) {
+      // Apify card of step 3 (Chọn quyền); the daily cap (settings.apifyDailyMaxUsd) lives in the protection step
+      errors[k.replace(/^settings\./, "")] = msg
+      at(2)
     } else if (k.startsWith("settings.") || k === "expiresAt") {
       const key =
         k === "expiresAt"
@@ -153,6 +165,7 @@ export function McpWizard({
   createAction,
   twoFactorEnabled,
   gmvMax = NO_GMV_MAX,
+  apifyPool = null,
 }: {
   connections: SelectableConnection[]
   /** Telegram channels the user may give the MCP: the user's own channels (admins too) */
@@ -166,6 +179,8 @@ export function McpWizard({
   twoFactorEnabled: boolean
   /** viewer role + TikTok accounts with GMV Max (admin-only switch in step 3) */
   gmvMax?: GmvMaxFormContext
+  /** Apify token pool of the creator (company + own personal tokens) - the Apify card of step 3 */
+  apifyPool?: McpApifyPoolSummary | null
 }) {
   const [values, setValues] =
     React.useState<McpFormValues>(defaultMcpFormValues)
@@ -334,6 +349,13 @@ export function McpWizard({
                   update={update}
                   sources={driveSources}
                   publicLinksAvailable={drivePublicAvailable}
+                />
+                <ApifyPermissionsSection
+                  values={values}
+                  update={update}
+                  errors={errors}
+                  pool={apifyPool}
+                  isAdmin={gmvMax.isAdmin}
                 />
               </div>
             )}

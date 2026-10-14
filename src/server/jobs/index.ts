@@ -1,6 +1,7 @@
 // Job registry for scripts/worker.ts. To add a job: create `src/server/jobs/<name>.ts` exporting a
 // JobDefinition (no "next/*" / "server-only" imports) and append it to JOBS below.
 import { accountsSyncJob } from "./accounts-sync"
+import { apifyHealthJob } from "./apify-health"
 import { authCleanupJob } from "./auth-cleanup"
 import { driveCleanupJob } from "./drive-cleanup"
 import { driveHealthJob } from "./drive-health"
@@ -34,6 +35,7 @@ export const JOBS: JobDefinition<any>[] = [
   driveCleanupJob,
   mediaVideoUploadJob,
   mediaUploadSweepJob,
+  apifyHealthJob,
 ]
 
 export {

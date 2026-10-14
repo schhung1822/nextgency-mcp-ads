@@ -2,10 +2,11 @@
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
 //    rate_limit_per_min, write_rate_limit_per_10min, write_delay_seconds, allowed_ips, money_caps_required,
 //    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback,
-//    tiktok_gmv_max_write, protection_mode })
+//    tiktok_gmv_max_write, protection_mode, apify_enabled, apify_run_max_usd, apify_daily_max_usd, apify_store_actors })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields.
 import { z } from "zod"
+import { APIFY_LIMITS } from "@/lib/schemas/apify"
 import {
   DEFAULT_MCP_SETTINGS,
   PROTECTION_MODES,
@@ -24,6 +25,8 @@ const fields = {
   allowedIps: z.array(z.string().max(64)).max(200),
   telegramMessagesPerHour: z.number().int().min(TELEGRAM_MESSAGES_PER_HOUR.min).max(TELEGRAM_MESSAGES_PER_HOUR.max),
   protectionMode: z.enum(PROTECTION_MODES),
+  apifyRunMaxUsd: z.number().finite().min(APIFY_LIMITS.runMaxUsd.min).max(APIFY_LIMITS.runMaxUsd.max),
+  apifyDailyMaxUsd: z.number().finite().min(APIFY_LIMITS.dailyMaxUsd.min).max(APIFY_LIMITS.dailyMaxUsd.max),
 }
 
 const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
@@ -44,6 +47,10 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   drive_sheet_writeback: "driveSheetWriteback",
   tiktok_gmv_max_write: "tiktokGmvMaxWrite",
   protection_mode: "protectionMode",
+  apify_enabled: "apifyEnabled",
+  apify_run_max_usd: "apifyRunMaxUsd",
+  apify_daily_max_usd: "apifyDailyMaxUsd",
+  apify_store_actors: "apifyStoreActors",
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -103,6 +110,12 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     driveSheetWriteback: n.driveSheetWriteback !== false,
     // TikTok GMV Max writes: OFF unless explicitly true (admin-only switch; fail closed)
     tiktokGmvMaxWrite: n.tiktokGmvMaxWrite === true,
+    // Apify: OFF unless explicitly true; caps fall back to their defaults when missing / invalid (a corrupt per-run cap
+    // never exceeds the default $1 - the store switch stays admin-only and fail closed)
+    apifyEnabled: n.apifyEnabled === true,
+    apifyRunMaxUsd: pick(fields.apifyRunMaxUsd, n.apifyRunMaxUsd, d.apifyRunMaxUsd),
+    apifyDailyMaxUsd: pick(fields.apifyDailyMaxUsd, n.apifyDailyMaxUsd, d.apifyDailyMaxUsd),
+    apifyStoreActors: n.apifyStoreActors === true,
   }
 }
 
@@ -126,5 +139,7 @@ export function effectiveMcpSettings(s: McpSettings): McpSettings {
     allowedIps: [],
     moneyCapsRequired: false,
     telegramMessagesPerHour: UNLIMITED,
+    // the Apify per-run cap (apifyRunMaxUsd) always applies (A3); only the daily cap is an advanced limit
+    apifyDailyMaxUsd: UNLIMITED,
   }
 }

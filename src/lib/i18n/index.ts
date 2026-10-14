@@ -1,5 +1,6 @@
 // Truy cập chuỗi giao diện: import { t } from "@/lib/i18n"; t.common.save
 import { account } from "./vi/account"
+import { apify } from "./vi/apify"
 import { auth } from "./vi/auth"
 import { automation } from "./vi/automation"
 import { common } from "./vi/common"
@@ -16,5 +17,5 @@ import { settings } from "./vi/settings"
 import { updates } from "./vi/updates"
 import { users } from "./vi/users"
 
-export const t = { common, auth, users, account, connections, connectionStatus, mcp, logs, dashboard, settings, reauth, guides, updates, legal, automation, notifications } as const
+export const t = { common, auth, users, account, connections, connectionStatus, mcp, logs, dashboard, settings, reauth, guides, updates, legal, automation, notifications, apify } as const
 export type Messages = typeof t

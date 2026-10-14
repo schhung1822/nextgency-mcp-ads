@@ -14,10 +14,12 @@ export function hasForbiddenNameChars(s: string): boolean {
   return NAME_FORBIDDEN_CHARS.test(s)
 }
 
-// control chars, bidi marks / embeddings / overrides / isolates, zero-width space / word joiner, BOM. ZWJ / ZWNJ
+// control chars, bidi marks / embeddings / overrides / isolates, zero-width space, word joiner + invisible math
+// operators (U+2060-2064), BOM, soft hyphen, variation selectors (U+FE00-FE0F, U+E0100-E01EF), interlinear annotation
+// marks (U+FFF9-FFFB) and Unicode tag characters (U+E0000-E007F: invisible "ASCII smuggling"). ZWJ / ZWNJ
 // (U+200C/U+200D) stay: emoji sequences and some scripts need them.
 const UNSAFE_LABEL_CHARS =
-  /[\p{Cc}\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/gu
+  /[\p{Cc}\u061C\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00AD\u2060-\u2064\uFE00-\uFE0F\uFFF9-\uFFFB\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu
 
 /**
  * Text from outside (a Telegram chat title, a stored name) shown to an AI client or in a UI as a label: one line,

@@ -432,6 +432,48 @@ describe.skipIf(!hasDb)("CLI (DB)", () => {
     })
   })
 
+  describe("reencrypt (Apify)", () => {
+    it("mã hoá lại token Apify (cả dòng đã xoá mềm), vẫn giải mã được, ghi apify_token.update và không in token", async () => {
+      const schema = await import("@/server/db/schema")
+      const { encryptApifyToken } = await import("@/server/apify/store")
+      const owner = await createTestUser(P, "apify", { role: "staff" })
+      await db.delete(connections) // an earlier test leaves an undecryptable row on purpose
+      const k1 = Buffer.alloc(32, 1).toString("base64")
+      const k2 = Buffer.alloc(32, 2).toString("base64")
+      __setKeyRing(`1:${k1}`)
+      try {
+        const secret = "apify_api_" + "Zx9".repeat(12)
+        const live = crypto.randomUUID()
+        const dead = crypto.randomUUID()
+        await db.insert(schema.apifyTokens).values([
+          { id: live, scope: "personal", ownerId: owner.id, name: `${P} apify`, credentialsEncrypted: encryptApifyToken(live, secret) },
+          { id: dead, scope: "personal", ownerId: owner.id, name: `${P} apify dead`, credentialsEncrypted: encryptApifyToken(dead, ""), deletedAt: new Date() },
+        ])
+        __setKeyRing(`2:${k2},1:${k1}`)
+        const dry = await cli(["reencrypt", "--dry-run"])
+        expect(dry.code).toBe(0)
+        expect(dry.out).toMatch(/2 token Apify/)
+        const real = await cli(["reencrypt"])
+        expect(real.code).toBe(0)
+        expect(real.out + real.err).not.toContain(secret)
+        const rows = await db.select().from(schema.apifyTokens)
+        const l = rows.find((r) => r.id === live)!
+        const d = rows.find((r) => r.id === dead)!
+        expect(l.credentialsEncrypted.startsWith("v2.")).toBe(true)
+        expect(d.credentialsEncrypted.startsWith("v2.")).toBe(true)
+        expect(decryptSecret(l.credentialsEncrypted, aad.apifyTokenCredentials(live))).toBe(secret)
+        const logs = await db
+          .select()
+          .from(activityLogs)
+          .where(and(eq(activityLogs.action, "apify_token.update"), eq(activityLogs.actorRole, "cli")))
+        expect(logs.length).toBe(1)
+        expect(JSON.stringify(logs[0]!.metadata)).not.toContain(secret)
+      } finally {
+        __setKeyRing(undefined)
+      }
+    })
+  })
+
   describe("google:refresh-token", () => {
     it("thiếu --client-id / client secret / cổng hoặc host không hợp lệ: exit 1 trước khi mở cổng nào", async () => {
       expect((await cli(["google:refresh-token"])).code).toBe(1)

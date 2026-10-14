@@ -31,6 +31,7 @@ import { aad, decryptSecret, encryptSecret, needsReencrypt } from "@/server/cryp
 import { db, pool } from "@/server/db/client"
 import {
   account,
+  apifyTokens,
   connections,
   driveCredentials,
   driveRelayLinks,
@@ -371,7 +372,16 @@ async function unban(args: string[]) {
 }
 
 type ReencryptFailure = {
-  kind: "connection" | "mcp" | "notification_channel" | "drive_credential" | "drive_api_key" | "drive_source" | "drive_relay_link" | "media_upload_job"
+  kind:
+    | "connection"
+    | "mcp"
+    | "notification_channel"
+    | "drive_credential"
+    | "drive_api_key"
+    | "drive_source"
+    | "drive_relay_link"
+    | "media_upload_job"
+    | "apify_token"
   id: string
   reason: string
 }
@@ -563,6 +573,25 @@ async function reencrypt(args: string[]) {
     dry,
     failures
   )
+  // Apify API tokens (AAD apify_token:<id>:credentials; soft-deleted rows hold an encrypted "" - re-encrypted too)
+  const apifyRows = await db
+    .select({ id: apifyTokens.id, enc: apifyTokens.credentialsEncrypted })
+    .from(apifyTokens)
+  const apify = await reencryptRows(
+    "apify_token",
+    apifyRows,
+    aad.apifyTokenCredentials,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(apifyTokens)
+          .set({ credentialsEncrypted: next })
+          .where(and(eq(apifyTokens.id, id), eq(apifyTokens.credentialsEncrypted, prev)))
+          .returning({ id: apifyTokens.id })
+      ).length === 1,
+    dry,
+    failures
+  )
   const driveCount = driveCreds.count + driveKeys.count + driveSrc.count + relays.count + jobs.count
   if (!dry) {
     if (driveCreds.count + driveKeys.count > 0 || driveCreds.failed + driveKeys.failed > 0)
@@ -593,6 +622,13 @@ async function reencrypt(args: string[]) {
           failed: driveSrc.failed + relays.failed + jobs.failed,
         },
       })
+    if (apify.count > 0 || apify.failed > 0)
+      await insertActivity({
+        actor: CLI_ACTOR,
+        action: "apify_token.update",
+        target: { type: "apify_token", id: null, label: "reencrypt" },
+        metadata: { via: "cli", op: "reencrypt", count: apify.count, failed: apify.failed },
+      })
     if (channels.count > 0 || channels.failed > 0)
       await insertActivity({
         actor: CLI_ACTOR,
@@ -617,8 +653,8 @@ async function reencrypt(args: string[]) {
   }
   out(
     dry
-      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive (chạy lại không có --dry-run để thực hiện).`
-      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram và ${driveCount} bí mật Google Drive bằng khoá đang hoạt động.`
+      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive, ${apify.count} token Apify (chạy lại không có --dry-run để thực hiện).`
+      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive và ${apify.count} token Apify bằng khoá đang hoạt động.`
   )
   // ids + a redacted error message only - never ciphertext or plaintext
   const kindLabel = {
@@ -630,9 +666,11 @@ async function reencrypt(args: string[]) {
     drive_source: "thư mục / sheet Google Drive",
     drive_relay_link: "link tạm Google Drive",
     media_upload_job: "lượt tải video Google Drive",
+    apify_token: "token Apify",
   } as const
   for (const f of failures) process.stderr.write(`✖ ${kindLabel[f.kind]} ${f.id}: ${f.reason}\n`)
-  const raced = conn.raced + mcp.raced + channels.raced + driveCreds.raced + driveKeys.raced + driveSrc.raced + relays.raced + jobs.raced
+  const raced =
+    conn.raced + mcp.raced + channels.raced + driveCreds.raced + driveKeys.raced + driveSrc.raced + relays.raced + jobs.raced + apify.raced
   if (raced > 0) out(`  ${raced} bản ghi vừa được thay đổi trong lúc chạy - chạy lại lệnh để mã hoá nốt.`)
   if (failures.length > 0) {
     throw new CliError(
