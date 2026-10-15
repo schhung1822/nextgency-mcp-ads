@@ -147,6 +147,7 @@ describe("config normalisation", () => {
         content: null,
         headline: null,
         destination: null,
+        welcomeMessage: null,
         status: null,
         mediaId: null,
         adIds: null,
@@ -170,6 +171,8 @@ describe("config normalisation", () => {
       campaignLink: null,
       // v1.1.2: no cover key → not mapped (drive_sheet_read then detects a "Ảnh bìa" header by name)
       cover: null,
+      // v1.1.3: no welcomeMessage key → not mapped (detected by a "Lời chào tin nhắn" header name)
+      welcomeMessage: null,
     })
     expect(
       normalizeSheetConfig({

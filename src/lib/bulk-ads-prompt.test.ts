@@ -20,8 +20,11 @@ import {
   buildSheetTemplateCsv,
   clampBatch,
   cleanName,
+  cleanWelcome,
   connectorLabel,
   DEFAULT_BULK_ADS,
+  metaMessagingType,
+  WELCOME_MESSAGE_MAX,
 } from "./bulk-ads-prompt"
 
 describe("bulk ads sheet template", () => {
@@ -37,6 +40,14 @@ describe("bulk ads sheet template", () => {
     // v1.1.2: the optional "Ảnh bìa" column sits right after Link Drive and is filled by the user
     expect(BULK_SHEET_COLUMNS.slice(0, 2)).toEqual(["Link Drive", "Ảnh bìa"])
     expect(BULK_SYSTEM_COLUMNS).not.toContain("Ảnh bìa" as never)
+    // v1.1.3: the optional "Lời chào tin nhắn" column closes the user-filled columns (A-H keep their letters)
+    expect(BULK_SHEET_COLUMNS.slice(7, 10)).toEqual([
+      "Link đích",
+      "Lời chào tin nhắn",
+      "Trạng thái",
+    ])
+    expect(BULK_SYSTEM_COLUMNS).not.toContain("Lời chào tin nhắn" as never)
+    expect(BULK_SHEET_COLUMNS).toHaveLength(16)
   })
 
   it("copies the header as tab-separated cells", () => {
@@ -53,7 +64,7 @@ describe("bulk ads sheet template", () => {
     expect(csv).toContain(
       '"https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view\nhttps://'
     )
-    expect(BULK_TEMPLATE_ROWS).toHaveLength(4)
+    expect(BULK_TEMPLATE_ROWS).toHaveLength(5)
     for (const row of BULK_TEMPLATE_ROWS)
       expect(row.length).toBeLessThanOrEqual(BULK_SHEET_COLUMNS.length)
     // the TikTok video row has its cover in the "Ảnh bìa" column
@@ -61,6 +72,18 @@ describe("bulk ads sheet template", () => {
     expect(BULK_TEMPLATE_ROWS[1]![cover]).toMatch(
       /^https:\/\/drive\.google\.com\//
     )
+    // the messaging example row: a welcome message ≤ 300 characters, no Link đích
+    const welcomeAt = BULK_SHEET_COLUMNS.indexOf("Lời chào tin nhắn")
+    const messagingRow = BULK_TEMPLATE_ROWS[4]!
+    expect(messagingRow[welcomeAt]!.length).toBeGreaterThan(0)
+    expect(messagingRow[welcomeAt]!.length).toBeLessThanOrEqual(
+      WELCOME_MESSAGE_MAX
+    )
+    expect(messagingRow[BULK_SHEET_COLUMNS.indexOf("Link đích")]).toBe("")
+    for (const row of BULK_TEMPLATE_ROWS.slice(0, 4))
+      expect(row[welcomeAt] ?? "").toBe("")
+    // header + 5 example rows (newlines inside a quoted cell are LF, rows end with CRLF)
+    expect(csv.trimEnd().split("\r\n")).toHaveLength(6)
     // example statuses are values the sheet reader accepts as "pending"
     const statusAt = BULK_SHEET_COLUMNS.indexOf("Trạng thái")
     for (const row of BULK_TEMPLATE_ROWS) {
@@ -191,5 +214,132 @@ describe("bulk ads prompt builder", () => {
     ).toContain(`${BULK_SKILL_NAME} để lên quảng cáo cho 8 dòng`)
     expect(BULK_SKILL_NAME).toMatch(/^[a-z0-9-]{1,64}$/)
     expect(BULK_SKILL_DESCRIPTION.length).toBeLessThanOrEqual(200)
+  })
+})
+
+describe("bulk ads prompt - Meta messaging ads (v1.1.3)", () => {
+  const purchase = {
+    ...DEFAULT_BULK_ADS,
+    platform: "meta" as const,
+    metaAdType: "messaging_purchase" as const,
+  }
+
+  it("website (default) keeps the prompt free of messaging instructions", () => {
+    expect(DEFAULT_BULK_ADS.metaAdType).toBe("website")
+    expect(DEFAULT_BULK_ADS.welcomeMessage).toBe("")
+    for (const platform of ["sheet", "meta"] as const) {
+      const rule = buildBulkAdsRule({ ...DEFAULT_BULK_ADS, platform })
+      for (const s of [
+        "MESSAGE_PAGE",
+        "MESSAGING_PURCHASE_CONVERSION",
+        "welcome_message",
+        "Messenger",
+      ])
+        expect(rule).not.toContain(s)
+    }
+  })
+
+  it("TikTok / OpenAI Ads forms ignore the Meta ad type and welcome message", () => {
+    for (const platform of ["tiktok", "openai_ads"] as const) {
+      const base = { ...DEFAULT_BULK_ADS, platform, structure: "new" as const }
+      for (const metaAdType of [
+        "messaging_purchase",
+        "messaging_conversations",
+      ] as const) {
+        const input = { ...base, metaAdType, welcomeMessage: "Chào bạn" }
+        expect(metaMessagingType(input)).toBeNull()
+        expect(buildBulkAdsRule(input)).toBe(buildBulkAdsRule(base))
+      }
+    }
+  })
+
+  it("purchase, new structure: Sales campaign, MESSAGING_PURCHASE_CONVERSION ad set to Messenger, prerequisite + agreed fallback", () => {
+    const rule = buildBulkAdsRule({ ...purchase, structure: "new" })
+    expect(metaMessagingType({ ...purchase, structure: "new" })).toBe(
+      "messaging_purchase"
+    )
+    for (const s of [
+      "objective OUTCOME_SALES",
+      "optimization_goal MESSAGING_PURCHASE_CONVERSION",
+      "destination_type MESSENGER",
+      "billing_event IMPRESSIONS",
+      "promoted_object.page_id",
+      "ads_lookup kind=pages",
+      "ít nhất 5 sự kiện mua hàng",
+      "Conversions API",
+      '"Tạo đơn" trong Meta Business Suite',
+      "optimization_goal CONVERSATIONS (tối ưu lượt bắt đầu trò chuyện) khi tôi đồng ý",
+      "call_to_action.type = MESSAGE_PAGE",
+      "welcome_message = welcome_message của dòng (cột Lời chào tin nhắn",
+      "Meta dùng lời chào mặc định",
+      "Link đích không phải đích đến",
+      "không trộn với quảng cáo dẫn tới website",
+    ])
+      expect(rule).toContain(s)
+    expect(rule).not.toContain("ads_get_object")
+  })
+
+  it("conversations, new structure: CONVERSATIONS to Messenger, no purchase prerequisite", () => {
+    const rule = buildBulkAdsRule({
+      ...purchase,
+      metaAdType: "messaging_conversations",
+      structure: "new",
+    })
+    expect(rule).toContain("objective OUTCOME_ENGAGEMENT")
+    expect(rule).toContain("optimization_goal CONVERSATIONS")
+    expect(rule).toContain("destination_type MESSENGER")
+    expect(rule).toContain("call_to_action.type = MESSAGE_PAGE")
+    expect(rule).not.toContain("MESSAGING_PURCHASE_CONVERSION")
+    expect(rule).not.toContain("5 sự kiện mua hàng")
+  })
+
+  it("existing ad set: checked with ads_get_object (Messenger destination, goal mismatch asked)", () => {
+    const named = buildBulkAdsRule({
+      ...purchase,
+      campaignName: "Ra mắt serum",
+    })
+    const asked = buildBulkAdsRule(purchase)
+    for (const rule of [named, asked]) {
+      expect(rule).toContain("ads_get_object")
+      expect(rule).toContain("destination_type phải là MESSENGER")
+      expect(rule).toContain(
+        "optimization_goal khác MESSAGING_PURCHASE_CONVERSION thì báo tôi"
+      )
+      expect(rule).not.toContain("objective OUTCOME_SALES")
+    }
+    const conv = buildBulkAdsRule({
+      ...purchase,
+      metaAdType: "messaging_conversations",
+    })
+    expect(conv).toContain("optimization_goal khác CONVERSATIONS thì báo tôi")
+  })
+
+  it("sheet-chosen platform: messaging applies to the Meta rows, cover sentences stay per platform", () => {
+    const rule = buildBulkAdsRule({
+      ...purchase,
+      platform: "sheet",
+      structure: "new",
+    })
+    expect(rule).toContain("Quảng cáo Meta là quảng cáo tin nhắn Messenger")
+    expect(rule).toContain("TikTok: tải ảnh bìa bằng ads_upload_media")
+    expect(rule).toContain(
+      "Meta: meta_create_campaign → meta_create_adset; TikTok:"
+    )
+  })
+
+  it("the form's welcome message is the default of empty rows, cleaned and capped", () => {
+    const rule = buildBulkAdsRule({
+      ...purchase,
+      welcomeMessage: '  Chào "bạn"!\nShop gửi \u202ebảng giá\u200b nhé  ',
+    })
+    expect(rule).toContain(
+      'dòng trống thì dùng lời chào "Chào bạn ! Shop gửi bảng giá nhé"'
+    )
+    expect(rule).not.toContain("Meta dùng lời chào mặc định")
+    expect(cleanWelcome("a".repeat(400))).toHaveLength(WELCOME_MESSAGE_MAX)
+    // never ends on half of an emoji
+    const cut = cleanWelcome(`${"a".repeat(WELCOME_MESSAGE_MAX - 1)}😀`)
+    expect(cut).toHaveLength(WELCOME_MESSAGE_MAX - 1)
+    expect(cleanWelcome(" \n ")).toBe("")
   })
 })

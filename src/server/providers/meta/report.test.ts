@@ -69,6 +69,37 @@ describe("normalizeInsight", () => {
     expect(m.video_views).toBeNull()
   })
 
+  it("onsite_conversion.purchase (purchases through messaging) is only a fallback - never added to another purchase type", () => {
+    const base = { spend: "100000", impressions: "1000", clicks: "10", inline_link_clicks: "5" }
+    const onlyOnsite = normalizeInsight(
+      {
+        ...base,
+        actions: [
+          { action_type: "onsite_conversion.messaging_conversation_started_7d", value: "20" },
+          { action_type: "onsite_conversion.purchase", value: "4" },
+        ],
+        action_values: [{ action_type: "onsite_conversion.purchase", value: "1200000" }],
+      },
+      fields
+    )
+    expect(onlyOnsite).toMatchObject({ purchases: 4, conversions: 4, conversion_value: 1200000, messages: 20, roas: 12 })
+    const both = normalizeInsight(
+      {
+        ...base,
+        actions: [
+          { action_type: "onsite_conversion.purchase", value: "4" },
+          { action_type: "omni_purchase", value: "6" },
+        ],
+        action_values: [
+          { action_type: "onsite_conversion.purchase", value: "1200000" },
+          { action_type: "omni_purchase", value: "1800000" },
+        ],
+      },
+      fields
+    )
+    expect(both).toMatchObject({ purchases: 6, conversion_value: 1800000 }) // omni_purchase wins, no 4 + 6
+  })
+
   it("never requests 7d_view/28d_view attribution or action_report_time", () => {
     const all = insightFields("ad", "all").join(",")
     expect(all).not.toMatch(/7d_view|28d_view|action_attribution_windows/)

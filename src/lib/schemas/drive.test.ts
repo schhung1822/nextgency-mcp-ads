@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  AUTO_DETECT_COLUMN_KEYS,
   createDriveSourceSchema,
+  detectAutoHeader,
   detectCoverHeader,
   googleApiKeySchema,
   headerIndex,
@@ -249,5 +251,62 @@ describe("sheet column mapping helpers", () => {
     expect(detectCoverHeader(["Link Drive", "Thumbnail", "Ảnh bìa"])).toBe(2)
     expect(detectCoverHeader(["Ảnh bìa", "Thumbnail"], new Set([0]))).toBe(1)
     expect(detectCoverHeader(["Link Drive", "Ảnh", "Ảnh đại diện"])).toBe(-1)
+  })
+
+  it("welcome message column (v1.1.3): optional, read only, right after Link đích, suggested and detected by name", () => {
+    expect(AUTO_DETECT_COLUMN_KEYS).toEqual(["cover", "welcomeMessage"])
+    const at = SHEET_COLUMN_KEYS.indexOf("welcomeMessage")
+    expect(SHEET_COLUMN_KEYS[at - 1]).toBe("destination")
+    expect(SHEET_COLUMN_KEYS[at + 1]).toBe("status")
+    expect(SHEET_WRITABLE_COLUMN_KEYS).not.toContain("welcomeMessage")
+    expect(
+      sheetColumnsSchema.parse({
+        link: "Link Drive",
+        welcomeMessage: " Lời chào tin nhắn ",
+      })
+    ).toMatchObject({ welcomeMessage: "Lời chào tin nhắn" })
+    expect(
+      sheetColumnsSchema.parse({ link: "Link Drive" }).welcomeMessage
+    ).toBeNull()
+    const dup = sheetColumnsSchema.safeParse({
+      link: "Link Drive",
+      content: "Câu chào",
+      welcomeMessage: "cau chao",
+    })
+    expect(dup.success).toBe(false)
+    expect(dup.error?.issues[0]?.path).toEqual(["welcomeMessage"])
+    for (const spelling of [
+      "Lời chào tin nhắn",
+      "LỜI CHÀO",
+      "Câu chào",
+      "Tin nhắn chào",
+      "Welcome message",
+      "Greeting",
+    ])
+      expect(
+        suggestSheetColumns(["Link Drive", "Nội dung", spelling, "Tiêu đề"]),
+        spelling
+      ).toMatchObject({
+        content: "Nội dung",
+        headline: "Tiêu đề",
+        welcomeMessage: spelling,
+      })
+    // "Tin nhắn" / "Message" alone are never the welcome message (Meta calls the primary text "message")
+    expect(
+      suggestSheetColumns(["Link Drive", "Tin nhắn", "Message"]).welcomeMessage
+    ).toBeNull()
+    expect(
+      detectAutoHeader("welcomeMessage", ["Link Drive", "Câu chào", "Lời chào"])
+    ).toBe(2)
+    expect(
+      detectAutoHeader("welcomeMessage", ["Lời chào", "Câu chào"], new Set([0]))
+    ).toBe(1)
+    expect(detectAutoHeader("welcomeMessage", ["Link Drive", "Tin nhắn"])).toBe(
+      -1
+    )
+    // the cover wrapper still answers for the cover column only
+    expect(detectAutoHeader("cover", ["Lời chào", "Ảnh bìa"])).toBe(
+      detectCoverHeader(["Lời chào", "Ảnh bìa"])
+    )
   })
 })

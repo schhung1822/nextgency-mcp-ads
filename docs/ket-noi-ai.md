@@ -88,6 +88,7 @@ Tính năng *Connected Apps → Add a custom app* hiện chỉ cho tài khoản 
 - “Lên quảng cáo TikTok (tạm dừng) cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10, nội dung theo file.”
 - “Tổng chi tiêu, doanh thu, ROI GMV Max 7 ngày qua của TKQC TikTok X, theo ngày; sản phẩm và video nào kéo đơn nhiều nhất?” *(GMV Max - TikTok Shop: mặc định chỉ phân tích, xem lưu ý bên dưới)*
 - “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet.”
+- “Tạo quảng cáo tin nhắn Messenger (tạm dừng) cho TKQC Meta X, Trang Y: chiến dịch Doanh số, nhóm quảng cáo **tối đa lượt mua qua tin nhắn**, ngân sách 300.000đ/ngày, nữ 25–40 ở Việt Nam; quảng cáo dùng ảnh ‘serum.jpg’ trong thư mục Creative T10, nút Gửi tin nhắn, lời chào ‘Chào bạn! Shop gửi bảng giá và ưu đãi hôm nay nhé’.” *(Meta chỉ cho mục tiêu này khi Trang có ít nhất 5 lượt mua từ tin nhắn Messenger trong 30 ngày — qua Conversions API cho tin nhắn doanh nghiệp hoặc nút Tạo đơn trong Meta Business Suite; chưa đủ thì AI báo lỗi và hỏi bạn có chuyển sang tối đa lượt trò chuyện không)*
 - “Tìm 40 sản phẩm Shopee cho từ khoá ‘serum vitamin C’, so sánh giá và đánh giá; đối thủ X đang chạy những quảng cáo Facebook nào?” *(cần MCP bật Apify — xem mục Apify bên dưới; mỗi lần chạy tốn credit Apify)*
 
 ## Lưu ý theo nền tảng
@@ -121,6 +122,7 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 
 - **Ảnh** dùng được cho cả 4 nền tảng (Meta ≤ 30 MB; Google Ads ≤ 5 MB JPEG/PNG/GIF; TikTok ≤ 30 MB JPG/PNG; OpenAI Ads ≤ 20 MB JPEG/PNG/WebP). **Video** (MP4/MOV ≤ 500 MB) chỉ Meta và TikTok: TikTok ≤ 10 MB / Meta ≤ 20 MB xong ngay; lớn hơn được **tải nền** vài phút — nói “kiểm tra video đã tải xong chưa” để AI xem tiến độ.
 - **Ảnh bìa video**: dán link Drive của ảnh vào câu lệnh (“…ảnh bìa https://drive.google.com/file/d/…”), hoặc dùng cột **Ảnh bìa** trong Google Sheet (hay để ảnh chung ô Link Drive với video). Meta: không đưa ảnh bìa thì hệ thống tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong (video vừa tải có thể cần vài phút).
+- **Quảng cáo tin nhắn Messenger theo sheet**: thêm cột **Lời chào tin nhắn** (tuỳ chọn, ≤ 300 ký tự) và chọn **Loại quảng cáo Meta** ở form **Mẹo sử dụng → Lên hàng loạt quảng cáo**, hoặc nói: “Đọc các dòng Meta ‘Chờ lên’ trong sheet Kế hoạch creative, tạo chiến dịch Doanh số + nhóm tối đa lượt mua qua tin nhắn cho Trang Y, mỗi dòng một quảng cáo nút Gửi tin nhắn với lời chào ở cột Lời chào tin nhắn, rồi ghi trạng thái vào sheet.” Chi tiết: [huong-dan-google-drive.md — 6.3b](huong-dan-google-drive.md#63b-ví-dụ-b2--quảng-cáo-tin-nhắn-messenger-tối-đa-lượt-mua-qua-tin-nhắn-theo-google-sheet).
 - File đã tải lên đúng TKQC trước đó được **dùng lại mã media** (không tải lại) — trừ khi file trên Drive đã thay đổi. Mọi quảng cáo AI tạo đều **tạm dừng**.
 - Tệp đính kèm trong **ChatGPT bản web** cũng tải lên được (video tối đa 10 MB TikTok / 50 MB Meta — lớn hơn hãy đưa lên Google Drive; ngưỡng này khác ngưỡng tải nền 20 MB của video Drive trên Meta).
 

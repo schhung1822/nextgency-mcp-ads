@@ -330,10 +330,15 @@ function driveFiles(): FakeFile[] {
 }
 
 const SHEET_TITLE = "Creative tuần 41"
-// "Ảnh bìa" (v1.1.2) is left out here so the column letters below stay put - the cover test appends it
+// "Ảnh bìa" (v1.1.2) and "Lời chào tin nhắn" (v1.1.3) are left out here so the column letters below stay put - the
+// cover / welcome message tests append them
 const HEADER = [
   ...Object.values(DEFAULT_SHEET_COLUMNS).filter(
-    (h) => h !== "Tiêu đề" && h !== "Link đích" && h !== "Ảnh bìa"
+    (h) =>
+      h !== "Tiêu đề" &&
+      h !== "Link đích" &&
+      h !== "Ảnh bìa" &&
+      h !== "Lời chào tin nhắn"
   ),
   "Khác",
 ]
@@ -1854,6 +1859,102 @@ describe.skipIf(!hasDb)(
           "image",
         ])
         expect(first.problems).toEqual([])
+      } finally {
+        await db
+          .update(driveSources)
+          .set({ config: orig!.config })
+          .where(eq(driveSources.id, src.sheet))
+        invalidateGrantCache()
+      }
+    })
+
+    it("sheet welcome message column (v1.1.3): read only text in values, sanitised, > 300 characters is a problem for Meta rows only, legacy config detects it by name", async () => {
+      __resetSheetsLimiter()
+      const m = await mcpWith("staff", { platforms: createAll() }, [src.sheet])
+      // append the column (the source config maps "Lời chào tin nhắn" - DEFAULT_SHEET_COLUMNS); HEADER untouched
+      const at = HEADER.length
+      g.grid = g.grid.map((r, i) => [...r, i === 0 ? "Lời chào tin nhắn" : ""])
+      // row 2 (Facebook): a bidi override is stripped; row 3 (TikTok): too long but not a Meta row; row 5 (Meta): too long
+      g.grid[1]![at] =
+        "  Chào {{user_first_name}}!\u202e Shop gửi bảng giá nhé  "
+      g.grid[2]![at] = "x".repeat(400)
+      g.grid[4]![at] = "y".repeat(301)
+      const r = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+        resolve_files: false,
+      })
+      expect(r.isError, r.text).toBe(false)
+      expect(r.sc.columns.welcome_message).toBe("Lời chào tin nhắn")
+      const [logo, pub, secret, nolink] = r.sc.rows as Record<string, any>[]
+      expect(logo!.values.welcome_message).toBe(
+        "Chào {{user_first_name}}! Shop gửi bảng giá nhé"
+      )
+      expect(logo!).not.toHaveProperty("welcome_message")
+      const codes = (row: Record<string, any>) =>
+        row.problems.map((p: { code: string }) => p.code)
+      expect(codes(logo!)).not.toContain("welcome_message_too_long")
+      expect(pub!.platform).toBe("tiktok")
+      expect(codes(pub!)).not.toContain("welcome_message_too_long")
+      expect(secret!.values.welcome_message).toBe("")
+      expect(nolink!.problems).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "welcome_message_too_long",
+            message: expect.stringContaining("301 ký tự"),
+          }),
+        ])
+      )
+
+      // a config saved before v1.1.3 (no welcomeMessage key) + the column named "Câu chào": detected by name
+      const [orig] = await db
+        .select({ config: driveSources.config })
+        .from(driveSources)
+        .where(eq(driveSources.id, src.sheet))
+      const legacyColumns = Object.fromEntries(
+        Object.entries(DEFAULT_SHEET_COLUMNS).filter(
+          ([k]) => k !== "welcomeMessage"
+        )
+      )
+      await db
+        .update(driveSources)
+        .set({
+          config: {
+            headerRow: 1,
+            columns: legacyColumns as unknown as SheetSourceConfig["columns"],
+            writeback: true,
+          } as SheetSourceConfig,
+        })
+        .where(eq(driveSources.id, src.sheet))
+      try {
+        const legacy = await mcpWith("staff", { platforms: createAll() }, [
+          src.sheet,
+        ])
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Câu chào"]
+        __clearSheetsCache()
+        const lr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          resolve_files: false,
+        })
+        expect(lr.isError, lr.text).toBe(false)
+        expect(lr.sc.columns.welcome_message).toBe("Câu chào")
+        expect(
+          (lr.sc.rows as Record<string, any>[])[0]!.values.welcome_message
+        ).toBe("Chào {{user_first_name}}! Shop gửi bảng giá nhé")
+
+        // no welcome-like header: no welcome_message anywhere
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Ghi chú riêng"]
+        __clearSheetsCache()
+        const nr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          resolve_files: false,
+        })
+        expect(nr.isError, nr.text).toBe(false)
+        expect(nr.sc.columns).not.toHaveProperty("welcome_message")
+        expect(
+          (nr.sc.rows as Record<string, any>[]).every(
+            (x) => !("welcome_message" in x.values)
+          )
+        ).toBe(true)
       } finally {
         await db
           .update(driveSources)

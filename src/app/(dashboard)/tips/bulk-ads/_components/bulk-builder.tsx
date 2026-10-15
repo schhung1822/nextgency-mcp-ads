@@ -20,14 +20,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import {
+  BULK_META_AD_TYPES,
   BULK_PLATFORMS,
   BULK_SKILL_NAME,
   buildBulkAdsPrompt,
   buildBulkAdsSkillMd,
   buildBulkAdsSkillPrompt,
   DEFAULT_BULK_ADS,
+  metaMessagingType,
+  WELCOME_MESSAGE_MAX,
   type BulkAdsInput,
+  type BulkMetaAdType,
   type BulkPlatform,
   type BulkStructure,
 } from "@/lib/bulk-ads-prompt"
@@ -69,6 +74,10 @@ export function BulkBuilder() {
   )
   const [currency, setCurrency] = React.useState(DEFAULT_BULK_ADS.currency)
   const [writeback, setWriteback] = React.useState(DEFAULT_BULK_ADS.writeback)
+  const [metaAdType, setMetaAdType] = React.useState<BulkMetaAdType>(
+    DEFAULT_BULK_ADS.metaAdType
+  )
+  const [welcome, setWelcome] = React.useState(DEFAULT_BULK_ADS.welcomeMessage)
 
   const batchN = useViNumber(batch, BATCH_RULE)
   const budgetN = useViNumber(budget, BUDGET_RULE)
@@ -92,7 +101,12 @@ export function BulkBuilder() {
     dailyBudget: budgetN.value ?? DEFAULT_BULK_ADS.dailyBudget,
     currency: currencyOk ? cur : DEFAULT_BULK_ADS.currency,
     writeback,
+    metaAdType,
+    welcomeMessage: welcome,
   }
+  // the Meta ad type only matters when Meta rows can be in the run (platform Meta or "Theo cột Nền tảng")
+  const showMetaType = platform === "meta" || platform === "sheet"
+  const messaging = metaMessagingType(input)
 
   return (
     <div className="flex flex-col gap-6">
@@ -155,7 +169,60 @@ export function BulkBuilder() {
             />
             <FieldDescription>{b.accountHelp}</FieldDescription>
           </Field>
+          {showMetaType && (
+            <Field className="gap-1.5">
+              <FieldLabel htmlFor={`${id}-meta-type`}>{b.metaTypeLabel}</FieldLabel>
+              <Select
+                value={metaAdType}
+                onValueChange={(v) => setMetaAdType(v as BulkMetaAdType)}
+              >
+                <SelectTrigger
+                  id={`${id}-meta-type`}
+                  className="w-full"
+                  aria-describedby={`${id}-meta-type-help`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BULK_META_AD_TYPES.map((mt) => (
+                    <SelectItem key={mt} value={mt}>
+                      {b.metaTypes[mt]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription id={`${id}-meta-type-help`}>
+                {b.metaTypeHelp[metaAdType]}
+              </FieldDescription>
+            </Field>
+          )}
         </div>
+
+        {messaging && (
+          <Field className="gap-1.5">
+            <FieldLabel htmlFor={`${id}-welcome`}>{b.welcomeLabel}</FieldLabel>
+            <Textarea
+              id={`${id}-welcome`}
+              rows={2}
+              maxLength={WELCOME_MESSAGE_MAX}
+              placeholder={b.welcomePlaceholder}
+              value={welcome}
+              onChange={(e) => setWelcome(e.target.value)}
+              aria-describedby={`${id}-welcome-help ${id}-welcome-count`}
+            />
+            <div className="flex items-start justify-between gap-3">
+              <FieldDescription id={`${id}-welcome-help`}>
+                {b.welcomeHelp}
+              </FieldDescription>
+              <span
+                id={`${id}-welcome-count`}
+                className="shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums"
+              >
+                {b.welcomeCount(welcome.length, WELCOME_MESSAGE_MAX)}
+              </span>
+            </div>
+          </Field>
+        )}
 
         <Field>
           <FieldLabel id={`${id}-structure-label`}>{b.structureLabel}</FieldLabel>
@@ -276,6 +343,7 @@ export function BulkBuilder() {
                   ? b.previewNew(formatMoney(input.dailyBudget, input.currency))
                   : b.previewExisting
               )}
+          {!hasErrors && messaging && <> {b.previewMessaging[messaging]}</>}
         </p>
       </FieldGroup>
 

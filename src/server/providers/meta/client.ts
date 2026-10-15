@@ -5,6 +5,7 @@
 // - Meta errors are mapped to ProviderError (meta.md §7); usage headers drive coolDown() (circuit breaker).
 import { createHash, createHmac } from "node:crypto"
 
+import { sanitizeExternalLabel } from "../../../lib/text-safety"
 import { ProviderError, type ProviderErrorCode } from "../errors"
 import { httpJson, type HttpResponse } from "../http"
 import { RateLimitWaitError, coolDown, type BucketSpec } from "../rate-limit"
@@ -264,6 +265,20 @@ export function mapGraphError(
     return make("invalid_request", userMsg ?? "Ứng dụng Meta đang ở chế độ Development nên không tạo được quảng cáo.", {
       hint: "Chuyển app sang chế độ Live trong App Dashboard.",
     })
+  }
+  // 100/2490408 "Optimization Goal Isn't Available" - seen with MESSAGING_PURCHASE_CONVERSION on a non-SALES campaign;
+  // [L] probably also what an ineligible Page / ad account gets (meta.md §5 "Mua hàng qua tin nhắn"). Never retried.
+  if (code === 100 && sub === 2490408) {
+    const metaSays = sanitizeExternalLabel(userMsg, 300)
+    return make(
+      "invalid_request",
+      "Mục tiêu tối ưu này không dùng được cho chiến dịch / Trang này (thường do objective của chiến dịch không cho phép mục tiêu đó)." +
+        (metaSays ? ` Meta báo: ${metaSays}` : "") +
+        " Nếu là MESSAGING_PURCHASE_CONVERSION (tối đa lượt mua qua tin nhắn): chiến dịch phải là OUTCOME_SALES và Trang / tài khoản quảng cáo phải đủ điều kiện - ít nhất 5 sự kiện mua hàng từ cuộc trò chuyện Messenger gửi về Meta trong 30 ngày (Conversions API cho nhắn tin doanh nghiệp, hoặc \"Tạo đơn\" trong Meta Business Suite).",
+      {
+        hint: "Đối chiếu optimization_goal với objective của chiến dịch. Với mua qua tin nhắn: kiểm tra trong Trình quản lý quảng cáo (Doanh số → Ứng dụng nhắn tin → chỉ chọn Messenger) có lựa chọn \"Tối đa hoá số lượt mua qua tin nhắn\" không; chưa có thì dùng optimization_goal CONVERSATIONS.",
+      }
+    )
   }
   if (code === 1 || code === 2 || err?.is_transient) {
     return make("upstream_error", "Meta đang gặp lỗi tạm thời. Hãy thử lại sau.", { retryable: true })

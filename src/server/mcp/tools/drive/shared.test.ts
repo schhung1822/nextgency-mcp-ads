@@ -221,6 +221,47 @@ describe("sheet link columns + status aliases (2026-10-10)", () => {
     expect(COLUMN_FIELDS.postLink).toBe("post_link")
     expect(COLUMN_FIELDS.campaignLink).toBe("campaign_link")
     expect(COLUMN_FIELDS.cover).toBe("cover")
+    expect(COLUMN_FIELDS.welcomeMessage).toBe("welcome_message")
+  })
+
+  it("mapColumns: the welcome message column is mapped, or detected by name next to the cover without reusing a cell", () => {
+    const header = [
+      "Link Drive",
+      "Nội dung",
+      "Ảnh bìa",
+      "Câu chào",
+      "Lời chào tin nhắn",
+    ]
+    const mapped = normalizeSheetConfig({
+      columns: { link: "Link Drive", welcomeMessage: "câu chào" },
+    })
+    expect(mapColumns(mapped, header)).toMatchObject({
+      link: 0,
+      welcomeMessage: 3,
+      cover: 2,
+    })
+    // a config saved before v1.1.3 → detected ("Lời chào tin nhắn" is the first alias, it wins over "Câu chào")
+    const legacy = normalizeSheetConfig({
+      columns: { link: "Link Drive", content: "Nội dung" },
+    })
+    expect(legacy.columns.welcomeMessage).toBeNull()
+    expect(mapColumns(legacy, header)).toEqual({
+      link: 0,
+      content: 1,
+      cover: 2,
+      welcomeMessage: 4,
+    })
+    // a cell mapped to another column is never taken; no welcome-like header → absent
+    const taken = normalizeSheetConfig({
+      columns: { link: "Link Drive", content: "Lời chào" },
+    })
+    expect(mapColumns(taken, ["Link Drive", "Lời chào"])).toEqual({
+      link: 0,
+      content: 1,
+    })
+    expect(
+      mapColumns(legacy, ["Link Drive", "Tin nhắn"]).welcomeMessage
+    ).toBeUndefined()
   })
 
   it("mapColumns: a mapped cover column is used; without a mapping a header named like a cover column is detected", () => {

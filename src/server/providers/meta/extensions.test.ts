@@ -912,3 +912,484 @@ describe("meta video status - fallbacks (C-M1, S-L3, S-L4)", () => {
     expect(st.error).toBe("Badvideo line2");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Click-to-message (v1.1.3, D1-D5)
+// ---------------------------------------------------------------------------
+
+const salesAbo = { ...aboCampaign, objective: "OUTCOME_SALES" }
+const mpcInput = {
+  campaign_id: "3001",
+  name: "Mua qua tin nhắn",
+  optimization_goal: "MESSAGING_PURCHASE_CONVERSION",
+  budget: { type: "daily", amount: 200000 },
+  promoted_object: { page_id: "888" },
+  targeting: { countries: ["VN"] },
+}
+
+describe("meta_create_adset - MESSAGING_PURCHASE_CONVERSION (D1)", () => {
+  it("SALES + MESSAGING_PURCHASE_CONVERSION: MESSENGER by default, IMPRESSIONS, page_id only, no attribution_spec, prerequisite warning", async () => {
+    const m = mockGraph([["GET", "3001", () => json(salesAbo)], ...advertisable, ["POST", "act_1001/adsets", () => json({ id: "2101" })]])
+    const res = await run("meta_create_adset", mpcInput)
+    const p = m.mutatingPosts()[0].params
+    expect(p).toMatchObject({
+      status: "PAUSED",
+      optimization_goal: "MESSAGING_PURCHASE_CONVERSION",
+      billing_event: "IMPRESSIONS",
+      destination_type: "MESSENGER",
+      bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+      daily_budget: "200000",
+    })
+    expect(JSON.parse(p.promoted_object)).toEqual({ page_id: "888" })
+    expect(p.attribution_spec).toBeUndefined()
+    expect(res.payload.destination_type).toBe("MESSENGER")
+    expect(res.warnings.join(" ")).toMatch(/ít nhất 5 sự kiện mua hàng từ cuộc trò chuyện Messenger/)
+    expect(res.createdIds).toEqual(["2101"])
+  })
+
+  it("optional dataset (pixel_id + PURCHASE) is passed through; COST_CAP + bid_amount accepted", async () => {
+    const m = mockGraph([["GET", "3001", () => json(salesAbo)], ...advertisable, ["POST", "act_1001/adsets", () => json({ id: "2102" })]])
+    await run("meta_create_adset", {
+      ...mpcInput,
+      destination_type: "MESSENGER",
+      promoted_object: { page_id: "888", pixel_id: "555000", custom_event_type: "PURCHASE" },
+      bid_strategy: "COST_CAP",
+      bid_amount: 30000,
+    })
+    const p = m.mutatingPosts()[0].params
+    expect(JSON.parse(p.promoted_object)).toEqual({ page_id: "888", pixel_id: "555000", custom_event_type: "PURCHASE" })
+    expect(p).toMatchObject({ bid_strategy: "COST_CAP", bid_amount: "30000" })
+  })
+
+  it("refuses every unsupported combination before any POST", async () => {
+    const m = mockGraph([["GET", "3001", () => json(salesAbo)], ...advertisable, ["POST", /.*/, () => json({ id: "x" })]])
+    const cases: [Record<string, unknown>, RegExp][] = [
+      [{ destination_type: "WHATSAPP" }, /chỉ hỗ trợ tối ưu lượt mua qua tin nhắn cho Messenger/],
+      [{ destination_type: "INSTAGRAM_DIRECT" }, /destination_type phải là MESSENGER/],
+      [{ destination_type: "WEBSITE" }, /destination_type phải là MESSENGER/],
+      [{ promoted_object: {} }, /cần promoted_object.page_id/],
+      [{ promoted_object: { page_id: "888", pixel_id: "555000" } }, /pixel_id và custom_event_type phải đi cùng nhau/],
+      [{ promoted_object: { page_id: "888", custom_event_type: "PURCHASE" } }, /pixel_id và custom_event_type phải đi cùng nhau/],
+      [{ promoted_object: { page_id: "888", pixel_id: "555000", custom_event_type: "LEAD" } }, /chỉ nhận custom_event_type PURCHASE/],
+      [{ billing_event: "LINK_CLICKS" }, /billing_event phải là IMPRESSIONS/],
+      [{ bid_strategy: "LOWEST_COST_WITH_BID_CAP", bid_amount: 1000 }, /LOWEST_COST_WITHOUT_CAP hoặc COST_CAP \(nhóm quảng cáo đang là LOWEST_COST_WITH_BID_CAP\)/],
+    ]
+    for (const [patch, msg] of cases) {
+      await expect(run("meta_create_adset", { ...mpcInput, ...patch }), JSON.stringify(patch)).rejects.toMatchObject({ code: "invalid_request" })
+      await expect(run("meta_create_adset", { ...mpcInput, ...patch })).rejects.toThrow(msg)
+    }
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+  })
+
+  it("CBO campaign: the campaign's bid strategy must be LOWEST_COST_WITHOUT_CAP or COST_CAP", async () => {
+    for (const [bid, ok] of [
+      ["LOWEST_COST_WITH_MIN_ROAS", false],
+      ["LOWEST_COST_WITH_BID_CAP", false],
+      ["LOWEST_COST_WITHOUT_CAP", true],
+    ] as const) {
+      const m = mockGraph([
+        ["GET", "3001", () => json({ ...salesAbo, daily_budget: "500000", bid_strategy: bid })],
+        ...advertisable,
+        ["POST", "act_1001/adsets", () => json({ id: "2103" })],
+      ])
+      const call = run("meta_create_adset", { ...mpcInput, budget: undefined })
+      if (ok) {
+        await call
+        expect(m.mutatingPosts()[0].params.bid_strategy).toBeUndefined()
+      } else await expect(call).rejects.toThrow(`(chiến dịch đang là ${bid})`)
+    }
+  })
+
+  it("only under OUTCOME_SALES (ENGAGEMENT / LEADS / TRAFFIC refused with a specific message)", async () => {
+    for (const objective of ["OUTCOME_ENGAGEMENT", "OUTCOME_LEADS", "OUTCOME_TRAFFIC"]) {
+      mockGraph([["GET", "3001", () => json({ ...salesAbo, objective })]])
+      await expect(run("meta_create_adset", mpcInput)).rejects.toThrow(/chỉ dùng với chiến dịch mục tiêu Doanh số \(OUTCOME_SALES\)/)
+    }
+  })
+
+  it("preview runs validate_only with the full payload (Meta's verdict before confirmation)", async () => {
+    const m = mockGraph([["GET", "3001", () => json(salesAbo)], ...advertisable, ["POST", "act_1001/adsets", () => json({ success: true })]])
+    const res = await run("meta_create_adset", mpcInput, { dryRun: true })
+    expect(res.preview).toBe(true)
+    expect(m.mutatingPosts()).toHaveLength(0)
+    const v = m.calls.find((c) => c.method === "POST")!
+    expect(JSON.parse(v.params.execution_options)).toEqual(["validate_only"])
+    expect(v.params).toMatchObject({ optimization_goal: "MESSAGING_PURCHASE_CONVERSION", destination_type: "MESSENGER", billing_event: "IMPRESSIONS" })
+    expect(res.warnings.join(" ")).toMatch(/validate_only/)
+  })
+
+  it("Meta 100/2490408 (goal not available) in the preview → Vietnamese message naming both causes, not retried", async () => {
+    let posts = 0
+    mockGraph([
+      ["GET", "3001", () => json(salesAbo)],
+      ...advertisable,
+      [
+        "POST",
+        "act_1001/adsets",
+        () => {
+          posts++
+          return graphError(100, 2490408, { error_user_title: "Optimization Goal Isn't Available" })
+        },
+      ],
+    ])
+    await expect(run("meta_create_adset", mpcInput, { dryRun: true })).rejects.toMatchObject({
+      code: "invalid_request",
+      retryable: false,
+      userMessageVi: expect.stringMatching(/OUTCOME_SALES[\s\S]*ít nhất 5 sự kiện mua hàng/),
+      hint: expect.stringMatching(/Tối đa hoá số lượt mua qua tin nhắn/),
+    })
+    expect(posts).toBe(1)
+  })
+})
+
+describe("meta_create_adset - CONVERSATIONS under SALES (D2) and Messenger lead ads (D4)", () => {
+  const conv = { ...mpcInput, optimization_goal: "CONVERSATIONS", destination_type: "MESSENGER" }
+
+  it("SALES + CONVERSATIONS (MESSENGER / WHATSAPP / INSTAGRAM_DIRECT) with page_id; optional dataset pair", async () => {
+    for (const destination_type of ["MESSENGER", "WHATSAPP", "INSTAGRAM_DIRECT"]) {
+      const m = mockGraph([["GET", "3001", () => json(salesAbo)], ...advertisable, ["POST", "act_1001/adsets", () => json({ id: "2201" })]])
+      const res = await run("meta_create_adset", { ...conv, destination_type })
+      const p = m.mutatingPosts()[0].params
+      expect(p).toMatchObject({ optimization_goal: "CONVERSATIONS", destination_type })
+      expect(JSON.parse(p.promoted_object)).toEqual({ page_id: "888" })
+      expect(res.warnings.join(" ")).not.toMatch(/5 sự kiện/)
+    }
+    const m = mockGraph([["GET", "3001", () => json(salesAbo)], ...advertisable, ["POST", "act_1001/adsets", () => json({ id: "2202" })]])
+    await run("meta_create_adset", { ...conv, promoted_object: { page_id: "888", pixel_id: "555000", custom_event_type: "PURCHASE" } })
+    expect(JSON.parse(m.mutatingPosts()[0].params.promoted_object)).toEqual({ page_id: "888", pixel_id: "555000", custom_event_type: "PURCHASE" })
+  })
+
+  it("SALES + CONVERSATIONS refusals: no messaging destination, no page_id, half a dataset pair", async () => {
+    mockGraph([["GET", "3001", () => json(salesAbo)]])
+    await expect(run("meta_create_adset", { ...conv, destination_type: undefined })).rejects.toThrow(/CONVERSATIONS cần destination_type/)
+    await expect(run("meta_create_adset", { ...conv, destination_type: "WEBSITE" })).rejects.toThrow(/CONVERSATIONS cần destination_type/)
+    await expect(run("meta_create_adset", { ...conv, promoted_object: {} })).rejects.toThrow(/CONVERSATIONS cần promoted_object.page_id/)
+    await expect(run("meta_create_adset", { ...conv, promoted_object: { page_id: "888", pixel_id: "555000" } })).rejects.toThrow(/đi cùng nhau/)
+  })
+
+  it("existing ENGAGEMENT CONVERSATIONS behaviour is unchanged (same payload; a lone pixel_id is still not checked there)", async () => {
+    const m = mockGraph([
+      ["GET", "3001", () => json({ ...salesAbo, objective: "OUTCOME_ENGAGEMENT" })],
+      ...advertisable,
+      ["POST", "act_1001/adsets", () => json({ id: "2203" })],
+    ])
+    const res = await run("meta_create_adset", { ...conv, promoted_object: { page_id: "888", pixel_id: "555000" } })
+    const p = m.mutatingPosts()[0].params
+    const { access_token: _t, appsecret_proof: _p, targeting, promoted_object, ...rest } = p
+    expect(rest).toEqual({
+      name: "Mua qua tin nhắn",
+      campaign_id: "3001",
+      status: "PAUSED",
+      optimization_goal: "CONVERSATIONS",
+      billing_event: "IMPRESSIONS",
+      daily_budget: "200000",
+      bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+      destination_type: "MESSENGER",
+    })
+    expect(JSON.parse(targeting)).toEqual({ geo_locations: { countries: ["VN"] }, age_min: 18, targeting_automation: { advantage_audience: 0 } })
+    expect(JSON.parse(promoted_object)).toEqual({ page_id: "888", pixel_id: "555000" })
+    expect(res.warnings).toEqual(["Nhóm quảng cáo được tạo ở trạng thái TẠM DỪNG."])
+  })
+
+  it("LEADS + LEAD_GENERATION / QUALITY_LEAD with destination MESSENGER is refused (removed from the API in v24)", async () => {
+    mockGraph([["GET", "3001", () => json({ ...salesAbo, objective: "OUTCOME_LEADS" })]])
+    for (const optimization_goal of ["LEAD_GENERATION", "QUALITY_LEAD"]) {
+      await expect(
+        run("meta_create_adset", { ...mpcInput, optimization_goal, destination_type: "MESSENGER" })
+      ).rejects.toThrow(/không còn cho tạo quảng cáo tìm khách hàng tiềm năng trong Messenger/)
+    }
+  })
+
+  it("the description lists the new SALES goals and stays ≤1500 chars", () => {
+    const d = ext("meta_create_adset").description
+    expect(d).toMatch(/SALES→OFFSITE_CONVERSIONS\/VALUE \(\+pixel_id, custom_event_type\), CONVERSATIONS hoặc MESSAGING_PURCHASE_CONVERSION/)
+    expect(d.length).toBeLessThanOrEqual(1500)
+    const a = ext("meta_create_ad").description
+    expect(a).toMatch(/welcome_message/)
+    expect(a.length).toBeLessThanOrEqual(1500)
+  })
+})
+
+describe("meta_create_ad - click-to-message creative (D3)", () => {
+  const msgAdset = {
+    id: "2001",
+    name: "Nhóm nhắn tin",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "MESSAGING_PURCHASE_CONVERSION",
+    destination_type: "MESSENGER",
+    promoted_object: { page_id: "888" },
+    campaign: { id: "3001", objective: "OUTCOME_SALES" },
+  }
+  const hash = "0123456789abcdef0123456789abcdef"
+  const setup = (adset: Record<string, unknown> = msgAdset) =>
+    mockGraph([["GET", "2001", () => json(adset)], ...advertisable, ["POST", "act_1001/ads", () => json({ id: "21" })]])
+  const linkAd = (creative: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
+    adset_id: "2001",
+    name: "Ad tin nhắn",
+    page_id: "888",
+    creative: { type: "link", message: "Inbox để đặt hàng", image_hash: hash, ...creative },
+    ...extra,
+  })
+  const story = (m: ReturnType<typeof mockGraph>) => JSON.parse(m.mutatingPosts()[0].params.creative).object_story_spec
+
+  it("Messenger link ad without link / CTA: default link, MESSAGE_PAGE → MESSENGER, plain-text page_welcome_message", async () => {
+    const m = setup()
+    const res = await run("meta_create_ad", linkAd({ welcome_message: "Chào {{user_first_name}}! Shop có thể giúp gì?" }))
+    expect(story(m)).toEqual({
+      page_id: "888",
+      link_data: {
+        link: "https://fb.com/messenger_doc/",
+        message: "Inbox để đặt hàng",
+        image_hash: hash,
+        call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+        page_welcome_message: "Chào {{user_first_name}}! Shop có thể giúp gì?",
+      },
+    })
+    expect(m.mutatingPosts()[0].params.status).toBe("PAUSED")
+    expect(res.warnings.join(" ")).toMatch(/tự dùng nút MESSAGE_PAGE/)
+    expect(res.payload).toMatchObject({ destination_type: "MESSENGER", welcome_message: { text: "Chào {{user_first_name}}! Shop có thể giúp gì?" } })
+  })
+
+  it("welcome message with ice breakers → Meta's VISUAL_EDITOR JSON string (exact shape)", async () => {
+    const m = setup()
+    const res = await run(
+      "meta_create_ad",
+      linkAd({
+        welcome_message: {
+          text: "Chào bạn! Bạn cần tư vấn gì?",
+          ice_breakers: [
+            { title: "Tôi muốn mua", response: "Shop gửi bạn bảng giá nhé!" },
+            { title: "Phí ship?", response: "Miễn phí ship đơn từ 300k." },
+          ],
+        },
+      })
+    )
+    const pwm = story(m).link_data.page_welcome_message
+    expect(typeof pwm).toBe("string")
+    expect(pwm).toBe(
+      '{"type":"VISUAL_EDITOR","version":2,"landing_screen_type":"welcome_message","media_type":"text","text_format":{"customer_action_type":"ice_breakers","message":{"ice_breakers":[{"title":"Tôi muốn mua","response":"Shop gửi bạn bảng giá nhé!"},{"title":"Phí ship?","response":"Miễn phí ship đơn từ 300k."}],"quick_replies":[],"text":"Chào bạn! Bạn cần tư vấn gì?"}},"user_edit":false,"surface":"visual_editor_new"}'
+    )
+    expect(res.payload.welcome_message).toEqual({
+      text: "Chào bạn! Bạn cần tư vấn gì?",
+      ice_breakers: [
+        { title: "Tôi muốn mua", response: "Shop gửi bạn bảng giá nhé!" },
+        { title: "Phí ship?", response: "Miễn phí ship đơn từ 300k." },
+      ],
+    })
+    // object form without ice breakers = plain text
+    const m2 = setup()
+    await run("meta_create_ad", linkAd({ welcome_message: { text: "Xin chào", ice_breakers: [] } }))
+    expect(story(m2).link_data.page_welcome_message).toBe("Xin chào")
+  })
+
+  it("welcome message is sanitised (control / bidi / zero-width removed, newlines kept, titles one line) and capped", async () => {
+    const rlo = String.fromCharCode(0x202e)
+    const zw = String.fromCharCode(0x200b)
+    const bel = String.fromCharCode(7)
+    const m = setup()
+    await run(
+      "meta_create_ad",
+      linkAd({
+        welcome_message: {
+          text: `  Chào${rlo} bạn${zw}!${bel}\r\nDòng 2\t\tđây  `,
+          ice_breakers: [{ title: `Giá\nbao nhiêu${rlo}`, response: `Từ 99k${zw}` }],
+        },
+      })
+    )
+    const msg = JSON.parse(story(m).link_data.page_welcome_message).text_format.message
+    expect(msg.text).toBe("Chào bạn!\nDòng 2 đây")
+    expect(msg.ice_breakers).toEqual([{ title: "Giá bao nhiêu", response: "Từ 99k" }])
+    // limits: schema (text 300, title 80, response 300, ≤4 items) and after cleaning
+    const e = ext("meta_create_ad")
+    const bad = [
+      { welcome_message: "x".repeat(301) },
+      { welcome_message: { text: "ok", ice_breakers: [{ title: "t".repeat(81), response: "r" }] } },
+      { welcome_message: { text: "ok", ice_breakers: [{ title: "t", response: "r".repeat(301) }] } },
+      { welcome_message: { text: "ok", ice_breakers: Array.from({ length: 5 }, (_, i) => ({ title: `Câu ${i}`, response: "r" })) } },
+      { welcome_message: { text: "ok", extra: 1 } },
+      { welcome_message: "" },
+    ]
+    for (const w of bad) expect(e.input.safeParse(linkAd(w)).success, JSON.stringify(w).slice(0, 60)).toBe(false)
+    setup()
+    await expect(run("meta_create_ad", linkAd({ welcome_message: `${rlo}${zw}` }))).rejects.toThrow(/welcome_message.text trống/)
+    await expect(
+      run("meta_create_ad", linkAd({ welcome_message: { text: "ok", ice_breakers: [{ title: "Giá?", response: "a" }, { title: "giá?", response: "b" }] } }))
+    ).rejects.toThrow(/bị trùng/)
+  })
+
+  it("video ad in a Messenger ad set: video_data gets MESSAGE_PAGE + page_welcome_message", async () => {
+    const m = setup()
+    await run("meta_create_ad", {
+      adset_id: "2001",
+      name: "Video tin nhắn",
+      page_id: "888",
+      creative: { type: "video", video_id: "555", image_hash: hash, message: "Xem ngay", welcome_message: "Chào bạn" },
+    })
+    expect(story(m)).toEqual({
+      page_id: "888",
+      video_data: {
+        video_id: "555",
+        image_hash: hash,
+        message: "Xem ngay",
+        call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+        page_welcome_message: "Chào bạn",
+      },
+    })
+  })
+
+  it("an explicit matching CTA + link are kept", async () => {
+    const m = setup()
+    await run("meta_create_ad", linkAd({ link: "https://shop.vn/sp", call_to_action: { type: "MESSAGE_PAGE" } }))
+    expect(story(m).link_data).toMatchObject({
+      link: "https://shop.vn/sp",
+      call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+    })
+  })
+
+  it("any other CTA type (LEARN_MORE, SHOP_NOW) is accepted: value.app_destination of the ad set, never value.link", async () => {
+    for (const [dest, app] of [
+      ["MESSENGER", "MESSENGER"],
+      ["WHATSAPP", "WHATSAPP"],
+      ["INSTAGRAM_DIRECT", "INSTAGRAM_DIRECT"],
+    ]) {
+      for (const type of ["LEARN_MORE", "SHOP_NOW"]) {
+        const m = setup({ ...msgAdset, optimization_goal: "CONVERSATIONS", destination_type: dest })
+        const res = await run(
+          "meta_create_ad",
+          linkAd({ link: "https://shop.vn/sp", call_to_action: { type, link: "https://shop.vn/cta" } }, { instagram_user_id: "17841400000000000" })
+        )
+        const ld = story(m).link_data
+        expect(ld.call_to_action).toEqual({ type, value: { app_destination: app } })
+        expect(ld.link).toBe("https://shop.vn/sp")
+        expect(res.warnings.join(" ")).not.toMatch(/tự dùng nút/)
+      }
+    }
+    // video creative too
+    const m = setup()
+    await run("meta_create_ad", {
+      adset_id: "2001",
+      name: "V",
+      page_id: "888",
+      creative: { type: "video", video_id: "555", image_hash: hash, link: "https://shop.vn", call_to_action: { type: "LEARN_MORE" } },
+    })
+    expect(story(m).video_data.call_to_action).toEqual({ type: "LEARN_MORE", value: { app_destination: "MESSENGER" } })
+  })
+
+  it("refuses only a message CTA of another app and a lead form in a messaging ad set", async () => {
+    setup()
+    await expect(run("meta_create_ad", linkAd({ call_to_action: { type: "WHATSAPP_MESSAGE" } }))).rejects.toMatchObject({
+      code: "invalid_request",
+      userMessageVi: "Nút WHATSAPP_MESSAGE mở WHATSAPP, không khớp nhóm quảng cáo đích MESSENGER (dùng MESSAGE_PAGE hoặc nút khác như LEARN_MORE).",
+    })
+    setup({ ...msgAdset, optimization_goal: "CONVERSATIONS", destination_type: "WHATSAPP" })
+    await expect(run("meta_create_ad", linkAd({ call_to_action: { type: "MESSAGE_PAGE" } }))).rejects.toThrow(/không khớp nhóm quảng cáo đích WHATSAPP/)
+    setup()
+    await expect(run("meta_create_ad", linkAd({ call_to_action: { type: "LEARN_MORE", lead_gen_form_id: "1" } }))).rejects.toThrow(
+      /không dùng biểu mẫu khách hàng tiềm năng/
+    )
+  })
+
+  it("creative page_id must equal the ad set's promoted_object.page_id (refused before any POST)", async () => {
+    const m = setup()
+    await expect(run("meta_create_ad", linkAd({}, { page_id: "777" }))).rejects.toThrow(
+      /Trang 777 khác Trang của nhóm quảng cáo nhắn tin \(promoted_object.page_id = 888\)/
+    )
+    await expect(run("meta_create_ad", linkAd({}, { page_id: "777" }), { dryRun: true })).rejects.toThrow(/Dùng page_id 888|khác Trang/)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+  })
+
+  it("welcome_message outside a Messenger ad set is refused (website ad set, WhatsApp ad set)", async () => {
+    setup({ ...msgAdset, optimization_goal: "OFFSITE_CONVERSIONS", destination_type: "WEBSITE", promoted_object: { pixel_id: "1", custom_event_type: "PURCHASE" } })
+    await expect(run("meta_create_ad", linkAd({ link: "https://shop.vn", welcome_message: "Chào" }))).rejects.toThrow(
+      /welcome_message chỉ dùng cho quảng cáo nhắn tin/
+    )
+    setup({ ...msgAdset, optimization_goal: "CONVERSATIONS", destination_type: "WHATSAPP" })
+    await expect(run("meta_create_ad", linkAd({ welcome_message: "Chào" }))).rejects.toThrow(/chỉ hỗ trợ nhóm quảng cáo đích Messenger \(nhóm này là WHATSAPP\)/)
+  })
+
+  it("WhatsApp ad set: WHATSAPP_MESSAGE → WHATSAPP and the wa.me send link by default", async () => {
+    const m = setup({ ...msgAdset, optimization_goal: "CONVERSATIONS", destination_type: "WHATSAPP" })
+    await run("meta_create_ad", linkAd())
+    expect(story(m).link_data).toMatchObject({
+      link: "https://api.whatsapp.com/send",
+      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+    })
+  })
+
+  it("Instagram Direct ad set: INSTAGRAM_MESSAGE → INSTAGRAM_DIRECT, needs instagram_user_id, no default link", async () => {
+    const ig = { ...msgAdset, optimization_goal: "CONVERSATIONS", destination_type: "INSTAGRAM_DIRECT" }
+    setup(ig)
+    await expect(run("meta_create_ad", linkAd())).rejects.toThrow(/cần instagram_user_id/)
+    const m = setup(ig)
+    await run("meta_create_ad", linkAd({}, { instagram_user_id: "17841400000000000" }))
+    const s = story(m)
+    expect(s.instagram_user_id).toBe("17841400000000000")
+    expect(s.link_data.link).toBeUndefined()
+    expect(s.link_data.call_to_action).toEqual({ type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT" } })
+  })
+
+  it("INSTAGRAM_MESSAGE CTA always carries app_destination INSTAGRAM_DIRECT", async () => {
+    const m = setup({ ...msgAdset, optimization_goal: "LINK_CLICKS", destination_type: "WEBSITE", promoted_object: undefined })
+    await run("meta_create_ad", linkAd({ link: "https://shop.vn", call_to_action: { type: "INSTAGRAM_MESSAGE" } }))
+    expect(story(m).link_data.call_to_action).toEqual({ type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT" } })
+  })
+
+  it("non-messaging ad set: link still required, CTA not defaulted, payload unchanged", async () => {
+    const web = { ...msgAdset, optimization_goal: "OFFSITE_CONVERSIONS", destination_type: "WEBSITE", promoted_object: { pixel_id: "1", custom_event_type: "PURCHASE" } }
+    setup(web)
+    await expect(run("meta_create_ad", linkAd())).rejects.toThrow("Creative dạng link cần `link` (trang đích https).")
+    const m = setup(web)
+    const res = await run("meta_create_ad", linkAd({ link: "https://shop.vn/sp" }))
+    expect(story(m)).toEqual({ page_id: "888", link_data: { link: "https://shop.vn/sp", message: "Inbox để đặt hàng", image_hash: hash } })
+    expect(res.payload.destination_type).toBeUndefined()
+    expect(res.warnings).toEqual(["Quảng cáo được tạo ở trạng thái TẠM DỪNG và cần Meta duyệt trước khi chạy."])
+  })
+
+  it("an existing Messenger lead ad set is refused (no lead ads in Messenger through the API)", async () => {
+    setup({ ...msgAdset, optimization_goal: "LEAD_GENERATION", campaign: { objective: "OUTCOME_LEADS" } })
+    await expect(run("meta_create_ad", linkAd({ call_to_action: { type: "MESSAGE_PAGE", lead_gen_form_id: "1" } }))).rejects.toThrow(
+      /Meta API không còn cho tạo quảng cáo loại này/
+    )
+  })
+
+  it("existing post in a Messenger ad set: creative-level MESSAGE_PAGE CTA; a post of another Page is refused", async () => {
+    const m = setup()
+    await run("meta_create_ad", { adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: "888_42" } })
+    const creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+    expect(creative.object_story_id).toBe("888_42")
+    expect(creative.call_to_action).toEqual({ type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } })
+    setup()
+    const pre = await run("meta_create_ad", { adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: "888_42" } }, { dryRun: true })
+    expect(pre.warnings.join(" ")).toMatch(/Meta có thể không nhận/)
+    setup()
+    await expect(
+      run("meta_create_ad", { adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: "777_5" } })
+    ).rejects.toThrow(/Trang 777 khác Trang của nhóm quảng cáo nhắn tin/)
+  })
+
+  it("existing post in a WhatsApp / Instagram Direct ad set: passed through untouched (no CTA, no Page check) + warning", async () => {
+    for (const destination_type of ["WHATSAPP", "INSTAGRAM_DIRECT"]) {
+      const m = setup({ ...msgAdset, optimization_goal: "CONVERSATIONS", destination_type })
+      const res = await run("meta_create_ad", { adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: "777_5" } })
+      const creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+      expect(creative.object_story_id).toBe("777_5")
+      expect(creative.call_to_action).toBeUndefined()
+      expect(res.warnings.join(" ")).toMatch(/Meta có thể không nhận/)
+    }
+  })
+
+  it("preview: validate_only gets the messaging creative; nothing is created", async () => {
+    const m = mockGraph([["GET", "2001", () => json(msgAdset)], ...advertisable, ["POST", "act_1001/ads", () => json({ success: true })]])
+    const res = await run("meta_create_ad", linkAd({ welcome_message: "Chào bạn" }), { dryRun: true })
+    expect(res.preview).toBe(true)
+    expect(m.mutatingPosts()).toHaveLength(0)
+    const v = m.calls.find((c) => c.method === "POST")!
+    expect(JSON.parse(v.params.execution_options)).toEqual(["validate_only"])
+    expect(JSON.parse(v.params.creative).object_story_spec.link_data).toMatchObject({
+      link: "https://fb.com/messenger_doc/",
+      page_welcome_message: "Chào bạn",
+      call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+    })
+  })
+})

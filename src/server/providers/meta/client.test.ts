@@ -124,6 +124,35 @@ describe("Graph error mapping", () => {
     expect(mapGraphError({ code: 31, message: "x" }, 400, null).userMessageVi).toMatch(/xác thực/)
   })
 
+  it("100/2490408 (optimization goal not available) → invalid_request naming both causes, not retryable", () => {
+    const e = mapGraphError(
+      { code: 100, error_subcode: 2490408, message: "Invalid parameter", error_user_title: "Optimization Goal Isn't Available" },
+      400,
+      null
+    )
+    expect(e.code).toBe("invalid_request")
+    expect(e.retryable).toBe(false)
+    expect(e.userMessageVi).toMatch(/OUTCOME_SALES/)
+    expect(e.userMessageVi).toMatch(/ít nhất 5 sự kiện mua hàng từ cuộc trò chuyện Messenger/)
+    expect(e.hint).toMatch(/CONVERSATIONS/)
+    expect(e.upstream).toMatchObject({ code: 100, subcode: 2490408 })
+    // the generic text does not claim the purchase prerequisite for every goal
+    expect(e.userMessageVi).toMatch(/^Mục tiêu tối ưu này không dùng được cho chiến dịch \/ Trang này/)
+    expect(e.userMessageVi).toMatch(/Nếu là MESSAGING_PURCHASE_CONVERSION/)
+    expect(e.userMessageVi).not.toMatch(/Meta báo:/)
+    // Meta's own user message is kept (one line, capped)
+    const withMsg = mapGraphError(
+      { code: 100, error_subcode: 2490408, message: "x", error_user_title: "Optimization Goal Isn't Available", error_user_msg: `You can't use it.
+${"y".repeat(400)}` },
+      400,
+      null
+    )
+    expect(withMsg.userMessageVi).toMatch(/Meta báo: Optimization Goal Isn't Available: You can't use it\. y+…/)
+    expect(withMsg.userMessageVi).not.toMatch(/y{300}/)
+    // other 100 subcodes keep the generic mapping
+    expect(mapGraphError({ code: 100, error_subcode: 1, message: "x" }, 400, null).userMessageVi).toBe("Meta từ chối yêu cầu: x.")
+  })
+
   it("10 / 200 / 294 → permission_denied", () => {
     for (const code of [10, 200, 294]) expect(mapGraphError({ code }, 403, null).code).toBe("permission_denied")
   })

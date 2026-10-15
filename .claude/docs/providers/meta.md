@@ -100,6 +100,8 @@ Fields nên lấy (preset "basic"/"conversion"/"video"):
 - Video: `video_play_actions, video_thruplay_watched_actions, cost_per_thruplay, video_p25..p100_watched_actions, video_avg_time_watched_actions`
 - Xếp hạng (cấp ad): `quality_ranking, engagement_rate_ranking, conversion_rate_ranking`
 - `action_type` hay dùng: `link_click, landing_page_view, lead, offsite_conversion.fb_pixel_purchase, omni_purchase, onsite_conversion.messaging_conversation_started_7d, video_view, post_engagement`
+- **Nhắn tin / mua qua tin nhắn — rà 2026-10-15** (https://developers.facebook.com/docs/marketing-api/reference/ads-action-stats/): [H] `onsite_conversion.messaging_conversation_started_7d` ("Messaging Conversations Started" → metric `messages`), `onsite_conversion.messaging_first_reply` ("New Messaging Conversations"), `onsite_conversion.messaging_block`, `onsite_conversion.messaging_user_subscribed`; mua hàng: `omni_purchase` (gộp kênh), `offsite_conversion.fb_pixel_purchase`, `onsite_conversion.purchase` ("On-Facebook Purchases"). [L] **Không có action type riêng có tài liệu** cho "mua qua tin nhắn" (`onsite_conversion.messaging_purchase`, `message_to_buy`… chưa kiểm chứng); nhiều khả năng sự kiện CAPI `business_messaging` nằm trong `omni_purchase` và/hoặc `onsite_conversion.purchase`.
+  Adapter (v1.1.3, D5): kết quả chính vẫn là `results` / `cost_per_result` (đúng goal của ad set); `purchases` / `conversion_value` / ROAS chọn **loại đầu tiên có mặt** theo thứ tự `omni_purchase → purchase → offsite_conversion.fb_pixel_purchase → onsite_web_purchase → onsite_conversion.purchase` — `onsite_conversion.purchase` chỉ là phương án dự phòng, **không bao giờ cộng** với loại khác. `messaging_first_reply` không gộp vào `messages`; có sẵn trong `extra.actions` khi `metrics=all`.
 
 Mọi số trả về là **string** → parse. Dữ liệu cập nhật ~15 phút, còn thay đổi tới 28 ngày (conversion trễ).
 
@@ -140,9 +142,17 @@ Create (`POST /act_{id}/{campaigns|adsets|ads}`) nhận `execution_options=["val
 | OUTCOME_ENGAGEMENT | POST_ENGAGEMENT, THRUPLAY, CONVERSATIONS, PAGE_LIKES | CONVERSATIONS cần destination_type MESSENGER/WHATSAPP/INSTAGRAM_DIRECT |
 | OUTCOME_LEADS | LEAD_GENERATION, QUALITY_LEAD | `destination_type=ON_AD`, `{"page_id":..}` |
 | OUTCOME_SALES | OFFSITE_CONVERSIONS, VALUE | `{"pixel_id":..,"custom_event_type":"PURCHASE"}` |
+| OUTCOME_SALES | CONVERSATIONS (v1.1.3) | destination_type MESSENGER/WHATSAPP/INSTAGRAM_DIRECT + `{"page_id":..}`; tuỳ chọn `pixel_id` + `custom_event_type` (phải đi cùng nhau) [M: guide CTM/CTWA ghi SALES→CONVERSATIONS với `{page_id}`, bảng ODAX mapping ghi thêm pixel] |
+| OUTCOME_SALES | MESSAGING_PURCHASE_CONVERSION (v1.1.3) | "Tối đa lượt mua qua tin nhắn": **chỉ MESSENGER** (bỏ trống → adapter gửi MESSENGER), `{"page_id":..}` (tuỳ chọn thêm `pixel_id` + `custom_event_type=PURCHASE`), `billing_event=IMPRESSIONS`, bid `LOWEST_COST_WITHOUT_CAP`/`COST_CAP`, không gửi `attribution_spec` — chi tiết bên dưới |
 | OUTCOME_APP_PROMOTION | APP_INSTALLS | `{"application_id":..,"object_store_url":..}` |
 
 - Giới hạn: đổi budget ad set tối đa **4 lần/giờ** (`613/1487632`); không đổi daily↔lifetime; `daily_budget ≥ min_daily_budget` của account; ~5.000 ad set/account, 50 ad/ad set.
+- **Mua hàng qua tin nhắn (`MESSAGING_PURCHASE_CONVERSION`) — rà 2026-10-15, v1.1.3 D1/D2/D4** (nguồn: reference ad set + SDK `adset.py` enum [H, chỉ enum]; Help "Purchases through messaging" https://www.facebook.com/business/ads/click-to-message-ads/purchases-through-messaging [H, UI]; diễn đàn lỗi 2490408 [L]):
+  - Ads Manager: Doanh số → Ứng dụng nhắn tin → **chỉ Messenger** → "Maximize number of purchases through messaging". [H] "only available for ads that click to Messenger" (trang CAPI Business Messaging lại nói Messenger + WhatsApp — adapter chỉ cho Messenger).
+  - Adapter (`checkAdsetGoal` / `buildAdsetPayload`): chỉ `OUTCOME_SALES` (ENGAGEMENT bị Meta trả 2490408 [L] → từ chối trước); `destination_type` MESSENGER (khác → từ chối); `promoted_object.page_id` bắt buộc; `pixel_id` + `custom_event_type` tuỳ chọn, đi cùng nhau, chỉ `PURCHASE`; `billing_event=IMPRESSIONS`; bid (của nhóm, hoặc của chiến dịch CBO) chỉ `LOWEST_COST_WITHOUT_CAP` / `COST_CAP` [L COST_CAP]; không gửi `attribution_spec` (ngoài OFFSITE_CONVERSIONS/APP_INSTALLS chỉ dùng được 1-day click [H]). Preview luôn chạy `validate_only` + cảnh báo điều kiện tiên quyết.
+  - Điều kiện tiên quyết (app không kiểm tra trước được — cần page token / `page_events`): Trang có **≥5 sự kiện mua hàng từ cuộc trò chuyện Messenger trong 30 ngày** gửi về Meta — qua Conversions API for Business Messaging (`POST /{PAGE_ID}/dataset` → `POST /{DATASET_ID}/events` với `action_source:"business_messaging"`, `messaging_channel:"messenger"`) hoặc "Tạo đơn" trong Meta Business Suite. Thiếu → Meta từ chối goal (mã lỗi chưa có tài liệu; ứng viên `100/2490408`).
+  - `CONVERSATIONS` dưới SALES: như nhánh ENGAGEMENT/LEADS (destination nhắn tin + `page_id`), thêm luật `pixel_id` ⇔ `custom_event_type`. Nhánh ENGAGEMENT/LEADS giữ nguyên.
+  - **Quảng cáo khách hàng tiềm năng trong Messenger** (`LEAD_GENERATION|QUALITY_LEAD` + `destination_type=MESSENGER`): [H] "Beginning with v24.0, the ability to create lead ads that generate leads in Messenger with the API is being deprecated" → adapter từ chối (cả khi tạo ad set lẫn tạo ad trong ad set như vậy có sẵn).
 
 ### Media
 - Ảnh: `POST /act_{id}/adimages` (multipart `filename`, `bytes` base64, hoặc `copy_from={"source_account_id","hash"}`) → `images.<name>.hash`.
@@ -175,6 +185,19 @@ Create (`POST /act_{id}/{campaigns|adsets|ads}`) nhận `execution_options=["val
 - Link/ảnh: `object_story_spec={"page_id","instagram_user_id","link_data":{"link","message","name","description","image_hash","call_to_action":{"type":"SHOP_NOW","value":{"link":".."}}}}`; carousel = `child_attachments` 2–10.
 - Video: `video_data={"video_id","image_hash|image_url","message","title","call_to_action"}`.
 - Bài có sẵn: `object_story_id="<PAGEID>_<POSTID>"`.
+- **Creative nhắn tin (click-to-message) — rà 2026-10-15, v1.1.3 D3** (https://developers.facebook.com/documentation/ads-commerce/marketing-api/ad-creative/messaging-ads/click-to-messenger, `…/click-to-whatsapp`, `…/click-to-instagram`; AdCreativeLinkData / AdCreativeVideoData reference):
+  - Áp dụng khi ad set có `destination_type` MESSENGER / WHATSAPP / INSTAGRAM_DIRECT (adapter đọc `destination_type`, `promoted_object` của ad set). `value.app_destination` ("Required" [H]) luôn theo đích của ad set: MESSENGER / WHATSAPP / INSTAGRAM_DIRECT (Instagram cần `instagram_user_id`). **Loại nút không cố định**: ví dụ chính thức click-to-Messenger dùng cả `LEARN_MORE` lẫn `MESSAGE_PAGE` [H] → adapter nhận mọi loại CTA người dùng chọn, thiếu thì tự đặt nút nhắn tin khớp (`MESSAGE_PAGE` / `WHATSAPP_MESSAGE` / `INSTAGRAM_MESSAGE`); chỉ từ chối nút nhắn tin của **app khác** (vd `WHATSAPP_MESSAGE` trong ad set MESSENGER) và `lead_gen_form_id`. CTA của ad set nhắn tin không mang `value.link` (trước v1.1.3 adapter gửi `value.link` cho `LEARN_MORE`…; nay gửi `app_destination`).
+  - `link`: reference chỉ bắt buộc với carousel [H]; ví dụ CTM dùng `https://fb.com/messenger_doc/` [M] → adapter mặc định Messenger `https://fb.com/messenger_doc/`, WhatsApp `https://api.whatsapp.com/send` [H ví dụ CTWA], Instagram: không gửi `link` [L]. Ad set không phải nhắn tin: `link` vẫn bắt buộc như cũ.
+  - `page_id` của creative (hoặc phần `PAGEID` của bài có sẵn) phải **trùng** `promoted_object.page_id` của ad set [M: AdPromotedObject "creative must promote that Page"] → khác thì từ chối trước khi POST.
+  - `page_welcome_message` (string, trong `link_data` / `video_data`) [H]: văn bản ≤ 300 ký tự (mặc định của Meta "Hello! Can I get more info on this?"), hoặc chuỗi JSON VISUAL_EDITOR khi có câu hỏi gợi ý (ice breaker: title ≤ 80, response ≤ 300; số tối đa không ghi — adapter đặt 4 [L]):
+    ```json
+    {"type":"VISUAL_EDITOR","version":2,"landing_screen_type":"welcome_message","media_type":"text",
+     "text_format":{"customer_action_type":"ice_breakers","message":{"ice_breakers":[{"title":"…","response":"…"}],"quick_replies":[],"text":"…"}},
+     "user_edit":false,"surface":"visual_editor_new"}
+    ```
+    Tool nhận `creative.welcome_message` = chuỗi hoặc `{text, ice_breakers[]}`; adapter làm sạch (bỏ ký tự điều khiển trừ xuống dòng, bidi, zero-width, BOM; title một dòng; trùng title → từ chối), không có ice breaker → gửi chuỗi thường; có → `JSON.stringify` VISUAL_EDITOR. Hiện **chỉ cho ad set đích Messenger** (WhatsApp cần "JSON object passed as a string" + `autofill_message`; Instagram chưa có tài liệu) — ad set khác → từ chối.
+  - Bài có sẵn trong ad set nhắn tin — **tài liệu mâu thuẫn** [M]: trang click-to-Messenger có ví dụ `object_story_id` + `call_to_action={"type":"MESSAGE_PAGE","value":{"app_destination":"MESSENGER"}}` ở cấp creative, nhưng mục Limitations cùng trang ghi `object_story_id` không được hỗ trợ; trang click-to-Instagram có ví dụ bài Facebook dùng `MESSAGE_PAGE`/`MESSENGER`. Adapter: chỉ ad set **MESSENGER** được gắn CTA cấp creative (+ kiểm tra Trang của bài); WHATSAPP / INSTAGRAM_DIRECT giữ nguyên như trước (gửi `object_story_id` không đổi); mọi trường hợp đều có cảnh báo trong preview "Meta có thể không nhận — nếu bị từ chối hãy tạo creative mới".
+  - Không làm: đa đích (`MESSAGING_*` destination + `asset_feed_spec.optimization_type="DOF_MESSAGING_DESTINATION"`), Messenger lead form (`ctm_lead_gen_template_id`), WhatsApp `autofill_message`.
 - Advantage+ creative: `degrees_of_freedom_spec.creative_features_spec.<feature>.enroll_status=OPT_IN|OPT_OUT` → **mặc định gửi OPT_OUT cho mọi feature user không yêu cầu**.
 - `url_tags` cho UTM.
 
@@ -223,6 +246,7 @@ Business Use Case (mỗi ad account / giờ):
 | 100/1504016 | Khoảng since–until insights > 93 ngày [T] | chia khúc |
 | 100 "Invalid appsecret_proof" (GraphMethodException) | proof tính sai token [T] | tính proof theo đúng token đang gửi |
 | 368 | Bị chặn tạm | backoff dài |
+| 100/2490408 | "Optimization Goal Isn't Available — You can't use the selected optimization goal for your campaign objective" (thấy với `MESSAGING_PURCHASE_CONVERSION` + ENGAGEMENT [L diễn đàn]; có thể cũng là lỗi khi Trang/tài khoản chưa đủ điều kiện mua qua tin nhắn [L]) | không retry; `invalid_request` + thông báo tiếng Việt nêu cả hai nguyên nhân + hint kiểm tra trong Ads Manager / dùng CONVERSATIONS |
 | 31 (vd subcode 3858385) | "This request requires the user to take a pending action" — Meta nghi truy cập trái phép, chặn tạo/sửa quảng cáo tới khi chủ tài khoản xác thực trong Trình quản lý quảng cáo (quảng cáo đang chạy vẫn chạy) [T 2026-10-13, khách báo] | không retry; `action_required` + hint xác thực trên Meta; token vẫn hợp lệ (không đánh `invalid`) |
 
 Create (POST) timeout → **không retry mù**; kiểm tra bằng list theo tên/created_time trước.
@@ -250,6 +274,19 @@ Create (POST) timeout → **không retry mù**; kiểm tra bằng list theo tên
 | `meta_get_page_insights` | `GET /{page}/insights?period=…&since&until(+1)` chia khúc 90 ngày, ngày giờ LA (§10.5) |
 
 ## 9. Cần test thật khi implement
+- **v1.1.3 (§5 "Mua hàng qua tin nhắn", "Creative nhắn tin", §4)** — chạy bằng `validate_only` (không tạo object):
+  1. `MESSAGING_PURCHASE_CONVERSION` + `OUTCOME_SALES` + `MESSENGER` + `promoted_object={page_id}` có qua không; nếu không, thử thêm `pixel_id` (dataset của Trang) + `custom_event_type=PURCHASE`, và thử dạng `OFFSITE_CONVERSIONS` + `MESSENGER` + dataset.
+  2. Trang/tài khoản **chưa** đủ điều kiện trả mã lỗi nào (code/subcode/`error_user_msg`); `validate_only` có bắt được không hay chỉ lộ ra khi tạo/bật chạy.
+  3. `COST_CAP` (và `LOWEST_COST_WITH_BID_CAP`, đang bị từ chối) có dùng được với goal này không.
+  4. SALES + CONVERSATIONS cần `{page_id}` hay `{page_id, pixel_id, custom_event_type}`; có dùng được với WHATSAPP / INSTAGRAM_DIRECT không (hai bảng chính thức mâu thuẫn).
+  5. ENGAGEMENT + `MESSAGING_PURCHASE_CONVERSION` ở v26.0 còn lỗi 2490408 không.
+  6. `link` có bắt buộc trong `link_data` của CTM không; `https://fb.com/messenger_doc/` có được chấp nhận; Instagram Direct không gửi `link` có qua không.
+  7. `page_welcome_message` dạng chuỗi JSON VISUAL_EDITOR có được chấp nhận khi cả `object_story_spec` được JSON-encode (hay Meta cần object); chuỗi thường có `{{user_first_name}}` có được thay tên không.
+  8. Tên action type của "mua qua tin nhắn" trong insights (`GET /{adset_id}/insights?fields=actions,action_values,results&action_breakdowns=action_type`) và có đếm trùng giữa `omni_purchase` và `onsite_conversion.purchase` không.
+  9. Ad set đích MESSENGER có chạy placement Instagram không, hay Meta tự giới hạn.
+  10. `/copies` ad set có goal này có giữ nguyên goal không.
+  11. Bài có sẵn (`object_story_id`) trong ad set nhắn tin: MESSENGER + CTA `MESSAGE_PAGE` cấp creative có được nhận không (Limitations nói không hỗ trợ); WHATSAPP / INSTAGRAM_DIRECT không có CTA thì sao.
+  12. `LEARN_MORE` (và các CTA khác) với `value.app_destination` trong ad set MESSENGER / WHATSAPP / INSTAGRAM_DIRECT; `lead_gen_form_id` bị từ chối là đúng.
 - **v1.1.2 (§5 "Ảnh bìa video")**: đọc `thumbnails`/`picture` bằng token system user chỉ quyền ads (video `advideos` không gắn Trang); `POST advideos file_url` đồng bộ hay bất đồng bộ + thời gian theo cỡ 10/20 MB; `advideos?title=` khớp chính xác hay chứa, `name` có ghi vào `title` không; `filtering` id trên `advideos`; giá trị `video_status` thực tế (`expired`, `publishing_phase`); subcode 1443226 khi thiếu ảnh bìa ở v26.0; `adimages` cùng bytes → cùng hash; `upload_phase` chạy được trên `graph.facebook.com`.
 - `debug_token` dùng chính token (không app secret) với system user token.
 - Enum chính xác của placement IG Explore đã bị bỏ.

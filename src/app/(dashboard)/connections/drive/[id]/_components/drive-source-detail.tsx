@@ -31,11 +31,13 @@ import { Spinner } from "@/components/ui/spinner"
 import { formatDate } from "@/lib/format"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import {
-  detectCoverHeader,
+  AUTO_DETECT_COLUMN_KEYS,
+  detectAutoHeader,
   headerIndex,
   SHEET_COLUMN_KEYS,
   SHEET_WRITABLE_COLUMN_KEYS,
   type DriveSourceDetail,
+  type AutoDetectColumnKey,
   type SheetColumnKey,
 } from "@/lib/schemas/drive"
 import {
@@ -339,22 +341,29 @@ function InfoRow({
 const LINK_COLUMNS = ["postLink", "campaignLink"] as const satisfies readonly SheetColumnKey[]
 
 /**
- * The read-only "Ảnh bìa" column when it is not mapped: drive_sheet_read then takes a header named like a cover
- * column (detectCoverHeader). null = mapped or header unknown, "" = no such header, else the header cell.
+ * The read-only auto-detected columns ("Ảnh bìa", "Lời chào tin nhắn") when they are not mapped: drive_sheet_read then
+ * takes a header named like them (detectAutoHeader, same order + taken cells as mapColumns). Per key: null = mapped or
+ * header unknown, "" = no such header, else the header cell.
  */
-function autoCoverHeader(
+function autoHeaders(
   sheet: NonNullable<DriveSourceDetail["sheet"]>,
   header: readonly string[] | null
-): string | null {
-  if (sheet.columns.cover || !header) return null
+): Record<AutoDetectColumnKey, string | null> {
+  const out = { cover: null, welcomeMessage: null } as Record<AutoDetectColumnKey, string | null>
+  if (!header) return out
   const taken = new Set<number>()
   for (const k of SHEET_COLUMN_KEYS) {
     const name = sheet.columns[k]
     const i = name ? headerIndex(header, name) : -1
     if (i >= 0) taken.add(i)
   }
-  const i = detectCoverHeader(header, taken)
-  return i >= 0 ? String(header[i] ?? "").trim() : ""
+  for (const k of AUTO_DETECT_COLUMN_KEYS) {
+    if (sheet.columns[k]) continue
+    const i = detectAutoHeader(k, header, taken)
+    if (i >= 0) taken.add(i)
+    out[k] = i >= 0 ? String(header[i] ?? "").trim() : ""
+  }
+  return out
 }
 
 function InfoCard({
@@ -373,7 +382,8 @@ function InfoCard({
   const cred = detail.credential
   const sheet = detail.sheet
   const unusedLinks = sheet ? LINK_COLUMNS.filter((k) => !sheet.columns[k]) : []
-  const autoCover = sheet ? autoCoverHeader(sheet, sheetHeader) : null
+  const auto = sheet ? autoHeaders(sheet, sheetHeader) : null
+  const autoFound = auto ? AUTO_DETECT_COLUMN_KEYS.filter((k) => !!auto[k]) : []
   return (
     <Card>
       <CardHeader>
@@ -432,7 +442,11 @@ function InfoCard({
                   const writeGroup = groupLabel === m.columnsWrite
                   // write-back off: the "AI ghi" columns are kept but not written - shown dimmed
                   const off = writeGroup && !sheet.writeback
-                  if (shown.length === 0 && !(writeGroup && unusedLinks.length > 0))
+                  if (
+                    shown.length === 0 &&
+                    !(writeGroup && unusedLinks.length > 0) &&
+                    !(!writeGroup && autoFound.length > 0)
+                  )
                     return null
                   return (
                     <div key={groupLabel} className="mt-1.5 flex flex-col gap-1">
@@ -440,7 +454,7 @@ function InfoCard({
                         {groupLabel}
                         {off && <> {m.columnsWriteOff}</>}
                       </span>
-                      {shown.length > 0 && (
+                      {(shown.length > 0 || (!writeGroup && autoFound.length > 0)) && (
                       <ul className={cn("flex flex-wrap gap-1", off && "opacity-55")}>
                         {shown.map((k: SheetColumnKey) => {
                           const label = driveUi.wizard.columns[k] ?? k
@@ -455,17 +469,19 @@ function InfoCard({
                             </li>
                           )
                         })}
-                        {!writeGroup && autoCover && (
-                          <li
-                            title={m.coverAutoTitle}
-                            className="max-w-full truncate rounded-md bg-muted px-1.5 py-0.5 text-xs"
-                          >
-                            {m.coverAuto(driveUi.wizard.columns.cover ?? "cover", autoCover)}
-                          </li>
-                        )}
+                        {!writeGroup &&
+                          autoFound.map((k) => (
+                            <li
+                              key={`auto-${k}`}
+                              title={m.autoColumnTitle[k]}
+                              className="max-w-full truncate rounded-md bg-muted px-1.5 py-0.5 text-xs"
+                            >
+                              {m.autoColumn(driveUi.wizard.columns[k] ?? k, auto![k]!)}
+                            </li>
+                          ))}
                       </ul>
                       )}
-                      {!writeGroup && autoCover === "" && (
+                      {!writeGroup && auto?.cover === "" && (
                         <span className="mt-0.5 text-xs text-pretty text-muted-foreground">
                           {m.coverMissing}
                         </span>

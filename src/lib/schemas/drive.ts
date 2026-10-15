@@ -138,6 +138,7 @@ export const sheetColumnsSchema = z
     content: optionalColumn,
     headline: optionalColumn,
     destination: optionalColumn,
+    welcomeMessage: optionalColumn,
     status: optionalColumn,
     mediaId: optionalColumn,
     adIds: optionalColumn,
@@ -264,6 +265,7 @@ export type SheetColumnKey =
   | "content"
   | "headline"
   | "destination"
+  | "welcomeMessage"
   | "status"
   | "mediaId"
   | "adIds"
@@ -281,6 +283,7 @@ export const SHEET_COLUMN_KEYS: readonly SheetColumnKey[] = [
   "content",
   "headline",
   "destination",
+  "welcomeMessage",
   "status",
   "mediaId",
   "adIds",
@@ -340,6 +343,19 @@ export const SHEET_COLUMN_ALIASES: Record<SheetColumnKey, readonly string[]> = {
     "destination",
     "link landing",
   ],
+  // Messenger welcome message of a click-to-message Meta ad (v1.1.3) - read only; also detected by these names when
+  // not mapped (detectAutoHeader). Never plain "tin nhan" / "message": Meta calls the primary text "message"
+  welcomeMessage: [
+    "loi chao tin nhan",
+    "loi chao",
+    "loi chao messenger",
+    "tin nhan chao",
+    "tin nhan chao mung",
+    "cau chao",
+    "welcome message",
+    "greeting",
+    "greeting message",
+  ],
   status: ["trang thai", "status"],
   mediaId: ["ma media", "media id", "media"],
   adIds: ["ma quang cao", "ad id", "ad ids", "ma qc"],
@@ -388,20 +404,38 @@ export function headerIndex(header: readonly string[], name: string): number {
 }
 
 /**
- * The "Ảnh bìa" column of a sheet whose source has no cover mapping (configs saved before v1.1.2 or left "Không
- * dùng"): 0-based index of the first header cell named like a cover column (SHEET_COLUMN_ALIASES.cover, earlier
- * aliases win) that is not one of `taken` (indexes already mapped to other columns); -1 when none.
+ * Optional read-only columns drive_sheet_read finds by their header name when they are not mapped (configs saved
+ * before the column existed, or left "Không dùng"): "Ảnh bìa" (v1.1.2) and "Lời chào tin nhắn" (v1.1.3).
  */
-export function detectCoverHeader(
+export const AUTO_DETECT_COLUMN_KEYS = [
+  "cover",
+  "welcomeMessage",
+] as const satisfies readonly SheetColumnKey[]
+export type AutoDetectColumnKey = (typeof AUTO_DETECT_COLUMN_KEYS)[number]
+
+/**
+ * 0-based index of the first header cell named like `key` (SHEET_COLUMN_ALIASES[key], earlier aliases win) that is
+ * not one of `taken` (indexes already mapped to other columns); -1 when none.
+ */
+export function detectAutoHeader(
+  key: AutoDetectColumnKey,
   header: readonly string[],
   taken: ReadonlySet<number> = new Set()
 ): number {
   const keys = header.map((h) => normalizeHeader(h))
-  for (const alias of SHEET_COLUMN_ALIASES.cover) {
+  for (const alias of SHEET_COLUMN_ALIASES[key]) {
     const i = keys.findIndex((k, idx) => k === alias && !taken.has(idx))
     if (i >= 0) return i
   }
   return -1
+}
+
+/** The "Ảnh bìa" column of a sheet whose source has no cover mapping - detectAutoHeader("cover", …). */
+export function detectCoverHeader(
+  header: readonly string[],
+  taken: ReadonlySet<number> = new Set()
+): number {
+  return detectAutoHeader("cover", header, taken)
 }
 
 // ---------------------------------------------------------------------------

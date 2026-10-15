@@ -372,6 +372,7 @@ export const driveUi = {
       content: "Nội dung",
       headline: "Tiêu đề",
       destination: "Link đích",
+      welcomeMessage: "Lời chào tin nhắn",
       status: "Trạng thái",
       mediaId: "Mã media",
       adIds: "Mã quảng cáo",
@@ -384,6 +385,8 @@ export const driveUi = {
     columnHelp: {
       cover:
         "Tuỳ chọn. Link Drive của ảnh bìa cho video ở dòng đó (AI chỉ đọc). Chọn Không dùng mà sheet có cột tên “Ảnh bìa” thì AI vẫn tự nhận ra.",
+      welcomeMessage:
+        "Tuỳ chọn. Lời chào khách thấy khi mở Messenger từ quảng cáo tin nhắn Meta, tối đa 300 ký tự (AI chỉ đọc). Chọn Không dùng mà sheet có cột tên “Lời chào tin nhắn” thì AI vẫn tự nhận ra.",
       mediaId:
         "Tuỳ chọn. AI ghi mã ảnh / video trên nền tảng sau khi tải lên.",
       adIds: "Tuỳ chọn. AI ghi mã các quảng cáo đã tạo từ dòng này.",
@@ -406,7 +409,7 @@ export const driveUi = {
       "Email đang chỉ có quyền Người xem trên sheet. Cấp quyền Người chỉnh sửa rồi bấm Kiểm tra lại để bật.",
     writebackNeedsStatus: "Chọn cột Trạng thái để bật ghi trạng thái.",
     templateHint:
-      "Mẫu cột gợi ý: Link Drive · Ảnh bìa · Tên creative · Nền tảng · Tài khoản QC · Nội dung · Tiêu đề · Link đích · Trạng thái · Mã media · Mã quảng cáo · Link bài viết · Link chiến dịch · Ghi chú hệ thống · Cập nhật lúc.",
+      "Mẫu cột gợi ý: Link Drive · Ảnh bìa · Tên creative · Nền tảng · Tài khoản QC · Nội dung · Tiêu đề · Link đích · Lời chào tin nhắn · Trạng thái · Mã media · Mã quảng cáo · Link bài viết · Link chiến dịch · Ghi chú hệ thống · Cập nhật lúc.",
     back: "Quay lại",
     next: "Tiếp tục",
     save: "Lưu thư mục / sheet",
@@ -453,10 +456,15 @@ export const driveUi = {
     columnsWriteOff: "(đang tắt)",
     /** link columns not mapped yet (sheets declared before v1.0.8) */
     columnsUnused: (labels: string) => `Chưa dùng: ${labels}`,
-    /** cover column not mapped but found by its header name (drive_sheet_read reads it anyway) */
-    coverAuto: (label: string, name: string) =>
+    /** an optional read-only column (cover, welcome message) not mapped but found by its header name - drive_sheet_read
+     *  reads it anyway */
+    autoColumn: (label: string, name: string) =>
       `${name === label ? name : `${label}: ${name}`} (tự nhận)`,
-    coverAutoTitle: "Tự nhận theo tên cột - AI đọc cột này làm ảnh bìa video",
+    autoColumnTitle: {
+      cover: "Tự nhận theo tên cột - AI đọc cột này làm ảnh bìa video",
+      welcomeMessage:
+        "Tự nhận theo tên cột - AI đọc cột này làm lời chào tin nhắn của quảng cáo Meta",
+    } as Record<string, string>,
     coverMissing:
       "Chưa có cột Ảnh bìa (tuỳ chọn) - thêm cột “Ảnh bìa” vào sheet nếu muốn mỗi video có ảnh bìa riêng.",
     usedByTitle: "Đang dùng trong MCP",
@@ -656,7 +664,7 @@ export const driveUi = {
           {
             title: "Sheet: ánh xạ cột",
             detail:
-              "Hệ thống gợi ý theo tên cột trong dòng tiêu đề. Bắt buộc: cột Link Drive. Nên có: Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích. Tuỳ chọn: Ảnh bìa (ảnh bìa riêng cho video của từng dòng).",
+              "Hệ thống gợi ý theo tên cột trong dòng tiêu đề. Bắt buộc: cột Link Drive. Nên có: Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích. Tuỳ chọn: Ảnh bìa (ảnh bìa riêng cho video của từng dòng), Lời chào tin nhắn (lời chào riêng cho quảng cáo tin nhắn Meta).",
           },
           {
             title: "Sheet: ghi trạng thái",

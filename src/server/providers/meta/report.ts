@@ -93,8 +93,16 @@ export function insightFields(level: MetaReportLevel, preset: MetricPreset): str
   return [...new Set(f)]
 }
 
-// action_type priority lists (first present wins - omni_* already de-duplicates channels)
-const PURCHASE_TYPES = ["omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase", "onsite_web_purchase"]
+// action_type priority lists (first present wins - omni_* already de-duplicates channels).
+// onsite_conversion.purchase ("On-Facebook Purchases", e.g. purchases reported from Messenger conversations - [L] for
+// MESSAGING_PURCHASE_CONVERSION) is LAST: only a fallback when no other purchase type is present, never added on top.
+const PURCHASE_TYPES = [
+  "omni_purchase",
+  "purchase",
+  "offsite_conversion.fb_pixel_purchase",
+  "onsite_web_purchase",
+  "onsite_conversion.purchase",
+]
 const LEAD_TYPES = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead", "leadgen_grouped"]
 const MESSAGE_TYPES = ["onsite_conversion.messaging_conversation_started_7d"]
 

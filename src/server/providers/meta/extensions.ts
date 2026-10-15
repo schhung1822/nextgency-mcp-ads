@@ -6,6 +6,9 @@
 // MutationOptions.driveImage) > video only: Meta's own preferred thumbnail of a READY video (preview: the signed uri
 // is used for validate_only only; execution: downloaded through opts.fetchImage → adimages → image_hash). The signed
 // uri never reaches the preview payload, summaries, changes, warnings or errors (replaced by a label).
+// Click-to-message (v1.1.3, D1-D5): SALES ad sets may optimise for CONVERSATIONS or MESSAGING_PURCHASE_CONVERSION
+// (Messenger only); ads in an ad set whose destination_type is MESSENGER / WHATSAPP / INSTAGRAM_DIRECT get the matching
+// message CTA, an optional link, the ad set's Page and an optional welcome message (page_welcome_message).
 import { z } from "zod"
 
 import { isProviderError, ProviderError } from "../errors"
@@ -75,6 +78,7 @@ export const OPTIMIZATION_GOALS = [
   "OFFSITE_CONVERSIONS",
   "VALUE",
   "APP_INSTALLS",
+  "MESSAGING_PURCHASE_CONVERSION",
 ] as const
 type OptimizationGoal = (typeof OPTIMIZATION_GOALS)[number]
 
@@ -84,7 +88,7 @@ export const OBJECTIVE_GOALS: Record<Objective, OptimizationGoal[]> = {
   OUTCOME_TRAFFIC: ["LINK_CLICKS", "LANDING_PAGE_VIEWS"],
   OUTCOME_ENGAGEMENT: ["POST_ENGAGEMENT", "THRUPLAY", "CONVERSATIONS", "PAGE_LIKES"],
   OUTCOME_LEADS: ["LEAD_GENERATION", "QUALITY_LEAD", "OFFSITE_CONVERSIONS", "CONVERSATIONS"],
-  OUTCOME_SALES: ["OFFSITE_CONVERSIONS", "VALUE"],
+  OUTCOME_SALES: ["OFFSITE_CONVERSIONS", "VALUE", "CONVERSATIONS", "MESSAGING_PURCHASE_CONVERSION"],
   OUTCOME_APP_PROMOTION: ["APP_INSTALLS"],
 }
 
@@ -132,10 +136,30 @@ export const CTA_TYPES = [
   "SEE_MORE",
   "MESSAGE_PAGE",
   "WHATSAPP_MESSAGE",
+  "INSTAGRAM_MESSAGE",
   "CALL_NOW",
   "INSTALL_MOBILE_APP",
   "NO_BUTTON",
 ] as const
+
+/**
+ * Click-to-message destinations (ad set destination_type) → the matching CTA, its app_destination and the default
+ * `link` of a link creative (meta.md §5 "Creative nhắn tin"; [M] Instagram has no documented default link → none sent).
+ */
+const MESSAGING_DESTINATIONS = {
+  MESSENGER: { cta: "MESSAGE_PAGE", app: "MESSENGER", link: "https://fb.com/messenger_doc/" },
+  WHATSAPP: { cta: "WHATSAPP_MESSAGE", app: "WHATSAPP", link: "https://api.whatsapp.com/send" },
+  INSTAGRAM_DIRECT: { cta: "INSTAGRAM_MESSAGE", app: "INSTAGRAM_DIRECT", link: null },
+} as const
+type MessagingDestination = keyof typeof MESSAGING_DESTINATIONS
+
+function messagingDestination(v: unknown): MessagingDestination | null {
+  return typeof v === "string" && Object.hasOwn(MESSAGING_DESTINATIONS, v) ? (v as MessagingDestination) : null
+}
+
+/** Prerequisite of MESSAGING_PURCHASE_CONVERSION (Meta Help "Purchases through messaging"), shown in every preview. */
+export const MESSAGING_PURCHASE_PREREQUISITE =
+  "Tối ưu lượt mua qua tin nhắn chỉ dùng được khi Trang / tài khoản đã đủ điều kiện: trong 30 ngày gần nhất có ít nhất 5 sự kiện mua hàng từ cuộc trò chuyện Messenger gửi về Meta (Conversions API cho nhắn tin doanh nghiệp, hoặc \"Tạo đơn\" trong Meta Business Suite). Chưa đủ thì Meta từ chối mục tiêu này - bước xem trước đã gửi kiểm tra (validate_only) cho Meta, một số trường hợp Meta chỉ báo khi tạo."
 
 /** Advantage+ creative features (developers.facebook.com advantage-creative get-started, 2026-10-02). */
 export const CREATIVE_FEATURES = [
@@ -418,6 +442,16 @@ export const createAdsetInput = z
   .strict()
 export type CreateAdsetInput = z.infer<typeof createAdsetInput>
 
+/** Messaging goals: the optional dataset (pixel_id) and its custom_event_type go together. */
+function pixelPair(po: NonNullable<CreateAdsetInput["promoted_object"]>): void {
+  if (!!po.pixel_id !== !!po.custom_event_type) {
+    throw invalid(
+      "promoted_object.pixel_id và custom_event_type phải đi cùng nhau (vd dataset gắn với Trang + PURCHASE), hoặc bỏ cả hai.",
+      "Gọi ads_lookup kind=pixels."
+    )
+  }
+}
+
 /** Validate objective ↔ optimization_goal ↔ promoted_object/destination (meta.md §5 table). */
 export function checkAdsetGoal(objective: string, input: CreateAdsetInput): void {
   const allowed = OBJECTIVE_GOALS[objective as Objective]
@@ -425,6 +459,12 @@ export function checkAdsetGoal(objective: string, input: CreateAdsetInput): void
     throw invalid(`Chiến dịch có objective ${objective} không được hỗ trợ để tạo nhóm quảng cáo qua công cụ này.`)
   }
   const goal = input.optimization_goal
+  if (goal === "MESSAGING_PURCHASE_CONVERSION" && objective !== "OUTCOME_SALES") {
+    throw invalid(
+      "MESSAGING_PURCHASE_CONVERSION (tối đa lượt mua qua tin nhắn) chỉ dùng với chiến dịch mục tiêu Doanh số (OUTCOME_SALES).",
+      "Tạo chiến dịch objective OUTCOME_SALES bằng meta_create_campaign, hoặc dùng CONVERSATIONS."
+    )
+  }
   if (!allowed.includes(goal)) {
     throw invalid(`Mục tiêu ${objective} chỉ cho phép optimization_goal: ${allowed.join(", ")}.`)
   }
@@ -436,6 +476,31 @@ export function checkAdsetGoal(objective: string, input: CreateAdsetInput): void
       throw invalid("CONVERSATIONS cần destination_type MESSENGER, WHATSAPP hoặc INSTAGRAM_DIRECT.")
     }
     if (!po.page_id) throw invalid("CONVERSATIONS cần promoted_object.page_id.")
+    if (objective === "OUTCOME_SALES") pixelPair(po)
+  }
+  if (goal === "MESSAGING_PURCHASE_CONVERSION") {
+    if (input.destination_type && input.destination_type !== "MESSENGER") {
+      throw invalid(
+        "Meta chỉ hỗ trợ tối ưu lượt mua qua tin nhắn cho Messenger: destination_type phải là MESSENGER (hoặc bỏ trống).",
+        "Với WhatsApp / Instagram Direct hãy dùng optimization_goal CONVERSATIONS."
+      )
+    }
+    if (!po.page_id) {
+      throw invalid("MESSAGING_PURCHASE_CONVERSION cần promoted_object.page_id (Trang nhận tin nhắn).", "Gọi ads_lookup kind=pages.")
+    }
+    pixelPair(po)
+    if (po.custom_event_type && po.custom_event_type !== "PURCHASE") {
+      throw invalid("MESSAGING_PURCHASE_CONVERSION chỉ nhận custom_event_type PURCHASE.")
+    }
+    if (input.billing_event !== "IMPRESSIONS") {
+      throw invalid("Quảng cáo tối ưu lượt mua qua tin nhắn tính phí theo lượt hiển thị: billing_event phải là IMPRESSIONS.")
+    }
+  }
+  if ((goal === "LEAD_GENERATION" || goal === "QUALITY_LEAD") && input.destination_type === "MESSENGER") {
+    throw invalid(
+      "Meta API không còn cho tạo quảng cáo tìm khách hàng tiềm năng trong Messenger (từ v24.0) - loại này chỉ tạo được trong Trình quản lý quảng cáo.",
+      "Dùng biểu mẫu tức thì (destination_type ON_AD) hoặc mục tiêu CONVERSATIONS (nhắn tin)."
+    )
   }
   if ((goal === "LEAD_GENERATION" || goal === "QUALITY_LEAD") && !po.page_id) {
     throw invalid("Quảng cáo tìm khách hàng tiềm năng (biểu mẫu) cần promoted_object.page_id.")
@@ -487,6 +552,12 @@ export function buildAdsetPayload(
   }
 
   const strategy = cbo ? String(campaign.bid_strategy ?? "LOWEST_COST_WITHOUT_CAP") : (input.bid_strategy ?? "LOWEST_COST_WITHOUT_CAP")
+  const messagingPurchase = input.optimization_goal === "MESSAGING_PURCHASE_CONVERSION"
+  if (messagingPurchase && strategy !== "LOWEST_COST_WITHOUT_CAP" && strategy !== "COST_CAP") {
+    throw invalid(
+      `MESSAGING_PURCHASE_CONVERSION chỉ dùng chiến lược giá thầu LOWEST_COST_WITHOUT_CAP hoặc COST_CAP (${cbo ? "chiến dịch" : "nhóm quảng cáo"} đang là ${strategy}).`
+    )
+  }
   const needsBid = strategy === "LOWEST_COST_WITH_BID_CAP" || strategy === "COST_CAP"
   if (needsBid && input.bid_amount === undefined) throw invalid(`Chiến lược ${strategy} cần bid_amount.`)
   if (strategy === "LOWEST_COST_WITH_MIN_ROAS") {
@@ -550,6 +621,8 @@ export function buildAdsetPayload(
   if (!destination && (input.optimization_goal === "LEAD_GENERATION" || input.optimization_goal === "QUALITY_LEAD")) {
     destination = "ON_AD"
   }
+  if (!destination && messagingPurchase) destination = "MESSENGER"
+  if (messagingPurchase) warnings.push(MESSAGING_PURCHASE_PREREQUISITE)
   if (destination) payload.destination_type = summary.destination_type = destination
   if (input.promoted_object && Object.keys(input.promoted_object).length) {
     payload.promoted_object = summary.promoted_object = input.promoted_object
@@ -571,7 +644,11 @@ const createAdset: ProviderExtension<MetaCredentials, CreateAdsetInput, MetaWrit
     "hoặc meta_create_campaign). Nhóm luôn được tạo ở trạng thái TẠM DỪNG. optimization_goal phải hợp với objective " +
     "của chiến dịch: AWARENESS→REACH/IMPRESSIONS/AD_RECALL_LIFT/THRUPLAY (+page_id); TRAFFIC→LINK_CLICKS/" +
     "LANDING_PAGE_VIEWS; ENGAGEMENT→POST_ENGAGEMENT/THRUPLAY/CONVERSATIONS/PAGE_LIKES; LEADS→LEAD_GENERATION/" +
-    "QUALITY_LEAD (+page_id); SALES→OFFSITE_CONVERSIONS/VALUE (+pixel_id, custom_event_type). Chiến dịch CBO thì " +
+    "QUALITY_LEAD (+page_id); SALES→OFFSITE_CONVERSIONS/VALUE (+pixel_id, custom_event_type), CONVERSATIONS hoặc " +
+    "MESSAGING_PURCHASE_CONVERSION. CONVERSATIONS = nhắn tin: destination_type MESSENGER/WHATSAPP/INSTAGRAM_DIRECT + " +
+    "page_id. MESSAGING_PURCHASE_CONVERSION = tối đa lượt mua qua tin nhắn: chỉ SALES + Messenger, page_id, " +
+    "billing_event IMPRESSIONS, giá thầu LOWEST_COST_WITHOUT_CAP/COST_CAP; Trang cần ≥5 sự kiện mua qua Messenger " +
+    "trong 30 ngày, không thì Meta từ chối. Không tạo được quảng cáo khách hàng tiềm năng trong Messenger. Chiến dịch CBO thì " +
     "không truyền budget; ABO thì bắt buộc budget (đơn vị chính). Targeting cần vị trí (countries/regions/cities - " +
     "tra bằng ads_lookup locations), sở thích tra bằng ads_lookup interests; advantage_audience mặc định tắt. " +
     "Nhắm nước EU phải có dsa_beneficiary + dsa_payor. Thời gian ISO-8601 có múi giờ. Bước tiếp: meta_create_ad.",
@@ -650,10 +727,30 @@ const driveImageInput = z
     "Ảnh trên Google Drive người dùng đưa (file_id / link Drive / mã drf_ từ drive_list_files, drive_sheet_read) - hệ thống tự tải lên khi xác nhận"
   )
 
+const welcomeText = z.string().trim().min(1).max(300)
+const welcomeMessageInput = z
+  .union([
+    welcomeText,
+    z
+      .object({
+        text: welcomeText,
+        ice_breakers: z
+          .array(z.object({ title: z.string().trim().min(1).max(80), response: z.string().trim().min(1).max(300) }).strict())
+          .max(4)
+          .optional()
+          .describe("Câu hỏi gợi ý khách bấm (tối đa 4): title ≤80 ký tự, response = câu trả lời tự động ≤300 ký tự"),
+      })
+      .strict(),
+  ])
+  .describe(
+    "Lời chào khi khách mở Messenger từ quảng cáo (chỉ nhóm quảng cáo đích Messenger): văn bản ≤300 ký tự hoặc {text, ice_breakers}; dùng được {{user_first_name}}"
+  )
+type WelcomeMessageInput = z.infer<typeof welcomeMessageInput>
+
 const linkCreative = z
   .object({
     type: z.literal("link"),
-    link: z.url(),
+    link: z.url().optional().describe("Trang đích - bắt buộc trừ nhóm quảng cáo nhắn tin"),
     message: z.string().max(5000).optional().describe("Văn bản chính"),
     headline: z.string().max(255).optional(),
     description: z.string().max(255).optional(),
@@ -661,6 +758,7 @@ const linkCreative = z
     image_url: z.url().optional(),
     image_drive_file: driveImageInput.optional(),
     call_to_action: ctaInput.optional(),
+    welcome_message: welcomeMessageInput.optional(),
   })
   .strict()
 
@@ -675,6 +773,7 @@ const videoCreative = z
     title: z.string().max(255).optional(),
     link: z.url().optional(),
     call_to_action: ctaInput.optional(),
+    welcome_message: welcomeMessageInput.optional(),
   })
   .strict()
 
@@ -701,17 +800,89 @@ export const createAdInput = z
   .strict()
 export type CreateAdInput = z.infer<typeof createAdInput>
 
+/** Message CTAs and the app they open; a message CTA of ANOTHER app is the only CTA a messaging ad set refuses. */
+const MESSAGE_CTA_APPS: Partial<Record<(typeof CTA_TYPES)[number], string>> = {
+  MESSAGE_PAGE: "MESSENGER",
+  WHATSAPP_MESSAGE: "WHATSAPP",
+  INSTAGRAM_MESSAGE: "INSTAGRAM_DIRECT",
+}
+
+/**
+ * `appDestination` = the ad set is click-to-message: whatever CTA type (official CTM examples use LEARN_MORE as well
+ * as MESSAGE_PAGE) carries value.app_destination and never value.link.
+ */
 function buildCta(
   cta: z.infer<typeof ctaInput> | undefined,
-  fallbackLink: string | undefined
+  fallbackLink: string | undefined,
+  appDestination?: string
 ): Record<string, unknown> | undefined {
   if (!cta) return undefined
   const value: Record<string, unknown> = {}
-  if (cta.type === "MESSAGE_PAGE") value.app_destination = "MESSENGER"
+  if (appDestination) value.app_destination = appDestination
+  else if (cta.type === "MESSAGE_PAGE") value.app_destination = "MESSENGER"
   else if (cta.type === "WHATSAPP_MESSAGE") value.app_destination = "WHATSAPP"
+  else if (cta.type === "INSTAGRAM_MESSAGE") value.app_destination = "INSTAGRAM_DIRECT"
   else if (cta.link ?? fallbackLink) value.link = cta.link ?? fallbackLink
   if (cta.lead_gen_form_id) value.lead_gen_form_id = cta.lead_gen_form_id
   return Object.keys(value).length ? { type: cta.type, value } : { type: cta.type }
+}
+
+// control (except newline), soft hyphen, bidi, zero-width and BOM characters (U+2028/2029 become newlines first): removed from text shown to customers in Messenger
+const WELCOME_UNSAFE =
+  /[\u0000-\u0009\u00AD\u180E\u000B-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB]/g
+
+function cleanWelcome(raw: string, field: string, max: number, singleLine: boolean): string {
+  let s = raw.replace(/\r\n?|[\u2028\u2029]/g, "\n").replace(/\t/g, " ")
+  if (singleLine) s = s.replace(/\n+/g, " ")
+  s = s.replace(WELCOME_UNSAFE, "").replace(/ {2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  if (!s) throw invalid(`${field} trống (sau khi bỏ ký tự điều khiển).`)
+  if (s.length > max) throw invalid(`${field} tối đa ${max} ký tự.`)
+  return s
+}
+
+/**
+ * welcome_message → page_welcome_message (meta.md §5 "Creative nhắn tin"): plain text, or Meta's VISUAL_EDITOR JSON
+ * (as a string) when ice breakers are given. Text is sanitised; limits: text ≤300, title ≤80, response ≤300, ≤4 items.
+ */
+export function buildWelcomeMessage(w: WelcomeMessageInput): {
+  value: string
+  shown: { text: string; ice_breakers?: { title: string; response: string }[] }
+} {
+  const raw = typeof w === "string" ? { text: w } : w
+  const text = cleanWelcome(raw.text, "welcome_message.text", 300, false)
+  const breakers = (raw.ice_breakers ?? []).map((b, i) => ({
+    title: cleanWelcome(b.title, `welcome_message.ice_breakers[${i}].title`, 80, true),
+    response: cleanWelcome(b.response, `welcome_message.ice_breakers[${i}].response`, 300, false),
+  }))
+  if (breakers.length > 4) throw invalid("welcome_message.ice_breakers tối đa 4 câu hỏi.")
+  const titles = new Set(breakers.map((b) => b.title.toLowerCase()))
+  if (titles.size !== breakers.length) throw invalid("welcome_message.ice_breakers có câu hỏi (title) bị trùng.")
+  if (breakers.length === 0) return { value: text, shown: { text } }
+  const value = JSON.stringify({
+    type: "VISUAL_EDITOR",
+    version: 2,
+    landing_screen_type: "welcome_message",
+    media_type: "text",
+    text_format: {
+      customer_action_type: "ice_breakers",
+      message: { ice_breakers: breakers, quick_replies: [], text },
+    },
+    user_edit: false,
+    surface: "visual_editor_new",
+  })
+  return { value, shown: { text, ice_breakers: breakers } }
+}
+
+function promotedPageId(v: unknown): string | null {
+  const id = v && typeof v === "object" ? (v as { page_id?: unknown }).page_id : undefined
+  return typeof id === "string" || typeof id === "number" ? String(id) : null
+}
+
+function pageMismatch(pageId: string, adsetPage: string): ProviderError {
+  return invalid(
+    `Trang ${pageId} khác Trang của nhóm quảng cáo nhắn tin (promoted_object.page_id = ${adsetPage}) - quảng cáo phải dùng đúng Trang nhận tin nhắn.`,
+    `Dùng page_id ${adsetPage}.`
+  )
 }
 
 export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: string[]) {
@@ -719,25 +890,88 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
   const campaign = (adset.campaign ?? {}) as { objective?: string }
   const goal = String(adset.optimization_goal ?? "")
   const creative: Record<string, unknown> = { name: `${input.name} - creative` }
+  // click-to-message ad set (destination MESSENGER / WHATSAPP / INSTAGRAM_DIRECT): matching CTA, the ad set's Page
+  const dest = messagingDestination(adset.destination_type)
+  const msg = dest ? MESSAGING_DESTINATIONS[dest] : null
+  const adsetPage = dest ? promotedPageId(adset.promoted_object) : null
+  let welcome: ReturnType<typeof buildWelcomeMessage> | null = null
+
+  if ((goal === "LEAD_GENERATION" || goal === "QUALITY_LEAD") && dest === "MESSENGER") {
+    throw invalid(
+      "Nhóm quảng cáo tìm khách hàng tiềm năng trong Messenger: Meta API không còn cho tạo quảng cáo loại này (từ v24.0) - hãy tạo trong Trình quản lý quảng cáo."
+    )
+  }
 
   if (c.type === "existing_post") {
     creative.object_story_id = c.object_story_id
+    if (msg) {
+      // [M] CTM docs conflict (an example with object_story_id + creative-level CTA vs "object_story_id not supported"
+      // in Limitations): only Messenger gets the documented CTA; WhatsApp / Instagram stay as before (untouched)
+      if (dest === "MESSENGER") {
+        const postPage = c.object_story_id.split("_")[0]!
+        if (adsetPage && postPage !== adsetPage) throw pageMismatch(postPage, adsetPage)
+        creative.call_to_action = { type: msg.cta, value: { app_destination: msg.app } }
+        warnings.push(`Nhóm quảng cáo nhắn tin (${dest}): bài có sẵn được gắn nút ${msg.cta}.`)
+      }
+      warnings.push(
+        "Bài có sẵn trong nhóm quảng cáo nhắn tin: Meta có thể không nhận (tài liệu Meta chưa thống nhất) - nếu bị từ chối, hãy tạo quảng cáo với creative mới (link / video)."
+      )
+    }
   } else {
     if (!input.page_id) throw invalid("Cần page_id (Trang chạy quảng cáo).", "Gọi ads_lookup kind=pages.")
+    if (c.welcome_message !== undefined) {
+      if (dest !== "MESSENGER") {
+        throw invalid(
+          dest
+            ? `Lời chào tin nhắn (welcome_message) hiện chỉ hỗ trợ nhóm quảng cáo đích Messenger (nhóm này là ${dest}).`
+            : "welcome_message chỉ dùng cho quảng cáo nhắn tin: nhóm quảng cáo phải có destination_type MESSENGER (mục tiêu CONVERSATIONS hoặc MESSAGING_PURCHASE_CONVERSION).",
+          dest ? "Bỏ welcome_message." : "Bỏ welcome_message, hoặc tạo nhóm quảng cáo nhắn tin Messenger bằng meta_create_adset."
+        )
+      }
+      welcome = buildWelcomeMessage(c.welcome_message)
+    }
+    let ctaIn = c.call_to_action
+    if (msg) {
+      if (!ctaIn) {
+        ctaIn = { type: msg.cta }
+        warnings.push(`Nhóm quảng cáo nhắn tin (${dest}): tự dùng nút ${msg.cta}.`)
+      } else {
+        const otherApp = MESSAGE_CTA_APPS[ctaIn.type]
+        if (otherApp && otherApp !== msg.app) {
+          throw invalid(
+            `Nút ${ctaIn.type} mở ${otherApp}, không khớp nhóm quảng cáo đích ${dest} (dùng ${msg.cta} hoặc nút khác như LEARN_MORE).`,
+            `Bỏ call_to_action để hệ thống tự chọn ${msg.cta}.`
+          )
+        }
+        if (ctaIn.lead_gen_form_id) {
+          throw invalid("Nhóm quảng cáo nhắn tin không dùng biểu mẫu khách hàng tiềm năng: bỏ call_to_action.lead_gen_form_id.")
+        }
+      }
+      if (dest === "INSTAGRAM_DIRECT" && !input.instagram_user_id) {
+        throw invalid("Quảng cáo nhắn tin Instagram Direct cần instagram_user_id.", "Gọi ads_lookup kind=instagram_accounts.")
+      }
+      if (adsetPage && input.page_id !== adsetPage) throw pageMismatch(input.page_id, adsetPage)
+    }
     const spec: Record<string, unknown> = { page_id: input.page_id }
     if (input.instagram_user_id) spec.instagram_user_id = input.instagram_user_id
     const imageSources = [c.image_hash, c.image_url, c.image_drive_file].filter((v) => v !== undefined).length
     if (imageSources > 1) throw invalid("Chỉ truyền một trong image_hash, image_url hoặc image_drive_file.")
     if (c.type === "link") {
+      let link = c.link
+      if (!link) {
+        if (!msg) throw invalid("Creative dạng link cần `link` (trang đích https).")
+        if (msg.link) link = msg.link
+      }
       if (imageSources === 0) warnings.push("Không có ảnh - Meta sẽ dùng ảnh lấy từ link (nếu có).")
-      const linkData: Record<string, unknown> = { link: c.link }
+      const linkData: Record<string, unknown> = link ? { link } : {}
       if (c.message) linkData.message = c.message
       if (c.headline) linkData.name = c.headline
       if (c.description) linkData.description = c.description
       if (c.image_hash) linkData.image_hash = c.image_hash
       if (c.image_url) linkData.picture = c.image_url
-      const cta = buildCta(c.call_to_action, c.link)
+      const cta = buildCta(ctaIn, link, msg?.app)
       if (cta) linkData.call_to_action = cta
+      if (welcome) linkData.page_welcome_message = welcome.value
       spec.link_data = linkData
     } else {
       // no cover given: applyCover() uses Meta's own thumbnail (ready video) - D1
@@ -746,8 +980,9 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
       else if (c.image_url) videoData.image_url = c.image_url
       if (c.message) videoData.message = c.message
       if (c.title) videoData.title = c.title
-      const cta = buildCta(c.call_to_action, c.link)
+      const cta = buildCta(ctaIn, c.link, msg?.app)
       if (cta) videoData.call_to_action = cta
+      if (welcome) videoData.page_welcome_message = welcome.value
       spec.video_data = videoData
     }
     creative.object_story_spec = spec
@@ -779,6 +1014,8 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
     status: "PAUSED",
     creative: structuredClone(creative),
   }
+  if (dest) summary.destination_type = dest
+  if (welcome) summary.welcome_message = welcome.shown
   return { payload, summary }
 }
 
@@ -907,7 +1144,9 @@ const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResul
     "drive_sheet_read) - hệ thống tự tải ảnh lên khi xác nhận (dùng lại nếu đã tải). Video không có ảnh bìa: hệ thống tự " +
     "lấy ảnh bìa Meta trích từ video khi video đã sẵn sàng; video đang xử lý → lỗi video_processing (thử lại sau ít phút " +
     "hoặc đưa ảnh bìa), video lỗi → video_failed (tải video lên lại). Cần page_id (ads_lookup kind=pages) trừ khi dùng bài " +
-    "có sẵn; instagram_user_id tuỳ chọn (ads_lookup kind=instagram_accounts). Mọi tính năng Advantage+ creative " +
+    "có sẵn; instagram_user_id tuỳ chọn (ads_lookup kind=instagram_accounts). Nhóm nhắn tin (destination MESSENGER/" +
+    "WHATSAPP/INSTAGRAM_DIRECT): thiếu nút thì tự đặt MESSAGE_PAGE/WHATSAPP_MESSAGE/INSTAGRAM_MESSAGE, link tuỳ chọn, page_id phải " +
+    "là Trang của nhóm; welcome_message (chỉ Messenger) = lời chào + tối đa 4 câu hỏi gợi ý. Mọi tính năng Advantage+ creative " +
     "(tự sửa ảnh, đổi chữ, thêm nhạc…) gửi OPT_OUT trừ khi liệt kê trong advantage_creative_opt_in. Quảng cáo biểu " +
     "mẫu cần call_to_action.lead_gen_form_id. url_tags để gắn UTM.",
   input: createAdInput,

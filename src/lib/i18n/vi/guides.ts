@@ -959,6 +959,7 @@ export const guides = {
     ],
     tips: [
       "Ảnh bìa video: cột Ảnh bìa, hoặc chung một ô Link Drive với video (mỗi link một dòng trong ô). Meta để trống thì tự lấy ảnh bìa Meta chọn.",
+      "Quảng cáo tin nhắn Messenger (Meta): chọn Loại quảng cáo Meta ở form soạn câu lệnh; lời chào riêng từng dòng ghi ở cột Lời chào tin nhắn. Tối đa lượt mua qua tin nhắn cần Trang có ít nhất 5 lượt mua từ tin nhắn trong 30 ngày.",
       "Không sắp xếp, chèn, xoá dòng khi AI đang chạy.",
     ],
     warnings: [

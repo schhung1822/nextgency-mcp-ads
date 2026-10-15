@@ -15,6 +15,7 @@ export const BULK_SHEET_COLUMNS = [
   "Nội dung",
   "Tiêu đề",
   "Link đích",
+  "Lời chào tin nhắn",
   "Trạng thái",
   "Mã media",
   "Mã quảng cáo",
@@ -47,6 +48,7 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
     "Freeship toàn quốc cho đơn từ 299k",
     "Serum Vitamin C",
     "https://congty.vn/serum",
+    "",
     "Chờ lên",
   ],
   [
@@ -58,6 +60,7 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
     "Da sáng sau 7 ngày, ưu đãi 30% tuần này",
     "Serum Vitamin C",
     "https://congty.vn/serum",
+    "",
     "Chưa tạo ads",
   ],
   [
@@ -70,6 +73,7 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
     "Serum Vitamin C",
     "https://congty.vn/serum",
     "",
+    "",
   ],
   [
     "https://drive.google.com/file/d/1GhIjKlMnOpQrStUvWxYz678901234/view",
@@ -80,6 +84,19 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
     "Khách thật dùng thật sau 14 ngày",
     "Serum Vitamin C",
     "https://congty.vn/serum",
+    "",
+    "Chờ lên",
+  ],
+  [
+    "https://drive.google.com/file/d/1HiJkLmNoPqRsTuVwXyZ789012345/view",
+    "",
+    "Ảnh serum - quảng cáo nhắn tin Messenger",
+    "Meta",
+    "act_1234567890",
+    "Nhắn tin cho shop để nhận bảng giá và quà tặng hôm nay",
+    "Serum Vitamin C",
+    "",
+    "Chào bạn! Shop gửi bạn bảng giá serum và ưu đãi hôm nay nhé.",
     "Chờ lên",
   ],
 ]
@@ -112,6 +129,22 @@ export type BulkPlatform = (typeof BULK_PLATFORMS)[number]
 
 export type BulkStructure = "existing" | "new"
 
+/**
+ * Kind of Meta ad (form level - every Meta row of a run uses the same one, v1.1.3): `website` = the ads send people
+ * to "Link đích" (behaviour before v1.1.3); `messaging_purchase` = click-to-Messenger ads in an OUTCOME_SALES campaign
+ * optimised for purchases through messaging (MESSAGING_PURCHASE_CONVERSION); `messaging_conversations` = click-to-
+ * Messenger ads optimised for conversations started (CONVERSATIONS). Ignored for TikTok / OpenAI Ads.
+ */
+export const BULK_META_AD_TYPES = [
+  "website",
+  "messaging_purchase",
+  "messaging_conversations",
+] as const
+export type BulkMetaAdType = (typeof BULK_META_AD_TYPES)[number]
+
+/** Meta limit of a Messenger welcome message (page_welcome_message text). */
+export const WELCOME_MESSAGE_MAX = 300
+
 export interface BulkAdsInput {
   /** name the user gave the Ads MCP connector in the AI app ("" = "Ads MCP") */
   connectorName: string
@@ -133,6 +166,10 @@ export interface BulkAdsInput {
   currency: string
   /** write status / ids / links back into the sheet */
   writeback: boolean
+  /** Meta rows only: website ads (default) or click-to-Messenger ads (v1.1.3) */
+  metaAdType: BulkMetaAdType
+  /** messaging ads: default welcome message of every row ("" = Meta's default); the row's column overrides it */
+  welcomeMessage: string
 }
 
 export const BULK_SKILL_NAME = "len-qc-tu-sheet"
@@ -149,6 +186,8 @@ export const DEFAULT_BULK_ADS: BulkAdsInput = {
   dailyBudget: 200000,
   currency: "VND",
   writeback: true,
+  metaAdType: "website",
+  welcomeMessage: "",
 }
 
 const PLATFORM_LABEL: Record<Exclude<BulkPlatform, "sheet">, string> = {
@@ -186,6 +225,24 @@ export function cleanName(s: string): string {
     .trim()
     .slice(0, 100)
     .trim()
+}
+
+/**
+ * The form's default welcome message put inside quotes in the prompt: invisible format characters (bidi, zero-width)
+ * removed, one line, no quotes / control characters, ≤ WELCOME_MESSAGE_MAX characters (never a lone surrogate).
+ */
+export function cleanWelcome(s: string): string {
+  let v = s
+    .replace(/\p{Cf}/gu, "")
+    .replace(/[\p{Cc}"“”]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (v.length > WELCOME_MESSAGE_MAX) {
+    v = v.slice(0, WELCOME_MESSAGE_MAX)
+    const last = v.charCodeAt(v.length - 1)
+    if (last >= 0xd800 && last <= 0xdbff) v = v.slice(0, -1)
+  }
+  return v.trim()
 }
 
 /** Name suggested by the "Kết nối AI" guide of every MCP (mcp.guide.clients.*: 'Đặt tên (vd "Ads MCP")'). */
@@ -262,6 +319,47 @@ function coverText(platform: BulkPlatform): string {
   return ` Ảnh bìa của video: cover của dòng (cột Ảnh bìa); dòng không có cover thì dùng ảnh nằm cùng ô Link Drive với video. ${lines.join(" ")}`
 }
 
+type MessagingType = Exclude<BulkMetaAdType, "website">
+
+/** Click-to-Messenger ads for the Meta rows of the run, or null (website ads, or a TikTok / OpenAI Ads-only form). */
+export function metaMessagingType(input: BulkAdsInput): MessagingType | null {
+  if (input.platform !== "meta" && input.platform !== "sheet") return null
+  return input.metaAdType === "messaging_purchase" ||
+    input.metaAdType === "messaging_conversations"
+    ? input.metaAdType
+    : null
+}
+
+/** Ad set optimisation goal of each messaging type (names shared with meta_create_adset - providers/meta). */
+const MESSAGING_GOAL: Record<MessagingType, string> = {
+  messaging_purchase: "MESSAGING_PURCHASE_CONVERSION",
+  messaging_conversations: "CONVERSATIONS",
+}
+
+const MESSAGING_PAGE =
+  "promoted_object.page_id = Trang Facebook nhận tin nhắn (ads_lookup kind=pages; chưa rõ Trang nào thì hỏi tôi)"
+
+/** Step c, new structure: the Meta campaign + ad set of a messaging run. */
+function messagingNewText(type: MessagingType): string {
+  if (type === "messaging_purchase")
+    return ` Meta - quảng cáo tin nhắn Messenger tối ưu lượt mua qua tin nhắn: chiến dịch objective OUTCOME_SALES; nhóm quảng cáo optimization_goal MESSAGING_PURCHASE_CONVERSION, destination_type MESSENGER, billing_event IMPRESSIONS, ${MESSAGING_PAGE}. Điều kiện của Meta: Trang cần ít nhất 5 sự kiện mua hàng từ cuộc trò chuyện Messenger trong 30 ngày (gửi qua Conversions API cho tin nhắn doanh nghiệp, hoặc tạo đơn bằng "Tạo đơn" trong Meta Business Suite rồi đánh dấu đã thanh toán); chưa đủ thì Meta từ chối mục tiêu này - khi đó dừng, báo tôi, và chỉ chuyển sang optimization_goal CONVERSATIONS (tối ưu lượt bắt đầu trò chuyện) khi tôi đồng ý.`
+  return ` Meta - quảng cáo tin nhắn Messenger tối ưu lượt bắt đầu trò chuyện: chiến dịch objective OUTCOME_ENGAGEMENT (hoặc OUTCOME_SALES nếu tôi muốn chiến dịch Doanh số); nhóm quảng cáo optimization_goal CONVERSATIONS, destination_type MESSENGER, billing_event IMPRESSIONS, ${MESSAGING_PAGE}.`
+}
+
+/** Step c, existing ad set: it must already send people to Messenger. */
+function messagingExistingText(type: MessagingType): string {
+  return ` Meta - quảng cáo tin nhắn Messenger: trước khi tạo quảng cáo, xem nhóm quảng cáo bằng ads_get_object - destination_type phải là MESSENGER (khác → ghi lỗi "Nhóm quảng cáo không gửi khách tới Messenger", không tạo quảng cáo); optimization_goal khác ${MESSAGING_GOAL[type]} thì báo tôi và hỏi trước khi làm tiếp.`
+}
+
+/** Step d: the Meta ad of a messaging run (welcome message from the row, else the form's default). */
+function messagingAdText(input: BulkAdsInput): string {
+  const welcome = cleanWelcome(input.welcomeMessage)
+  const fallback = welcome
+    ? `dòng trống thì dùng lời chào "${welcome}"`
+    : "dòng trống thì không truyền (Meta dùng lời chào mặc định)"
+  return ` Quảng cáo Meta là quảng cáo tin nhắn Messenger: meta_create_ad với page_id = promoted_object.page_id của nhóm quảng cáo, call_to_action.type = MESSAGE_PAGE, welcome_message = welcome_message của dòng (cột Lời chào tin nhắn, tối đa ${WELCOME_MESSAGE_MAX} ký tự), ${fallback}. Khách bấm quảng cáo sẽ mở Messenger nên Link đích không phải đích đến và không bắt buộc. Mọi dòng Meta của lượt đều là quảng cáo tin nhắn - không trộn với quảng cáo dẫn tới website.`
+}
+
 /** The work itself (numbered steps) - shared by the full prompt and the skill. */
 export function buildBulkAdsRule(input: BulkAdsInput): string {
   const n = clampBatch(input.batchSize)
@@ -272,6 +370,7 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
   const cur = currencyOf(input.currency)
   const budget = `${amount(input.dailyBudget)} ${cur}`
   const wb = input.writeback
+  const messaging = metaMessagingType(input)
 
   const sheetLine = sheet
     ? `1. Gọi drive_list_sources và chọn Google Sheet tên "${sheet}" (kind = sheet).`
@@ -287,7 +386,7 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
   let structureLine: string
   if (input.structure === "new") {
     const name = campaign || "Lên QC theo sheet"
-    structureLine = `c. Lần đầu gặp mỗi tài khoản trong lượt: tạo MỘT chiến dịch mới tên "${name}" và MỘT nhóm quảng cáo, ngân sách/ngày ${budget} (đặt ở chiến dịch hoặc nhóm tuỳ nền tảng), bằng tool tạo của nền tảng (${newStructureTools(input.platform)}). Thiếu thông tin bắt buộc (mục tiêu, vị trí, đối tượng, Trang, danh tính…) thì hỏi tôi MỘT lần cho cả lượt. Dùng lại chiến dịch và nhóm này cho mọi dòng sau của cùng tài khoản; không tạo thêm.`
+    structureLine = `c. Lần đầu gặp mỗi tài khoản trong lượt: tạo MỘT chiến dịch mới tên "${name}" và MỘT nhóm quảng cáo, ngân sách/ngày ${budget} (đặt ở chiến dịch hoặc nhóm tuỳ nền tảng), bằng tool tạo của nền tảng (${newStructureTools(input.platform)}). Thiếu thông tin bắt buộc (mục tiêu, vị trí, đối tượng, Trang, danh tính…) thì hỏi tôi MỘT lần cho cả lượt. Dùng lại chiến dịch và nhóm này cho mọi dòng sau của cùng tài khoản; không tạo thêm.${messaging ? messagingNewText(messaging) : ""}`
   } else if (campaign || group) {
     const target = [
       campaign ? `chiến dịch "${campaign}"` : null,
@@ -300,6 +399,8 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
     structureLine =
       "c. Dùng chiến dịch và nhóm quảng cáo có sẵn mà tôi chỉ định trong cuộc trò chuyện (tìm bằng ads_list_objects); tôi chưa nói thì hỏi tôi trước khi tạo quảng cáo. Không tự tạo chiến dịch hay nhóm mới."
   }
+  if (input.structure !== "new" && messaging)
+    structureLine += messagingExistingText(messaging)
 
   const steps: string[] = [
     `Việc cần làm: lên quảng cáo từ các dòng chờ lên của Google Sheet creative, mỗi lượt tối đa ${n} dòng.`,
@@ -316,7 +417,7 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
     `   a. Nền tảng: ${platformLine}. Tài khoản quảng cáo: ${accountLine}.`,
     '   b. Tải từng file của dòng lên tài khoản đó bằng ads_upload_media với drive_file = drive_file (hoặc file_id) của file trong kết quả drive_sheet_read. File đã tải lên tài khoản này trước đây trả reused: true - dùng luôn mã cũ, không tải lại. Video lớn trả status = "queued" kèm upload_id: gọi ads_get_media_upload sau vài phút cho tới khi có media_id; vẫn chưa xong thì để dòng ở trạng thái đang xử lý với ghi chú "Video đang tải nền" và làm dòng tiếp theo.',
     `   ${structureLine}`,
-    `   d. Tạo quảng cáo bằng tool tạo quảng cáo của nền tảng (${toolList(input.platform, "ad")}) với mã media vừa có và Nội dung, Tiêu đề, Link đích, Tên creative của dòng.${coverText(input.platform)} Nhiều ảnh trong một ô: mỗi ảnh một quảng cáo. Quảng cáo luôn ở trạng thái TẠM DỪNG - không bật.`,
+    `   d. Tạo quảng cáo bằng tool tạo quảng cáo của nền tảng (${toolList(input.platform, "ad")}) với mã media vừa có và Nội dung, Tiêu đề, Link đích, Tên creative của dòng.${messaging ? messagingAdText(input) : ""}${coverText(input.platform)} Nhiều ảnh trong một ô: mỗi ảnh một quảng cáo. Quảng cáo luôn ở trạng thái TẠM DỪNG - không bật.`,
     '   e. Tool trả status = "confirmation_required": cho tôi xem bản xem trước (gom các mục của cả lượt nếu được), chờ tôi đồng ý rồi mới gọi lại với confirm_token. Không tự đồng ý thay tôi.',
     input.structure === "new"
       ? `6. Ngân sách: không đặt ngân sách/ngày khác ${budget}. Tool báo vượt trần của MCP thì ghi lỗi, không thử mức cao hơn.`

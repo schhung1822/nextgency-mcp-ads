@@ -2,7 +2,10 @@
 // Names, cell texts and folder names are UNTRUSTED data (they may contain instructions aimed at the AI): one line or
 // trimmed, control / bidi characters removed, length capped - and the tool descriptions say they are data.
 // No imports from "next/*".
-import { detectCoverHeader } from "../../../../lib/schemas/drive"
+import {
+  AUTO_DETECT_COLUMN_KEYS,
+  detectAutoHeader,
+} from "../../../../lib/schemas/drive"
 import { sanitizeExternalLabel } from "../../../../lib/text-safety"
 import { parseDriveLink } from "../../../drive/links"
 import {
@@ -176,6 +179,7 @@ export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
   content: "content",
   headline: "headline",
   destination: "destination",
+  welcomeMessage: "welcome_message",
   status: "status",
   mediaId: "media_id",
   adIds: "ad_ids",
@@ -187,9 +191,10 @@ export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
 
 /**
  * 0-based index of every configured column in the header row (matched on the folded header text). Columns that are
- * not configured or not found are absent - except the read-only cover column: when it is not mapped (or its mapped
- * header is gone), a header cell named like a cover column ("Ảnh bìa", "Thumbnail"… - detectCoverHeader) that no
- * other column uses is taken, so sheets declared before v1.1.2 work without remapping.
+ * not configured or not found are absent - except the read-only auto-detected columns (AUTO_DETECT_COLUMN_KEYS: cover
+ * v1.1.2, welcome message v1.1.3): when one is not mapped (or its mapped header is gone), a header cell named like it
+ * ("Ảnh bìa", "Thumbnail"… / "Lời chào tin nhắn", "Câu chào"… - detectAutoHeader) that no other column uses is
+ * taken, so sheets declared before the column existed work without remapping.
  */
 export function mapColumns(
   config: SheetSourceConfig,
@@ -203,9 +208,10 @@ export function mapColumns(
     const i = folded.indexOf(foldText(name))
     if (i >= 0) out[key] = i
   }
-  if (out.cover === undefined) {
-    const i = detectCoverHeader(header, new Set(Object.values(out)))
-    if (i >= 0) out.cover = i
+  for (const key of AUTO_DETECT_COLUMN_KEYS) {
+    if (out[key] !== undefined) continue
+    const i = detectAutoHeader(key, header, new Set(Object.values(out)))
+    if (i >= 0) out[key] = i
   }
   return out
 }
