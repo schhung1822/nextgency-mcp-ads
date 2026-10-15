@@ -217,7 +217,7 @@ export const guides = {
           {
             title: "Apify (lấy dữ liệu)",
             detail:
-              "Thẻ Apify nằm cùng các nền tảng quảng cáo: bật để AI lấy dữ liệu (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Google Maps, trang web…) bằng token Apify công ty + token cá nhân của chủ MCP (tự xoay vòng). Một MCP có thể vừa quản lý quảng cáo vừa lấy dữ liệu Apify, hoặc chỉ dùng Apify. Chưa có token dùng được thì công tắc bị khoá - bấm Thêm token Apify (Kết nối → Apify) rồi quay lại.",
+              "Thẻ Apify nằm cùng các nền tảng quảng cáo: bật để AI lấy dữ liệu (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Threads, Google Maps, trang web…) bằng token Apify công ty + token cá nhân của chủ MCP (tự xoay vòng). Một MCP có thể vừa quản lý quảng cáo vừa lấy dữ liệu Apify, hoặc chỉ dùng Apify. Chưa có token dùng được thì công tắc bị khoá - bấm Thêm token Apify (Kết nối → Apify) rồi quay lại.",
           },
           {
             title: "Chọn kết nối",
@@ -960,6 +960,7 @@ export const guides = {
     tips: [
       "Ảnh bìa video: cột Ảnh bìa, hoặc chung một ô Link Drive với video (mỗi link một dòng trong ô). Meta để trống thì tự lấy ảnh bìa Meta chọn.",
       "Quảng cáo tin nhắn Messenger (Meta): chọn Loại quảng cáo Meta ở form soạn câu lệnh; lời chào riêng từng dòng ghi ở cột Lời chào tin nhắn. Tối đa lượt mua qua tin nhắn cần Trang có ít nhất 5 lượt mua từ tin nhắn trong 30 ngày.",
+      "Bài viết có sẵn (Meta): dán mã PAGEID_POSTID hoặc link bài viết vào cột Bài viết có sẵn để tạo quảng cáo từ bài đã đăng (giữ lượt thích, bình luận), không cần Link Drive. Thêm lời chào cho quảng cáo đã tạo: ở form chọn Việc cần làm = “Thêm / đổi lời chào cho quảng cáo đã có” (MCP cần quyền Sửa) - quảng cáo giữ nguyên mã và số liệu, Meta duyệt lại.",
       "Không sắp xếp, chèn, xoá dòng khi AI đang chạy.",
     ],
     warnings: [

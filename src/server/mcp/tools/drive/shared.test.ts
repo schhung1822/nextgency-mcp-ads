@@ -6,16 +6,21 @@ import { jobErrorText, uploadLogArgs } from "../common/upload-media"
 import { statusFilter } from "./sheet-read"
 import { rowInput, updatedAtStamp } from "./sheet-update-rows"
 import {
+  canonicalExpectedAnchor,
   canonicalLinkCell,
   cleanSheetLink,
   COLUMN_FIELDS,
+  existingPostAnchor,
   foldText,
+  isFacebookLink,
   isSheetLink,
   linkTokens,
   mapColumns,
   matchAccount,
   neutralizeFormula,
   normalizePlatform,
+  parseExistingPost,
+  rowAnchor,
   sanitizeCell,
   SHEET_ID_RE,
   SHEET_LINK_MAX,
@@ -222,6 +227,151 @@ describe("sheet link columns + status aliases (2026-10-10)", () => {
     expect(COLUMN_FIELDS.campaignLink).toBe("campaign_link")
     expect(COLUMN_FIELDS.cover).toBe("cover")
     expect(COLUMN_FIELDS.welcomeMessage).toBe("welcome_message")
+    expect(COLUMN_FIELDS.existingPost).toBe("existing_post")
+  })
+
+  it("parseExistingPost: PAGEID_POSTID and numeric Facebook post links give the post id, other Facebook links need a lookup, anything else is invalid", () => {
+    const ok = (cell: string) => {
+      const r = parseExistingPost(cell)
+      if (!r || !r.ok) throw new Error(`not ok: ${cell}`)
+      return r.post
+    }
+    expect(parseExistingPost("")).toBeNull()
+    expect(parseExistingPost("  \n ")).toBeNull()
+    expect(parseExistingPost(undefined)).toBeNull()
+    // PAGEID_POSTID (first word of the cell; invisible characters stripped like every cell)
+    expect(ok(" 123456789012345_987654321098765 ")).toEqual({
+      post_id: "123456789012345_987654321098765",
+      needs_lookup: false,
+    })
+    expect(ok("123456789012345_987654321098765\u200b bài khuyến mãi")).toEqual(
+      { post_id: "123456789012345_987654321098765", needs_lookup: false }
+    )
+    // /{page}/posts/{id} (any facebook host, http upgraded, query / fragment dropped)
+    expect(
+      ok(
+        "https://www.facebook.com/123456789012345/posts/987654321098765/?__cft__[0]=AZX&__tn__=%2CO#c"
+      )
+    ).toEqual({
+      post_id: "123456789012345_987654321098765",
+      url: "https://www.facebook.com/123456789012345/posts/987654321098765/",
+      needs_lookup: false,
+    })
+    expect(ok("http://m.facebook.com/123456789012345/posts/987654321098765")).toMatchObject({
+      post_id: "123456789012345_987654321098765",
+      url: "https://m.facebook.com/123456789012345/posts/987654321098765",
+    })
+    expect(ok("facebook.com/123456789012345/posts/987654321098765").post_id).toBe(
+      "123456789012345_987654321098765"
+    )
+    // permalink.php / story.php keep only story_fbid + id
+    expect(
+      ok(
+        "https://www.facebook.com/permalink.php?story_fbid=987654321098765&id=123456789012345&mibextid=abc"
+      )
+    ).toEqual({
+      post_id: "123456789012345_987654321098765",
+      url: "https://www.facebook.com/permalink.php?story_fbid=987654321098765&id=123456789012345",
+      needs_lookup: false,
+    })
+    expect(
+      ok(
+        "https://m.facebook.com/story.php?story_fbid=987654321098765&id=123456789012345"
+      ).post_id
+    ).toBe("123456789012345_987654321098765")
+    // other Facebook links: the link is kept, the post must be looked up
+    for (const [cell, url] of [
+      [
+        "https://www.facebook.com/shopmypham/posts/pfbid02abcDEF?mibextid=x",
+        "https://www.facebook.com/shopmypham/posts/pfbid02abcDEF",
+      ],
+      [
+        "https://www.facebook.com/share/p/1AbCdEf/",
+        "https://www.facebook.com/share/p/1AbCdEf/",
+      ],
+      [
+        "https://www.facebook.com/permalink.php?story_fbid=pfbid0xyz&id=123456789012345",
+        "https://www.facebook.com/permalink.php?story_fbid=pfbid0xyz&id=123456789012345",
+      ],
+      ["https://fb.watch/abcDEF/", "https://fb.watch/abcDEF/"],
+      [
+        "https://web.facebook.com/123456789012345/videos/987654321098765",
+        "https://web.facebook.com/123456789012345/videos/987654321098765",
+      ],
+    ] as const)
+      expect(ok(cell), cell).toEqual({ url, needs_lookup: true })
+    // not a Facebook post
+    for (const bad of [
+      "bài viết hôm qua",
+      "123_456",
+      "123456789012345-987654321098765",
+      "https://www.instagram.com/p/abc/",
+      "https://facebook.com.evil.test/123456789012345/posts/987654321098765",
+      "https://evilfacebook.com/1/posts/2",
+      "https://user:pw@www.facebook.com/123456789012345/posts/987654321098765",
+      "javascript:alert(1)",
+      `https://www.facebook.com/${"a".repeat(600)}`,
+      `https://drive.google.com/file/d/${FILE}/view`,
+    ])
+      expect(parseExistingPost(bad), bad).toEqual({
+        ok: false,
+        code: "existing_post_invalid",
+      })
+    expect(isFacebookLink("https://business.facebook.com/x")).toBe(true)
+    expect(isFacebookLink("https://example.com/facebook.com")).toBe(false)
+    expect(isFacebookLink("facebook.com/x")).toBe(false)
+  })
+
+  it("rowAnchor: the link cell first (unchanged), else the existing post; the AI's expected_link compares in the same form", () => {
+    const post =
+      "https://www.facebook.com/123456789012345/posts/987654321098765?x=1"
+    // a Drive link anchors the row even when a post is there too (rows written before v1.1.4 keep their anchor)
+    expect(rowAnchor(`https://drive.google.com/file/d/${FILE}/view`, post)).toBe(
+      FILE
+    )
+    expect(rowAnchor(`https://drive.google.com/file/d/${FILE}/view`, undefined)).toBe(FILE)
+    // no link: the post (parsed id, needs-lookup link or the raw text of an invalid cell)
+    // + the creative name and account cells (empty when not mapped)
+    expect(rowAnchor("", post)).toBe("post:123456789012345_987654321098765||")
+    expect(rowAnchor("chưa có", "https://www.facebook.com/share/p/1AbC/")).toBe(
+      "post:https://www.facebook.com/share/p/1AbC/||"
+    )
+    expect(rowAnchor("", "bài  viết\nhôm qua")).toBe("post:bài viết hôm qua||")
+    expect(existingPostAnchor("")).toBe("")
+    expect(existingPostAnchor(post)).toBe("post:123456789012345_987654321098765")
+    expect(rowAnchor("", "")).toBe("")
+    expect(rowAnchor("", undefined)).toBe("")
+    expect(rowAnchor("", "", { name: "A", account: "act_1" })).toBe("")
+    // two rows of the same post differ by their creative name / account (normalised: one line, no "|", ≤ 100)
+    const a1 = rowAnchor("", post, { name: " Bài A‮ ", account: "act_1" })
+    const a2 = rowAnchor("", post, { name: "Bài B", account: "act_1" })
+    expect(a1).toBe("post:123456789012345_987654321098765|Bài A|act_1")
+    expect(a2).not.toBe(a1)
+    expect(
+      rowAnchor("", post, { name: "x|y\n z", account: "a".repeat(150) })
+    ).toBe(`post:123456789012345_987654321098765|x y z|${"a".repeat(100)}`)
+    // a Drive link anchor never carries them
+    expect(
+      rowAnchor(`https://drive.google.com/file/d/${FILE}/view`, post, {
+        name: "Bài A",
+        account: "act_1",
+      })
+    ).toBe(FILE)
+    // the anchor round-trips through canonicalExpectedAnchor (idempotent), link cells as before
+    for (const a of [
+      rowAnchor("", post),
+      rowAnchor("", "bài viết hôm qua"),
+      a1,
+      rowAnchor("", post, { name: "x|y\n z", account: "a  b" }),
+      FILE,
+    ])
+      expect(canonicalExpectedAnchor(a)).toBe(a)
+    expect(
+      canonicalExpectedAnchor(
+        `https://drive.google.com/file/d/${FILE}/view?resourcekey=0-x`
+      )
+    ).toBe(FILE)
+    expect(canonicalExpectedAnchor(" post:1_2 ")).toBe("post:1_2")
   })
 
   it("mapColumns: the welcome message column is mapped, or detected by name next to the cover without reusing a cell", () => {
@@ -262,6 +412,57 @@ describe("sheet link columns + status aliases (2026-10-10)", () => {
     expect(
       mapColumns(legacy, ["Link Drive", "Tin nhắn"]).welcomeMessage
     ).toBeUndefined()
+  })
+
+  it("mapColumns: the existing post column is mapped, or detected by name - never the system column Link bài viết", () => {
+    const header = [
+      "Link Drive",
+      "Link bài viết",
+      "Lời chào tin nhắn",
+      "Post ID",
+      "Bài viết có sẵn",
+    ]
+    const mapped = normalizeSheetConfig({
+      columns: {
+        link: "Link Drive",
+        postLink: "Link bài viết",
+        existingPost: "post id",
+      },
+    })
+    expect(mapColumns(mapped, header)).toMatchObject({
+      link: 0,
+      postLink: 1,
+      existingPost: 3,
+      welcomeMessage: 2,
+    })
+    // a config saved before v1.1.4 → detected ("Bài viết có sẵn" is the first alias, it wins over "Post ID")
+    const legacy = normalizeSheetConfig({
+      columns: { link: "Link Drive", postLink: "Link bài viết" },
+    })
+    expect(legacy.columns.existingPost).toBeNull()
+    expect(mapColumns(legacy, header)).toEqual({
+      link: 0,
+      postLink: 1,
+      welcomeMessage: 2,
+      existingPost: 4,
+    })
+    // "Link bài viết" / plain "Bài viết" are never taken as the existing post
+    expect(
+      mapColumns(legacy, ["Link Drive", "Link bài viết", "Bài viết"])
+        .existingPost
+    ).toBeUndefined()
+    expect(
+      mapColumns(normalizeSheetConfig({ columns: { link: "Link Drive" } }), [
+        "Link Drive",
+        "Link bài viết",
+      ]).existingPost
+    ).toBeUndefined()
+    // a generic "Post ID" / "ID bài viết" / "Mã bài viết" column is never auto-detected (only a confirmed mapping)
+    for (const generic of ["Post ID", "ID bài viết", "Mã bài viết"])
+      expect(
+        mapColumns(legacy, ["Link Drive", generic]).existingPost,
+        generic
+      ).toBeUndefined()
   })
 
   it("mapColumns: a mapped cover column is used; without a mapping a header named like a cover column is detected", () => {

@@ -9,7 +9,13 @@
 // Click-to-message (v1.1.3, D1-D5): SALES ad sets may optimise for CONVERSATIONS or MESSAGING_PURCHASE_CONVERSION
 // (Messenger only); ads in an ad set whose destination_type is MESSENGER / WHATSAPP / INSTAGRAM_DIRECT get the matching
 // message CTA, an optional link, the ad set's Page and an optional welcome message (page_welcome_message).
+// v1.1.4: an existing post may carry a welcome message too (E1, top-level page_welcome_message, read back after the
+// create - dedupe); meta_update_ad_creative changes the creative of an existing ad (E2, greeting / content / id).
+import { randomBytes } from "node:crypto"
+
 import { z } from "zod"
+
+import { sanitizeExternalLabel } from "../../../lib/text-safety"
 
 import { isProviderError, ProviderError } from "../errors"
 import { metaCurrencyOffset, toMetaMinor } from "../money"
@@ -18,8 +24,8 @@ import { actId, graph, graphPage, isIsoDateTimeWithOffset, type MetaCredentials 
 import { advertisablePages } from "./lookup"
 import { ensureMetaVideoInAccount, metaVideoCoverUri, readMetaVideo, uploadMetaCoverFromUri } from "./media"
 import { validateOnly } from "./mutate"
-import { readNode, type RawNode } from "./objects"
-import { callCtx, fmtMoney, hasBudget, invalid } from "./shared"
+import { isGraphFieldError, readNode, type RawNode } from "./objects"
+import { assertSameAccount, callCtx, fmtMoney, hasBudget, invalid } from "./shared"
 import { buildTargeting, euCountriesIn, hasGeo, targetingInput, targetingProblems } from "./targeting"
 
 export interface MetaWriteResult extends MutationResult {
@@ -233,14 +239,17 @@ async function findRecentByName(
   name: string,
   sinceMs: number
 ): Promise<string | null> {
+  // AdCreative has no documented created_time: creative names carry a random suffix (meta_update_ad_creative)
+  const creatives = edge === "adcreatives"
   try {
     const res = await graphPage<RawNode>(callCtx(ctx), `${actId(ctx.account.externalId)}/${edge}`, {
-      fields: "id,name,created_time",
+      fields: creatives ? "id,name" : "id,name,created_time",
       filtering: [{ field: "name", operator: "EQUAL", value: name }],
-      limit: 5,
+      limit: creatives ? 25 : 5,
     })
     const hit = res.data.find(
-      (n) => n.name === name && typeof n.created_time === "string" && Date.parse(n.created_time) >= sinceMs
+      (n) =>
+        n.name === name && (creatives || (typeof n.created_time === "string" && Date.parse(n.created_time) >= sinceMs))
     )
     return hit?.id ?? null
   } catch {
@@ -254,11 +263,12 @@ async function findRecentByName(
  */
 async function createObject(
   ctx: ProviderContext<MetaCredentials>,
-  edge: "campaigns" | "adsets" | "ads",
+  edge: "campaigns" | "adsets" | "ads" | "adcreatives",
   payload: Record<string, unknown>,
   warnings: string[]
 ): Promise<string> {
-  if (payload.status !== "PAUSED") throw new Error("internal: Meta create payload must be PAUSED")
+  // creatives have no delivery status; every campaign / ad set / ad is created PAUSED
+  if (edge !== "adcreatives" && payload.status !== "PAUSED") throw new Error("internal: Meta create payload must be PAUSED")
   const started = Date.now()
   try {
     const res = await graph<{ id?: string }>(callCtx(ctx), {
@@ -781,6 +791,7 @@ const existingPostCreative = z
   .object({
     type: z.literal("existing_post"),
     object_story_id: z.string().regex(/^\d+_\d+$/, "Dạng <PAGE_ID>_<POST_ID>."),
+    welcome_message: welcomeMessageInput.optional(),
   })
   .strict()
 
@@ -873,6 +884,19 @@ export function buildWelcomeMessage(w: WelcomeMessageInput): {
   return { value, shown: { text, ice_breakers: breakers } }
 }
 
+/** welcome_message: only ad sets whose destination is MESSENGER (same refusal for every creative type and tool). */
+function welcomeFor(w: WelcomeMessageInput, dest: MessagingDestination | null): ReturnType<typeof buildWelcomeMessage> {
+  if (dest !== "MESSENGER") {
+    throw invalid(
+      dest
+        ? `Lời chào tin nhắn (welcome_message) hiện chỉ hỗ trợ nhóm quảng cáo đích Messenger (nhóm này là ${dest}).`
+        : "welcome_message chỉ dùng cho quảng cáo nhắn tin: nhóm quảng cáo phải có destination_type MESSENGER (mục tiêu CONVERSATIONS hoặc MESSAGING_PURCHASE_CONVERSION).",
+      dest ? "Bỏ welcome_message." : "Bỏ welcome_message, hoặc tạo nhóm quảng cáo nhắn tin Messenger bằng meta_create_adset."
+    )
+  }
+  return buildWelcomeMessage(w)
+}
+
 function promotedPageId(v: unknown): string | null {
   const id = v && typeof v === "object" ? (v as { page_id?: unknown }).page_id : undefined
   return typeof id === "string" || typeof id === "number" ? String(id) : null
@@ -904,6 +928,8 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
 
   if (c.type === "existing_post") {
     creative.object_story_id = c.object_story_id
+    // E1: object_story_spec cannot go with object_story_id → the greeting is the top-level page_welcome_message
+    if (c.welcome_message !== undefined) welcome = welcomeFor(c.welcome_message, dest)
     if (msg) {
       // [M] CTM docs conflict (an example with object_story_id + creative-level CTA vs "object_story_id not supported"
       // in Limitations): only Messenger gets the documented CTA; WhatsApp / Instagram stay as before (untouched)
@@ -917,19 +943,15 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
         "Bài có sẵn trong nhóm quảng cáo nhắn tin: Meta có thể không nhận (tài liệu Meta chưa thống nhất) - nếu bị từ chối, hãy tạo quảng cáo với creative mới (link / video)."
       )
     }
+    if (welcome) {
+      creative.page_welcome_message = welcome.value
+      warnings.push(
+        "Lời chào của bài có sẵn gửi ở cấp creative (page_welcome_message): Meta có thể dùng lại creative cũ của cùng bài viết (không có lời chào) - hệ thống đọc lại sau khi tạo để kiểm tra."
+      )
+    }
   } else {
     if (!input.page_id) throw invalid("Cần page_id (Trang chạy quảng cáo).", "Gọi ads_lookup kind=pages.")
-    if (c.welcome_message !== undefined) {
-      if (dest !== "MESSENGER") {
-        throw invalid(
-          dest
-            ? `Lời chào tin nhắn (welcome_message) hiện chỉ hỗ trợ nhóm quảng cáo đích Messenger (nhóm này là ${dest}).`
-            : "welcome_message chỉ dùng cho quảng cáo nhắn tin: nhóm quảng cáo phải có destination_type MESSENGER (mục tiêu CONVERSATIONS hoặc MESSAGING_PURCHASE_CONVERSION).",
-          dest ? "Bỏ welcome_message." : "Bỏ welcome_message, hoặc tạo nhóm quảng cáo nhắn tin Messenger bằng meta_create_adset."
-        )
-      }
-      welcome = buildWelcomeMessage(c.welcome_message)
-    }
+    if (c.welcome_message !== undefined) welcome = welcomeFor(c.welcome_message, dest)
     let ctaIn = c.call_to_action
     if (msg) {
       if (!ctaIn) {
@@ -1054,17 +1076,16 @@ function failedVideoNote(id: string, reason: string | null): string {
 
 async function applyCover(
   ctx: ProviderContext<MetaCredentials>,
-  input: CreateAdInput,
-  payload: Record<string, unknown>,
-  summary: Record<string, unknown>,
+  c: CreateAdInput["creative"],
+  creative: Record<string, unknown>,
+  shownCreative: Record<string, unknown>,
   warnings: string[],
   opts: MutationOptions
 ): Promise<{ uri: string | null; skipValidate: boolean }> {
-  const c = input.creative
   if (c.type === "existing_post") return { uri: null, skipValidate: false }
   const key = c.type === "video" ? "video_data" : "link_data"
-  const data = ((payload.creative as Record<string, unknown>).object_story_spec as Record<string, Record<string, unknown>>)[key]!
-  const shown = ((summary.creative as Record<string, unknown>).object_story_spec as Record<string, Record<string, unknown>>)[key]!
+  const data = (creative.object_story_spec as Record<string, Record<string, unknown>>)[key]!
+  const shown = (shownCreative.object_story_spec as Record<string, Record<string, unknown>>)[key]!
   const imageField = c.type === "video" ? "image_url" : "picture"
 
   if (c.image_drive_file !== undefined) {
@@ -1139,15 +1160,15 @@ const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResul
     "Dùng khi cần tạo quảng cáo trong một nhóm quảng cáo Meta đã có (adset_id từ ads_list_objects hoặc " +
     "meta_create_adset). Quảng cáo luôn được tạo ở trạng thái TẠM DỪNG và phải qua Meta duyệt. Creative tạo kèm: " +
     "`link` (ảnh + link), `video` (video_id từ ads_upload_media / ads_get_media_upload) hoặc `existing_post` " +
-    "(object_story_id dạng PAGEID_POSTID). Ảnh (link) / ảnh bìa (video): truyền MỘT trong image_hash (ads_upload_media), " +
+    "(object_story_id dạng PAGEID_POSTID; nhóm Messenger thêm được welcome_message). Ảnh (link) / ảnh bìa (video): truyền MỘT trong image_hash (ads_upload_media), " +
     "image_url, hoặc image_drive_file = ảnh Google Drive người dùng đưa (file_id / link Drive / drf_ từ drive_list_files, " +
     "drive_sheet_read) - hệ thống tự tải ảnh lên khi xác nhận (dùng lại nếu đã tải). Video không có ảnh bìa: hệ thống tự " +
     "lấy ảnh bìa Meta trích từ video khi video đã sẵn sàng; video đang xử lý → lỗi video_processing (thử lại sau ít phút " +
     "hoặc đưa ảnh bìa), video lỗi → video_failed (tải video lên lại). Cần page_id (ads_lookup kind=pages) trừ khi dùng bài " +
     "có sẵn; instagram_user_id tuỳ chọn (ads_lookup kind=instagram_accounts). Nhóm nhắn tin (destination MESSENGER/" +
     "WHATSAPP/INSTAGRAM_DIRECT): thiếu nút thì tự đặt MESSAGE_PAGE/WHATSAPP_MESSAGE/INSTAGRAM_MESSAGE, link tuỳ chọn, page_id phải " +
-    "là Trang của nhóm; welcome_message (chỉ Messenger) = lời chào + tối đa 4 câu hỏi gợi ý. Mọi tính năng Advantage+ creative " +
-    "(tự sửa ảnh, đổi chữ, thêm nhạc…) gửi OPT_OUT trừ khi liệt kê trong advantage_creative_opt_in. Quảng cáo biểu " +
+    "là Trang của nhóm; welcome_message (chỉ Messenger) = lời chào + tối đa 4 câu hỏi gợi ý; quảng cáo đã có thì dùng " +
+    "meta_update_ad_creative. Mọi tính năng Advantage+ creative gửi OPT_OUT trừ khi liệt kê trong advantage_creative_opt_in. Quảng cáo biểu " +
     "mẫu cần call_to_action.lead_gen_form_id. url_tags để gắn UTM.",
   input: createAdInput,
   write: true,
@@ -1168,9 +1189,20 @@ const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResul
     // dry run AND execute: page_id and the Page of an existing post (PAGEID_POSTID) must be advertisable
     const postPage = input.creative.type === "existing_post" ? input.creative.object_story_id.split("_")[0] : undefined
     await assertAdvertisablePages(ctx, [input.page_id, postPage])
-    const cover = await applyCover(ctx, input, payload, summary, warnings, opts)
+    const cover = await applyCover(
+      ctx,
+      input.creative,
+      payload.creative as Record<string, unknown>,
+      summary.creative as Record<string, unknown>,
+      warnings,
+      opts
+    )
     try {
-      return await runCreate(ctx, "ads", payload, summary, warnings, opts, "ad", { skipValidate: cover.skipValidate })
+      const res = await runCreate(ctx, "ads", payload, summary, warnings, opts, "ad", { skipValidate: cover.skipValidate })
+      // E1: existing post + greeting - Meta may have reused the post's old creative (dedupe): read back, warn only
+      const sent = (payload.creative as Record<string, unknown>).page_welcome_message
+      if (!res.preview && typeof sent === "string" && res.createdIds?.[0]) await checkAdGreeting(ctx, res.createdIds[0], sent, warnings)
+      return res
     } catch (e) {
       throw cover.uri ? scrubUri(e, cover.uri) : e
     }
@@ -1245,9 +1277,702 @@ const updateTargeting: ProviderExtension<MetaCredentials, UpdateTargetingInput, 
   },
 }
 
+// ---------------------------------------------------------------------------
+// Greetings stored on creatives (E1 read-back, meta_update_ad_creative before / after)
+// ---------------------------------------------------------------------------
+
+type GreetingShown = { text: string; ice_breakers?: { title: string; response: string }[] }
+
+function rec(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+function idStr(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : typeof v === "number" ? String(v) : null
+}
+
+/** `text_format.message` of a VISUAL_EDITOR greeting (JSON string), null for plain text. */
+function visualEditorMessage(raw: string): Record<string, unknown> | null {
+  if (!raw.trim().startsWith("{")) return null
+  try {
+    return rec(rec(rec(JSON.parse(raw))?.text_format)?.message)
+  } catch {
+    return null
+  }
+}
+
+/** A stored greeting (plain text or VISUAL_EDITOR JSON) as safe display data - platform data, never instructions. */
+export function greetingShown(raw: unknown): GreetingShown | null {
+  if (typeof raw !== "string" || !raw.trim()) return null
+  const m = visualEditorMessage(raw)
+  if (!m) return { text: sanitizeExternalLabel(raw, 300) ?? "" }
+  const text = sanitizeExternalLabel(typeof m.text === "string" ? m.text : "", 300) ?? ""
+  const breakers = Array.isArray(m.ice_breakers)
+    ? m.ice_breakers.slice(0, 4).map((b) => ({
+        title: sanitizeExternalLabel(String(rec(b)?.title ?? ""), 80) ?? "",
+        response: sanitizeExternalLabel(String(rec(b)?.response ?? ""), 300) ?? "",
+      }))
+    : []
+  return breakers.length ? { text, ice_breakers: breakers } : { text }
+}
+
+function greetingKey(raw: string): string {
+  const m = visualEditorMessage(raw)
+  if (!m) return JSON.stringify([raw.trim(), []])
+  const breakers = Array.isArray(m.ice_breakers)
+    ? m.ice_breakers.map((b) => [String(rec(b)?.title ?? "").trim(), String(rec(b)?.response ?? "").trim()])
+    : []
+  return JSON.stringify([String(m.text ?? "").trim(), breakers])
+}
+
+/** Is the greeting Meta stored the one we sent? (Meta may return an existing creative of the same post - dedupe.) */
+export function greetingVerdict(sent: string, got: unknown): "match" | "missing" | "different" {
+  if (typeof got !== "string" || !got.trim()) return "missing"
+  return greetingKey(got) === greetingKey(sent) ? "match" : "different"
+}
+
+/** Greeting of a creative: top level (existing post) or object_story_spec.link_data / video_data. */
+function creativeGreeting(c: Record<string, unknown> | null): string | null {
+  if (!c) return null
+  if (typeof c.page_welcome_message === "string" && c.page_welcome_message.trim()) return c.page_welcome_message
+  const spec = rec(c.object_story_spec)
+  for (const k of ["link_data", "video_data"]) {
+    const g = rec(spec?.[k])?.page_welcome_message
+    if (typeof g === "string" && g.trim()) return g
+  }
+  return null
+}
+
+/** Page of a creative: object_story_spec.page_id, else the PAGEID of object_story_id / effective_object_story_id. */
+function creativePage(c: Record<string, unknown> | null): string | null {
+  if (!c) return null
+  const fromSpec = idStr(rec(c.object_story_spec)?.page_id)
+  if (fromSpec) return fromSpec
+  for (const k of ["object_story_id", "effective_object_story_id"]) {
+    const v = c[k]
+    if (typeof v === "string" && /^\d+_\d+$/.test(v)) return v.split("_")[0]!
+  }
+  return null
+}
+
+/**
+ * meta_create_ad, existing post + welcome message (E1): Meta may return the existing creative of the same post
+ * without the greeting - read the new ad's creative back and warn (the ad exists either way, not a failure).
+ */
+async function checkAdGreeting(ctx: ProviderContext<MetaCredentials>, adId: string, sent: string, warnings: string[]): Promise<void> {
+  let node: RawNode
+  try {
+    node = await graph<RawNode>(callCtx(ctx), {
+      method: "GET",
+      path: adId,
+      params: { fields: "id,creative{id,page_welcome_message}" },
+      idempotent: true,
+    })
+  } catch {
+    warnings.push("Không đọc lại được creative của quảng cáo mới để kiểm tra lời chào - xem lại bằng ads_get_object (level=ad).")
+    return
+  }
+  const cr = rec(node.creative)
+  const verdict = greetingVerdict(sent, cr?.page_welcome_message)
+  if (verdict === "match") return
+  warnings.push(
+    `Quảng cáo đã được tạo nhưng creative ${idStr(cr?.id) ?? "?"} ${verdict === "missing" ? "KHÔNG có lời chào" : "có lời chào KHÁC lời chào vừa gửi"} (Meta có thể đã dùng lại creative cũ của cùng bài viết). Thêm / sửa lời chào bằng meta_update_ad_creative (ad_id ${adId}, welcome_message).`
+  )
+}
+
+// ---------------------------------------------------------------------------
+// meta_update_ad_creative (v1.1.4, E2): change the creative of an EXISTING ad (greeting / new content / creative id).
+// Creatives are immutable on Meta (POST /{creative_id} takes name/status only - 100/1815573): a new creative is made
+// under act_X/adcreatives, read back when it carries a greeting (dedupe of object_story_id creatives), then attached
+// with POST /{ad_id} creative={"creative_id"}. The ad keeps its id, status and stats; Meta reviews it again.
+// ---------------------------------------------------------------------------
+
+export const updateAdCreativeInput = z
+  .object({
+    ad_id: digits.describe("Quảng cáo cần đổi (ads_list_objects level=ad)"),
+    welcome_message: welcomeMessageInput.optional(),
+    creative: z.discriminatedUnion("type", [linkCreative, videoCreative, existingPostCreative]).optional(),
+    creative_id: digits.optional().describe("Creative có sẵn của cùng tài khoản quảng cáo"),
+    page_id: digits
+      .optional()
+      .describe("Chỉ với creative link / video: Trang chạy quảng cáo (mặc định Trang của nhóm nhắn tin / creative hiện tại)"),
+    instagram_user_id: digits.optional().describe("Chỉ với creative mới (ads_lookup kind=instagram_accounts)"),
+    url_tags: z.string().max(1024).optional().describe("UTM của creative mới (khi chỉ đổi lời chào: mặc định giữ UTM hiện tại)"),
+    advantage_creative_opt_in: z
+      .array(z.enum(CREATIVE_FEATURES))
+      .default([])
+      .describe("Tính năng Advantage+ creative muốn BẬT cho creative mới; mọi tính năng khác gửi OPT_OUT."),
+  })
+  .strict()
+export type UpdateAdCreativeInput = z.infer<typeof updateAdCreativeInput>
+
+const CREATIVE_READ_FIELDS =
+  "id,name,status,object_story_id,effective_object_story_id,object_story_spec,asset_feed_spec,product_set_id,call_to_action,call_to_action_type,page_welcome_message,url_tags,instagram_user_id,authorization_category,platform_customizations"
+
+const AD_FOR_SWAP_FIELDS = [
+  "name",
+  "status",
+  "effective_status",
+  "adset{id,name,status,effective_status,destination_type,promoted_object,optimization_goal,is_dynamic_creative}",
+  "campaign{id,name,status,effective_status,objective,smart_promotion_type}",
+  `creative{${CREATIVE_READ_FIELDS}}`,
+]
+
+/** Shown with every preview / result of meta_update_ad_creative. */
+export const AD_CREATIVE_SWAP_NOTES = [
+  "Quảng cáo giữ nguyên ID, trạng thái và số liệu - chỉ creative (nội dung) được thay.",
+  "Meta sẽ duyệt lại quảng cáo sau khi đổi creative (trạng thái có thể tạm là Đang xét duyệt).",
+  "Đổi creative là thay đổi lớn: nhóm quảng cáo có thể quay lại giai đoạn học.",
+  "Hệ thống không bật / tắt quảng cáo: quảng cáo đang chạy sẽ chạy tiếp sau khi Meta duyệt, đang tạm dừng thì vẫn tạm dừng.",
+]
+const GREETING_DEDUPE_NOTE =
+  "Meta có thể dùng lại creative cũ của bài viết (không có lời chào); nếu vậy hệ thống dừng, không đổi gì trên quảng cáo."
+const GREETING_NOT_COPIED_NOTE =
+  "Creative mới không chép tính năng Advantage+ creative của creative cũ (gửi OPT_OUT như khi tạo, trừ advantage_creative_opt_in) và các tuỳ chỉnh nâng cao (cắt ảnh, tuỳ chỉnh theo vị trí hiển thị, tuyên bố miễn trừ…)."
+const SOCIAL_PROOF_NOTE =
+  "Creative mới không dùng bài viết hiện tại của quảng cáo: lượt thích / bình luận / chia sẻ của bài cũ sẽ không còn hiển thị trên quảng cáo."
+
+/** object_story_spec keys copied when only the greeting changes (documented AdCreativeLinkData / VideoData fields; carousel refused). */
+const LINK_DATA_KEYS = [
+  "link",
+  "message",
+  "name",
+  "description",
+  "caption",
+  "image_hash",
+  "picture",
+  "call_to_action",
+]
+const VIDEO_DATA_KEYS = ["video_id", "image_hash", "image_url", "message", "title", "link_description", "call_to_action"]
+const CURRENT_IMAGE_LABEL = "<ảnh hiện tại của creative>"
+const SIGNED_URL = /^https?:\/\/[^\s"']*(fbcdn|fbsbx)[^\s"']*$/i
+/** legacy Advantage+ shopping / app campaigns: no API updates since 2026-05-19 (meta.md §1) */
+const LEGACY_SMART = new Set(["AUTOMATED_SHOPPING_ADS", "SMART_APP_PROMOTION"])
+
+function deadOf(n: Record<string, unknown> | null): string | null {
+  for (const v of [n?.status, n?.effective_status]) if (v === "ARCHIVED" || v === "DELETED") return v
+  return null
+}
+
+function refuseDead(what: string, id: string, status: string | null): void {
+  if (!status) return
+  throw invalid(
+    `${what} ${id} đang ở trạng thái ${status} (đã lưu trữ / đã xoá) - Meta không cho đổi creative.`,
+    "Tạo quảng cáo mới bằng meta_create_ad (hoặc sao chép bằng ads_copy_object)."
+  )
+}
+
+function assertSwappable(
+  ad: RawNode,
+  adset: Record<string, unknown>,
+  campaign: Record<string, unknown>,
+  old: Record<string, unknown> | null
+): void {
+  refuseDead("Quảng cáo", ad.id, deadOf(ad))
+  refuseDead("Nhóm quảng cáo chứa quảng cáo", idStr(adset.id) ?? "?", deadOf(adset))
+  refuseDead("Chiến dịch chứa quảng cáo", idStr(campaign.id) ?? "?", deadOf(campaign))
+  if (typeof campaign.smart_promotion_type === "string" && LEGACY_SMART.has(campaign.smart_promotion_type)) {
+    throw invalid(
+      "Chiến dịch Advantage+ mua sắm / ứng dụng kiểu cũ: Meta không còn cho sửa qua API (từ 2026-05-19).",
+      "Tạo chiến dịch mới bằng meta_create_campaign, hoặc sửa trong Trình quản lý quảng cáo."
+    )
+  }
+  if (adset.is_dynamic_creative === true) {
+    throw invalid(
+      "Nhóm quảng cáo dùng Dynamic Creative (Meta tự phối nội dung): không đổi creative qua công cụ này.",
+      "Sửa trong Trình quản lý quảng cáo, hoặc tạo nhóm / quảng cáo mới."
+    )
+  }
+  if (rec(old?.asset_feed_spec)) {
+    throw invalid(
+      "Creative hiện tại có nhiều phương án nội dung (asset_feed_spec - định dạng linh hoạt / Dynamic Creative): Meta không cho thay bằng creative thường.",
+      "Tạo quảng cáo mới bằng meta_create_ad rồi tạm dừng quảng cáo cũ."
+    )
+  }
+  if (idStr(old?.product_set_id) || idStr(rec(adset.promoted_object)?.product_set_id)) {
+    throw invalid("Quảng cáo danh mục sản phẩm (catalog): không đổi creative qua công cụ này.", "Sửa trong Trình quản lý quảng cáo.")
+  }
+}
+
+/** CTA of a Messenger creative: keep a Messenger message CTA (or any CTA already opening Messenger), else MESSAGE_PAGE. */
+function messengerCta(old: unknown): Record<string, unknown> {
+  const o = rec(old)
+  const type = typeof o?.type === "string" && (CTA_TYPES as readonly string[]).includes(o.type) ? (o.type as (typeof CTA_TYPES)[number]) : null
+  const app = type ? MESSAGE_CTA_APPS[type] : undefined
+  const keep = type !== null && (app === "MESSENGER" || (!app && rec(o?.value)?.app_destination === "MESSENGER"))
+  return { type: keep ? type : "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } }
+}
+
+function hasContent(v: unknown): boolean {
+  if (v === null || v === undefined || v === "") return false
+  if (Array.isArray(v)) return v.length > 0
+  return typeof v !== "object" || Object.keys(v as object).length > 0
+}
+
+/** Preview / log copy of a greeting-mode creative: texts read from Meta (platform data) sanitised and capped. */
+const SHOWN_TEXT_CAPS: Record<string, number> = {
+  message: 500,
+  name: 255,
+  description: 255,
+  caption: 255,
+  title: 255,
+  link_description: 255,
+  link: 500,
+}
+function cleanShown(c: Record<string, unknown>): Record<string, unknown> {
+  if (typeof c.name === "string") c.name = sanitizeExternalLabel(c.name, 400) ?? ""
+  const spec = rec(c.object_story_spec)
+  for (const k of ["link_data", "video_data"]) {
+    const d = rec(spec?.[k])
+    if (!d) continue
+    for (const [f, cap] of Object.entries(SHOWN_TEXT_CAPS)) if (typeof d[f] === "string") d[f] = sanitizeExternalLabel(d[f], cap) ?? ""
+  }
+  return c
+}
+
+/**
+ * Mode welcome_message: the current content with a new greeting. object_story_spec link_data / video_data (preferred:
+ * object_story_id may then be the dark post) → documented keys copied + *_data.page_welcome_message; else an existing
+ * post → {object_story_id, Messenger CTA, top-level page_welcome_message}; carousel, platform_customizations and any
+ * other shape are refused (no degraded copy). `signed` = image URLs read from Meta (sent to Meta only, never shown).
+ */
+function buildGreetingCreative(
+  old: Record<string, unknown> | null,
+  welcome: ReturnType<typeof buildWelcomeMessage>,
+  input: UpdateAdCreativeInput,
+  name: string,
+  warnings: string[]
+): { creative: Record<string, unknown>; page: string | null; signed: string[] } {
+  const creative: Record<string, unknown> = { name }
+  const signed: string[] = []
+  const postId = typeof old?.object_story_id === "string" && /^\d+_\d+$/.test(old.object_story_id) ? old.object_story_id : null
+  const spec = rec(old?.object_story_spec)
+  const specKey = rec(spec?.video_data) ? "video_data" : rec(spec?.link_data) ? "link_data" : null
+  const toNewContent = "Dùng tham số creative (link / video kèm welcome_message) để tạo nội dung mới."
+  if (hasContent(old?.platform_customizations)) {
+    throw invalid(
+      "Creative hiện tại có tuỳ chỉnh theo nền tảng / vị trí hiển thị (platform_customizations) - không chép an toàn được để chỉ thêm lời chào.",
+      toNewContent
+    )
+  }
+  let format: "link" | "video" | "existing_post"
+  let page: string | null
+  if (old && spec && specKey) {
+    const src = rec(spec[specKey])!
+    if (specKey === "link_data" && hasContent(src.child_attachments)) {
+      throw invalid("Quảng cáo băng chuyền (carousel): không thể chỉ thêm lời chào qua công cụ này.", toNewContent)
+    }
+    format = specKey === "video_data" ? "video" : "link"
+    const data: Record<string, unknown> = {}
+    for (const k of specKey === "video_data" ? VIDEO_DATA_KEYS : LINK_DATA_KEYS) {
+      if (src[k] !== undefined && src[k] !== null) data[k] = structuredClone(src[k])
+    }
+    if (data.image_hash) {
+      delete data.picture
+      delete data.image_url
+    }
+    for (const k of ["picture", "image_url"]) if (typeof data[k] === "string") signed.push(data[k] as string)
+    data.call_to_action = messengerCta(src.call_to_action)
+    data.page_welcome_message = welcome.value
+    const outSpec: Record<string, unknown> = {}
+    page = idStr(spec.page_id)
+    if (page) outSpec.page_id = page
+    const ig = idStr(spec.instagram_user_id)
+    if (ig) outSpec.instagram_user_id = ig
+    outSpec[specKey] = data
+    creative.object_story_spec = outSpec
+    warnings.push(
+      "Creative hiện tại được tạo từ nội dung (không phải bài có sẵn): Meta tạo bài quảng cáo mới, lượt thích / bình luận / chia sẻ của bài cũ sẽ không còn hiển thị trên quảng cáo."
+    )
+  } else if (old && postId) {
+    format = "existing_post"
+    page = postId.split("_")[0]!
+    creative.object_story_id = postId
+    creative.call_to_action = messengerCta(old.call_to_action)
+    creative.page_welcome_message = welcome.value
+    const ig = idStr(old.instagram_user_id)
+    if (ig) creative.instagram_user_id = ig
+    warnings.push("Giữ nguyên bài viết đang quảng cáo (lượt thích / bình luận giữ nguyên); lời chào gửi ở cấp creative (page_welcome_message).")
+    warnings.push(GREETING_DEDUPE_NOTE)
+  } else {
+    throw invalid(
+      "Creative hiện tại của quảng cáo không phải bài viết có sẵn hay ảnh / video + link (vd bộ sưu tập, danh mục, nhiều phương án nội dung) - không thể chỉ thêm lời chào.",
+      "Dùng tham số creative (link / video / existing_post kèm welcome_message) để thay nội dung mới."
+    )
+  }
+  const auth = old?.authorization_category
+  if (typeof auth === "string" && auth !== "" && auth !== "NONE") creative.authorization_category = auth
+  const tags = input.url_tags ?? (typeof old?.url_tags === "string" && old.url_tags ? old.url_tags : undefined)
+  creative.degrees_of_freedom_spec = { creative_features_spec: creativeFeaturesSpec(format, input.advantage_creative_opt_in) }
+  if (tags) creative.url_tags = tags
+  warnings.push(GREETING_NOT_COPIED_NOTE)
+  return { creative, page, signed }
+}
+
+/** Copy for previews / logs: image URLs read from Meta (signed fbcdn) replaced by a label. */
+function scrubShown(v: unknown, signed: string[]): unknown {
+  if (typeof v === "string") return signed.includes(v) || SIGNED_URL.test(v) ? CURRENT_IMAGE_LABEL : v
+  if (Array.isArray(v)) return v.map((x) => scrubShown(x, signed))
+  const r = rec(v)
+  if (!r) return v
+  return Object.fromEntries(Object.entries(r).map(([k, x]) => [k, scrubShown(x, signed)]))
+}
+
+function scrubAll(e: unknown, signed: string[]): unknown {
+  return signed.filter((u) => u.length > 0).reduce((err, u) => scrubUri(err, u), e)
+}
+
+/** "yyyy-mm-dd hh:mm" in the ad account's time zone (creative names). */
+function accountStamp(timezone: string): string {
+  const now = new Date()
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(now)
+    const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00"
+    return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`
+  } catch {
+    return now.toISOString().slice(0, 16).replace("T", " ")
+  }
+}
+
+/** A ProviderError with an extra hint sentence (orphan creative id after a failed swap). */
+function withHint(e: unknown, extra: string): unknown {
+  if (!isProviderError(e)) return e
+  return new ProviderError({
+    platform: e.platform,
+    code: e.code,
+    toolCode: e.toolCode,
+    message: e.message,
+    userMessageVi: e.userMessageVi,
+    hint: e.hint ? `${e.hint} ${extra}` : extra,
+    retryable: e.retryable,
+    retryAfterMs: e.retryAfterMs,
+    upstream: e.upstream,
+  })
+}
+
+/** Read the new creative back: the greeting we sent must be stored (else Meta returned another creative - dedupe). */
+async function verifyCreativeGreeting(ctx: ProviderContext<MetaCredentials>, id: string, sent: string): Promise<void> {
+  let node: RawNode
+  try {
+    node = await graph<RawNode>(callCtx(ctx), {
+      method: "GET",
+      path: id,
+      params: { fields: "id,account_id,page_welcome_message,object_story_spec" },
+      idempotent: true,
+    })
+  } catch {
+    throw invalid(
+      `Không đọc lại được creative ${id} để kiểm tra lời chào - CHƯA đổi creative của quảng cáo.`,
+      `Creative ${id} đã được tạo nhưng chưa gắn vào quảng cáo: kiểm tra lại sau rồi gọi meta_update_ad_creative với creative_id=${id}, hoặc thử lại từ đầu.`
+    )
+  }
+  assertSameAccount(ctx, node, "creative")
+  const verdict = greetingVerdict(sent, creativeGreeting(node))
+  if (verdict === "match") return
+  throw invalid(
+    `Meta trả về creative ${id} ${verdict === "missing" ? "KHÔNG có lời chào vừa gửi" : "có lời chào KHÁC lời chào vừa gửi"} (Meta có thể đã dùng lại creative cũ của cùng bài viết) - CHƯA đổi creative của quảng cáo.`,
+    "Meta có thể đã trả lại creative cũ của bài viết. Gọi lại với tham số creative = nội dung link / video kèm welcome_message (Meta tạo bài quảng cáo mới, mất lượt thích / bình luận của bài cũ), hoặc thêm lời chào trong Trình quản lý quảng cáo."
+  )
+}
+
+/**
+ * POST /{ad_id} creative={"creative_id"}. Not retried blindly: on timeout / 5xx the ad is read back and the swap
+ * counts as done when it already shows the new creative. `orphan` = creative made by this call (named in the hint).
+ */
+async function swapCreative(
+  ctx: ProviderContext<MetaCredentials>,
+  adId: string,
+  creativeId: string,
+  orphan: string | null,
+  warnings: string[]
+): Promise<void> {
+  try {
+    await graph(callCtx(ctx), { method: "POST", path: adId, params: { creative: { creative_id: creativeId } }, idempotent: false })
+  } catch (e) {
+    if (isProviderError(e) && (e.code === "timeout" || e.code === "upstream_error")) {
+      const now = await graph<RawNode>(callCtx(ctx), {
+        method: "GET",
+        path: adId,
+        params: { fields: "id,creative{id}" },
+        idempotent: true,
+      }).catch(() => null)
+      if (idStr(rec(now?.creative)?.id) === creativeId) {
+        warnings.push("Meta phản hồi lỗi / timeout nhưng quảng cáo đã nhận creative mới - không gửi lại.")
+        return
+      }
+    }
+    throw orphan
+      ? withHint(
+          e,
+          `Creative ${orphan} đã được tạo nhưng CHƯA gắn vào quảng cáo - thử lại bằng meta_update_ad_creative với creative_id=${orphan} (không tạo thêm creative).`
+        )
+      : e
+  }
+}
+
+/** Fallback reads when Meta rejects a field (#100): only what every swap needs (refusal fields probed apart). */
+const CREATIVE_MIN_FIELDS = "id,name,status,object_story_id,effective_object_story_id,object_story_spec,url_tags"
+const AD_FOR_SWAP_MIN_FIELDS = [
+  "name",
+  "status",
+  "effective_status",
+  "adset{id,name,status,effective_status,destination_type,promoted_object,optimization_goal}",
+  "campaign{id,name,status,effective_status,objective}",
+  `creative{${CREATIVE_MIN_FIELDS}}`,
+]
+/** Fields that decide refusals, probed one node at a time on the fallback path. */
+const CREATIVE_PROBE_FIELDS = "asset_feed_spec,product_set_id,platform_customizations"
+export const AD_CREATIVE_DEGRADED_NOTE =
+  "Meta không trả một số trường của creative (nút, lời chào, Instagram, authorization_category): lời chào hiện tại có thể không hiện trong bản xem trước, nút nhắn tin dùng MESSAGE_PAGE, tài khoản Instagram / phân loại cũ không được giữ."
+
+function noRefusalData(fields: string, what: string) {
+  return invalid(
+    `Không đọc được ${what} (${fields.split(",").join(" / ")}) để kiểm tra an toàn - không đổi creative qua công cụ này.`,
+    "Đổi trong Trình quản lý quảng cáo, hoặc tạo quảng cáo mới bằng meta_create_ad rồi tạm dừng quảng cáo cũ."
+  )
+}
+
+/** Refusal fields (Dynamic Creative, ASC, asset_feed_spec, catalog…) of one node: unreadable → refuse, never guess. */
+async function probeRefusalFields(ctx: ProviderContext<MetaCredentials>, id: string, fields: string, what: string): Promise<RawNode> {
+  try {
+    return await graph<RawNode>(callCtx(ctx), { method: "GET", path: id, params: { fields: `id,${fields}` }, idempotent: true })
+  } catch (e) {
+    if (!isGraphFieldError(e)) throw e
+    throw noRefusalData(fields, what)
+  }
+}
+
+function pick(node: Record<string, unknown>, fields: string): Record<string, unknown> {
+  return Object.fromEntries(fields.split(",").map((f) => [f, node[f]]))
+}
+
+/** The ad with its ad set / campaign / creative; a field Meta rejects (#100) → minimal fields + refusal probe. */
+async function readAdForSwap(ctx: ProviderContext<MetaCredentials>, adId: string): Promise<{ ad: RawNode; degraded: boolean }> {
+  try {
+    return { ad: await readNode(ctx, "ad", adId, AD_FOR_SWAP_FIELDS), degraded: false }
+  } catch (e) {
+    if (!isGraphFieldError(e)) throw e
+  }
+  const ad = await readNode(ctx, "ad", adId, AD_FOR_SWAP_MIN_FIELDS) // account check first (readNode)
+  const adset = rec(ad.adset) ?? {}
+  const adsetId = idStr(adset.id) ?? idStr(ad.adset_id)
+  if (!adsetId) throw noRefusalData("is_dynamic_creative", "kiểu của nhóm quảng cáo")
+  const adsetExtra = await probeRefusalFields(ctx, adsetId, "is_dynamic_creative", "kiểu của nhóm quảng cáo")
+  ad.adset = { ...adset, id: adsetId, is_dynamic_creative: adsetExtra.is_dynamic_creative }
+  const campaign = rec(ad.campaign) ?? {}
+  const campaignId = idStr(campaign.id) ?? idStr(ad.campaign_id)
+  if (!campaignId) throw noRefusalData("smart_promotion_type", "kiểu của chiến dịch")
+  const campaignExtra = await probeRefusalFields(ctx, campaignId, "smart_promotion_type", "kiểu của chiến dịch")
+  ad.campaign = { ...campaign, id: campaignId, smart_promotion_type: campaignExtra.smart_promotion_type }
+  const creative = rec(ad.creative)
+  const id = idStr(creative?.id)
+  if (creative && id) {
+    const extra = await probeRefusalFields(ctx, id, CREATIVE_PROBE_FIELDS, "kiểu của creative")
+    ad.creative = { ...creative, ...pick(extra, CREATIVE_PROBE_FIELDS) }
+  }
+  return { ad, degraded: true }
+}
+
+/** An existing creative (mode creative_id) of THIS ad account; same fallback as readAdForSwap. */
+async function readCreativeForSwap(
+  ctx: ProviderContext<MetaCredentials>,
+  id: string
+): Promise<{ creative: RawNode; degraded: boolean }> {
+  const get = (fields: string) =>
+    graph<RawNode>(callCtx(ctx), { method: "GET", path: id, params: { fields: `${fields},account_id` }, idempotent: true })
+  try {
+    const full = await get(CREATIVE_READ_FIELDS)
+    assertSameAccount(ctx, full, "creative")
+    return { creative: full, degraded: false }
+  } catch (e) {
+    if (!isGraphFieldError(e)) throw e
+  }
+  const min = await get(CREATIVE_MIN_FIELDS)
+  assertSameAccount(ctx, min, "creative") // before any further read of a creative of another account
+  const extra = await probeRefusalFields(ctx, min.id, CREATIVE_PROBE_FIELDS, "kiểu của creative")
+  return { creative: { ...min, ...pick(extra, CREATIVE_PROBE_FIELDS) }, degraded: true }
+}
+
+const updateAdCreative: ProviderExtension<MetaCredentials, UpdateAdCreativeInput, MetaWriteResult> = {
+  name: "meta_update_ad_creative",
+  permission: "update",
+  title: "Đổi creative / lời chào của quảng cáo Meta",
+  description:
+    "Dùng khi cần thêm / đổi lời chào tin nhắn cho quảng cáo Meta ĐÃ CÓ (kể cả quảng cáo từ bài viết có sẵn) hoặc " +
+    "thay creative (nội dung) của quảng cáo mà không tạo quảng cáo mới. Gọi ads_list_objects / ads_get_object " +
+    "level=ad trước để lấy ad_id và xem creative, lời chào hiện tại. Truyền đúng MỘT trong 3 cách: (1) welcome_message " +
+    "= giữ nguyên nội dung (bài có sẵn hoặc ảnh / video + link), chỉ thêm / thay lời chào - nhóm quảng cáo đích " +
+    "Messenger; (2) creative = nội dung mới như meta_create_ad (link / video / existing_post, kèm welcome_message nếu " +
+    "cần, ảnh image_hash / image_url / image_drive_file); (3) creative_id = gắn creative có sẵn của cùng tài khoản. " +
+    "Meta không cho sửa creative cũ: hệ thống tạo creative mới, kiểm tra lời chào đã được lưu rồi mới gắn vào quảng " +
+    "cáo (bài có sẵn mà Meta trả lại creative cũ không có lời chào → dừng, không đổi gì; khi đó dùng cách (2)). " +
+    "Quảng cáo giữ nguyên ID, trạng thái và số liệu; Meta sẽ duyệt lại quảng cáo và nhóm có thể quay lại giai " +
+    "đoạn học; đổi sang bài / nội dung khác làm mất lượt thích, bình luận của bài cũ. Không dùng cho quảng cáo đã lưu " +
+    "trữ / xoá, nhóm Dynamic Creative, creative nhiều phương án (asset_feed_spec), quảng cáo danh mục hoặc Advantage+ " +
+    "mua sắm kiểu cũ. Không đổi ngân sách hay bật / tắt quảng cáo.",
+  input: updateAdCreativeInput,
+  write: true,
+  driveImageRef: (input) => (input.creative && input.creative.type !== "existing_post" ? input.creative.image_drive_file : undefined),
+  // a new video creative without a cover: Meta's own thumbnail is downloaded through mcp-core's guarded fetch
+  fetchesPlatformImages: true,
+  async run(ctx, input, opts) {
+    const modes = [input.welcome_message, input.creative, input.creative_id].filter((v) => v !== undefined).length
+    if (modes !== 1) {
+      throw invalid(
+        "Truyền đúng MỘT trong: welcome_message (thêm / đổi lời chào, giữ nội dung), creative (nội dung mới) hoặc creative_id (creative có sẵn).",
+        "Xem creative hiện tại bằng ads_get_object level=ad."
+      )
+    }
+    if (!input.creative && (input.page_id !== undefined || input.instagram_user_id !== undefined)) {
+      throw invalid("page_id / instagram_user_id chỉ dùng khi truyền creative mới.")
+    }
+    if (input.creative_id !== undefined && (input.url_tags !== undefined || input.advantage_creative_opt_in.length)) {
+      throw invalid("creative_id dùng nguyên creative có sẵn: không truyền url_tags / advantage_creative_opt_in.")
+    }
+
+    const read = await readAdForSwap(ctx, input.ad_id)
+    const ad = read.ad
+    const adset = rec(ad.adset) ?? {}
+    const campaign = rec(ad.campaign) ?? {}
+    const old = rec(ad.creative)
+    assertSwappable(ad, adset, campaign, old)
+    const adName = typeof ad.name === "string" && ad.name ? ad.name : ad.id
+    const dest = messagingDestination(adset.destination_type)
+    const adsetPage = dest ? promotedPageId(adset.promoted_object) : null
+    const oldPost = idStr(old?.effective_object_story_id) ?? idStr(old?.object_story_id)
+    const warnings: string[] = [...AD_CREATIVE_SWAP_NOTES, ...(read.degraded ? [AD_CREATIVE_DEGRADED_NOTE] : [])]
+    const before = { creative_id: idStr(old?.id), welcome_message: greetingShown(creativeGreeting(old)) }
+    const change = (after: Record<string, unknown>): FieldChange => ({
+      objectId: ad.id,
+      objectName: adName,
+      level: "ad",
+      field: "creative",
+      before,
+      after,
+    })
+
+    // (c) an existing creative of this ad account: reads only, then the swap
+    if (input.creative_id !== undefined) {
+      const targetRead = await readCreativeForSwap(ctx, input.creative_id)
+      const target = targetRead.creative
+      if (targetRead.degraded && !warnings.includes(AD_CREATIVE_DEGRADED_NOTE)) warnings.push(AD_CREATIVE_DEGRADED_NOTE)
+      if (target.status === "DELETED") throw invalid(`Creative ${target.id} đã bị xoá.`, "Chọn creative khác, hoặc truyền creative để tạo mới.")
+      if (rec(target.asset_feed_spec) || idStr(target.product_set_id)) {
+        throw invalid("Creative này có nhiều phương án nội dung (asset_feed_spec) hoặc thuộc danh mục sản phẩm: không gắn được qua công cụ này.")
+      }
+      const page = creativePage(target)
+      if (adsetPage && page && page !== adsetPage) throw pageMismatch(page, adsetPage)
+      await assertAdvertisablePages(ctx, [page ?? undefined])
+      const payload = { ad_id: ad.id, ad_name: adName, mode: "creative_id", current: before, creative_id: target.id }
+      if (target.id === before.creative_id) {
+        return { preview: !!opts.dryRun, changes: [], warnings: ["Quảng cáo đang dùng đúng creative này - không có thay đổi."], payload }
+      }
+      const targetPost = idStr(target.effective_object_story_id) ?? idStr(target.object_story_id)
+      if (oldPost && targetPost !== oldPost) warnings.push(SOCIAL_PROOF_NOTE)
+      const after = { creative_id: target.id, welcome_message: greetingShown(creativeGreeting(target)) }
+      // preview from reads only (validate_only is not documented on POST /{id} updates)
+      if (opts.dryRun) return { preview: true, changes: [change(after)], warnings, payload }
+      await swapCreative(ctx, ad.id, target.id, null, warnings)
+      return { preview: false, changes: [change(after)], warnings, payload }
+    }
+
+    // (a) greeting only / (b) new content: a new creative is created, verified, then attached
+    const name = `${adName.slice(0, 300)} - creative ${accountStamp(ctx.account.timezone)} · ${randomBytes(2).toString("hex")}`
+    let creative: Record<string, unknown>
+    let shown: Record<string, unknown>
+    let welcomeShown: GreetingShown | null
+    let pages: (string | undefined)[]
+    const signed: string[] = []
+    let skipValidate = false
+    if (input.welcome_message !== undefined) {
+      const welcome = welcomeFor(input.welcome_message, dest)
+      const built = buildGreetingCreative(old, welcome, input, name, warnings)
+      if (adsetPage && built.page && built.page !== adsetPage) throw pageMismatch(built.page, adsetPage)
+      creative = built.creative
+      shown = cleanShown(structuredClone(creative))
+      signed.push(...built.signed)
+      welcomeShown = welcome.shown
+      pages = [built.page ?? undefined]
+    } else {
+      const c = input.creative!
+      let pageId = input.page_id
+      if (c.type !== "existing_post" && !pageId) {
+        pageId = adsetPage ?? creativePage(old) ?? undefined
+        if (pageId) warnings.push(`Không truyền page_id: dùng Trang ${pageId} (${adsetPage ? "Trang của nhóm quảng cáo nhắn tin" : "Trang của creative hiện tại"}).`)
+      }
+      const oldIg = idStr(rec(old?.object_story_spec)?.instagram_user_id) ?? idStr(old?.instagram_user_id)
+      const built = buildAdPayload(
+        {
+          adset_id: idStr(adset.id) ?? "",
+          name: adName,
+          page_id: pageId,
+          instagram_user_id: input.instagram_user_id ?? (input.page_id === undefined && oldIg ? oldIg : undefined),
+          creative: c,
+          url_tags: input.url_tags,
+          advantage_creative_opt_in: input.advantage_creative_opt_in,
+        },
+        { ...adset, id: idStr(adset.id) ?? "", campaign },
+        warnings
+      )
+      creative = built.payload.creative as Record<string, unknown>
+      shown = built.summary.creative as Record<string, unknown>
+      creative.name = shown.name = name
+      welcomeShown = (built.summary.welcome_message as GreetingShown | undefined) ?? null
+      pages = [pageId, c.type === "existing_post" ? c.object_story_id.split("_")[0] : undefined]
+      if (oldPost && (c.type !== "existing_post" || c.object_story_id !== oldPost)) warnings.push(SOCIAL_PROOF_NOTE)
+    }
+    // dry run AND execute: every Page used must be advertisable by this ad account
+    await assertAdvertisablePages(ctx, pages)
+    if (input.creative) {
+      const cover = await applyCover(ctx, input.creative, creative, shown, warnings, opts)
+      skipValidate = cover.skipValidate
+      if (cover.uri) signed.push(cover.uri)
+    }
+    const sentGreeting = creativeGreeting(creative)
+    const payload: Record<string, unknown> = {
+      ad_id: ad.id,
+      ad_name: adName,
+      mode: input.welcome_message !== undefined ? "welcome_message" : `creative:${input.creative!.type}`,
+      current: before,
+      new_creative: scrubShown(shown, signed),
+      ...(welcomeShown ? { welcome_message: welcomeShown } : {}),
+    }
+    const after = (id: string) => ({
+      creative_id: id,
+      welcome_message: welcomeShown,
+      ...(input.creative ? { creative_type: input.creative.type } : {}),
+    })
+    try {
+      if (opts.dryRun) {
+        if (!skipValidate) await validateOnly(ctx, `${actId(ctx.account.externalId)}/adcreatives`, creative)
+        return { preview: true, changes: [change(after("(mới)"))], warnings, payload }
+      }
+      const newId = await createObject(ctx, "adcreatives", creative, warnings)
+      if (sentGreeting) await verifyCreativeGreeting(ctx, newId, sentGreeting)
+      if (newId === before.creative_id) {
+        warnings.push("Meta trả lại đúng creative quảng cáo đang dùng (đã có nội dung / lời chào này) - không cần đổi.")
+        return { preview: false, changes: [], warnings, payload }
+      }
+      await swapCreative(ctx, ad.id, newId, newId, warnings)
+      return { preview: false, changes: [change(after(newId))], warnings, payload, createdIds: [newId] }
+    } catch (e) {
+      throw scrubAll(e, signed)
+    }
+  },
+}
+
 export const metaExtensions: ProviderExtension<MetaCredentials>[] = [
   createCampaign,
   createAdset,
   createAd,
   updateTargeting,
+  updateAdCreative,
 ]

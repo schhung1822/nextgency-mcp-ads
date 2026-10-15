@@ -81,6 +81,22 @@ describe("Meta adapter refuses object ids of another ad account", () => {
     expect(m.mutatingPosts()).toHaveLength(0)
   })
 
+  it("meta_update_ad_creative given a foreign ad_id / creative_id: nothing is created or swapped", async () => {
+    const tool = metaExtensions.find((e) => e.name === "meta_update_ad_creative")!
+    const own = { ...foreign({ id: "11", account_id: "1001" }), adset: { id: "2001", status: "ACTIVE" }, campaign: { id: "3001" }, creative: { id: "100" } }
+    const m = mockGraph([
+      ["GET", "9003", () => json(foreign({ id: "9003" }))],
+      ["GET", "11", () => json(own)],
+      ["GET", "9100", () => json({ id: "9100", account_id: "2002", object_story_id: "888_1" })],
+      ["POST", /.*/, () => json({ id: "1" })],
+    ])
+    for (const opts of [{}, { dryRun: true }]) {
+      await expect(tool.run(providerCtx(), tool.input.parse({ ad_id: "9003", welcome_message: "x" }), opts)).rejects.toMatchObject(notFound)
+      await expect(tool.run(providerCtx(), tool.input.parse({ ad_id: "11", creative_id: "9100" }), opts)).rejects.toMatchObject(notFound)
+    }
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+  })
+
   it("control: an object of the granted account is served", async () => {
     mockGraph([["GET", "9001", () => json(foreign({ account_id: "1001" }))]])
     await expect(getMetaObject(providerCtx(), "campaign", "9001")).resolves.toMatchObject({ id: "9001" })

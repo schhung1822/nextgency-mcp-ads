@@ -19,10 +19,13 @@ import {
   listCatalogTasks,
 } from "./catalog"
 import {
+  HOSTS,
   instagramHandle,
   isGoogleMapsUrl,
+  isThreadsPostUrl,
   lazadaCountryFromUrl,
   shopeeCountryFromUrl,
+  threadsHandle,
   tiktokHandle,
 } from "./catalog/common"
 import { adLibrarySearchUrl } from "./catalog/facebook"
@@ -56,6 +59,10 @@ const CORE_KEYS = [
   "instagram_profile",
   "instagram_posts",
   "instagram_hashtag",
+  "threads_profile_posts",
+  "threads_search",
+  "threads_replies",
+  "threads_profile",
   "youtube_search",
   "youtube_channel",
   "youtube_comments",
@@ -73,6 +80,7 @@ const BETA_KEYS = [
   "tiktok_trends",
   "google_trends",
   "google_shopping",
+  "threads_followers",
 ]
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -85,6 +93,8 @@ type Rule =
   | "L" // = limit
   | "L10" // = max(10, limit) (schema minimum 10)
   | "L100" // = min(limit, 100) (schema maximum 100)
+  | "L50" // = min(limit, 50) (nested array kept whole by apify_get_results)
+  | "L+1" // = limit + 1 (hard row cap: the post row + `limit` replies)
   | "P48" // = ceil(limit / 48) (result pages of 48)
   | "S10" // = String(limit * 10) (results enum "10".."50", 10 per page)
   | "NUM" // damilo page size enum: largest of 10/20/30/40/50/100 ≤ limit (min 10)
@@ -228,6 +238,29 @@ const LIMIT_RULES: Record<string, Record<string, Rule>> = {
     searchLimit: 1,
   },
   "instagram_hashtag:apify~instagram-hashtag-scraper": { resultsLimit: "L" },
+  "threads_profile_posts:futurizerush~meta-threads-scraper": {
+    max_posts: "L10",
+  },
+  "threads_profile_posts:automation-lab~threads-scraper": { maxPosts: "L" },
+  "threads_search:futurizerush~meta-threads-scraper": { max_posts: "L10" },
+  "threads_search:logical_scrapers~threads-search-scraper": { maxItems: "L" },
+  "threads_replies:lergassy~threads-scraper": {
+    maxRepliesPerPost: "L",
+    maxPosts: "L",
+    maxItems: "L+1",
+    maxUsersPerKeyword: 1,
+  },
+  "threads_replies:logical_scrapers~threads-post-scraper": {
+    maxReplies: "L50",
+  },
+  "threads_profile:apify~threads-profile-api-scraper": { usernames: "SLICE" },
+  "threads_profile:automation-lab~threads-scraper": {
+    usernames: "SLICE",
+    maxPosts: 1,
+  },
+  "threads_followers:scraping_solutions~threads-followers-following-scraper": {
+    maxResultsPerUser: "L",
+  },
   "youtube_search:streamers~youtube-scraper": YOUTUBE_VIDEOS,
   "youtube_channel:streamers~youtube-channel-scraper": YOUTUBE_VIDEOS,
   "youtube_channel:streamers~youtube-scraper": YOUTUBE_VIDEOS,
@@ -302,6 +335,10 @@ function expected(rule: Rule, limit: number): unknown {
       return Math.max(10, limit)
     case "L100":
       return Math.min(limit, 100)
+    case "L50":
+      return Math.min(limit, 50)
+    case "L+1":
+      return limit + 1
     case "P48":
       return Math.ceil(limit / 48)
     case "S10":
@@ -661,6 +698,92 @@ describe("task inputs (zod)", () => {
       }).success
     ).toBe(true)
   })
+
+  it("accepts Threads handles or https threads.com / threads.net profile links only", () => {
+    const posts = getCatalogTask("threads_profile_posts")!
+    for (const ok of [
+      "@brand.vn",
+      "brand_vn",
+      "https://www.threads.com/@brand",
+      "https://www.threads.net/@brand/",
+      "https://threads.com/@brand?xmt=abc",
+    ])
+      expect(posts.input.safeParse({ username: ok }).success, ok).toBe(true)
+    for (const bad of [
+      "",
+      "a b",
+      "@" + "x".repeat(31),
+      "http://www.threads.com/@brand",
+      "https://evil.com/@brand",
+      "https://threads.com.evil.com/@brand",
+      "https://evilthreads.net/@brand",
+      "https://www.instagram.com/brand/",
+      "https://www.threads.com/brand",
+      "https://www.threads.com/search?q=brand",
+      "https://user:pw@www.threads.com/@brand",
+      "javascript:alert(1)",
+    ])
+      expect(posts.input.safeParse({ username: bad }).success, bad).toBe(false)
+    const profile = getCatalogTask("threads_profile")!
+    expect(
+      profile.input.safeParse({ usernames: Array(5).fill("@brand") }).success
+    ).toBe(true)
+    expect(
+      profile.input.safeParse({ usernames: Array(6).fill("@brand") }).success
+    ).toBe(false)
+    expect(profile.input.safeParse({ usernames: [] }).success).toBe(false)
+  })
+
+  it("requires a Threads post link (https, threads host) for replies", () => {
+    const task = getCatalogTask("threads_replies")!
+    for (const ok of [
+      "https://www.threads.com/@brand/post/DAbc123xyz",
+      "https://www.threads.net/@brand/post/Dcy_A8pGo-m/",
+      "https://www.threads.com/@brand/post/Dcy_A8pGo-m/media",
+      "https://www.threads.com/@brand/post/DAbc123?xmt=share",
+      "https://www.threads.net/t/CuW6-7KyXme",
+      "https://www.threads.com/share/AbC123",
+    ])
+      expect(task.input.safeParse({ url: ok }).success, ok).toBe(true)
+    for (const bad of [
+      "https://www.threads.com/@brand",
+      "https://www.threads.com/@brand/post/",
+      "https://www.threads.com/search?q=x",
+      "http://www.threads.com/@brand/post/DAbc123",
+      "https://www.instagram.com/p/DAbc123/",
+      "https://threads.com.evil.com/@brand/post/DAbc123",
+      "https://user:pw@www.threads.com/@brand/post/DAbc123",
+    ])
+      expect(task.input.safeParse({ url: bad }).success, bad).toBe(false)
+  })
+
+  it("validates Threads search and followers params", () => {
+    const search = getCatalogTask("threads_search")!
+    expect(search.input.parse({ keyword: "kem chống nắng" })).toEqual({
+      keyword: "kem chống nắng",
+      sort: "top",
+    })
+    expect(search.input.safeParse({ keyword: "a\nb" }).success).toBe(false)
+    expect(search.input.safeParse({ keyword: "x".repeat(121) }).success).toBe(
+      false
+    )
+    expect(
+      search.input.safeParse({ keyword: "son", sort: "popular" }).success
+    ).toBe(false)
+    expect(
+      search.input.safeParse({ keyword: "son", since_days: 0 }).success
+    ).toBe(false)
+    const followers = getCatalogTask("threads_followers")!
+    expect(followers.beta).toBe(true)
+    expect(followers.input.parse({ username: "@brand" })).toEqual({
+      username: "@brand",
+      relation: "followers",
+    })
+    expect(
+      followers.input.safeParse({ username: "@brand", relation: "friends" })
+        .success
+    ).toBe(false)
+  })
 })
 
 describe("Actor inputs", () => {
@@ -869,6 +992,128 @@ describe("Actor inputs", () => {
   })
 })
 
+describe("Threads Actor inputs", () => {
+  it("normalises handles and profile links for every Threads Actor", () => {
+    const posts = getCatalogTask("threads_profile_posts")!
+    const fromUrl = buildActorRun(
+      posts,
+      0,
+      { username: "https://www.threads.net/@brand.vn/" },
+      5
+    )
+    // schema minimum of max_posts is 10, memory fixed at 4 GB
+    expect(fromUrl.input).toEqual({
+      mode: "user",
+      usernames: ["brand.vn"],
+      max_posts: 10,
+    })
+    expect(fromUrl.memoryMbytes).toBe(4096)
+    expect(buildActorRun(posts, 1, { username: "@brand" }, 500).input).toEqual({
+      mode: "posts",
+      usernames: ["brand"],
+      maxPosts: 100,
+      includeProfile: false,
+    })
+    const profile = buildActorRun(
+      getCatalogTask("threads_profile")!,
+      0,
+      { usernames: ["@a", "https://www.threads.com/@b", "c", "@d", "@e"] },
+      3
+    )
+    expect(profile.input).toEqual({ usernames: ["a", "b", "c"] })
+    const profileFallback = buildActorRun(
+      getCatalogTask("threads_profile")!,
+      1,
+      { usernames: ["@a", "b"] }
+    )
+    expect(profileFallback.input).toEqual({
+      mode: "profile",
+      usernames: ["a", "b"],
+      maxPosts: 1,
+    })
+  })
+
+  it("maps Threads search sort / since_days and keeps #hashtags", () => {
+    const task = getCatalogTask("threads_search")!
+    expect(
+      buildActorRun(task, 0, { keyword: "#skincare", since_days: 7 }, 50).input
+    ).toEqual({
+      mode: "search",
+      keywords: ["#skincare"],
+      max_posts: 50,
+      search_filter: "top",
+      start_date: "7 days",
+    })
+    const noSince = buildActorRun(task, 0, { keyword: "son", sort: "recent" })
+    expect(noSince.input).not.toHaveProperty("start_date")
+    expect(noSince.input).toMatchObject({
+      search_filter: "recent",
+      max_posts: 30,
+    })
+    expect(buildActorRun(task, 1, { keyword: "son" }, 999).input).toEqual({
+      searchQueries: ["son"],
+      searchType: "all",
+      maxItems: 100,
+      includeReplies: false,
+    })
+    expect(
+      buildActorRun(task, 1, { keyword: "son", sort: "recent" }).input
+    ).toMatchObject({ searchType: "recent" })
+  })
+
+  it("always pins maxItems for Threads replies and never sets monitoring state", () => {
+    const task = getCatalogTask("threads_replies")!
+    const url = "https://www.threads.com/@brand/post/DAbc123xyz"
+    for (const [requested, limit] of [
+      [undefined, 50],
+      [0, 1],
+      [10_000, 200],
+    ] as const) {
+      const run = buildActorRun(task, 0, { url }, requested)
+      expect(run.input).toMatchObject({
+        mode: "thread",
+        postUrls: [url],
+        maxRepliesPerPost: limit,
+        maxPosts: limit,
+        maxItems: limit + 1,
+        includeProfile: false,
+      })
+      expect(run.input).not.toHaveProperty("monitoringStoreName")
+      expect(deepKeys(run.input).filter((k) => /monitor/i.test(k))).toEqual([])
+    }
+    const fallback = buildActorRun(task, 1, { url }, 200)
+    expect(fallback.input).toEqual({
+      startUrls: [{ url }],
+      includeReplies: true,
+      maxReplies: 50,
+    })
+  })
+
+  it("never asks the followers Actor for every follower (maxResultsPerUser 0)", () => {
+    const task = getCatalogTask("threads_followers")!
+    for (const requested of [0, -3, 0.4, undefined, 9_999]) {
+      const run = buildActorRun(
+        task,
+        0,
+        { username: "https://www.threads.com/@brand", relation: "following" },
+        requested
+      )
+      expect(run.input.maxResultsPerUser).toBeGreaterThanOrEqual(1)
+      expect(run.input.maxResultsPerUser).toBeLessThanOrEqual(500)
+      expect(run.input).toMatchObject({
+        usernames: ["brand"],
+        type: "following",
+      })
+    }
+  })
+
+  it("needs a run cap of at least $0.10 for the 4 GB Threads Actor", () => {
+    expect(
+      APIFY_ACTOR_MIN_CHARGE_USD["futurizerush~meta-threads-scraper"]
+    ).toBe(0.1)
+  })
+})
+
 describe("buildActorRun / clampTaskLimit", () => {
   const task = getCatalogTask("shopee_search")!
 
@@ -967,6 +1212,37 @@ describe("URL / handle helpers", () => {
     expect(instagramHandle("@brand")).toBe("brand")
     expect(instagramHandle("https://www.instagram.com/brand/")).toBe("brand")
     expect(instagramHandle("https://www.instagram.com/reel/abc/")).toBeNull()
+    expect(threadsHandle("@brand.vn")).toBe("brand.vn")
+    expect(threadsHandle("brand")).toBe("brand")
+    expect(threadsHandle(" https://www.threads.com/@brand/post/X1 ")).toBe(
+      "brand"
+    )
+    expect(threadsHandle("https://threads.net/@brand?hl=vi")).toBe("brand")
+    expect(threadsHandle("https://www.threads.com/brand")).toBeNull()
+    expect(threadsHandle("https://www.threads.com/")).toBeNull()
+    expect(threadsHandle("https://evil.com/@brand")).toBeNull()
+    expect(threadsHandle("https://a:b@www.threads.com/@brand")).toBeNull()
+    expect(threadsHandle("http://www.threads.com/@brand")).toBeNull()
+  })
+
+  it("recognises Threads hosts and post paths", () => {
+    for (const h of [
+      "threads.com",
+      "www.threads.com",
+      "threads.net",
+      "www.threads.net",
+    ])
+      expect(HOSTS.threads.test(h), h).toBe(true)
+    for (const h of ["threads.org", "evilthreads.com", "threads.com.evil.com"])
+      expect(HOSTS.threads.test(h), h).toBe(false)
+    const post = (p: string) =>
+      isThreadsPostUrl(new URL(`https://www.threads.com${p}`))
+    expect(post("/@brand/post/DAbc_1-2")).toBe(true)
+    expect(post("/t/CuW6-7KyXme")).toBe(true)
+    expect(post("/share/AbC123/")).toBe(true)
+    expect(post("/@brand")).toBe(false)
+    expect(post("/@brand/post/A/replies")).toBe(false)
+    expect(post("/t/")).toBe(false)
   })
 
   it("recognises Google Maps URLs", () => {

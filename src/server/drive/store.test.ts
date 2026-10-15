@@ -148,6 +148,7 @@ describe("config normalisation", () => {
         headline: null,
         destination: null,
         welcomeMessage: null,
+        existingPost: null,
         status: null,
         mediaId: null,
         adIds: null,
@@ -173,6 +174,8 @@ describe("config normalisation", () => {
       cover: null,
       // v1.1.3: no welcomeMessage key → not mapped (detected by a "Lời chào tin nhắn" header name)
       welcomeMessage: null,
+      // v1.1.4: no existingPost key → not mapped (detected by a "Bài viết có sẵn" header name)
+      existingPost: null,
     })
     expect(
       normalizeSheetConfig({

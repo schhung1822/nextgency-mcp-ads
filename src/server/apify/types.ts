@@ -57,6 +57,7 @@ export type ApifyTaskGroup =
   | "tiktok"
   | "facebook"
   | "instagram"
+  | "threads"
   | "youtube"
   | "google"
   | "web"

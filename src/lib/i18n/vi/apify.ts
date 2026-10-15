@@ -70,7 +70,7 @@ export const apify = {
     filterStatus: "Trạng thái",
     emptyTitle: "Chưa có token Apify",
     emptyDescription:
-      "Thêm API token của Apify để AI lấy dữ liệu Shopee, TikTok, Facebook, Google Maps… qua MCP. Thêm được nhiều token - hệ thống tự xoay vòng.",
+      "Thêm API token của Apify để AI lấy dữ liệu Shopee, TikTok, Facebook, Threads, Google Maps… qua MCP. Thêm được nhiều token - hệ thống tự xoay vòng.",
     emptyFilteredTitle: "Không có token phù hợp",
     emptyFilteredDescription: "Thử đổi từ khoá tìm kiếm hoặc bỏ bớt bộ lọc.",
     add: "Thêm token Apify",

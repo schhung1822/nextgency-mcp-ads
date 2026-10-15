@@ -141,13 +141,74 @@ function extractError(body: unknown): GraphErrorBody | null {
   return null
 }
 
-/** Map a Graph error payload (+ HTTP status) to a ProviderError. Never includes the token. */
+const ENDED = {
+  vi: "Quảng cáo / nhóm quảng cáo / chiến dịch này đã lưu trữ hoặc đã xoá - Meta chỉ cho đổi tên, không đổi được nội dung.",
+  hint: "Tạo quảng cáo mới bằng meta_create_ad (hoặc sao chép bằng ads_copy_object).",
+}
+const POST_UNAVAILABLE = {
+  vi: "Bài viết không dùng được cho quảng cáo (đã xoá, chưa đăng, không thuộc Trang của quảng cáo, hoặc token không có quyền quảng cáo bài này).",
+  hint: "Kiểm tra bài bằng meta_list_page_posts / meta_get_post, hoặc chọn bài khác.",
+}
+
+/** Creative / ad edit subcodes (usually under code 100) → Vietnamese message + hint. Never retried. */
+const CREATIVE_ERRORS: Record<number, { vi: string; hint: string }> = {
+  1815471: {
+    vi: "Lời chào tin nhắn (page_welcome_message) không hợp lệ cho quảng cáo đích Messenger.",
+    hint: "Rút gọn lời chào (≤300 ký tự), bỏ ký tự lạ, thử lại không kèm câu hỏi gợi ý; lời chào chỉ dùng cho nhóm quảng cáo đích Messenger.",
+  },
+  1815573: {
+    vi: "Meta không cho sửa nội dung của creative đã tạo.",
+    hint: "Dùng meta_update_ad_creative: hệ thống tạo creative mới rồi gắn vào quảng cáo.",
+  },
+  1885088: ENDED,
+  // [H] error reference: "part of a scheduled ad set that has reached its end date" - fixable by extending end_time
+  1487007: {
+    vi: "Nhóm quảng cáo đã qua ngày kết thúc (end_time) - Meta không cho sửa nhóm / quảng cáo trong nhóm cho tới khi gia hạn lịch chạy.",
+    hint: "Gia hạn end_time của nhóm quảng cáo ra tương lai bằng ads_update_object (level=ad_group, end_time ISO-8601 có múi giờ) rồi thử lại.",
+  },
+  1487056: ENDED,
+  1487566: ENDED,
+  1885998: {
+    vi: "Creative không khớp kiểu nhóm quảng cáo (nhóm dùng Dynamic Creative cần creative nhiều phương án và ngược lại).",
+    hint: "Không đổi creative của quảng cáo Dynamic Creative qua MCP; sửa trong Trình quản lý quảng cáo.",
+  },
+  3858355: {
+    vi: "Quảng cáo định dạng linh hoạt: ảnh / video đầu tiên phải khớp creative - Meta không cho thay creative kiểu này.",
+    hint: "Tạo quảng cáo mới bằng meta_create_ad rồi tạm dừng quảng cáo cũ.",
+  },
+  1885029: {
+    vi: "Trang của creative khác Trang của đối tượng đang quảng cáo (promoted_object của nhóm quảng cáo).",
+    hint: "Dùng đúng Trang của nhóm quảng cáo (ads_get_object level=ad_group → promoted_object.page_id).",
+  },
+  1885557: POST_UNAVAILABLE,
+  2490155: POST_UNAVAILABLE,
+  2446289: POST_UNAVAILABLE,
+  1487472: POST_UNAVAILABLE,
+}
+
+/** Signed Meta CDN URLs (fbcdn / fbsbx) that Graph errors may echo (image of a creative, video thumbnail). */
+const SIGNED_CDN_URL = /https?:\/\/[^\s"']*(?:fbcdn|fbsbx)[^\s"']*/gi
+
+function scrubSignedUrls(s: string | undefined): string | undefined {
+  return s === undefined ? undefined : s.replace(SIGNED_CDN_URL, "[ảnh]")
+}
+
+/** Map a Graph error payload (+ HTTP status) to a ProviderError. Never includes the token or a signed CDN URL. */
 export function mapGraphError(
   err: GraphErrorBody | null,
   httpStatus: number,
   requestId: string | null,
   extra: { retryAfterMs?: number } = {}
 ): ProviderError {
+  // Meta's texts may echo a signed image URL of the creative: never in messages, hints or upstream info
+  if (err) {
+    err = {
+      ...err,
+      message: scrubSignedUrls(err.message),
+      error_user_title: scrubSignedUrls(err.error_user_title),
+      error_user_msg: scrubSignedUrls(err.error_user_msg),
+    }
+  }
   const code = err?.code
   const sub = err?.error_subcode
   const upstream = {
@@ -279,6 +340,12 @@ export function mapGraphError(
         hint: "Đối chiếu optimization_goal với objective của chiến dịch. Với mua qua tin nhắn: kiểm tra trong Trình quản lý quảng cáo (Doanh số → Ứng dụng nhắn tin → chỉ chọn Messenger) có lựa chọn \"Tối đa hoá số lượt mua qua tin nhắn\" không; chưa có thì dùng optimization_goal CONVERSATIONS.",
       }
     )
+  }
+  // creative / ad edit errors (v1.1.4 E3, meta.md §5 "Đổi creative"): Vietnamese text + Meta's own message (one line)
+  const creativeErr = (sub !== undefined ? CREATIVE_ERRORS[sub] : undefined) ?? (code !== undefined ? CREATIVE_ERRORS[code] : undefined)
+  if (creativeErr) {
+    const metaSays = sanitizeExternalLabel(userMsg, 300)
+    return make("invalid_request", creativeErr.vi + (metaSays ? ` Meta báo: ${metaSays}` : ""), { hint: creativeErr.hint })
   }
   if (code === 1 || code === 2 || err?.is_transient) {
     return make("upstream_error", "Meta đang gặp lỗi tạm thời. Hãy thử lại sau.", { retryable: true })

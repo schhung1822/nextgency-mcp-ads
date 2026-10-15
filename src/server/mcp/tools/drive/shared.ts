@@ -99,6 +99,163 @@ export function canonicalLinkCell(cell: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// "Bài viết có sẵn" cell (v1.1.4): an existing Facebook post a Meta ad is built from
+// ---------------------------------------------------------------------------
+
+/** The post of a "Bài viết có sẵn" cell as drive_sheet_read returns it (`existing_post`). */
+export interface ExistingPost {
+  /** PAGEID_POSTID - the object_story_id of meta_create_ad (creative type existing_post) */
+  post_id?: string
+  /** the Facebook link of the cell (https, no fragment, tracking parameters dropped) */
+  url?: string
+  /** true = a Facebook link without numeric Page + post ids (pfbid…, /share/…, a vanity name): find the post first */
+  needs_lookup: boolean
+}
+
+export type ExistingPostParse =
+  | { ok: true; post: ExistingPost }
+  | { ok: false; code: "existing_post_invalid" }
+
+const POST_ID_RE = /^(\d{5,20})_(\d{5,30})$/
+const FB_NUMERIC_ID_RE = /^\d{5,30}$/
+const FB_HOST_RE =
+  /^(?:[a-z0-9-]+\.)*(?:facebook\.com|fb\.com|fb\.watch|fb\.me)$/i
+const FB_BARE_LINK_RE =
+  /^(?:[a-z0-9-]+\.)*(?:facebook\.com|fb\.com|fb\.watch|fb\.me)\//i
+/** Max characters of the Facebook link returned in existing_post.url. */
+export const EXISTING_POST_URL_MAX = 500
+
+/** True when `token` is an http(s) link to Facebook (facebook.com, fb.com, fb.watch, fb.me and their sub-domains). */
+export function isFacebookLink(token: string): boolean {
+  try {
+    const u = new URL(token)
+    return /^https?:$/.test(u.protocol) && FB_HOST_RE.test(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+function isStoryPage(pathname: string): boolean {
+  const p = pathname.split("/").filter(Boolean).join("/").toLowerCase()
+  return p === "permalink.php" || p === "story.php"
+}
+
+/** PAGEID_POSTID of a Facebook post link with numeric ids (/{page}/posts/{id}, permalink.php / story.php), else null. */
+function postIdFromUrl(u: URL): string | null {
+  const parts = u.pathname.split("/").filter(Boolean)
+  if (
+    parts.length >= 3 &&
+    parts[1]!.toLowerCase() === "posts" &&
+    FB_NUMERIC_ID_RE.test(parts[0]!) &&
+    FB_NUMERIC_ID_RE.test(parts[2]!)
+  )
+    return `${parts[0]}_${parts[2]}`
+  const story = u.searchParams.get("story_fbid") ?? ""
+  const page = u.searchParams.get("id") ?? ""
+  if (
+    isStoryPage(u.pathname) &&
+    FB_NUMERIC_ID_RE.test(story) &&
+    FB_NUMERIC_ID_RE.test(page)
+  )
+    return `${page}_${story}`
+  return null
+}
+
+/**
+ * A "Bài viết có sẵn" cell → the existing post (null = empty cell). Accepted: PAGEID_POSTID, or a Facebook link -
+ * numeric /{page}/posts/{id}, permalink.php?story_fbid=…&id=… and story.php?story_fbid=…&id=… give the post id; other
+ * Facebook links (pfbid…, /share/…, vanity names, fb.watch) → needs_lookup with the link. Anything else (another site,
+ * free text) → existing_post_invalid. Only the first word of the cell is read; the cell is sanitised like every cell.
+ */
+export function parseExistingPost(
+  cell: string | null | undefined
+): ExistingPostParse | null {
+  const text = sanitizeCell(cell)
+  if (!text) return null
+  const token = text.split(/\s+/)[0]!
+  if (POST_ID_RE.test(token))
+    return { ok: true, post: { post_id: token, needs_lookup: false } }
+  const raw =
+    !/^https?:\/\//i.test(token) && FB_BARE_LINK_RE.test(token)
+      ? `https://${token}`
+      : token
+  const bad = { ok: false, code: "existing_post_invalid" } as const
+  if (!isFacebookLink(raw)) return bad
+  const u = new URL(raw)
+  if (u.username || u.password) return bad
+  const id = postIdFromUrl(u)
+  // tracking parameters dropped; permalink.php / story.php keep the two parameters naming the post
+  const clean = new URL(`https://${u.hostname.toLowerCase()}${u.pathname}`)
+  if (isStoryPage(u.pathname))
+    for (const k of ["story_fbid", "id"]) {
+      const v = u.searchParams.get(k)
+      if (v) clean.searchParams.set(k, v)
+    }
+  const url = clean.toString()
+  if (url.length > EXISTING_POST_URL_MAX) return bad
+  return {
+    ok: true,
+    post: id
+      ? { post_id: id, url, needs_lookup: false }
+      : { url, needs_lookup: true },
+  }
+}
+
+/** Prefix of a row anchor taken from the "Bài viết có sẵn" cell (rows without a Drive link). */
+const POST_ANCHOR = "post:"
+
+/** "post:<PAGEID_POSTID | link | cell text>" of a non-empty "Bài viết có sẵn" cell, "" for an empty one. */
+export function existingPostAnchor(cell: string | null | undefined): string {
+  const text = sanitizeCell(cell)
+  if (!text) return ""
+  const p = parseExistingPost(text)
+  const key = p?.ok
+    ? (p.post.post_id ?? p.post.url ?? "")
+    : text.replace(/\s+/g, " ").slice(0, 200)
+  return `${POST_ANCHOR}${key}`
+}
+
+/** A "Tên creative" / "Tài khoản QC" cell inside a post anchor: sanitised, one line, no "|", ≤ 100 characters. */
+function anchorPart(cell: string | null | undefined): string {
+  return sanitizeCell(cell)
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100)
+    .trim()
+}
+
+/**
+ * What identifies a sheet row between drive_sheet_read (`link_cell`) and drive_sheet_update_rows (`expected_link`):
+ * the canonical link cell (unchanged since v1.0), or - when the link cell has no link and the sheet has a "Bài viết
+ * có sẵn" column - the post anchor "post:<post>|<Tên creative>|<Tài khoản QC>" (empty parts when those columns are
+ * not mapped), so rows built from an existing post can be written back too and two rows of the same post still
+ * differ (security review: a shifted row of the same post must be row_moved, not written).
+ */
+export function rowAnchor(
+  linkCell: string | null | undefined,
+  postCell: string | null | undefined,
+  context: { name?: string | null; account?: string | null } = {}
+): string {
+  const link = canonicalLinkCell(String(linkCell ?? ""))
+  if (link) return link
+  const post =
+    postCell === undefined || postCell === null
+      ? ""
+      : existingPostAnchor(postCell)
+  if (!post) return ""
+  return `${post}|${anchorPart(context.name)}|${anchorPart(context.account)}`
+}
+
+/** The expected_link given by the AI, in the form rowAnchor returns (idempotent). */
+export function canonicalExpectedAnchor(expected: string): string {
+  const t = String(expected ?? "").trim()
+  return t.startsWith(POST_ANCHOR)
+    ? t.replace(/\s+/g, " ")
+    : canonicalLinkCell(expected)
+}
+
+// ---------------------------------------------------------------------------
 // Platform / account cells
 // ---------------------------------------------------------------------------
 
@@ -180,6 +337,7 @@ export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
   headline: "headline",
   destination: "destination",
   welcomeMessage: "welcome_message",
+  existingPost: "existing_post",
   status: "status",
   mediaId: "media_id",
   adIds: "ad_ids",
@@ -192,9 +350,10 @@ export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
 /**
  * 0-based index of every configured column in the header row (matched on the folded header text). Columns that are
  * not configured or not found are absent - except the read-only auto-detected columns (AUTO_DETECT_COLUMN_KEYS: cover
- * v1.1.2, welcome message v1.1.3): when one is not mapped (or its mapped header is gone), a header cell named like it
- * ("Ảnh bìa", "Thumbnail"… / "Lời chào tin nhắn", "Câu chào"… - detectAutoHeader) that no other column uses is
- * taken, so sheets declared before the column existed work without remapping.
+ * v1.1.2, welcome message v1.1.3, existing post v1.1.4): when one is not mapped (or its mapped header is gone), a
+ * header cell named like it ("Ảnh bìa", "Thumbnail"… / "Lời chào tin nhắn", "Câu chào"… / "Bài viết có sẵn", "Bài
+ * viết gốc"… - never a generic "Post ID": AUTO_DETECT_ALIASES; detectAutoHeader) that no other column uses is taken,
+ * so sheets declared before the column existed work without remapping.
  */
 export function mapColumns(
   config: SheetSourceConfig,

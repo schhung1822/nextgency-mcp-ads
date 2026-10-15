@@ -127,6 +127,8 @@ export interface SheetColumnsConfig {
   destination?: string | null
   /** Messenger welcome message of a click-to-message Meta ad - read only, never written (v1.1.3) */
   welcomeMessage?: string | null
+  /** existing Facebook post the Meta ad is built from (PAGEID_POSTID or post link) - read only, never written (v1.1.4) */
+  existingPost?: string | null
   /** system-written columns (write-back) */
   status?: string | null
   mediaId?: string | null
@@ -159,6 +161,7 @@ export const DEFAULT_SHEET_COLUMNS: Required<{
   headline: "Tiêu đề",
   destination: "Link đích",
   welcomeMessage: "Lời chào tin nhắn",
+  existingPost: "Bài viết có sẵn",
   status: "Trạng thái",
   mediaId: "Mã media",
   adIds: "Mã quảng cáo",

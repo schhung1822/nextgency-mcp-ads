@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { __resetBuckets } from "../rate-limit"
-import { deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject } from "./mutate"
+import { deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject, validateOnly } from "./mutate"
 import { batchRoute, graphError, json, mockGraph, providerCtx } from "./test-utils"
 
 beforeEach(() => __resetBuckets())
@@ -238,5 +238,43 @@ describe("updateMetaObject / deleteMetaObject", () => {
     const done = await deleteMetaObject(providerCtx(), "campaign", "3001")
     expect(done.changes[0]).toMatchObject({ before: "PAUSED", after: "DELETED" })
     expect(m.mutatingPosts()[0].params.status).toBe("DELETED")
+  })
+})
+
+describe("validateOnly - path allow-list (create edges only)", () => {
+  it("accepts act_X/{campaigns,adsets,ads,adcreatives} with execution_options=validate_only and refuses anything else before any call", async () => {
+    const m = mockGraph([["POST", /^act_1001\/(campaigns|adsets|ads|adcreatives)$/, () => json({ success: true })]])
+    for (const edge of ["campaigns", "adsets", "ads", "adcreatives"]) await validateOnly(providerCtx(), `act_1001/${edge}`, { name: "x" })
+    expect(m.calls.map((c) => c.path)).toEqual(["act_1001/campaigns", "act_1001/adsets", "act_1001/ads", "act_1001/adcreatives"])
+    for (const c of m.calls) expect(JSON.parse(c.params.execution_options)).toEqual(["validate_only"])
+    for (const bad of ["11", "act_1001/adimages", "act_1001/adcreatives/x", "x/act_1001/ads", "act_1001/adcreatives?x=1"]) {
+      await expect(validateOnly(providerCtx(), bad, {})).rejects.toThrow(/only allowed on create edges/)
+    }
+    expect(m.calls).toHaveLength(4)
+  })
+})
+
+describe("updateMetaObject - final_url", () => {
+  it("is refused before any call and points to meta_update_ad_creative", async () => {
+    const m = mockGraph([])
+    await expect(updateMetaObject(providerCtx(), { level: "ad", id: "11", changes: { finalUrl: "https://shop.vn" } })).rejects.toMatchObject({
+      code: "invalid_request",
+      hint: expect.stringContaining("meta_update_ad_creative"),
+    })
+    expect(m.calls).toHaveLength(0)
+  })
+})
+
+describe("1487007 (ad set past its end date) on a budget edit", () => {
+  it("→ hint to extend end_time, not 'archived / deleted'", async () => {
+    mockGraph([
+      ["GET", "2001", () => json(abosAdset)],
+      ["POST", "2001", () => graphError(100, 1487007)],
+    ])
+    await expect(updateMetaBudget(providerCtx(), { level: "ad_group", id: "2001", type: "daily", amount: 600_000 })).rejects.toMatchObject({
+      code: "invalid_request",
+      userMessageVi: expect.stringMatching(/qua ngày kết thúc/),
+      hint: expect.stringMatching(/Gia hạn end_time/),
+    })
   })
 })

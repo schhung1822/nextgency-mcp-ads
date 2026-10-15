@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  AUTO_DETECT_ALIASES,
   AUTO_DETECT_COLUMN_KEYS,
   createDriveSourceSchema,
   detectAutoHeader,
@@ -254,10 +255,10 @@ describe("sheet column mapping helpers", () => {
   })
 
   it("welcome message column (v1.1.3): optional, read only, right after Link đích, suggested and detected by name", () => {
-    expect(AUTO_DETECT_COLUMN_KEYS).toEqual(["cover", "welcomeMessage"])
     const at = SHEET_COLUMN_KEYS.indexOf("welcomeMessage")
     expect(SHEET_COLUMN_KEYS[at - 1]).toBe("destination")
-    expect(SHEET_COLUMN_KEYS[at + 1]).toBe("status")
+    // v1.1.4: the existing post column follows it, then the system columns
+    expect(SHEET_COLUMN_KEYS[at + 1]).toBe("existingPost")
     expect(SHEET_WRITABLE_COLUMN_KEYS).not.toContain("welcomeMessage")
     expect(
       sheetColumnsSchema.parse({
@@ -308,5 +309,95 @@ describe("sheet column mapping helpers", () => {
     expect(detectAutoHeader("cover", ["Lời chào", "Ảnh bìa"])).toBe(
       detectCoverHeader(["Lời chào", "Ảnh bìa"])
     )
+  })
+
+  it("existing post column (v1.1.4): optional, read only, before Trạng thái, suggested and detected by name, never the Link bài viết column", () => {
+    expect(AUTO_DETECT_COLUMN_KEYS).toEqual([
+      "cover",
+      "welcomeMessage",
+      "existingPost",
+    ])
+    const at = SHEET_COLUMN_KEYS.indexOf("existingPost")
+    expect(SHEET_COLUMN_KEYS[at - 1]).toBe("welcomeMessage")
+    expect(SHEET_COLUMN_KEYS[at + 1]).toBe("status")
+    expect(SHEET_WRITABLE_COLUMN_KEYS).not.toContain("existingPost")
+    expect(
+      sheetColumnsSchema.parse({
+        link: "Link Drive",
+        existingPost: " Bài viết có sẵn ",
+      })
+    ).toMatchObject({ existingPost: "Bài viết có sẵn" })
+    expect(
+      sheetColumnsSchema.parse({ link: "Link Drive" }).existingPost
+    ).toBeNull()
+    const dup = sheetColumnsSchema.safeParse({
+      link: "Link Drive",
+      postLink: "Post ID",
+      existingPost: "post id",
+    })
+    expect(dup.success).toBe(false)
+    // the later key of the schema (the system column) carries the error
+    expect(dup.error?.issues[0]?.path).toEqual(["postLink"])
+    for (const spelling of [
+      "Bài viết có sẵn",
+      "BÀI CÓ SẴN",
+      "ID bài viết",
+      "Mã bài viết",
+      "Post ID",
+      "Existing post",
+      "Bài viết gốc",
+      "Link bài viết gốc",
+    ])
+      expect(
+        suggestSheetColumns([
+          "Link Drive",
+          spelling,
+          "Link bài viết",
+          "Link chiến dịch",
+        ]),
+        spelling
+      ).toMatchObject({
+        link: "Link Drive",
+        existingPost: spelling,
+        postLink: "Link bài viết",
+        campaignLink: "Link chiến dịch",
+      })
+    // "Link bài viết" stays the system-written post link; plain "Bài viết" is neither
+    expect(
+      suggestSheetColumns(["Link Drive", "Link bài viết", "Bài viết"])
+    ).toMatchObject({ postLink: "Link bài viết", existingPost: null })
+    expect(
+      detectAutoHeader("existingPost", ["Link Drive", "Post ID", "Bài viết có sẵn"])
+    ).toBe(2)
+    // silent auto-detect only knows the unambiguous names - "Post ID" / "ID bài viết" / "Mã bài viết" are only
+    // suggested (the user confirms the mapping), never auto-detected
+    for (const generic of ["Post ID", "ID bài viết", "Mã bài viết"])
+      expect(
+        detectAutoHeader("existingPost", ["Link Drive", generic]),
+        generic
+      ).toBe(-1)
+    expect(
+      detectAutoHeader("existingPost", ["Bài viết có sẵn", "Post ID"], new Set([0]))
+    ).toBe(-1)
+    for (const strong of [
+      "Bài viết có sẵn",
+      "bai viet co san",
+      "Bài có sẵn",
+      "Bài viết gốc",
+      "Link bài viết gốc",
+      "Existing post",
+    ])
+      expect(
+        detectAutoHeader("existingPost", ["Link Drive", strong]),
+        strong
+      ).toBe(1)
+    // the auto-detect list is a subset of the suggestion aliases; other columns keep their full alias list
+    for (const a of AUTO_DETECT_ALIASES.existingPost!)
+      expect(SHEET_COLUMN_ALIASES.existingPost).toContain(a)
+    expect(AUTO_DETECT_ALIASES.cover).toBeUndefined()
+    expect(AUTO_DETECT_ALIASES.welcomeMessage).toBeUndefined()
+    expect(
+      detectAutoHeader("existingPost", ["Link Drive", "Link bài viết", "Bài viết"])
+    ).toBe(-1)
   })
 })

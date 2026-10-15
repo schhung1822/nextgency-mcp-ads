@@ -161,6 +161,7 @@ export const HOSTS = {
   tiktok: /(^|\.)tiktok\.com$/,
   facebook: /(^|\.)(facebook\.com|fb\.com|fb\.watch)$/,
   instagram: /(^|\.)instagram\.com$/,
+  threads: /(^|\.)threads\.(net|com)$/,
   youtube: /(^|\.)(youtube\.com|youtu\.be)$/,
 } as const
 
@@ -214,7 +215,7 @@ export function isGoogleMapsUrl(u: URL): boolean {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Handles (TikTok / Instagram usernames, hashtags)
+// Handles (TikTok / Instagram / Threads usernames, hashtags)
 // ---------------------------------------------------------------------------------------------------------------
 
 const TIKTOK_HANDLE_RE = /^@?[A-Za-z0-9._]{2,24}$/
@@ -257,6 +258,39 @@ export function instagramHandle(ref: string): string | null {
     return INSTAGRAM_HANDLE_RE.test(first) ? first : null
   }
   return INSTAGRAM_HANDLE_RE.test(v) ? v.replace(/^@/, "") : null
+}
+
+/** Threads accounts are Instagram accounts: same username rules. */
+const THREADS_HANDLE_RE = INSTAGRAM_HANDLE_RE
+
+/**
+ * "@brand", "brand" or https://www.threads.com/@brand (threads.net too; the first path segment must be "@user") →
+ * "brand"; null when not a Threads profile reference.
+ */
+export function threadsHandle(ref: string): string | null {
+  const v = ref.trim()
+  if (v.startsWith("https://")) {
+    const u = safeUrl(v)
+    if (!u || u.username || u.password || !HOSTS.threads.test(u.hostname))
+      return null
+    const first = u.pathname.split("/").filter(Boolean)[0] ?? ""
+    if (!first.startsWith("@")) return null
+    const handle = first.slice(1)
+    return THREADS_HANDLE_RE.test(handle) ? handle : null
+  }
+  return THREADS_HANDLE_RE.test(v) ? v.replace(/^@/, "") : null
+}
+
+/**
+ * Threads post page: /@user/post/CODE (optionally /media), or the short forms /t/CODE (legacy threads.net) and
+ * /share/CODE (app share link) that the primary replies Actor resolves. Host is checked by HOSTS.threads.
+ */
+export function isThreadsPostUrl(u: URL): boolean {
+  return (
+    /^\/@[A-Za-z0-9._]{1,30}\/post\/[A-Za-z0-9_-]+(\/media)?\/?$/.test(
+      u.pathname
+    ) || /^\/(t|share)\/[A-Za-z0-9_-]+\/?$/.test(u.pathname)
+  )
 }
 
 export function hashtagField() {

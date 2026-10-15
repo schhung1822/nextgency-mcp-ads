@@ -341,7 +341,7 @@ function InfoRow({
 const LINK_COLUMNS = ["postLink", "campaignLink"] as const satisfies readonly SheetColumnKey[]
 
 /**
- * The read-only auto-detected columns ("Ảnh bìa", "Lời chào tin nhắn") when they are not mapped: drive_sheet_read then
+ * The read-only auto-detected columns ("Ảnh bìa", "Lời chào tin nhắn", "Bài viết có sẵn") when they are not mapped: drive_sheet_read then
  * takes a header named like them (detectAutoHeader, same order + taken cells as mapColumns). Per key: null = mapped or
  * header unknown, "" = no such header, else the header cell.
  */
@@ -349,7 +349,10 @@ function autoHeaders(
   sheet: NonNullable<DriveSourceDetail["sheet"]>,
   header: readonly string[] | null
 ): Record<AutoDetectColumnKey, string | null> {
-  const out = { cover: null, welcomeMessage: null } as Record<AutoDetectColumnKey, string | null>
+  const out = { cover: null, welcomeMessage: null, existingPost: null } as Record<
+    AutoDetectColumnKey,
+    string | null
+  >
   if (!header) return out
   const taken = new Set<number>()
   for (const k of SHEET_COLUMN_KEYS) {

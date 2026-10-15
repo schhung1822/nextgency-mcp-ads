@@ -225,3 +225,74 @@ describe("batch", () => {
     expect(res[1].ok).toBe(false)
   })
 })
+
+describe("Graph error mapping - creative / ad edit subcodes (v1.1.4 E3)", () => {
+  const cases: [number, RegExp, RegExp][] = [
+    [1815471, /^Lời chào tin nhắn \(page_welcome_message\) không hợp lệ/, /≤300 ký tự/],
+    [1815573, /không cho sửa nội dung của creative đã tạo/, /meta_update_ad_creative/],
+    [1885088, /đã lưu trữ hoặc đã xoá/, /meta_create_ad/],
+    [1487007, /^Nhóm quảng cáo đã qua ngày kết thúc \(end_time\)/, /Gia hạn end_time .*ads_update_object \(level=ad_group/],
+    [1487056, /đã lưu trữ hoặc đã xoá/, /ads_copy_object/],
+    [1487566, /đã lưu trữ hoặc đã xoá/, /meta_create_ad/],
+    [1885998, /Dynamic Creative/, /Trình quản lý quảng cáo/],
+    [3858355, /định dạng linh hoạt/, /tạm dừng quảng cáo cũ/],
+    [1885029, /Trang của creative khác Trang của đối tượng đang quảng cáo/, /promoted_object\.page_id/],
+    [1885557, /Bài viết không dùng được cho quảng cáo/, /meta_get_post/],
+    [2490155, /Bài viết không dùng được cho quảng cáo/, /meta_list_page_posts/],
+    [2446289, /Bài viết không dùng được cho quảng cáo/, /chọn bài khác/],
+    [1487472, /Bài viết không dùng được cho quảng cáo/, /meta_get_post/],
+  ]
+
+  it("→ invalid_request, Vietnamese text + hint, Meta's own message kept on one line (≤300), never retryable", () => {
+    for (const [sub, vi, hint] of cases) {
+      const e = mapGraphError(
+        { code: 100, error_subcode: sub, message: "Invalid parameter", error_user_title: "Lỗi", error_user_msg: `Dòng 1\nDòng 2 ${"z".repeat(400)}` },
+        400,
+        null
+      )
+      expect(e.code, String(sub)).toBe("invalid_request")
+      expect(e.retryable).toBe(false)
+      expect(e.userMessageVi, String(sub)).toMatch(vi)
+      expect(e.userMessageVi).toMatch(/Meta báo: Lỗi: Dòng 1 Dòng 2 z+…$/)
+      expect(e.userMessageVi).not.toMatch(/z{300}/)
+      expect(e.hint, String(sub)).toMatch(hint)
+      expect(e.upstream).toMatchObject({ code: 100, subcode: sub })
+      // without a user message: no "Meta báo:"
+      expect(mapGraphError({ code: 100, error_subcode: sub, message: "x" }, 400, null).userMessageVi).not.toMatch(/Meta báo:/)
+    }
+  })
+
+  it("1815471 reported as the top-level code maps the same; unrelated 100 subcodes keep the generic mapping", () => {
+    expect(mapGraphError({ code: 1815471, message: "x" }, 400, null).userMessageVi).toMatch(/^Lời chào tin nhắn/)
+    expect(mapGraphError({ code: 100, error_subcode: 1, message: "x" }, 400, null).userMessageVi).toBe("Meta từ chối yêu cầu: x.")
+    // a throttle / permission code is never re-labelled by a creative subcode
+    expect(mapGraphError({ code: 200, error_subcode: 1885557, message: "x" }, 403, null).code).toBe("permission_denied")
+    expect(mapGraphError({ code: 17, error_subcode: 1885088, message: "x" }, 400, null).code).toBe("rate_limited")
+  })
+
+  it("a creative create rejected with 1815471 is not retried", async () => {
+    const m = mockGraph([["POST", "act_1001/adcreatives", () => graphError(100, 1815471)]])
+    const e = await catchErr(
+      graph({ credentials: { accessToken: TEST_TOKEN } }, { method: "POST", path: "act_1001/adcreatives", params: { name: "x" } })
+    )
+    expect(e.code).toBe("invalid_request")
+    expect(m.calls).toHaveLength(1)
+  })
+})
+
+describe("Graph error mapping - signed CDN URLs are never echoed (v1.1.4)", () => {
+  it("fbcdn / fbsbx URLs are removed from the message, Meta's user text and upstream info (creative subcodes and the generic 100)", () => {
+    const url = "https://scontent.xx.fbcdn.net/v/t45/pic.jpg?oh=SIGNEDOH&oe=6720AB00"
+    const box = "https://lookaside.fbsbx.com/x?sig=SIGNED2"
+    for (const sub of [1885557, 1]) {
+      const e = mapGraphError(
+        { code: 100, error_subcode: sub, message: `Bad image ${url}`, error_user_title: `T ${box}`, error_user_msg: `Ảnh ${url} lỗi` },
+        400,
+        null
+      )
+      const all = JSON.stringify({ m: e.message, vi: e.userMessageVi, hint: e.hint, up: e.upstream })
+      expect(all).not.toMatch(/fbcdn|fbsbx|SIGNED/)
+      expect(e.userMessageVi).toContain("[ảnh]")
+    }
+  })
+})

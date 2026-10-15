@@ -38,6 +38,7 @@ const GROUPS = [
   "tiktok",
   "facebook",
   "instagram",
+  "threads",
   "youtube",
   "google",
   "web",
@@ -194,7 +195,7 @@ export function register(
     name: NAME,
     title: "Danh mục việc Apify",
     description:
-      "Dùng khi người dùng muốn lấy dữ liệu từ Shopee, Lazada, TikTok Shop, TikTok, Facebook (thư viện quảng cáo, Trang, nhóm, bình luận), Instagram, YouTube, Google (Maps, tìm kiếm, minh bạch quảng cáo) hoặc một trang web qua Apify - gọi TRƯỚC apify_run_task. Liệt kê danh mục việc: key, mô tả, input (trường bắt buộc / tuỳ chọn), số kết quả mặc định / tối đa (limit), chi phí ước tính USD, có Actor dự phòng không, ghi chú hạn chế; kèm tình trạng kho Apify của MCP (số tài khoản dùng được, credit còn ước tính, ngày reset, trần mỗi lần chạy / mỗi ngày, đã dùng hôm nay). group = lọc theo nền tảng; task = xem chi tiết 1 việc (input_schema đầy đủ + ví dụ input + trường kết quả). include_beta = cả việc thử nghiệm. Không gọi Apify, không tốn tiền.",
+      "Dùng khi người dùng muốn lấy dữ liệu từ Shopee, Lazada, TikTok Shop, TikTok, Facebook (thư viện quảng cáo, Trang, nhóm, bình luận), Instagram, Threads, YouTube, Google (Maps, tìm kiếm, minh bạch quảng cáo) hoặc một trang web qua Apify - gọi TRƯỚC apify_run_task. Liệt kê danh mục việc: key, mô tả, input (trường bắt buộc / tuỳ chọn), số kết quả mặc định / tối đa (limit), chi phí ước tính USD, có Actor dự phòng không, ghi chú hạn chế; kèm tình trạng kho Apify của MCP (số tài khoản dùng được, credit còn ước tính, ngày reset, trần mỗi lần chạy / mỗi ngày, đã dùng hôm nay). group = lọc theo nền tảng; task = xem chi tiết 1 việc (input_schema đầy đủ + ví dụ input + trường kết quả). include_beta = cả việc thử nghiệm. Không gọi Apify, không tốn tiền.",
     kind: "read",
     annotations: READ_ANNOTATIONS,
     input: z.object({

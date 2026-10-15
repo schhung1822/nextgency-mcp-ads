@@ -253,7 +253,7 @@ export const tips = {
           "**Cách 2 - nhập tệp mẫu:** bấm **Tải tệp mẫu CSV**. Trong Google Sheet chọn **Tệp → Nhập → Tải lên** rồi chọn tệp vừa tải.",
           "Ở hộp **Nhập tệp**: **Vị trí nhập** chọn **Chèn (các) trang tính mới**, bỏ chọn **Chuyển đổi văn bản thành số, ngày tháng và công thức** → **Nhập dữ liệu**.",
         ],
-        see: "Dòng 1 có 16 cột, từ Link Drive tới Cập nhật lúc. Tệp mẫu có thêm 5 dòng ví dụ - xoá đi khi điền thật.",
+        see: "Dòng 1 có 17 cột, từ Link Drive tới Cập nhật lúc. Tệp mẫu có thêm 6 dòng ví dụ - xoá đi khi điền thật.",
         href: "#mau-sheet",
         actionLabel: "Xem mẫu sheet",
       },
@@ -265,6 +265,7 @@ export const tips = {
           "Video: dán link ảnh bìa vào cột **Ảnh bìa** (tuỳ chọn). Để trống thì Meta tự lấy ảnh bìa do Meta chọn; TikTok cần ảnh bìa (cột **Ảnh bìa** hoặc chung ô **Link Drive** với video).",
           "Ghi **Nền tảng**, **Tài khoản QC**, **Nội dung**, **Tiêu đề**, **Link đích**.",
           "Quảng cáo tin nhắn Meta (Messenger): cột **Lời chào tin nhắn** (tuỳ chọn, tối đa 300 ký tự) là câu khách thấy khi mở Messenger; **Link đích** có thể để trống.",
+          "Quảng cáo từ bài viết có sẵn (Meta): dán mã bài viết dạng `PAGEID_POSTID` hoặc link bài viết trên Trang vào cột **Bài viết có sẵn**, để trống **Link Drive**.",
           "Cột **Trạng thái**: để trống, hoặc ghi **Chờ lên** / **Chưa tạo ads**.",
           "Để trống 6 cột hệ thống, từ **Mã media** tới **Cập nhật lúc** - AI tự điền.",
         ],
@@ -360,7 +361,7 @@ export const tips = {
       copyHeader: "Sao chép dòng tiêu đề",
       download: "Tải tệp mẫu CSV",
       downloadHelp:
-        "Tệp CSV (UTF-8) có dòng tiêu đề + 5 dòng ví dụ: ảnh Meta, video TikTok có ảnh bìa ở cột Ảnh bìa, nhiều ảnh trong một ô (mỗi ảnh một quảng cáo), video Meta không ảnh bìa (Meta tự chọn), và ảnh Meta cho quảng cáo tin nhắn có Lời chào tin nhắn.",
+        "Tệp CSV (UTF-8) có dòng tiêu đề + 6 dòng ví dụ: ảnh Meta, video TikTok có ảnh bìa ở cột Ảnh bìa, nhiều ảnh trong một ô (mỗi ảnh một quảng cáo), video Meta không ảnh bìa (Meta tự chọn), ảnh Meta cho quảng cáo tin nhắn có Lời chào tin nhắn, và bài viết có sẵn kèm lời chào (không cần Link Drive).",
       downloaded: "Đã tải tệp mẫu",
       columnsTitle: "Ý nghĩa từng cột",
       columnsLabel: "Các cột của sheet",
@@ -375,7 +376,7 @@ export const tips = {
           who: "you",
           required: true,
           detail:
-            "Link file trên Google Drive. Nhiều file trong một ô (nhiều ảnh, hoặc video + ảnh bìa nếu không dùng cột Ảnh bìa): mỗi link một dòng trong ô, tối đa 10 link.",
+            "Link file trên Google Drive. Nhiều file trong một ô (nhiều ảnh, hoặc video + ảnh bìa nếu không dùng cột Ảnh bìa): mỗi link một dòng trong ô, tối đa 10 link. Để trống khi dòng dùng cột Bài viết có sẵn.",
         },
         {
           name: "Ảnh bìa",
@@ -419,6 +420,12 @@ export const tips = {
             "Tuỳ chọn, chỉ cho quảng cáo tin nhắn Meta (Messenger). Câu chào khách thấy khi mở Messenger từ quảng cáo, tối đa 300 ký tự. Để trống: dùng lời chào mặc định ở form soạn câu lệnh, không có thì Meta tự dùng lời chào mặc định.",
         },
         {
+          name: "Bài viết có sẵn",
+          who: "you",
+          detail:
+            "Tuỳ chọn, chỉ Meta. Mã bài viết dạng PAGEID_POSTID hoặc link bài viết trên Trang Facebook: AI tạo quảng cáo từ chính bài viết đó (giữ lượt thích, bình luận), không tải file. Dòng có cả Link Drive thì dùng bài viết.",
+        },
+        {
           name: "Trạng thái",
           who: "both",
           detail:
@@ -432,7 +439,8 @@ export const tips = {
         {
           name: "Mã quảng cáo",
           who: "system",
-          detail: "Mã các quảng cáo đã tạo từ dòng này.",
+          detail:
+            "Mã các quảng cáo đã tạo từ dòng này. Việc “Thêm / đổi lời chào” dùng cột này để tìm quảng cáo.",
         },
         {
           name: "Link bài viết",
@@ -509,6 +517,17 @@ export const tips = {
       accountLabel: "Tài khoản quảng cáo",
       accountPlaceholder: "Để trống = theo cột Tài khoản QC",
       accountHelp: "Tên hoặc ID. Điền khi mọi dòng lên cùng một tài khoản.",
+      taskLabel: "Việc cần làm",
+      tasks: {
+        create: "Tạo quảng cáo mới",
+        update_welcome: "Thêm / đổi lời chào cho quảng cáo đã có",
+      },
+      taskHelp: {
+        create:
+          "Lên quảng cáo từ các dòng chờ lên: ảnh, video trên Drive, hoặc bài viết có sẵn (cột Bài viết có sẵn, chỉ Meta).",
+        update_welcome:
+          "Chỉ Meta, MCP cần quyền Sửa. AI làm các dòng đã có Mã quảng cáo: đổi lời chào Messenger, giữ nguyên nội dung, mã và trạng thái quảng cáo. Nhóm quảng cáo phải gửi khách tới Messenger; Meta sẽ duyệt lại quảng cáo.",
+      },
       metaTypeLabel: "Loại quảng cáo Meta",
       metaTypes: {
         website: "Dẫn tới website (Link đích)",
@@ -529,6 +548,9 @@ export const tips = {
       welcomeHelp:
         "Tuỳ chọn. Dùng cho dòng có cột Lời chào tin nhắn trống. Để trống thì Meta dùng lời chào mặc định.",
       welcomeCount: (n: number, max: number) => `${n}/${max}`,
+      welcomeLabelUpdate: "Lời chào mới trong Messenger",
+      welcomeHelpUpdate:
+        "Dùng cho dòng có cột Lời chào tin nhắn trống. Để trống thì AI chỉ làm các dòng có lời chào riêng.",
       structureLabel: "Chiến dịch và nhóm quảng cáo",
       structures: {
         existing: {
@@ -559,6 +581,8 @@ export const tips = {
       preview: (n: number, where: string) =>
         `Mỗi lượt AI làm tối đa ${n} dòng chờ lên, ${where}. Quảng cáo luôn tạo ở trạng thái tạm dừng.`,
       previewExisting: "đưa quảng cáo vào chiến dịch có sẵn",
+      previewUpdateWelcome: (n: number) =>
+        `Mỗi lượt AI làm tối đa ${n} dòng đã có Mã quảng cáo: đổi lời chào của từng quảng cáo, không tạo gì mới. Dòng đã làm được ghi “Đã cập nhật lời chào” ở Ghi chú hệ thống.`,
       previewNew: (budget: string) =>
         `tạo chiến dịch mới với ngân sách ${budget}/ngày`,
       previewMessaging: {
@@ -602,6 +626,7 @@ export const tips = {
       "Đừng sắp xếp, lọc, chèn hay xoá dòng trong lúc AI đang chạy - dòng bị lệch sẽ bị bỏ qua để tránh ghi nhầm.",
       "Mã tài khoản dài (TikTok 19 chữ số) bị Google Sheet đổi thành số mũ: chọn cột Tài khoản QC → Định dạng → Số → Văn bản thuần túy trước khi gõ, hoặc ghi tên tài khoản.",
       "Quảng cáo tin nhắn Meta: chọn Loại quảng cáo Meta ở form - cả lượt dùng chung một loại. Lời chào riêng của từng dòng ghi ở cột Lời chào tin nhắn (tối đa 300 ký tự); dùng chiến dịch có sẵn thì nhóm quảng cáo phải là nhóm gửi khách tới Messenger.",
+      "Thêm lời chào cho quảng cáo đã tạo: ở form chọn Việc cần làm = “Thêm / đổi lời chào cho quảng cáo đã có”. AI dùng cột Mã quảng cáo, quảng cáo giữ nguyên mã và số liệu; Meta duyệt lại quảng cáo. Muốn đổi lời chào lần nữa: xoá ghi chú “Đã cập nhật lời chào” của dòng.",
     ],
 
     faq: [
@@ -644,6 +669,10 @@ export const tips = {
       {
         q: "Meta báo “Optimization goal isn't available” khi chọn tối đa lượt mua qua tin nhắn",
         a: "Trang chưa đủ điều kiện: cần ít nhất 5 lượt mua từ cuộc trò chuyện Messenger trong 30 ngày, ghi qua Conversions API cho tin nhắn doanh nghiệp hoặc nút Tạo đơn trong Meta Business Suite (gửi đơn rồi đánh dấu đã thanh toán). Trong lúc chờ, chọn “Tin nhắn Messenger - tối đa lượt trò chuyện”.",
+      },
+      {
+        q: '"existing_post_invalid" hoặc "Cần mã bài viết dạng PAGEID_POSTID"',
+        a: "Cột Bài viết có sẵn cần mã bài viết dạng PAGEID_POSTID (vd 123456789012345_987654321098765) hoặc link bài viết trên Facebook. Link chia sẻ (/share/…, pfbid…) chỉ tìm được khi MCP được gán Trang Facebook đó; không thì lấy ID bài viết trong Meta Business Suite hoặc Trình quản lý quảng cáo rồi ghi dạng PAGEID_POSTID.",
       },
       {
         q: "Lên được trên Google Ads không?",

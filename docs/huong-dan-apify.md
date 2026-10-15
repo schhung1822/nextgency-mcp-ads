@@ -30,7 +30,7 @@ Trong Ads MCP:
 
 1. Bạn (hoặc quản trị viên) dán **API token** Apify vào **Kết nối → tab Apify**.
 2. Bạn bật Apify cho một MCP.
-3. Trong cuộc trò chuyện, AI gọi các công cụ `apify_*`: hệ thống chọn **Actor phù hợp trong danh mục đã chọn lọc** (khoảng 30 việc, mỗi việc có Actor chính + Actor dự phòng), chạy bằng token của bạn với giới hạn an toàn, rồi trả kết quả gọn cho AI phân tích.
+3. Trong cuộc trò chuyện, AI gọi các công cụ `apify_*`: hệ thống chọn **Actor phù hợp trong danh mục đã chọn lọc** (khoảng 35 việc, mỗi việc có Actor chính + Actor dự phòng), chạy bằng token của bạn với giới hạn an toàn, rồi trả kết quả gọn cho AI phân tích.
 
 | Nhóm            | Việc AI làm được                                                                                                                   |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,6 +40,7 @@ Trong Ads MCP:
 | **TikTok**      | Video theo từ khoá / hashtag / kênh, bình luận video, quảng cáo hiệu quả cao tại Việt Nam (TikTok Creative Center)                 |
 | **Facebook**    | Thư viện quảng cáo (quảng cáo đang chạy theo từ khoá hoặc Trang), bài viết và thông tin Trang công khai, nhóm công khai, bình luận |
 | **Instagram**   | Thông tin tài khoản, bài / reel, bài theo hashtag                                                                                  |
+| **Threads**     | Bài viết của một tài khoản, tìm bài theo từ khoá / hashtag, trả lời (bình luận) của bài viết, thông tin tài khoản                  |
 | **YouTube**     | Tìm video, video của một kênh, bình luận                                                                                           |
 | **Google**      | Địa điểm và đánh giá Google Maps, kết quả Google Search, quảng cáo trên Google Ads Transparency Center                             |
 | **Website**     | Đọc nội dung một trang (landing page), đọc nhiều trang của một website                                                             |
@@ -201,6 +202,12 @@ Nói rõ **cái gì, ở đâu, bao nhiêu** (từ khoá, link, số lượng). 
 
 > "Các quảng cáo TikTok hiệu quả cao ở Việt Nam ngành làm đẹp (TikTok Creative Center) có điểm gì chung?"
 
+### Lắng nghe trên Threads
+
+> "Tìm 30 bài Threads mới nhất có từ khoá **kem chống nắng** trong 7 ngày qua, gom theo chủ đề khen / chê và cho biết thương hiệu nào được nhắc nhiều nhất."
+
+> "Lấy 30 bài gần đây của tài khoản Threads **@<đối thủ>**, bài nào nhiều lượt thích / trả lời nhất và vì sao? Đọc tiếp các trả lời của bài cao nhất để xem khách hỏi gì."
+
 ### Đánh giá Google Maps
 
 > "Lấy 100 đánh giá Google Maps mới nhất của **<tên cửa hàng, địa chỉ>**, tóm tắt điểm khen / chê, so sánh với **<đối thủ>**."
@@ -250,6 +257,7 @@ Bấm vào một token để mở trang chi tiết:
 | **Shopee Việt Nam**            | **Best-effort**: Shopee chặn thu thập dữ liệu mạnh, có lúc kết quả thiếu hoặc rỗng; gói Free một số Actor trả dữ liệu mẫu. Thử Actor dự phòng, hoặc dùng Lazada / TikTok Shop |
 | Thư viện quảng cáo Facebook    | Chi tiêu, phạm vi tiếp cận chỉ có với quảng cáo nhắm châu Âu hoặc quảng cáo chính trị (giới hạn của Meta)                                                                     |
 | Dữ liệu cần đăng nhập          | Không lấy được (nhóm kín, tài khoản riêng tư, tin nhắn)                                                                                                                       |
+| Threads                        | Chỉ phần Threads hiện cho khách chưa đăng nhập (tìm kiếm thường ít hơn số bài yêu cầu). Actor chính lấy tối thiểu 10 bài mỗi lần và cần trần mỗi lần chạy ≥ 0,1 USD           |
 | Số kết quả mỗi lần chạy        | Theo từng việc (giới hạn mặc định và tối đa — AI xem bằng `apify_list_tasks`)                                                                                                 |
 | Kết quả AI đọc mỗi lượt        | ≤ 50 mục, khoảng 24.000 ký tự (chuỗi dài bị cắt); phần còn lại đọc tiếp bằng trang sau                                                                                        |
 | Thời gian chờ                  | AI chờ ≤ 25 giây khi bắt đầu chạy, ≤ 30 giây mỗi lần kiểm tra; lần chạy lâu hơn vẫn tiếp tục trên Apify                                                                       |

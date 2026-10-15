@@ -1,7 +1,7 @@
 // ads_list_objects / ads_get_object for Meta (campaigns, ad sets, ads).
 import { createHash } from "node:crypto"
 
-import { ProviderError } from "../errors"
+import { isProviderError, ProviderError } from "../errors"
 import { fromMetaMinor } from "../money"
 import type {
   AdObjectDetail,
@@ -95,11 +95,29 @@ export const DETAIL_EXTRA_FIELDS: Record<MetaLevel, string[]> = {
   ],
   ad: [
     "configured_status",
-    "creative{id,name,title,body,image_hash,image_url,video_id,object_story_id,effective_object_story_id,object_story_spec,url_tags,call_to_action_type,thumbnail_url}",
+    "creative{id,name,title,body,image_hash,image_url,video_id,object_story_id,effective_object_story_id,object_story_spec,url_tags,call_to_action_type,call_to_action,page_welcome_message,thumbnail_url}",
     "ad_review_feedback",
     "issues_info",
     "tracking_specs",
   ],
+}
+
+/**
+ * Ad detail fields before v1.1.4 (no creative call_to_action / page_welcome_message): the read is retried ONCE with
+ * them when Meta rejects a requested field (#100), so a field Meta does not serve never breaks ads_get_object.
+ */
+const AD_DETAIL_FIELDS_V113 = [
+  "configured_status",
+  "creative{id,name,title,body,image_hash,image_url,video_id,object_story_id,effective_object_story_id,object_story_spec,url_tags,call_to_action_type,thumbnail_url}",
+  "ad_review_feedback",
+  "issues_info",
+  "tracking_specs",
+]
+
+/** Meta rejected a requested field ("(#100) Tried accessing nonexisting field …"): code 100, no subcode / a field message. */
+export function isGraphFieldError(e: unknown): boolean {
+  if (!isProviderError(e) || e.code !== "invalid_request" || e.upstream?.code !== 100) return false
+  return e.upstream.subcode === null || e.upstream.subcode === undefined || /field/i.test(e.upstream.message ?? "")
 }
 
 export type RawNode = Record<string, unknown> & { id: string }
@@ -308,7 +326,12 @@ export async function getMetaObject(
 ): Promise<AdObjectDetail> {
   const level = toMetaLevel(objLevel)
   const fields = [...SUMMARY_FIELDS[level], ...DETAIL_EXTRA_FIELDS[level]]
-  const node = await readNode(ctx, level, id, fields)
+  const node = await readNode(ctx, level, id, fields).catch((e: unknown) => {
+    // v1.1.4 E4 guard: a creative field Meta rejects (#100) → one retry with the v1.1.3 field list (silent: the detail
+    // has no warnings; the fields are only missing from config.creative)
+    if (level !== "ad" || !isGraphFieldError(e)) throw e
+    return readNode(ctx, level, id, [...SUMMARY_FIELDS.ad, ...AD_DETAIL_FIELDS_V113])
+  })
   const currency = ctx.account.currency
   const detail = toDetail(node, level, currency)
   if (!opts.includeChildren || level === "ad") return detail

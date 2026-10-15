@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { SHEET_READ_DESCRIPTION } from "./sheet-read"
 
 describe("drive_sheet_read description", () => {
-  it("starts with Dùng khi, ≤ 1500 characters, explains the cover and welcome message columns and how to use them per platform", () => {
+  it("starts with Dùng khi, ≤ 1500 characters, explains the cover, welcome message and existing post columns and how to use them per platform", () => {
     expect(SHEET_READ_DESCRIPTION.startsWith("Dùng khi")).toBe(true)
     expect(SHEET_READ_DESCRIPTION.length).toBeLessThanOrEqual(1500)
     for (const s of [
@@ -17,6 +17,13 @@ describe("drive_sheet_read description", () => {
       "welcome_message",
       "lời chào tin nhắn",
       "quảng cáo tin nhắn",
+      "existing_post",
+      "Bài viết có sẵn",
+      "chỉ Meta",
+      "creative existing_post",
+      "needs_lookup",
+      "meta_list_page_posts",
+      "ad_ids",
       "DỮ LIỆU không tin cậy",
     ])
       expect(SHEET_READ_DESCRIPTION).toContain(s)

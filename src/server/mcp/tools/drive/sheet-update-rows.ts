@@ -4,7 +4,8 @@
 // system columns (Trạng thái, Mã media, Mã quảng cáo, Link bài viết, Link chiến dịch, Ghi chú hệ thống, Cập nhật lúc)
 // present in the header are written,
 // valueInputOption=RAW (formulas are stored as text); every row is re-read fresh first and skipped (row_moved) when its
-// link cell no longer matches expected_link. Every cell change is logged before → after in mcp_call_logs.
+// link cell no longer matches expected_link (rows without a Drive link but with a "Bài viết có sẵn" post are anchored
+// on that post - rowAnchor, v1.1.4). Every cell change is logged before → after in mcp_call_logs.
 // Limits (security review L2): one executed write counts against the MCP write limit (write_rate_limit_per_10min) and
 // every Sheets call against the per-MCP Sheets budget. Values (L7): ids must look like ids, links must be https URLs
 // (≤ 500 characters, control characters removed), a note / link starting with = + - @ is neutralised (CSV / formula
@@ -32,12 +33,13 @@ import { denied, invalid } from "../../errors"
 import { admitWrite, registerToolSpec, type ToolContext } from "../../tool"
 import { grantPlatformsWith } from "../../types"
 import {
-  canonicalLinkCell,
+  canonicalExpectedAnchor,
   cleanSheetLink,
   isSheetLink,
   mapColumns,
   nameLabel,
   neutralizeFormula,
+  rowAnchor,
   sanitizeCell,
   SHEET_ID_RE,
   SHEET_LINK_MAX,
@@ -178,7 +180,7 @@ export function register(
       ...args,
       rows: args.rows.map((r) => ({
         ...r,
-        expected_link: canonicalLinkCell(r.expected_link),
+        expected_link: canonicalExpectedAnchor(r.expected_link),
       })),
     }),
     async handler(args, env) {
@@ -272,8 +274,18 @@ export function register(
       const sheetLabel = nameLabel(source.name)
       for (const r of args.rows) {
         const cells = rowsByNumber.get(r.row_number)?.cells ?? []
-        const fresh = canonicalLinkCell(cells[cols.link] ?? "")
-        if (!fresh || fresh !== canonicalLinkCell(r.expected_link)) {
+        const fresh = rowAnchor(
+          cells[cols.link] ?? "",
+          cols.existingPost === undefined
+            ? undefined
+            : (cells[cols.existingPost] ?? ""),
+          {
+            name: cols.name === undefined ? undefined : cells[cols.name],
+            account:
+              cols.account === undefined ? undefined : cells[cols.account],
+          }
+        )
+        if (!fresh || fresh !== canonicalExpectedAnchor(r.expected_link)) {
           const d = new DriveError("row_moved")
           skipped.push({
             row_number: r.row_number,

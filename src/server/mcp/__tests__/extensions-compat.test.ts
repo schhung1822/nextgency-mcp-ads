@@ -7,7 +7,7 @@ import { openaiAdsProvider } from "../../providers/openai-ads"
 import { registerProvider } from "../../providers/registry"
 import { tiktokProvider } from "../../providers/tiktok"
 import type { AdsProvider } from "../../providers/types"
-import { MONEY_KEY } from "../guardrails"
+import { MONEY_KEY, moneyLikePaths } from "../guardrails"
 import { buildMcpServer } from "../handler"
 import { COMMON_TOOL_PERMISSIONS } from "../registry"
 import type { RequestState } from "../request-state"
@@ -97,6 +97,34 @@ describe("real adapter extensions", () => {
       ["bid", "bid_amount", 2],
       ["bid", "advanced.deep_cpa_bid", 9],
     ])
+  })
+
+  it("meta_update_ad_creative: update permission, write, no money (the money guardrail never fires on its inputs)", () => {
+    const ext = metaProvider.extensions.find((e) => e.name === "meta_update_ad_creative")
+    expect(ext, "meta_update_ad_creative").toBeDefined()
+    expect(ext!.permission).toBe("update")
+    expect(ext!.write).toBe(true)
+    expect(ext!.moneyOf).toBeUndefined()
+    const full = ext!.input.parse({
+      ad_id: "11",
+      page_id: "888",
+      instagram_user_id: "17841",
+      url_tags: "utm_source=fb&amount=5",
+      advantage_creative_opt_in: ["image_touchups"],
+      creative: {
+        type: "link",
+        link: "https://shop.vn/sp?price=100000",
+        message: "Giá 100000",
+        headline: "200000",
+        description: "300000",
+        image_hash: "0123456789abcdef0123456789abcdef",
+        call_to_action: { type: "SHOP_NOW", link: "https://shop.vn" },
+        welcome_message: { text: "Giá 100000đ", ice_breakers: [{ title: "Giá?", response: "100000" }] },
+      },
+    })
+    expect(moneyLikePaths(full)).toEqual([])
+    expect(moneyLikePaths(ext!.input.parse({ ad_id: "11", welcome_message: "Chào" }))).toEqual([])
+    expect(moneyLikePaths(ext!.input.parse({ ad_id: "11", creative_id: "300" }))).toEqual([])
   })
 
   it("google_ads_add_youtube_video: create permission, write, no money", () => {

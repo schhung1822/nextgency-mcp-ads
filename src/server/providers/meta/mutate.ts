@@ -1,6 +1,6 @@
 // Write operations shared by every platform tool: status, budget, simple fields, delete.
 // dryRun → read current state only and never mutate. execution_options=["validate_only"] is documented for
-// CREATE edges only (act_X/campaigns|adsets|ads); on `POST /{id}` updates it is undocumented and could be ignored
+// CREATE edges only (act_X/campaigns|adsets|ads|adcreatives); on `POST /{id}` updates it is undocumented and could be ignored
 // (= a real write during preview), so update previews are computed from reads alone.
 import { ProviderError } from "../errors"
 import { fromMetaMinor, metaCurrencyOffset, toMetaMinor } from "../money"
@@ -32,14 +32,14 @@ export const VALIDATE_ONLY = ["validate_only"]
 
 /**
  * POST with execution_options=["validate_only"]: Meta runs validation without mutating.
- * ONLY for create edges (`act_X/{campaigns,adsets,ads}`) - never call it on `POST /{id}` updates.
+ * ONLY for create edges (`act_X/{campaigns,adsets,ads,adcreatives}`) - never call it on `POST /{id}` updates.
  */
 export async function validateOnly(
   ctx: ProviderContext<MetaCredentials>,
   path: string,
   params: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  if (!/^act_\d+\/(campaigns|adsets|ads)$/.test(path)) {
+  if (!/^act_\d+\/(campaigns|adsets|ads|adcreatives)$/.test(path)) {
     throw new Error(`meta: validate_only is only allowed on create edges, got "${path}"`)
   }
   return graph(callCtx(ctx), {
@@ -233,7 +233,7 @@ export async function updateMetaObject(
   if (c.finalUrl !== undefined) {
     throw invalid(
       "Meta không cho sửa URL đích của quảng cáo có sẵn (URL nằm trong creative).",
-      "Tạo quảng cáo mới bằng meta_create_ad với URL mới rồi tạm dừng quảng cáo cũ."
+      "Dùng meta_update_ad_creative với creative mới có link mới (quảng cáo giữ nguyên ID, Meta duyệt lại), hoặc tạo quảng cáo mới bằng meta_create_ad rồi tạm dừng quảng cáo cũ."
     )
   }
   if (level === "ad" && (c.startTime !== undefined || c.endTime !== undefined || c.bidAmount !== undefined)) {

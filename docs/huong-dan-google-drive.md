@@ -242,7 +242,7 @@ Service account riêng chỉ dùng cho thư mục / sheet **riêng** của chín
 - **Tên hiển thị**: tên dễ nhận ra, hiện trong danh sách và khi chọn nguồn cho MCP. Để trống = dùng tên trên Google Drive.
 - **Thư mục**: **Thư mục con AI được duyệt** — _Chỉ thư mục này_, _1 cấp con_, _2 cấp con_, _3 cấp con_. Áp dụng khi AI liệt kê file kèm thư mục con; nhiều cấp thì chậm hơn. AI vẫn mở được từng thư mục con khi bạn nói tên (ví dụ "thư mục Tuần 41/Video").
 - **Sheet**: khối **Ánh xạ cột**. Hệ thống tự gợi ý theo tên cột mẫu (Phần 4); nếu sheet của bạn đặt tên khác, chọn lại:
-  - **Cột AI đọc**: _Link Drive_ (**Bắt buộc**), _Ảnh bìa_ (tuỳ chọn, ảnh bìa cho video — 4.1), _Tên creative_, _Nền tảng_, _Tài khoản QC_, _Nội dung_, _Tiêu đề_, _Link đích_, _Lời chào tin nhắn_ (tuỳ chọn, cho quảng cáo tin nhắn Messenger của Meta — 4.1). Cột nào không có thì chọn _Không dùng_.
+  - **Cột AI đọc**: _Link Drive_ (**Bắt buộc**), _Ảnh bìa_ (tuỳ chọn, ảnh bìa cho video — 4.1), _Tên creative_, _Nền tảng_, _Tài khoản QC_, _Nội dung_, _Tiêu đề_, _Link đích_, _Lời chào tin nhắn_ (tuỳ chọn, cho quảng cáo tin nhắn Messenger của Meta — 4.1), _Bài viết có sẵn_ (tuỳ chọn, quảng cáo Meta từ bài viết có sẵn trên Trang — 4.1). Cột nào không có thì chọn _Không dùng_.
   - Công tắc **Cho phép AI ghi trạng thái vào sheet** — chỉ bật được khi email có quyền **Người chỉnh sửa**. Nếu email mới có quyền Người xem: cấp thêm quyền rồi quay lại Bước 2 bấm **Kiểm tra** lại.
   - Mục **Cột ghi trạng thái (nâng cao)**: _Trạng thái_ (**bắt buộc** khi bật ghi), _Mã media_, _Mã quảng cáo_, _Link bài viết_, _Link chiến dịch_, _Ghi chú hệ thống_, _Cập nhật lúc_ (tuỳ chọn).
 - Bấm **Lưu thư mục / sheet**.
@@ -289,7 +289,7 @@ Tên cột dưới đây là tên hệ thống tự nhận ra. Đặt tên khác
 
 | Cột                | Bắt buộc              | Ai điền        | Ý nghĩa                                                                                                                                                                                            |
 | ------------------ | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Link Drive`       | ✔                     | Bạn            | Link file trên Drive (hoặc mã file). Nhiều file trong một ô (vd nhiều ảnh, hoặc video + ảnh bìa nếu không dùng cột Ảnh bìa): cách nhau bằng xuống dòng (Alt+Enter / Ctrl+Enter trong ô), dấu cách, dấu phẩy hoặc chấm phẩy — tối đa 10 link/ô |
+| `Link Drive`       | ✔ (trừ dòng dùng Bài viết có sẵn) | Bạn | Link file trên Drive (hoặc mã file). Nhiều file trong một ô (vd nhiều ảnh, hoặc video + ảnh bìa nếu không dùng cột Ảnh bìa): cách nhau bằng xuống dòng (Alt+Enter / Ctrl+Enter trong ô), dấu cách, dấu phẩy hoặc chấm phẩy — tối đa 10 link/ô |
 | `Ảnh bìa`          |                       | Bạn            | **Tuỳ chọn.** Link Drive (hoặc mã file) của **ảnh bìa** (JPG, PNG) cho video ở dòng đó. AI chỉ đọc, không ghi. Ô có nhiều link → dùng link đầu. Ô chỉ có chữ, không có link (vd `Meta tự chọn`, `-`) được coi như để trống. Để trống: Meta tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong; TikTok dùng ảnh nằm cùng ô `Link Drive` |
 | `Tên creative`     |                       | Bạn            | Tên media / quảng cáo                                                                                                                                                                              |
 | `Nền tảng`         |                       | Bạn            | `Meta`, `Facebook`, `FB`, `Instagram`, `IG` · `TikTok` · `Google`, `Google Ads`, `YouTube` · `OpenAI`, `ChatGPT` (không phân biệt hoa thường)                                                      |
@@ -298,9 +298,10 @@ Tên cột dưới đây là tên hệ thống tự nhận ra. Đặt tên khác
 | `Tiêu đề`          |                       | Bạn            | Tiêu đề gợi ý                                                                                                                                                                                      |
 | `Link đích`        |                       | Bạn            | Trang đích (landing page). Quảng cáo tin nhắn Messenger (Meta) mở Messenger nên có thể để trống                                                                                                    |
 | `Lời chào tin nhắn` |                      | Bạn            | **Tuỳ chọn, chỉ cho quảng cáo tin nhắn Messenger của Meta.** Câu chào khách thấy khi mở Messenger từ quảng cáo, tối đa **300 ký tự** (dài hơn → dòng báo `welcome_message_too_long`). AI chỉ đọc, không ghi. Để trống: dùng lời chào mặc định của form soạn câu lệnh (nếu có), không thì Meta dùng lời chào mặc định |
+| `Bài viết có sẵn`  |                       | Bạn            | **Tuỳ chọn, chỉ Meta.** Mã bài viết dạng `PAGEID_POSTID` hoặc link bài viết trên Trang Facebook — AI tạo quảng cáo **từ chính bài viết đó** (giữ lượt thích, bình luận), không tải file, không cần `Link Drive`. AI chỉ đọc, không ghi. Xem đoạn bên dưới |
 | `Trạng thái`       | ✔ nếu muốn AI ghi lại | Bạn + hệ thống | Để trống hoặc `Chờ lên` (hoặc `Chưa tạo ads`, `Chưa tạo`, `Chưa lên`) = cần lên. Hệ thống ghi `Đang xử lý`, `Đã lên`, `Lỗi` — xem 4.4                                                              |
 | `Mã media`         |                       | **Hệ thống**   | Mã ảnh/video trên nền tảng                                                                                                                                                                         |
-| `Mã quảng cáo`     |                       | **Hệ thống**   | Mã quảng cáo đã tạo                                                                                                                                                                                |
+| `Mã quảng cáo`     |                       | **Hệ thống**   | Mã quảng cáo đã tạo (nhiều mã cách nhau bằng dấu phẩy). Việc **Thêm / đổi lời chào cho quảng cáo đã có** (6.3d) dùng cột này để tìm quảng cáo |
 | `Link bài viết`    |                       | **Hệ thống**   | Link bài viết / bài quảng cáo AI vừa tạo từ dòng này (vd bài trên Facebook, TikTok) — bấm để xem nhanh                                                                                             |
 | `Link chiến dịch`  |                       | **Hệ thống**   | Link chiến dịch trong trình quản lý quảng cáo (Meta Ads Manager, TikTok Ads Manager…)                                                                                                              |
 | `Ghi chú hệ thống` |                       | **Hệ thống**   | Lý do lỗi hoặc ghi chú của AI                                                                                                                                                                      |
@@ -320,30 +321,41 @@ Cột **Lời chào tin nhắn** (thêm ngày 15/10/2026, nằm ngay sau **Link 
 - Chỉ dùng khi lên **quảng cáo tin nhắn Messenger** trên Meta (chọn **Loại quảng cáo Meta** ở form soạn câu lệnh, trang **Mẹo sử dụng → Lên hàng loạt quảng cáo**, hoặc nói rõ trong câu lệnh — 6.3b). Quảng cáo dẫn tới website, TikTok, OpenAI Ads bỏ qua cột này.
 - Sheet đã khai báo trước đó **không cần sửa cài đặt**: thêm một cột tên `Lời chào tin nhắn` (hoặc `Lời chào`, `Câu chào`, `Tin nhắn chào`, `Welcome message`, `Greeting`) là AI tự nhận ra. Cột tên `Tin nhắn` hay `Message` **không** được tự nhận (dễ nhầm với nội dung quảng cáo).
 - Ô có nội dung thay cho lời chào mặc định của form. Tối đa 300 ký tự; ký tự điều khiển, ký tự ẩn bị bỏ.
+- Cũng dùng cho việc **Thêm / đổi lời chào cho quảng cáo đã có** (6.3d): ô có nội dung là lời chào mới của các quảng cáo ở cột **Mã quảng cáo** của dòng.
+
+Cột **Bài viết có sẵn** (thêm ngày 16/10/2026, nằm ngay sau **Lời chào tin nhắn**, trước **Trạng thái**) cũng **tuỳ chọn** và AI **chỉ đọc** — dùng để tạo quảng cáo Meta từ một bài đã đăng trên Trang (giữ lượt thích, bình luận, chia sẻ):
+
+- Ghi **một** trong các dạng: mã bài viết `PAGEID_POSTID` (vd `123456789012345_987654321098765`); link `https://www.facebook.com/<mã Trang>/posts/<mã bài>`; link `…/permalink.php?story_fbid=<mã bài>&id=<mã Trang>` hoặc `…/story.php?story_fbid=…&id=…`. Các dạng này AI dùng được ngay.
+- Link khác của Facebook (link chia sẻ `/share/…`, link có `pfbid…`, link theo tên Trang, `fb.watch`) → AI phải **tìm mã bài viết** trong danh sách bài của Trang (cần MCP được gán **Trang Facebook** đó). Không tìm được → dòng báo lỗi và AI ghi “Cần mã bài viết dạng PAGEID_POSTID ở cột Bài viết có sẵn”.
+- Giá trị không phải bài viết Facebook (chữ thường, link Instagram, link trang khác…) → dòng báo `existing_post_invalid`. Dòng có bài viết mà **Nền tảng** không phải Meta → `existing_post_meta_only`.
+- Dòng có **cả** Link Drive (hoặc Ảnh bìa) **và** Bài viết có sẵn → **dùng bài viết**, bỏ qua Link Drive / Ảnh bìa của dòng đó (AI nhận cảnh báo). Dòng chỉ có bài viết thì để trống **Link Drive**.
+- Nội dung, ảnh, video lấy từ bài viết: AI bỏ qua **Nội dung**, **Tiêu đề**, **Link đích** của dòng; **Tên creative** dùng để đặt tên quảng cáo. Quảng cáo tin nhắn Messenger: thêm lời chào ở **Lời chào tin nhắn**, bài viết phải thuộc Trang nhận tin nhắn.
+- Sheet đã khai báo trước đó **không cần sửa cài đặt**: thêm một cột tên `Bài viết có sẵn` (hoặc `Bài có sẵn`, `Bài viết gốc`, `Link bài viết gốc`, `Existing post`) là AI tự nhận ra. Cột tên `Post ID`, `ID bài viết`, `Mã bài viết` **không** được tự nhận (dễ trùng cột bạn dùng việc khác) — muốn dùng thì **Sửa cài đặt** → chọn cột đó ở ô **Bài viết có sẵn** (hệ thống gợi ý sẵn khi khai báo). Khác với cột hệ thống **Link bài viết** (AI ghi link bài quảng cáo sau khi tạo) — cột `Link bài viết` không bao giờ được hiểu là bài viết có sẵn.
 
 ### 4.2 Dòng tiêu đề để dán nhanh
 
 Sao chép khối dưới đây, bấm vào ô **A1** của tab mới trong Google Sheet rồi dán (Ctrl+V) — mỗi tên cột tự vào một ô:
 
 ```text
-Link Drive	Ảnh bìa	Tên creative	Nền tảng	Tài khoản QC	Nội dung	Tiêu đề	Link đích	Lời chào tin nhắn	Trạng thái	Mã media	Mã quảng cáo	Link bài viết	Link chiến dịch	Ghi chú hệ thống	Cập nhật lúc
+Link Drive	Ảnh bìa	Tên creative	Nền tảng	Tài khoản QC	Nội dung	Tiêu đề	Link đích	Lời chào tin nhắn	Bài viết có sẵn	Trạng thái	Mã media	Mã quảng cáo	Link bài viết	Link chiến dịch	Ghi chú hệ thống	Cập nhật lúc
 ```
 
-Thứ tự đầy đủ (16 cột): Link Drive | Ảnh bìa | Tên creative | Nền tảng | Tài khoản QC | Nội dung | Tiêu đề | Link đích | Lời chào tin nhắn | Trạng thái | Mã media | Mã quảng cáo | Link bài viết | Link chiến dịch | Ghi chú hệ thống | Cập nhật lúc.
+Thứ tự đầy đủ (17 cột): Link Drive | Ảnh bìa | Tên creative | Nền tảng | Tài khoản QC | Nội dung | Tiêu đề | Link đích | Lời chào tin nhắn | Bài viết có sẵn | Trạng thái | Mã media | Mã quảng cáo | Link bài viết | Link chiến dịch | Ghi chú hệ thống | Cập nhật lúc.
 
 ### 4.3 Dòng ví dụ
 
 Dán vào ô **A2** (thay link và ID bằng của bạn):
 
 ```text
-https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view	https://drive.google.com/file/d/1GhIjKlMnOpQrStUvWxYz678901234/view	Ra mắt serum - video 15s	TikTok	7212345678901234567	Da sáng sau 7 ngày, ưu đãi 30% tuần này	Serum Vitamin C	https://congty.vn/serum		Chờ lên
-https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view, https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view		Ra mắt serum - video dọc + ảnh bìa	TikTok	7212345678901234567	Da sáng sau 7 ngày	Serum Vitamin C	https://congty.vn/serum		Chưa tạo ads
+https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view	https://drive.google.com/file/d/1GhIjKlMnOpQrStUvWxYz678901234/view	Ra mắt serum - video 15s	TikTok	7212345678901234567	Da sáng sau 7 ngày, ưu đãi 30% tuần này	Serum Vitamin C	https://congty.vn/serum			Chờ lên
+https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view, https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view		Ra mắt serum - video dọc + ảnh bìa	TikTok	7212345678901234567	Da sáng sau 7 ngày	Serum Vitamin C	https://congty.vn/serum			Chưa tạo ads
 https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view		Banner serum 1080x1080	Facebook	Shop Mỹ Phẩm - TKQC chính	Freeship toàn quốc cho đơn từ 299k	Serum Vitamin C	https://congty.vn/serum
-https://drive.google.com/file/d/1HiJkLmNoPqRsTuVwXyZ7890123456/view		Video review serum	Meta	act_1234567890	Khách thật dùng thật sau 14 ngày	Serum Vitamin C	https://congty.vn/serum		Chờ lên
-https://drive.google.com/file/d/1IjKlMnOpQrStUvWxYz8901234567/view		Ảnh serum - quảng cáo nhắn tin	Meta	act_1234567890	Nhắn tin cho shop để nhận bảng giá và quà tặng hôm nay	Serum Vitamin C		Chào bạn! Shop gửi bạn bảng giá serum và ưu đãi hôm nay nhé.	Chờ lên
+https://drive.google.com/file/d/1HiJkLmNoPqRsTuVwXyZ7890123456/view		Video review serum	Meta	act_1234567890	Khách thật dùng thật sau 14 ngày	Serum Vitamin C	https://congty.vn/serum			Chờ lên
+https://drive.google.com/file/d/1IjKlMnOpQrStUvWxYz8901234567/view		Ảnh serum - quảng cáo nhắn tin	Meta	act_1234567890	Nhắn tin cho shop để nhận bảng giá và quà tặng hôm nay	Serum Vitamin C		Chào bạn! Shop gửi bạn bảng giá serum và ưu đãi hôm nay nhé.		Chờ lên
+		Bài viết có sẵn - quảng cáo tin nhắn kèm lời chào	Meta	act_1234567890				Chào bạn! Shop gửi bạn mã giảm giá trong bài viết nhé.	https://www.facebook.com/123456789012345/posts/987654321098765	Chờ lên
 ```
 
-Dòng 2 có ảnh bìa riêng ở cột **Ảnh bìa**. Dòng 3 dùng cách cũ: 2 file trong một ô **Link Drive** (video + ảnh bìa) và ghi `Chưa tạo ads` — hệ thống hiểu như `Chờ lên`. Dòng 4 để trống **Trạng thái** — cũng được tính là "Chờ lên". Dòng 4 ghi **tên** TKQC thay cho ID (được, miễn tên không trùng). Dòng 5 là video Meta không có ảnh bìa — hệ thống tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong. Dòng 6 là ảnh cho **quảng cáo tin nhắn Messenger**: để trống **Link đích**, ghi câu chào ở cột **Lời chào tin nhắn** (dùng khi chọn loại quảng cáo tin nhắn — 6.3b). Các cột từ **Mã media** trở đi để trống — hệ thống tự ghi.
+Dòng 2 có ảnh bìa riêng ở cột **Ảnh bìa**. Dòng 3 dùng cách cũ: 2 file trong một ô **Link Drive** (video + ảnh bìa) và ghi `Chưa tạo ads` — hệ thống hiểu như `Chờ lên`. Dòng 4 để trống **Trạng thái** — cũng được tính là "Chờ lên". Dòng 4 ghi **tên** TKQC thay cho ID (được, miễn tên không trùng). Dòng 5 là video Meta không có ảnh bìa — hệ thống tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong. Dòng 6 là ảnh cho **quảng cáo tin nhắn Messenger**: để trống **Link đích**, ghi câu chào ở cột **Lời chào tin nhắn** (dùng khi chọn loại quảng cáo tin nhắn — 6.3b). Dòng 7 tạo quảng cáo Meta từ **bài viết có sẵn** trên Trang: để trống **Link Drive**, dán link bài viết vào cột **Bài viết có sẵn**, kèm lời chào (dùng khi chọn loại quảng cáo tin nhắn — 6.3c). Các cột từ **Mã media** trở đi để trống — hệ thống tự ghi.
 
 ### 4.4 Trạng thái của một dòng
 
@@ -486,6 +498,28 @@ Hoặc tự nói với AI:
 AI tạo chiến dịch `OUTCOME_SALES` + nhóm quảng cáo tối ưu `MESSAGING_PURCHASE_CONVERSION` (đích `MESSENGER`, Trang của bạn), rồi từng quảng cáo với nút `MESSAGE_PAGE` và lời chào của dòng. **Link đích** không cần (khách bấm quảng cáo sẽ mở Messenger). Dùng chiến dịch có sẵn: nhóm quảng cáo đó phải là nhóm gửi khách tới **Messenger** — AI kiểm tra trước khi tạo.
 
 **Điều kiện của Meta cho "tối đa lượt mua qua tin nhắn":** Trang cần **ít nhất 5 lượt mua từ cuộc trò chuyện Messenger trong 30 ngày**, ghi nhận qua **Conversions API cho tin nhắn doanh nghiệp** (đối tác chat / phần mềm bán hàng gửi sự kiện) hoặc nút **Tạo đơn** trong Meta Business Suite (gửi đơn cho khách rồi đánh dấu đã thanh toán). Chưa đủ, Meta từ chối mục tiêu này (thường báo _Optimization goal isn't available_) — AI dừng và hỏi bạn có chuyển sang **tối đa lượt trò chuyện** (`CONVERSATIONS`, không cần điều kiện) không.
+
+### 6.3c Ví dụ B3 — Quảng cáo từ bài viết có sẵn kèm lời chào (Meta) theo Google Sheet
+
+Thêm cột **Bài viết có sẵn** (4.1), dán mã `PAGEID_POSTID` hoặc link bài viết vào từng dòng, để trống **Link Drive**. Dùng form **Mẹo sử dụng → Lên hàng loạt quảng cáo** như bình thường (**Việc cần làm** = _Tạo quảng cáo mới_; muốn kèm lời chào thì **Loại quảng cáo Meta** = _Tin nhắn Messenger…_), hoặc nói:
+
+> "Đọc các dòng **Chờ lên** trong sheet **Kế hoạch creative T10**. Dòng nào có **Bài viết có sẵn** thì tạo quảng cáo (tạm dừng) **từ bài viết đó** trong nhóm quảng cáo tin nhắn **Messenger - Serum** của TKQC Meta X, kèm lời chào ở cột **Lời chào tin nhắn** (trống thì dùng: _Chào bạn! Shop gửi bạn mã giảm giá trong bài viết nhé_). Ghi trạng thái, mã quảng cáo vào sheet."
+
+AI gọi `meta_create_ad` với creative **bài viết có sẵn** (`object_story_id` = mã bài viết) — không tải file. Link chưa có mã bài viết → AI tìm bài trong danh sách bài của Trang (cần MCP được gán Trang Facebook), không thấy thì ghi lỗi. Lời chào chỉ áp dụng trong nhóm quảng cáo gửi khách tới **Messenger**; quảng cáo dẫn tới website từ bài viết có sẵn thì không có lời chào. Meta có thể dùng lại creative cũ của cùng bài viết mà không có lời chào — khi đó AI báo và đề nghị **Thêm / đổi lời chào** (6.3d) cho quảng cáo vừa tạo.
+
+### 6.3d Ví dụ B4 — Thêm / đổi lời chào cho quảng cáo đã có (Meta)
+
+Dùng khi các quảng cáo tin nhắn đã tạo (từ sheet hoặc từ bài viết có sẵn) **chưa có lời chào** hoặc muốn **đổi lời chào** — quảng cáo **giữ nguyên mã, số liệu, nội dung và trạng thái**; Meta sẽ duyệt lại quảng cáo. MCP cần quyền **Sửa** trên Meta.
+
+Cách dễ nhất: form **Soạn câu lệnh** → **Nền tảng** = _Meta_ (hoặc _Theo cột Nền tảng_) → **Việc cần làm** = _Thêm / đổi lời chào cho quảng cáo đã có_ → điền **Lời chào mới trong Messenger** (dùng cho dòng có cột **Lời chào tin nhắn** trống) → sao chép câu lệnh. Form ẩn các ô chiến dịch / ngân sách / loại quảng cáo vì việc này không tạo gì mới.
+
+AI đọc mọi dòng có **Mã quảng cáo** (cột hệ thống ghi khi lên quảng cáo; nhiều mã cách nhau bằng dấu phẩy) và có lời chào, gọi `meta_update_ad_creative` cho từng quảng cáo (xem trước → bạn đồng ý), rồi ghi vào **Ghi chú hệ thống**: `Đã cập nhật lời chào <ngày>` hoặc `Chưa cập nhật được lời chào: <mã> - <lý do>`. **Trạng thái** của dòng giữ nguyên. Lượt sau AI bỏ qua dòng đã ghi “Đã cập nhật lời chào” — muốn đổi lời chào lần nữa thì xoá ghi chú đó.
+
+Hoặc tự nói với AI:
+
+> "Trong sheet **Kế hoạch creative T10**, với mỗi dòng Meta đã có **Mã quảng cáo**: thêm lời chào Messenger cho các quảng cáo đó — lời chào ở cột **Lời chào tin nhắn**, trống thì dùng _Chào bạn! Shop gửi bảng giá và ưu đãi hôm nay nhé_. Giữ nguyên nội dung quảng cáo, không tạo quảng cáo mới. Ghi kết quả vào Ghi chú hệ thống."
+
+Quảng cáo trong nhóm **không** gửi khách tới Messenger, quảng cáo đã lưu trữ / xoá, hoặc quảng cáo dùng creative động / danh mục sản phẩm không đổi được lời chào — AI ghi lý do vào **Ghi chú hệ thống**.
 
 ### 6.4 Ví dụ C — Dán link Drive công khai vào chat
 
@@ -663,6 +697,9 @@ AI thường đọc mã lỗi (dạng `drive_…`) kèm thông báo; bạn chỉ
 | `drive_sheet_busy`                           | Google Sheet đang bận… / MCP này đã dùng hết 20 lượt đọc/ghi Google Sheet trong một phút.   | Đợi khoảng 1 phút; xử lý nhiều dòng hơn mỗi lần ghi.                                                                                                                   |
 | `drive_timeout`, `drive_upstream_error`      | Google Drive phản hồi quá lâu. / Google Drive / Google Sheets đang gặp lỗi.                 | Thử lại sau ít phút.                                                                                                                                                   |
 | `drive_invalid_sheet`                        | Sheet thiếu cột bắt buộc hoặc dòng tiêu đề không đúng.                                      | Ai đó đổi tên/xoá cột → sửa tên cột trong sheet hoặc **Sửa cài đặt** (ánh xạ cột).                                                                                     |
+| `existing_post_invalid` (vấn đề của dòng)    | Bài viết có sẵn: cần mã bài viết dạng PAGEID_POSTID hoặc link bài viết Facebook.            | Sửa ô **Bài viết có sẵn** thành mã `PAGEID_POSTID` hoặc link bài viết Facebook (4.1), hoặc xoá trống ô.                                                               |
+| `existing_post_meta_only` (vấn đề của dòng)  | Bài viết có sẵn chỉ dùng cho quảng cáo Meta - dòng này là ….                                | Đổi **Nền tảng** thành Meta, hoặc xoá ô **Bài viết có sẵn** của dòng TikTok / OpenAI Ads.                                                                              |
+| `not_drive_link` (vấn đề của dòng)           | Link Facebook không phải Google Drive - … ghi link bài viết vào cột Bài viết có sẵn.        | Chuyển link bài viết Facebook từ **Link Drive** sang cột **Bài viết có sẵn** (thêm cột nếu chưa có).                                                                  |
 | `welcome_message_too_long` (vấn đề của dòng) | Lời chào tin nhắn dài … ký tự - Meta chỉ nhận tối đa 300 ký tự.                              | Rút gọn ô **Lời chào tin nhắn** (≤ 300 ký tự).                                                                                                                         |
 | `cover_…` (vấn đề của dòng)                  | Ảnh bìa: … / Ảnh bìa phải là file ảnh (JPG, PNG…), không phải video.                       | Sửa link ở cột **Ảnh bìa** (chia sẻ / chuyển ảnh vào thư mục đã gán), hoặc xoá trống ô — Meta sẽ tự lấy ảnh bìa.                                                      |
 | `drive_sheet_tab_not_found`                  | Không tìm thấy trang tính (tab) đã khai báo…                                                | Khai báo lại bằng link của đúng tab.                                                                                                                                   |

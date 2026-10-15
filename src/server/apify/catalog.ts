@@ -15,6 +15,7 @@ import { GOOGLE_TASKS } from "./catalog/google"
 import { INSTAGRAM_TASKS } from "./catalog/instagram"
 import { LAZADA_TASKS } from "./catalog/lazada"
 import { SHOPEE_TASKS } from "./catalog/shopee"
+import { THREADS_TASKS } from "./catalog/threads"
 import { TIKI_TASKS } from "./catalog/tiki"
 import { TIKTOK_TASKS } from "./catalog/tiktok"
 import { TIKTOKSHOP_TASKS } from "./catalog/tiktokshop"
@@ -33,6 +34,7 @@ const ALL_TASKS: readonly CatalogTask[] = [
   ...TIKTOK_TASKS,
   ...FACEBOOK_TASKS,
   ...INSTAGRAM_TASKS,
+  ...THREADS_TASKS,
   ...YOUTUBE_TASKS,
   ...GOOGLE_TASKS,
   ...WEB_TASKS,
@@ -69,8 +71,9 @@ export function getCatalogTaskExample(
 
 /**
  * Lowest `maxTotalChargeUsd` some Actors accept (Store `minimalMaxTotalChargeUsd`, 2026-10-14; only values
- * ≥ $0.05 are listed). A per-run cap below it may make the start fail → the MCP should use at least this value
- * when its own per-run cap allows it, otherwise prefer another Actor or explain the cap to the user.
+ * ≥ $0.05 are listed) or need to do anything useful (fixed start cost above the cap, e.g. a 4 GB synthetic start
+ * event). A per-run cap below it may make the start fail or burn the cap before the first result → the MCP should
+ * use at least this value when its own per-run cap allows it, otherwise prefer another Actor or explain the cap.
  */
 export const APIFY_ACTOR_MIN_CHARGE_USD: Readonly<Record<string, number>> =
   Object.freeze({
@@ -81,6 +84,8 @@ export const APIFY_ACTOR_MIN_CHARGE_USD: Readonly<Record<string, number>> =
     "compass~crawler-google-places": 0.5,
     "apify~google-search-scraper": 0.5,
     "streamers~youtube-comments-scraper": 0.5,
+    // memory fixed at 4096 MB: apify-actor-start charged 4× ($0.08 on FREE) before any result (2026-10-16)
+    "futurizerush~meta-threads-scraper": 0.1,
   })
 
 /**

@@ -364,7 +364,7 @@ export const mcp = {
     platformDescription:
       "Lấy dữ liệu sàn TMĐT, mạng xã hội, Google Maps, trang web… để AI phân tích.",
     description:
-      "AI chạy các việc lấy dữ liệu đã chọn lọc (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Instagram, YouTube, Google Maps, trang web…) trên tài khoản Apify để phân tích.",
+      "AI chạy các việc lấy dữ liệu đã chọn lọc (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Instagram, Threads, YouTube, Google Maps, trang web…) trên tài khoản Apify để phân tích.",
     /** overview "Phạm vi MCP": what the Apify platform block gives the AI */
     enableLabel: "Lấy dữ liệu qua Apify",
     /** platform card (on): where the Apify options live */

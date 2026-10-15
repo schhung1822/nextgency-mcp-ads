@@ -330,15 +330,16 @@ function driveFiles(): FakeFile[] {
 }
 
 const SHEET_TITLE = "Creative tuần 41"
-// "Ảnh bìa" (v1.1.2) and "Lời chào tin nhắn" (v1.1.3) are left out here so the column letters below stay put - the
-// cover / welcome message tests append them
+// "Ảnh bìa" (v1.1.2), "Lời chào tin nhắn" (v1.1.3) and "Bài viết có sẵn" (v1.1.4) are left out here so the column
+// letters below stay put - the cover / welcome message / existing post tests append them
 const HEADER = [
   ...Object.values(DEFAULT_SHEET_COLUMNS).filter(
     (h) =>
       h !== "Tiêu đề" &&
       h !== "Link đích" &&
       h !== "Ảnh bìa" &&
-      h !== "Lời chào tin nhắn"
+      h !== "Lời chào tin nhắn" &&
+      h !== "Bài viết có sẵn"
   ),
   "Khác",
 ]
@@ -1961,6 +1962,252 @@ describe.skipIf(!hasDb)(
           .set({ config: orig!.config })
           .where(eq(driveSources.id, src.sheet))
         invalidateGrantCache()
+      }
+    })
+
+    it("sheet existing post column (v1.1.4): parsed into existing_post, the post wins over Link Drive, Meta only, rows without a Drive link are written back by their post, legacy config detects it by name", async () => {
+      __resetSheetsLimiter()
+      const m = await mcpWith("staff", { platforms: createAll() }, [
+        src.sheet,
+        src.company,
+      ])
+      // append the column (the source config maps "Bài viết có sẵn" - DEFAULT_SHEET_COLUMNS); HEADER untouched
+      const at = HEADER.length
+      g.grid = g.grid.map((r, i) => [...r, i === 0 ? "Bài viết có sẵn" : ""])
+      // row 2 (Facebook + a Drive link): a PAGEID_POSTID; row 3 (TikTok): a numeric post link; row 4: free text;
+      // row 5 (Meta, no Drive link): a share link that needs a lookup
+      g.grid[1]![at] = "123456789012345_987654321098765"
+      g.grid[2]![at] =
+        "https://www.facebook.com/123456789012345/posts/987654321098765"
+      g.grid[3]![at] = "bài hôm qua"
+      g.grid[4]![at] = "https://www.facebook.com/share/p/1AbCdEf/?mibextid=x"
+      const r = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+      })
+      expect(r.isError, r.text).toBe(false)
+      expect(r.sc.columns.existing_post).toBe("Bài viết có sẵn")
+      const rows = r.sc.rows as Record<string, any>[]
+      expect(rows.map((x) => x.row_number)).toEqual([2, 3, 4, 5])
+      const [logo, pub, secret, nolink] = rows
+      const codes = (row: Record<string, any>) =>
+        row.problems.map((p: { code: string }) => p.code)
+      // the post wins: no Drive files resolved, a warning says Link Drive is ignored
+      expect(logo!.existing_post).toEqual({
+        post_id: "123456789012345_987654321098765",
+        needs_lookup: false,
+      })
+      expect(logo!.files).toEqual([])
+      expect(logo!.problems).toEqual([])
+      expect(logo!.values).not.toHaveProperty("existing_post")
+      // a row with a Drive link keeps its link anchor (rows written before v1.1.4 are unchanged)
+      expect(logo!.link_cell).toBe(IDS.companyPng)
+      expect(r.sc.warnings).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining(
+            "Dòng 2: có cả Bài viết có sẵn và Link Drive / Ảnh bìa"
+          ),
+        ])
+      )
+      // Meta only
+      expect(pub!.platform).toBe("tiktok")
+      expect(pub!.existing_post).toMatchObject({
+        post_id: "123456789012345_987654321098765",
+      })
+      expect(codes(pub!)).toContain("existing_post_meta_only")
+      // free text: a problem; the Drive link of the row is still checked
+      expect(secret!.existing_post).toBeNull()
+      expect(secret!.problems).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "existing_post_invalid",
+            message: expect.stringContaining("PAGEID_POSTID"),
+          }),
+        ])
+      )
+      expect(secret!.files).toHaveLength(1)
+      // no Drive link + a post: no missing_link, the post anchors the row
+      expect(nolink!.existing_post).toEqual({
+        url: "https://www.facebook.com/share/p/1AbCdEf/",
+        needs_lookup: true,
+      })
+      expect(nolink!.problems).toEqual([])
+      // post anchor = post | Tên creative | Tài khoản QC
+      expect(nolink!.link_cell).toBe(
+        "post:https://www.facebook.com/share/p/1AbCdEf/|Không link|"
+      )
+
+      // write-back of a row built from an existing post: anchored on its post; another post → row_moved
+      const wr = await w.call(m.key, "drive_sheet_update_rows", {
+        source_id: src.sheet,
+        rows: [
+          {
+            row_number: 5,
+            expected_link: nolink!.link_cell,
+            status: "done",
+            ad_ids: ["120200000000000001"],
+            note: "Đã cập nhật lời chào 16/10/2026",
+          },
+          {
+            row_number: 4,
+            expected_link: "post:123456789012345_1",
+            status: "error",
+          },
+        ],
+      })
+      expect(wr.isError, wr.text).toBe(false)
+      expect(wr.sc.updated).toEqual([
+        expect.objectContaining({ row_number: 5 }),
+      ])
+      expect(wr.sc.skipped).toEqual([
+        expect.objectContaining({ row_number: 4, code: "row_moved" }),
+      ])
+      expect(g.grid[4]![col("Trạng thái")]).toBe("Đã lên")
+      expect(g.grid[4]![col("Mã quảng cáo")]).toBe("120200000000000001")
+
+      // security review: two rows of the SAME post with different creative names have different anchors - a row
+      // shifted between read and write is row_moved, never written into the other row of that post
+      g.grid[3]![at] = "https://www.facebook.com/share/p/1AbCdEf/"
+      g.grid[3]![col("Link Drive")] = ""
+      g.grid[3]![col("Nền tảng")] = "Meta"
+      __clearSheetsCache()
+      const dup = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+        all_statuses: true,
+        resolve_files: false,
+      })
+      expect(dup.isError, dup.text).toBe(false)
+      const byRow = new Map(
+        (dup.sc.rows as Record<string, any>[]).map((x) => [x.row_number, x])
+      )
+      const anchor4 = byRow.get(4)!.link_cell as string
+      const anchor5 = byRow.get(5)!.link_cell as string
+      expect(anchor4).toBe(
+        "post:https://www.facebook.com/share/p/1AbCdEf/|Bí mật|"
+      )
+      expect(anchor5).not.toBe(anchor4)
+      // a row is inserted above row 4: the old row 4 ("Bí mật") is now row 5, "Không link" moved to row 6
+      g.grid.splice(3, 0, HEADER.map(() => "").concat([""]))
+      __clearSheetsCache()
+      const shifted = await w.call(m.key, "drive_sheet_update_rows", {
+        source_id: src.sheet,
+        rows: [{ row_number: 5, expected_link: anchor5, status: "error" }],
+      })
+      expect(shifted.isError, shifted.text).toBe(false)
+      // row 5 now holds "Bí mật" (same post, other name): refused
+      expect(shifted.sc.updated).toEqual([])
+      expect(shifted.sc.skipped).toEqual([
+        expect.objectContaining({ row_number: 5, code: "row_moved" }),
+      ])
+      expect(g.grid[4]![col("Trạng thái")]).toBe("Chờ lên")
+      // the AI re-reads the sheet: the moved row is written at its new number with its own anchor
+      const again = await w.call(m.key, "drive_sheet_update_rows", {
+        source_id: src.sheet,
+        rows: [{ row_number: 6, expected_link: anchor5, status: "done" }],
+      })
+      expect(again.isError, again.text).toBe(false)
+      expect(again.sc.updated).toEqual([
+        expect.objectContaining({ row_number: 6 }),
+      ])
+      g.grid.splice(3, 1)
+      // the column is never written
+      expect(g.grid[4]![at]).toBe(
+        "https://www.facebook.com/share/p/1AbCdEf/?mibextid=x"
+      )
+
+      // a config saved before v1.1.4 (no existingPost key): a generic "Post ID" column is NOT auto-detected, the column
+      // named "Bài viết có sẵn" is
+      const [orig] = await db
+        .select({ config: driveSources.config })
+        .from(driveSources)
+        .where(eq(driveSources.id, src.sheet))
+      const legacyColumns = Object.fromEntries(
+        Object.entries(DEFAULT_SHEET_COLUMNS).filter(
+          ([k]) => k !== "existingPost"
+        )
+      )
+      await db
+        .update(driveSources)
+        .set({
+          config: {
+            headerRow: 1,
+            columns: legacyColumns as unknown as SheetSourceConfig["columns"],
+            writeback: true,
+          } as SheetSourceConfig,
+        })
+        .where(eq(driveSources.id, src.sheet))
+      try {
+        const legacy = await mcpWith("staff", { platforms: createAll() }, [
+          src.sheet,
+        ])
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Post ID"]
+        __clearSheetsCache()
+        const pr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          all_statuses: true,
+          resolve_files: false,
+        })
+        expect(pr.isError, pr.text).toBe(false)
+        expect(pr.sc.columns).not.toHaveProperty("existing_post")
+        const prows = pr.sc.rows as Record<string, any>[]
+        expect(prows.every((x) => !("existing_post" in x))).toBe(true)
+        // the Drive link of row 2 is used as before (the "Post ID" cell is ignored)
+        expect(prows[0]!.link_cell).toBe(IDS.companyPng)
+        expect(prows[0]!.files).toHaveLength(1)
+
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Bài viết có sẵn"]
+        __clearSheetsCache()
+        const lr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          all_statuses: true,
+          resolve_files: false,
+        })
+        expect(lr.isError, lr.text).toBe(false)
+        expect(lr.sc.columns.existing_post).toBe("Bài viết có sẵn")
+        expect(
+          (lr.sc.rows as Record<string, any>[])[0]!.existing_post
+        ).toMatchObject({ post_id: "123456789012345_987654321098765" })
+
+        // no post-like header: no existing_post anywhere, a row without a Drive link is missing_link again, and a
+        // Facebook post pasted into Link Drive points to the "Bài viết có sẵn" column
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Ghi chú riêng"]
+        g.grid[1]![col("Link Drive")] =
+          "https://www.facebook.com/123456789012345/posts/987654321098765"
+        __clearSheetsCache()
+        const nr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          resolve_files: false,
+        })
+        expect(nr.isError, nr.text).toBe(false)
+        expect(nr.sc.columns).not.toHaveProperty("existing_post")
+        const nrows = nr.sc.rows as Record<string, any>[]
+        expect(nrows.every((x) => !("existing_post" in x))).toBe(true)
+        expect(nrows[0]!.problems).toEqual([
+          expect.objectContaining({
+            code: "not_drive_link",
+            message: expect.stringContaining("cột Bài viết có sẵn"),
+          }),
+        ])
+        const noLinkRow = nrows.find((x) => x.row_number === 5)
+        // row 5 is "Đã lên" now - read it with every status
+        expect(noLinkRow).toBeUndefined()
+        const all = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          all_statuses: true,
+          resolve_files: false,
+        })
+        const row5 = (all.sc.rows as Record<string, any>[]).find(
+          (x) => x.row_number === 5
+        )!
+        expect(row5.link_cell).toBe("")
+        expect(codes(row5)).toContain("missing_link")
+      } finally {
+        await db
+          .update(driveSources)
+          .set({ config: orig!.config })
+          .where(eq(driveSources.id, src.sheet))
+        invalidateGrantCache()
+        // this test makes many Sheets calls for the same owner: leave the per-owner Sheets budget fresh for the next tests
+        __resetSheetsLimiter()
       }
     })
 

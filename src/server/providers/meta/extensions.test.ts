@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { __resetBuckets } from "../rate-limit"
 import type { MutationOptions, ProviderExtension } from "../types"
 import type { MetaCredentials } from "./client"
-import { metaExtensions, type MetaWriteResult } from "./extensions"
-import { graphError, json, mockGraph, providerCtx, type Route } from "./test-utils"
+import { greetingShown, greetingVerdict, metaExtensions, type MetaWriteResult } from "./extensions"
+import { graphError, json, mockGraph, providerCtx, type FakeResponse, type Route } from "./test-utils"
 
 beforeEach(() => __resetBuckets())
 
@@ -21,12 +21,13 @@ async function run(name: string, raw: unknown, opts: MutationOptions = {}, ctx =
 }
 
 describe("extension metadata", () => {
-  it("exposes the four Meta tools with Vietnamese 'Dùng khi…' descriptions ≤1500 chars", () => {
+  it("exposes the five Meta tools with Vietnamese 'Dùng khi…' descriptions ≤1500 chars", () => {
     expect(metaExtensions.map((e) => e.name)).toEqual([
       "meta_create_campaign",
       "meta_create_adset",
       "meta_create_ad",
       "meta_update_targeting",
+      "meta_update_ad_creative",
     ])
     for (const e of metaExtensions) {
       expect(e.description.startsWith("Dùng khi")).toBe(true)
@@ -587,7 +588,7 @@ describe("meta_create_ad - video cover (D1-D5)", () => {
       String((e as Error).message);
     expect(text).not.toContain("SIGNEDOH");
     expect(text).not.toContain("fbcdn");
-    expect(text).toContain("[ảnh bìa]");
+    expect(text).toMatch(/\[ảnh( bìa)?\]/);
   });
 
   it("explicit image_hash / image_url win over the automatic cover (no thumbnail read on execute); a processing video only warns in the preview", async () => {
@@ -1391,5 +1392,795 @@ describe("meta_create_ad - click-to-message creative (D3)", () => {
       page_welcome_message: "Chào bạn",
       call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// v1.1.4 E1: welcome message on an existing post (meta_create_ad)
+// ---------------------------------------------------------------------------
+
+describe("meta_create_ad - existing post + welcome message (v1.1.4 E1)", () => {
+  const msgAdset = {
+    id: "2001",
+    name: "Nhóm nhắn tin",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "CONVERSATIONS",
+    destination_type: "MESSENGER",
+    promoted_object: { page_id: "888" },
+    campaign: { id: "3001", objective: "OUTCOME_SALES" },
+  }
+  const greeting = { text: "Chào bạn!", ice_breakers: [{ title: "Giá bao nhiêu?", response: "Shop báo giá ngay ạ" }] }
+  const post = (creative: Record<string, unknown> = {}) => ({
+    adset_id: "2001",
+    name: "Bài có sẵn",
+    creative: { type: "existing_post", object_story_id: "888_42", welcome_message: greeting, ...creative },
+  })
+  /** the ad read back answers with `stored(sentGreeting)` */
+  const setup = (stored: (sent: string) => unknown, adset: Record<string, unknown> = msgAdset) => {
+    let sent = ""
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      [
+        "POST",
+        "act_1001/ads",
+        (c) => {
+          if (!(c.params.execution_options ?? "").includes("validate_only")) sent = JSON.parse(c.params.creative).page_welcome_message ?? ""
+          return json({ id: "31" })
+        },
+      ],
+      ["GET", "31", () => json({ id: "31", creative: stored(sent) })],
+    ])
+    return m
+  }
+
+  it("top-level page_welcome_message (VISUAL_EDITOR) + MESSAGE_PAGE CTA, no object_story_spec; read back matches → no warning", async () => {
+    const m = setup((sent) => ({ id: "5001", page_welcome_message: sent }))
+    const res = await run("meta_create_ad", post())
+    const creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+    expect(creative.object_story_id).toBe("888_42")
+    expect(creative.object_story_spec).toBeUndefined()
+    expect(creative.call_to_action).toEqual({ type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } })
+    expect(JSON.parse(creative.page_welcome_message)).toMatchObject({
+      type: "VISUAL_EDITOR",
+      text_format: { customer_action_type: "ice_breakers", message: { text: "Chào bạn!", ice_breakers: greeting.ice_breakers, quick_replies: [] } },
+    })
+    const readBack = m.calls.find((c) => c.method === "GET" && c.path === "31")!
+    expect(readBack.params.fields).toBe("id,creative{id,page_welcome_message}")
+    expect(res.createdIds).toEqual(["31"])
+    expect(res.payload.welcome_message).toEqual(greeting)
+    expect(res.warnings.join(" ")).toMatch(/hệ thống đọc lại sau khi tạo để kiểm tra/)
+    expect(res.warnings.join(" ")).not.toMatch(/meta_update_ad_creative/)
+  })
+
+  it("dedupe: the new ad's creative has no / another greeting → warning naming meta_update_ad_creative (the ad is kept); read failure → softer warning", async () => {
+    setup(() => ({ id: "4999" }))
+    let res = await run("meta_create_ad", post())
+    expect(res.createdIds).toEqual(["31"])
+    expect(res.warnings.join(" ")).toMatch(/creative 4999 KHÔNG có lời chào .*meta_update_ad_creative \(ad_id 31, welcome_message\)/)
+
+    setup(() => ({ id: "4999", page_welcome_message: "Lời chào cũ" }))
+    res = await run("meta_create_ad", post({ welcome_message: "Chào mới" }))
+    expect(res.warnings.join(" ")).toMatch(/có lời chào KHÁC lời chào vừa gửi/)
+
+    mockGraph([
+      ["GET", "2001", () => json(msgAdset)],
+      ...advertisable,
+      ["POST", "act_1001/ads", () => json({ id: "31" })],
+      ["GET", "31", () => graphError(100)],
+    ])
+    res = await run("meta_create_ad", post())
+    expect(res.createdIds).toEqual(["31"])
+    expect(res.warnings.join(" ")).toMatch(/Không đọc lại được creative của quảng cáo mới/)
+  })
+
+  it("preview: validate_only gets the greeting; nothing created, no read back", async () => {
+    const m = setup(() => ({}))
+    const res = await run("meta_create_ad", post({ welcome_message: "Chào bạn" }), { dryRun: true })
+    expect(res.preview).toBe(true)
+    expect(m.mutatingPosts()).toHaveLength(0)
+    const v = m.calls.find((c) => c.method === "POST")!
+    expect(JSON.parse(v.params.execution_options)).toEqual(["validate_only"])
+    expect(JSON.parse(v.params.creative).page_welcome_message).toBe("Chào bạn")
+    expect(m.calls.some((c) => c.path === "31")).toBe(false)
+  })
+
+  it("refused outside a Messenger ad set with the same messages as link / video (before any POST)", async () => {
+    const m = setup(() => ({}), { ...msgAdset, destination_type: "WHATSAPP" })
+    await expect(run("meta_create_ad", post())).rejects.toThrow(/chỉ hỗ trợ nhóm quảng cáo đích Messenger \(nhóm này là WHATSAPP\)/)
+    setup(() => ({}), { ...msgAdset, optimization_goal: "POST_ENGAGEMENT", destination_type: undefined, promoted_object: undefined })
+    await expect(run("meta_create_ad", post(), { dryRun: true })).rejects.toThrow(/welcome_message chỉ dùng cho quảng cáo nhắn tin/)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+  })
+
+  it("regression: an existing post without welcome_message is unchanged (no page_welcome_message, no read back)", async () => {
+    let m = setup(() => ({}))
+    await run("meta_create_ad", { adset_id: "2001", name: "P", creative: { type: "existing_post", object_story_id: "888_42" } })
+    let creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+    expect(creative.page_welcome_message).toBeUndefined()
+    expect(creative.call_to_action).toEqual({ type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } })
+    expect(m.calls.some((c) => c.path === "31")).toBe(false)
+    m = setup(() => ({}), { ...msgAdset, optimization_goal: "OFFSITE_CONVERSIONS", destination_type: undefined, promoted_object: undefined })
+    await run("meta_create_ad", { adset_id: "2001", name: "P", creative: { type: "existing_post", object_story_id: "888_42" } })
+    creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+    expect(Object.keys(creative).sort()).toEqual(["degrees_of_freedom_spec", "name", "object_story_id"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// v1.1.4 E2: meta_update_ad_creative
+// ---------------------------------------------------------------------------
+
+describe("meta_update_ad_creative (v1.1.4 E2)", () => {
+  const TOOL = "meta_update_ad_creative"
+  const HASH = "0123456789abcdef0123456789abcdef"
+  const SIGNED = "https://scontent.xx.fbcdn.net/v/t45/pic.jpg?oh=SIGNEDOH&oe=6720AB00"
+  const adsetMsg = {
+    id: "2001",
+    name: "Nhóm nhắn tin",
+    status: "ACTIVE",
+    effective_status: "ACTIVE",
+    destination_type: "MESSENGER",
+    promoted_object: { page_id: "888" },
+    optimization_goal: "CONVERSATIONS",
+    is_dynamic_creative: false,
+  }
+  const campaign = { id: "3001", name: "Camp", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_SALES" }
+  const postCreative = {
+    id: "100",
+    name: "creative cũ",
+    object_story_id: "888_42",
+    effective_object_story_id: "888_42",
+    call_to_action: { type: "LEARN_MORE", value: { app_destination: "MESSENGER" } },
+    url_tags: "utm_source=fb",
+    instagram_user_id: "17841",
+  }
+  const specCreative = {
+    id: "200",
+    effective_object_story_id: "888_77",
+    object_story_spec: {
+      page_id: "888",
+      instagram_user_id: "17841",
+      link_data: {
+        link: "https://fb.com/messenger_doc/",
+        message: "Inbox ngay",
+        name: "Sale",
+        image_hash: HASH,
+        picture: SIGNED,
+        call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+        page_welcome_message: "Chào cũ",
+        some_read_only_field: 1,
+      },
+    },
+  }
+  const adNode = (creative: Record<string, unknown> | undefined, extra: Record<string, unknown> = {}) => ({
+    id: "11",
+    name: "Ad cũ",
+    account_id: "1001",
+    campaign_id: "3001",
+    adset_id: "2001",
+    status: "ACTIVE",
+    effective_status: "ACTIVE",
+    adset: adsetMsg,
+    campaign,
+    creative,
+    ...extra,
+  })
+  const SWAP_READ = "id,creative{id}"
+
+  /**
+   * Graph fake: GET 11 (the ad; `afterSwap` answers the post-timeout read back), POST act_1001/adcreatives
+   * (validate_only → success, else {id: newId}), GET <newId> (read back = what was sent unless `readBack`), POST 11.
+   */
+  function world(
+    o: {
+      ad?: Record<string, unknown>
+      newId?: string
+      readBack?: (sent: Record<string, string>) => FakeResponse
+      swap?: () => FakeResponse
+      afterSwap?: () => FakeResponse
+      /** answers the ad read (fields) instead of `ad` */
+      adRead?: (fields: string) => FakeResponse
+      extra?: Route[]
+    } = {}
+  ) {
+    __resetBuckets() // many worlds per test: never wait on the per-account token bucket
+    let sent: Record<string, string> = {}
+    const newId = o.newId ?? "900"
+    return mockGraph([
+      [
+        "GET",
+        "11",
+        (c) =>
+          c.params.fields === SWAP_READ && o.afterSwap
+            ? o.afterSwap()
+            : o.adRead
+              ? o.adRead(c.params.fields ?? "")
+              : json(o.ad ?? adNode(postCreative)),
+      ],
+      ...advertisable,
+      ...(o.extra ?? []),
+      ["GET", "2001", () => json({ id: "2001", is_dynamic_creative: false })],
+      ["GET", "3001", () => json({ id: "3001" })],
+      [
+        "POST",
+        "act_1001/adcreatives",
+        (c) => {
+          if ((c.params.execution_options ?? "").includes("validate_only")) return json({ success: true })
+          sent = c.params
+          return json({ id: newId })
+        },
+      ],
+      [
+        "GET",
+        newId,
+        () =>
+          o.readBack
+            ? o.readBack(sent)
+            : json({
+                id: newId,
+                account_id: "1001",
+                page_welcome_message: sent.page_welcome_message,
+                object_story_spec: sent.object_story_spec ? JSON.parse(sent.object_story_spec) : undefined,
+              }),
+      ],
+      ["POST", "11", () => (o.swap ? o.swap() : json({ success: true }))],
+    ])
+  }
+  const createCall = (m: ReturnType<typeof mockGraph>) => m.mutatingPosts().find((c) => c.path === "act_1001/adcreatives")!
+  const swapCalls = (m: ReturnType<typeof mockGraph>) => m.calls.filter((c) => c.method === "POST" && c.path === "11")
+
+  it("metadata: update permission, write, Drive cover hook for link / video only, no money fields", () => {
+    const e = ext(TOOL)
+    expect(e.permission).toBe("update")
+    expect(e.write).toBe(true)
+    expect(e.moneyOf).toBeUndefined()
+    expect(e.fetchesPlatformImages).toBe(true)
+    const drive = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    expect(e.driveImageRef!(e.input.parse({ ad_id: "11", creative: { type: "link", link: "https://x.vn", image_drive_file: drive } }))).toBe(drive)
+    expect(e.driveImageRef!(e.input.parse({ ad_id: "11", creative: { type: "existing_post", object_story_id: "888_1" } }))).toBeUndefined()
+    expect(e.driveImageRef!(e.input.parse({ ad_id: "11", welcome_message: "Chào" }))).toBeUndefined()
+    for (const s of ["welcome_message", "creative_id", "giữ nguyên ID, trạng thái và số liệu", "duyệt lại", "giai đoạn học", "ads_get_object"]) {
+      expect(e.description).toContain(s)
+    }
+  })
+
+  it("welcome_message on an existing-post ad: {object_story_id, kept Messenger CTA, top-level greeting, UTM, IG} → read back → swap; before / after", async () => {
+    const m = world()
+    const res = await run(TOOL, { ad_id: "11", welcome_message: "Chào {{user_first_name}}!" })
+    const p = createCall(m).params
+    expect(p.object_story_id).toBe("888_42")
+    expect(JSON.parse(p.call_to_action)).toEqual({ type: "LEARN_MORE", value: { app_destination: "MESSENGER" } })
+    expect(p.page_welcome_message).toBe("Chào {{user_first_name}}!")
+    expect(p.url_tags).toBe("utm_source=fb")
+    expect(p.instagram_user_id).toBe("17841")
+    expect(p.object_story_spec).toBeUndefined()
+    expect(p.status).toBeUndefined()
+    expect(p.name).toMatch(/^Ad cũ - creative \d{4}-\d\d-\d\d \d\d:\d\d · [0-9a-f]{4}$/)
+    expect(JSON.parse(p.degrees_of_freedom_spec).creative_features_spec.enhance_cta).toEqual({ enroll_status: "OPT_OUT" })
+    const swaps = swapCalls(m)
+    expect(swaps).toHaveLength(1)
+    expect(JSON.parse(swaps[0].params.creative)).toEqual({ creative_id: "900" })
+    expect(Object.keys(swaps[0].params).filter((k) => !["access_token", "appsecret_proof"].includes(k))).toEqual(["creative"])
+    const order = m.calls.map((c) => `${c.method} ${c.path}`)
+    expect(order.indexOf("GET 900")).toBeGreaterThan(-1)
+    expect(order.indexOf("GET 900")).toBeLessThan(order.indexOf("POST 11"))
+    expect(m.calls[0].params.fields).toContain("creative{id,name,status,object_story_id,effective_object_story_id")
+    expect(res.preview).toBe(false)
+    expect(res.createdIds).toEqual(["900"])
+    expect(res.changes).toEqual([
+      {
+        objectId: "11",
+        objectName: "Ad cũ",
+        level: "ad",
+        field: "creative",
+        before: { creative_id: "100", welcome_message: null },
+        after: { creative_id: "900", welcome_message: { text: "Chào {{user_first_name}}!" } },
+      },
+    ])
+    const w = res.warnings.join(" ")
+    for (const re of [/giữ nguyên ID, trạng thái và số liệu/, /duyệt lại/, /giai đoạn học/, /không bật \/ tắt/, /Giữ nguyên bài viết/]) expect(w).toMatch(re)
+    expect(w).not.toMatch(/không còn hiển thị/)
+  })
+
+  it("welcome_message: a non-Messenger CTA of the post is replaced by MESSAGE_PAGE; preview = validate_only on act_X/adcreatives only", async () => {
+    const m = world({ ad: adNode({ ...postCreative, call_to_action: { type: "SHOP_NOW", value: { link: "https://x.vn" } } }) })
+    const pre = await run(TOOL, { ad_id: "11", welcome_message: { text: "Chào", ice_breakers: [{ title: "Ship?", response: "Có ạ" }] } }, { dryRun: true })
+    expect(pre.preview).toBe(true)
+    expect(m.mutatingPosts()).toHaveLength(0)
+    const posts = m.calls.filter((c) => c.method === "POST")
+    expect(posts.map((c) => c.path)).toEqual(["act_1001/adcreatives"])
+    expect(JSON.parse(posts[0].params.execution_options)).toEqual(["validate_only"])
+    expect(JSON.parse(posts[0].params.call_to_action)).toEqual({ type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } })
+    expect(pre.changes[0].after).toEqual({ creative_id: "(mới)", welcome_message: { text: "Chào", ice_breakers: [{ title: "Ship?", response: "Có ạ" }] } })
+    expect(pre.payload).toMatchObject({ ad_id: "11", mode: "welcome_message", current: { creative_id: "100" } })
+  })
+
+  it("welcome_message on a link_data creative: documented keys copied, image_hash wins over the signed picture (never shown), greeting replaced, social proof note", async () => {
+    const m = world({ ad: adNode(specCreative) })
+    const res = await run(TOOL, { ad_id: "11", welcome_message: { text: "Chào mới", ice_breakers: [{ title: "Giá?", response: "Inbox nhé" }] } })
+    const spec = JSON.parse(createCall(m).params.object_story_spec)
+    expect(spec).toEqual({
+      page_id: "888",
+      instagram_user_id: "17841",
+      link_data: {
+        link: "https://fb.com/messenger_doc/",
+        message: "Inbox ngay",
+        name: "Sale",
+        image_hash: HASH,
+        call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+        page_welcome_message: expect.stringContaining("\"VISUAL_EDITOR\""),
+      },
+    })
+    expect(res.changes[0].before).toEqual({ creative_id: "200", welcome_message: { text: "Chào cũ" } })
+    expect(res.warnings.join(" ")).toMatch(/lượt thích \/ bình luận \/ chia sẻ của bài cũ/)
+    expect(JSON.stringify(res)).not.toContain("fbcdn")
+    expect(swapCalls(m)).toHaveLength(1)
+  })
+
+  it("welcome_message on a video_data creative: image_url dropped when image_hash exists; no hash → the signed image_url goes to Meta only (label in the preview)", async () => {
+    const video = (data: Record<string, unknown>) => ({ id: "201", object_story_spec: { page_id: "888", video_data: { video_id: "555", message: "Xem", ...data } } })
+    let m = world({ ad: adNode(video({ image_hash: HASH, image_url: SIGNED })) })
+    await run(TOOL, { ad_id: "11", welcome_message: "Chào" })
+    expect(JSON.parse(createCall(m).params.object_story_spec).video_data).toEqual({
+      video_id: "555",
+      message: "Xem",
+      image_hash: HASH,
+      call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+      page_welcome_message: "Chào",
+    })
+    m = world({ ad: adNode(video({ image_url: SIGNED })) })
+    const pre = await run(TOOL, { ad_id: "11", welcome_message: "Chào" }, { dryRun: true })
+    const v = m.calls.find((c) => c.path === "act_1001/adcreatives")!
+    expect(JSON.parse(v.params.object_story_spec).video_data.image_url).toBe(SIGNED)
+    expect(JSON.stringify(pre)).not.toContain("fbcdn")
+    expect(JSON.stringify(pre.payload)).toContain("<ảnh hiện tại của creative>")
+  })
+
+  it("a validate_only / create error echoing the signed picture is scrubbed", async () => {
+    const noHash = { id: "202", object_story_spec: { page_id: "888", link_data: { link: "https://fb.com/messenger_doc/", picture: SIGNED } } }
+    for (const opts of [{ dryRun: true }, {}]) {
+      mockGraph([
+        ["GET", "11", () => json(adNode(noHash))],
+        ...advertisable,
+        ["POST", "act_1001/adcreatives", () => graphError(100, undefined, { error_user_msg: `Ảnh lỗi: ${SIGNED}` })],
+      ])
+      const e = await run(TOOL, { ad_id: "11", welcome_message: "Chào" }, opts).then(
+        () => null,
+        (err: unknown) => err
+      )
+      expect(e).toMatchObject({ code: "invalid_request" })
+      expect(JSON.stringify(e)).not.toContain("fbcdn")
+      expect((e as { userMessageVi: string }).userMessageVi).toContain("[ảnh]")
+    }
+  })
+
+  it("creative (link) is built like meta_create_ad against the ad's ad set: default Page of the Messenger ad set, MESSAGE_PAGE, greeting, IG kept; social proof note", async () => {
+    const m = world()
+    const res = await run(TOOL, { ad_id: "11", creative: { type: "link", message: "Mới", image_hash: HASH, welcome_message: "Chào" } })
+    const p = createCall(m).params
+    const spec = JSON.parse(p.object_story_spec)
+    expect(spec).toMatchObject({
+      page_id: "888",
+      instagram_user_id: "17841",
+      link_data: {
+        link: "https://fb.com/messenger_doc/",
+        message: "Mới",
+        image_hash: HASH,
+        page_welcome_message: "Chào",
+        call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } },
+      },
+    })
+    expect(p.name).toMatch(/^Ad cũ - creative /)
+    expect(p.status).toBeUndefined()
+    expect(JSON.parse(p.degrees_of_freedom_spec).creative_features_spec.image_templates).toEqual({ enroll_status: "OPT_OUT" })
+    const w = res.warnings.join(" ")
+    expect(w).toMatch(/Không truyền page_id: dùng Trang 888 \(Trang của nhóm quảng cáo nhắn tin\)/)
+    expect(w).toMatch(/lượt thích \/ bình luận \/ chia sẻ của bài cũ/)
+    expect(res.changes[0].after).toEqual({ creative_id: "900", welcome_message: { text: "Chào" }, creative_type: "link" })
+    expect(res.createdIds).toEqual(["900"])
+  })
+
+  it("creative (existing_post): same post keeps social proof; a post of another Page is refused; a link creative still needs a link outside messaging ad sets", async () => {
+    let m = world()
+    let res = await run(TOOL, { ad_id: "11", creative: { type: "existing_post", object_story_id: "888_42", welcome_message: "Chào" } })
+    const p = createCall(m).params
+    expect(p.object_story_id).toBe("888_42")
+    expect(p.page_welcome_message).toBe("Chào")
+    expect(res.warnings.join(" ")).not.toMatch(/không còn hiển thị/)
+    m = world()
+    await expect(run(TOOL, { ad_id: "11", creative: { type: "existing_post", object_story_id: "777_5" } })).rejects.toThrow(/Trang 777 khác Trang của nhóm quảng cáo nhắn tin/)
+    const web = { ...adsetMsg, destination_type: "WEBSITE", promoted_object: { pixel_id: "1", custom_event_type: "PURCHASE" }, optimization_goal: "OFFSITE_CONVERSIONS" }
+    m = world({ ad: adNode(postCreative, { adset: web }) })
+    await expect(run(TOOL, { ad_id: "11", creative: { type: "link", message: "x" } })).rejects.toThrow(/cần `link`/)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    // explicit page + link on a website ad set: the Page of the current creative is not forced
+    m = world({ ad: adNode(postCreative, { adset: web }) })
+    res = await run(TOOL, { ad_id: "11", page_id: "777", creative: { type: "link", link: "https://shop.vn", image_hash: HASH } })
+    expect(JSON.parse(createCall(m).params.object_story_spec)).toMatchObject({ page_id: "777", link_data: { link: "https://shop.vn" } })
+    expect(JSON.parse(createCall(m).params.object_story_spec).instagram_user_id).toBeUndefined()
+  })
+
+  it("creative (link) with a Drive image: link_data.image_hash from opts.driveImage on execute", async () => {
+    const m = world()
+    const drive = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+    await run(TOOL, { ad_id: "11", creative: { type: "link", message: "x", image_drive_file: drive } }, { driveImage: { label: "anh.jpg", imageHash: HASH } })
+    expect(JSON.parse(createCall(m).params.object_story_spec).link_data.image_hash).toBe(HASH)
+  })
+
+  it("creative_id: a creative of this account is swapped (preview from reads only); another account's → not_found; the current one → no change; Page mismatch refused", async () => {
+    const target = { id: "300", account_id: "1001", object_story_id: "888_99", page_welcome_message: "Chào 300" }
+    let m = world({ extra: [["GET", "300", () => json(target)]] })
+    const pre = await run(TOOL, { ad_id: "11", creative_id: "300" }, { dryRun: true })
+    expect(pre.preview).toBe(true)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    expect(pre.changes[0]).toMatchObject({ before: { creative_id: "100" }, after: { creative_id: "300", welcome_message: { text: "Chào 300" } } })
+    expect(pre.warnings.join(" ")).toMatch(/lượt thích \/ bình luận \/ chia sẻ của bài cũ/)
+    const res = await run(TOOL, { ad_id: "11", creative_id: "300" })
+    expect(m.mutatingPosts().map((c) => c.path)).toEqual(["11"])
+    expect(JSON.parse(m.mutatingPosts()[0].params.creative)).toEqual({ creative_id: "300" })
+    expect(res.createdIds).toBeUndefined()
+
+    m = world({ extra: [["GET", "300", () => json({ ...target, account_id: "2002" })]] })
+    await expect(run(TOOL, { ad_id: "11", creative_id: "300" })).rejects.toMatchObject({
+      code: "not_found",
+      userMessageVi: "Không tìm thấy creative 300 trong tài khoản quảng cáo đã chọn.",
+    })
+    expect(m.mutatingPosts()).toHaveLength(0)
+
+    m = world({ extra: [["GET", "100", () => json({ ...postCreative, account_id: "1001" })]] })
+    const same = await run(TOOL, { ad_id: "11", creative_id: "100" })
+    expect(same.changes).toEqual([])
+    expect(same.warnings).toEqual(["Quảng cáo đang dùng đúng creative này - không có thay đổi."])
+    expect(m.mutatingPosts()).toHaveLength(0)
+
+    m = world({ extra: [["GET", "300", () => json({ ...target, object_story_id: "777_5" })]] })
+    await expect(run(TOOL, { ad_id: "11", creative_id: "300" })).rejects.toThrow(/Trang 777 khác Trang/)
+    m = world({ extra: [["GET", "300", () => json({ ...target, asset_feed_spec: { bodies: [{ text: "a" }] } })]] })
+    await expect(run(TOOL, { ad_id: "11", creative_id: "300" })).rejects.toThrow(/asset_feed_spec/)
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("an ad of another ad account → not_found, nothing read further, nothing posted (preview and execute)", async () => {
+    for (const opts of [{ dryRun: true }, {}]) {
+      const m = world({ ad: adNode(postCreative, { account_id: "2002" }) })
+      await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" }, opts)).rejects.toMatchObject({ code: "not_found" })
+      expect(m.calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET 11"])
+    }
+  })
+
+  it("refusals before any POST (preview and execute)", async () => {
+    const cases: [Record<string, unknown> | null, Record<string, unknown>, RegExp][] = [
+      [null, { ad_id: "11" }, /Truyền đúng MỘT trong/],
+      [null, { ad_id: "11", welcome_message: "x", creative_id: "300" }, /Truyền đúng MỘT trong/],
+      [null, { ad_id: "11", welcome_message: "x", page_id: "888" }, /page_id \/ instagram_user_id chỉ dùng khi truyền creative mới/],
+      [null, { ad_id: "11", creative_id: "300", url_tags: "a=b" }, /creative_id dùng nguyên creative có sẵn/],
+      [adNode(postCreative, { status: "ARCHIVED" }), { ad_id: "11", welcome_message: "x" }, /Quảng cáo 11 đang ở trạng thái ARCHIVED/],
+      [adNode(postCreative, { effective_status: "DELETED" }), { ad_id: "11", creative_id: "300" }, /Quảng cáo 11 đang ở trạng thái DELETED/],
+      [adNode(postCreative, { adset: { ...adsetMsg, status: "ARCHIVED" } }), { ad_id: "11", welcome_message: "x" }, /Nhóm quảng cáo chứa quảng cáo 2001 đang ở trạng thái ARCHIVED/],
+      [adNode(postCreative, { campaign: { ...campaign, effective_status: "DELETED" } }), { ad_id: "11", welcome_message: "x" }, /Chiến dịch chứa quảng cáo 3001 đang ở trạng thái DELETED/],
+      [adNode(postCreative, { campaign: { ...campaign, smart_promotion_type: "AUTOMATED_SHOPPING_ADS" } }), { ad_id: "11", welcome_message: "x" }, /Advantage\+ mua sắm \/ ứng dụng kiểu cũ/],
+      [adNode(postCreative, { adset: { ...adsetMsg, is_dynamic_creative: true } }), { ad_id: "11", welcome_message: "x" }, /Dynamic Creative/],
+      [adNode({ ...postCreative, asset_feed_spec: { bodies: [{ text: "a" }] } }), { ad_id: "11", welcome_message: "x" }, /asset_feed_spec/],
+      [adNode({ ...postCreative, product_set_id: "55" }), { ad_id: "11", creative: { type: "existing_post", object_story_id: "888_42" } }, /danh mục sản phẩm/],
+      [adNode(postCreative, { adset: { ...adsetMsg, promoted_object: { product_set_id: "55" } } }), { ad_id: "11", welcome_message: "x" }, /danh mục sản phẩm/],
+      [adNode(postCreative, { adset: { ...adsetMsg, destination_type: "WHATSAPP" } }), { ad_id: "11", welcome_message: "x" }, /chỉ hỗ trợ nhóm quảng cáo đích Messenger \(nhóm này là WHATSAPP\)/],
+      [adNode(postCreative, { adset: { ...adsetMsg, destination_type: "WEBSITE" } }), { ad_id: "11", welcome_message: "x" }, /welcome_message chỉ dùng cho quảng cáo nhắn tin/],
+      [adNode({ id: "203", object_story_spec: { page_id: "888", template_data: { link: "x" } } }), { ad_id: "11", welcome_message: "x" }, /không thể chỉ thêm lời chào/],
+      [adNode(undefined), { ad_id: "11", welcome_message: "x" }, /không thể chỉ thêm lời chào/],
+      [adNode({ ...postCreative, object_story_id: "777_5" }), { ad_id: "11", welcome_message: "x" }, /Trang 777 khác Trang của nhóm quảng cáo nhắn tin/],
+      [adNode({ ...postCreative, object_story_id: "999_5" }, { adset: { ...adsetMsg, promoted_object: {} } }), { ad_id: "11", welcome_message: "x" }, /Trang 999 không nằm trong danh sách Trang/],
+    ]
+    for (const [ad, input, re] of cases) {
+      for (const opts of [{ dryRun: true }, {}]) {
+        const m = world({ ...(ad ? { ad } : {}), extra: [["GET", "300", () => json({ id: "300", account_id: "1001", object_story_id: "888_9" })]] })
+        await expect(run(TOOL, input, opts), `${JSON.stringify(input)} ${re}`).rejects.toThrow(re)
+        expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+      }
+    }
+  })
+
+  it("dedupe: the created creative is read back without / with another greeting → error naming it, NO swap; read failure → error with the id", async () => {
+    let m = world({ readBack: () => json({ id: "900", account_id: "1001" }) })
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toThrow(/creative 900 KHÔNG có lời chào vừa gửi .*CHƯA đổi creative/)
+    expect(swapCalls(m)).toHaveLength(0)
+    m = world({ readBack: () => json({ id: "900", account_id: "1001", page_welcome_message: "Lời chào khác" }) })
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toThrow(/có lời chào KHÁC lời chào vừa gửi/)
+    expect(swapCalls(m)).toHaveLength(0)
+    m = world({ readBack: () => graphError(100) })
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toMatchObject({
+      userMessageVi: expect.stringMatching(/Không đọc lại được creative 900/),
+      hint: expect.stringContaining("creative_id=900"),
+    })
+    expect(swapCalls(m)).toHaveLength(0)
+    // a VISUAL_EDITOR greeting re-serialised by Meta (other key order / spacing) still matches
+    m = world({
+      readBack: (sent) => {
+        const o = JSON.parse(sent.page_welcome_message) as Record<string, unknown>
+        const reordered = Object.fromEntries(Object.entries(o).reverse())
+        return json({ id: "900", account_id: "1001", page_welcome_message: JSON.stringify(reordered, null, 1) })
+      },
+    })
+    await run(TOOL, { ad_id: "11", welcome_message: { text: "Chào", ice_breakers: [{ title: "A?", response: "B" }] } })
+    expect(swapCalls(m)).toHaveLength(1)
+  })
+
+  it("Meta returns the ad's current creative (already with this greeting) → no swap, no created id", async () => {
+    const m = world({ newId: "100" })
+    const res = await run(TOOL, { ad_id: "11", welcome_message: "Chào" })
+    expect(res.changes).toEqual([])
+    expect(res.createdIds).toBeUndefined()
+    expect(res.warnings.join(" ")).toMatch(/Meta trả lại đúng creative quảng cáo đang dùng/)
+    expect(swapCalls(m)).toHaveLength(0)
+  })
+
+  it("creative create timeout / 5xx: found again by its unique name (never re-posted); not found → the error, nothing swapped", async () => {
+    for (const fail of ["transient", "network"]) {
+      let posts = 0
+      let lookedUp: Record<string, string> = {}
+      const m = mockGraph([
+        ["GET", "11", () => json(adNode(postCreative))],
+        ...advertisable,
+        [
+          "POST",
+          "act_1001/adcreatives",
+          () => {
+            posts++
+            if (fail === "network") throw new Error("socket hang up")
+            return json({ error: { code: 2, message: "Service temporarily unavailable", is_transient: true } }, 500)
+          },
+        ],
+        [
+          "GET",
+          "act_1001/adcreatives",
+          (c) => {
+            lookedUp = c.params
+            return json({ data: [{ id: "899", name: "other" }, { id: "901", name: JSON.parse(c.params.filtering)[0].value }] })
+          },
+        ],
+        ["GET", "901", () => json({ id: "901", account_id: "1001", page_welcome_message: "Chào" })],
+        ["POST", "11", () => json({ success: true })],
+      ])
+      const res = await run(TOOL, { ad_id: "11", welcome_message: "Chào" })
+      expect(posts).toBe(1)
+      expect(lookedUp.fields).toBe("id,name")
+      expect(JSON.parse(lookedUp.filtering)[0]).toMatchObject({ field: "name", operator: "EQUAL" })
+      expect(res.createdIds).toEqual(["901"])
+      expect(res.warnings.join(" ")).toMatch(/không tạo lại/)
+      expect(JSON.parse(swapCalls(m)[0].params.creative)).toEqual({ creative_id: "901" })
+    }
+    const m = mockGraph([
+      ["GET", "11", () => json(adNode(postCreative))],
+      ...advertisable,
+      ["POST", "act_1001/adcreatives", () => json({ error: { code: 2, message: "x", is_transient: true } }, 500)],
+      ["GET", "act_1001/adcreatives", () => json({ data: [] })],
+    ])
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toMatchObject({ code: "upstream_error" })
+    expect(swapCalls(m)).toHaveLength(0)
+  })
+
+  it("swap timeout / 5xx: the ad read back shows the new creative → done (not re-sent); otherwise / other errors → the hint names the orphan creative", async () => {
+    let m = world({
+      swap: () => json({ error: { code: 2, message: "x", is_transient: true } }, 500),
+      afterSwap: () => json({ id: "11", creative: { id: "900" } }),
+    })
+    const res = await run(TOOL, { ad_id: "11", welcome_message: "Chào" })
+    expect(swapCalls(m)).toHaveLength(1)
+    expect(res.createdIds).toEqual(["900"])
+    expect(res.warnings.join(" ")).toMatch(/đã nhận creative mới - không gửi lại/)
+
+    m = world({
+      swap: () => json({ error: { code: 2, message: "x", is_transient: true } }, 500),
+      afterSwap: () => json({ id: "11", creative: { id: "100" } }),
+    })
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toMatchObject({
+      code: "upstream_error",
+      hint: expect.stringContaining("Creative 900 đã được tạo nhưng CHƯA gắn vào quảng cáo - thử lại bằng meta_update_ad_creative với creative_id=900"),
+    })
+    expect(swapCalls(m)).toHaveLength(1)
+
+    world({ swap: () => graphError(100, 1885088, { error_user_msg: "Ad archived" }) })
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toMatchObject({
+      code: "invalid_request",
+      userMessageVi: expect.stringMatching(/đã lưu trữ hoặc đã xoá.*Meta báo: Ad archived/),
+      hint: expect.stringContaining("creative_id=900"),
+    })
+  })
+
+  const FIELD_ERR = () =>
+    graphError(100, undefined, { message: "(#100) Tried accessing nonexisting field (page_welcome_message) on node type (AdCreative)" })
+  const PROBE = "id,asset_feed_spec,product_set_id,platform_customizations"
+
+  it("#100 on a field of the ad read → one retry with the minimal fields + refusal probe; the swap still works, with a note", async () => {
+    const reads: string[] = []
+    const m = world({
+      adRead: (fields) => {
+        reads.push(fields)
+        return fields.includes("page_welcome_message") ? FIELD_ERR() : json(adNode({ id: "100", object_story_id: "888_42", effective_object_story_id: "888_42" }))
+      },
+      extra: [["GET", "100", () => json({ id: "100" })]],
+    })
+    const res = await run(TOOL, { ad_id: "11", welcome_message: "Chào" })
+    expect(reads).toHaveLength(2)
+    expect(reads[1]).not.toMatch(/page_welcome_message|call_to_action|instagram_user_id|asset_feed_spec|product_set_id|is_dynamic_creative|smart_promotion_type/)
+    expect(m.calls.find((c) => c.method === "GET" && c.path === "2001")!.params.fields).toBe("id,is_dynamic_creative")
+    expect(m.calls.find((c) => c.method === "GET" && c.path === "3001")!.params.fields).toBe("id,smart_promotion_type")
+    expect(reads[1]).toContain("creative{id,name,status,object_story_id,effective_object_story_id,object_story_spec,url_tags}")
+    expect(m.calls.find((c) => c.method === "GET" && c.path === "100")!.params.fields).toBe(PROBE)
+    expect(JSON.parse(createCall(m).params.call_to_action)).toEqual({ type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } })
+    expect(res.warnings.join(" ")).toMatch(/Meta không trả một số trường của creative/)
+    expect(swapCalls(m)).toHaveLength(1)
+  })
+
+  it("fallback: refusal fields unreadable → refused safely; the probe still finds asset_feed_spec / product_set_id → refused (nothing posted)", async () => {
+    const probeCases: [() => FakeResponse, RegExp][] = [
+      [FIELD_ERR, /Không đọc được kiểu của creative \(asset_feed_spec \/ product_set_id \/ platform_customizations\) để kiểm tra an toàn/],
+      [() => json({ id: "100", asset_feed_spec: { bodies: [{ text: "a" }] } }), /asset_feed_spec/],
+      [() => json({ id: "100", product_set_id: "55" }), /danh mục sản phẩm/],
+    ]
+    for (const [probe, re] of probeCases) {
+      for (const opts of [{ dryRun: true }, {}]) {
+        const m = world({
+          adRead: (fields) => (fields.includes("page_welcome_message") ? FIELD_ERR() : json(adNode({ id: "100", object_story_id: "888_42" }))),
+          extra: [["GET", "100", probe]],
+        })
+        await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" }, opts)).rejects.toThrow(re)
+        expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+      }
+    }
+  })
+
+  it("permission / not-found errors on the ad read are never retried", async () => {
+    for (const [resp, code] of [
+      [graphError(200), "permission_denied"],
+      [graphError(100, 33), "not_found"],
+    ] as const) {
+      const reads: string[] = []
+      world({
+        adRead: (fields) => {
+          reads.push(fields)
+          return resp
+        },
+      })
+      await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toMatchObject({ code })
+      expect(reads).toHaveLength(1)
+    }
+  })
+
+  it("creative_id: #100 on the full creative read → minimal read (account checked first) + probe; unreadable refusal fields → refused", async () => {
+    const target = (account = "1001", probe: () => FakeResponse = () => json({ id: "300" })): Route => [
+      "GET",
+      "300",
+      (c) =>
+        (c.params.fields ?? "").includes("page_welcome_message")
+          ? FIELD_ERR()
+          : c.params.fields === PROBE
+            ? probe()
+            : json({ id: "300", account_id: account, object_story_id: "888_99" }),
+    ]
+    let m = world({ extra: [target()] })
+    const res = await run(TOOL, { ad_id: "11", creative_id: "300" })
+    expect(m.calls.filter((c) => c.path === "300").map((c) => c.params.fields)).toEqual([
+      expect.stringContaining("page_welcome_message"),
+      "id,name,status,object_story_id,effective_object_story_id,object_story_spec,url_tags,account_id",
+      PROBE,
+    ])
+    expect(JSON.parse(swapCalls(m)[0]!.params.creative)).toEqual({ creative_id: "300" })
+    expect(res.warnings.filter((x) => /Meta không trả một số trường/.test(x))).toHaveLength(1)
+
+    m = world({ extra: [target("2002")] })
+    await expect(run(TOOL, { ad_id: "11", creative_id: "300" })).rejects.toMatchObject({ code: "not_found" })
+    expect(m.calls.filter((c) => c.path === "300")).toHaveLength(2) // no probe of another account's creative
+    m = world({ extra: [target("1001", FIELD_ERR)] })
+    await expect(run(TOOL, { ad_id: "11", creative_id: "300" })).rejects.toThrow(/Không đọc được kiểu của creative/)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+  })
+
+  it("greeting mode refuses carousel (child_attachments) and platform_customizations - nothing posted, no signed URL sent", async () => {
+    const carousel = {
+      id: "204",
+      object_story_spec: {
+        page_id: "888",
+        link_data: {
+          link: "https://shop.vn",
+          child_attachments: [{ link: "https://shop.vn/1", picture: SIGNED, image_hash: HASH, call_to_action: { type: "SHOP_NOW", value: { link: "https://shop.vn/1" } } }],
+        },
+      },
+    }
+    const custom = { ...postCreative, platform_customizations: { instagram: { image_url: SIGNED } } }
+    for (const [creative, re] of [
+      [carousel, /băng chuyền \(carousel\)/],
+      [custom, /platform_customizations/],
+    ] as const) {
+      for (const opts of [{ dryRun: true }, {}]) {
+        const m = world({ ad: adNode(creative) })
+        await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" }, opts)).rejects.toThrow(re)
+        expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+      }
+    }
+  })
+
+  it("greeting mode: the spec branch wins over object_story_id (dark post); authorization_category carried; not-copied note; texts shown sanitised, sent unchanged", async () => {
+    const longMsg = `Inbox‮ ngay ${"x".repeat(800)}`
+    const darkPost = {
+      ...specCreative,
+      object_story_id: "888_77",
+      authorization_category: "POLITICAL",
+      object_story_spec: { ...specCreative.object_story_spec, link_data: { ...specCreative.object_story_spec.link_data, message: longMsg } },
+    }
+    let m = world({ ad: adNode(darkPost) })
+    const pre = await run(TOOL, { ad_id: "11", welcome_message: "Chào" }, { dryRun: true })
+    const v = m.calls.find((c) => c.path === "act_1001/adcreatives")!
+    expect(v.params.object_story_id).toBeUndefined()
+    expect(JSON.parse(v.params.object_story_spec).link_data.message).toBe(longMsg) // Meta gets the text unchanged
+    expect(v.params.authorization_category).toBe("POLITICAL")
+    const shownMsg = ((pre.payload.new_creative as Record<string, Record<string, Record<string, string>>>).object_story_spec.link_data.message)
+    expect(shownMsg.length).toBeLessThanOrEqual(500)
+    expect(shownMsg).not.toContain("‮")
+    const w = pre.warnings.join(" ")
+    expect(w).toMatch(/không chép tính năng Advantage\+ creative .*cắt ảnh, tuỳ chỉnh theo vị trí hiển thị, tuyên bố miễn trừ/)
+    expect(w).not.toMatch(/dùng lại creative cũ của bài viết/)
+    // NONE is not sent; existing post branch warns about the dedupe stop
+    m = world({ ad: adNode({ ...postCreative, authorization_category: "NONE" }) })
+    const pre2 = await run(TOOL, { ad_id: "11", welcome_message: "Chào" }, { dryRun: true })
+    expect(m.calls.find((c) => c.path === "act_1001/adcreatives")!.params.authorization_category).toBeUndefined()
+    expect(pre2.warnings.join(" ")).toMatch(/Meta có thể dùng lại creative cũ của bài viết \(không có lời chào\); nếu vậy hệ thống dừng, không đổi gì/)
+  })
+
+  it("dedupe stop: the hint points to mode creative with a link / video creative + welcome_message", async () => {
+    world({ readBack: () => json({ id: "900", account_id: "1001" }) })
+    await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" })).rejects.toMatchObject({
+      hint: expect.stringMatching(/tham số creative = nội dung link \/ video kèm welcome_message/),
+    })
+  })
+
+  it("fallback: ad set / campaign refusal fields are probed apart (Dynamic Creative / legacy ASC refused; unreadable → refused)", async () => {
+    const degradedAd = (fields: string) =>
+      fields.includes("page_welcome_message") ? FIELD_ERR() : json(adNode({ id: "100", object_story_id: "888_42" }))
+    const cases: [Route, RegExp][] = [
+      [["GET", "2001", () => json({ id: "2001", is_dynamic_creative: true })], /Dynamic Creative/],
+      [["GET", "2001", FIELD_ERR], /Không đọc được kiểu của nhóm quảng cáo \(is_dynamic_creative\)/],
+      [["GET", "3001", () => json({ id: "3001", smart_promotion_type: "AUTOMATED_SHOPPING_ADS" })], /Advantage\+ mua sắm/],
+      [["GET", "3001", FIELD_ERR], /Không đọc được kiểu của chiến dịch \(smart_promotion_type\)/],
+    ]
+    for (const [route, re] of cases) {
+      const m = world({ adRead: degradedAd, extra: [route, ["GET", "100", () => json({ id: "100" })]] })
+      await expect(run(TOOL, { ad_id: "11", welcome_message: "Chào" }, { dryRun: true })).rejects.toThrow(re)
+      expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    }
+  })
+
+  it("creative_id swap error: no orphan hint (nothing was created)", async () => {
+    world({ extra: [["GET", "300", () => json({ id: "300", account_id: "1001", object_story_id: "888_99" })]], swap: () => graphError(100, 1885998) })
+    const e = await run(TOOL, { ad_id: "11", creative_id: "300" }).then(
+      () => null,
+      (err: unknown) => err as { hint?: string; userMessageVi: string }
+    )
+    expect(e!.userMessageVi).toMatch(/Dynamic Creative/)
+    expect(e!.hint).not.toMatch(/đã được tạo/)
+  })
+})
+
+describe("greeting helpers (v1.1.4)", () => {
+  it("greetingVerdict: plain text (trimmed), VISUAL_EDITOR by content, missing, different", () => {
+    expect(greetingVerdict("Chào bạn", " Chào bạn ")).toBe("match")
+    expect(greetingVerdict("Chào bạn", "")).toBe("missing")
+    expect(greetingVerdict("Chào bạn", undefined)).toBe("missing")
+    expect(greetingVerdict("Chào bạn", "Chào")).toBe("different")
+    const ve = (text: string, title = "A?") =>
+      JSON.stringify({ type: "VISUAL_EDITOR", text_format: { message: { ice_breakers: [{ title, response: "B" }], quick_replies: [], text } } })
+    expect(greetingVerdict(ve("Hi"), JSON.stringify(JSON.parse(ve("Hi")), null, 2))).toBe("match")
+    expect(greetingVerdict(ve("Hi"), ve("Hi", "C?"))).toBe("different")
+    expect(greetingVerdict(ve("Hi"), "Hi")).toBe("different")
+  })
+
+  it("greetingShown: platform text is sanitised and capped; VISUAL_EDITOR → {text, ice_breakers}", () => {
+    expect(greetingShown(null)).toBeNull()
+    expect(greetingShown("  ")).toBeNull()
+    expect(greetingShown(`Chào\u202E bạn\n${"x".repeat(400)}`)!.text.length).toBeLessThanOrEqual(300)
+    expect(greetingShown("Chào\u202E bạn")).toEqual({ text: "Chào bạn" })
+    const ve = JSON.stringify({ text_format: { message: { text: "Hi", ice_breakers: [{ title: "A\u200B?", response: "B" }] } } })
+    expect(greetingShown(ve)).toEqual({ text: "Hi", ice_breakers: [{ title: "A?", response: "B" }] })
   })
 })

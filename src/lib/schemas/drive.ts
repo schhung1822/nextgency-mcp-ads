@@ -139,6 +139,7 @@ export const sheetColumnsSchema = z
     headline: optionalColumn,
     destination: optionalColumn,
     welcomeMessage: optionalColumn,
+    existingPost: optionalColumn,
     status: optionalColumn,
     mediaId: optionalColumn,
     adIds: optionalColumn,
@@ -266,6 +267,7 @@ export type SheetColumnKey =
   | "headline"
   | "destination"
   | "welcomeMessage"
+  | "existingPost"
   | "status"
   | "mediaId"
   | "adIds"
@@ -284,6 +286,7 @@ export const SHEET_COLUMN_KEYS: readonly SheetColumnKey[] = [
   "headline",
   "destination",
   "welcomeMessage",
+  "existingPost",
   "status",
   "mediaId",
   "adIds",
@@ -356,6 +359,19 @@ export const SHEET_COLUMN_ALIASES: Record<SheetColumnKey, readonly string[]> = {
     "greeting",
     "greeting message",
   ],
+  // existing Facebook post of a Meta ad (v1.1.4) - read only; suggested by all these names, but only the unambiguous
+  // ones are auto-detected when not mapped (AUTO_DETECT_ALIASES). Never "link bai viet" (the system-written postLink
+  // column) or a plain "bai viet"
+  existingPost: [
+    "bai viet co san",
+    "bai co san",
+    "id bai viet",
+    "ma bai viet",
+    "post id",
+    "existing post",
+    "bai viet goc",
+    "link bai viet goc",
+  ],
   status: ["trang thai", "status"],
   mediaId: ["ma media", "media id", "media"],
   adIds: ["ma quang cao", "ad id", "ad ids", "ma qc"],
@@ -405,17 +421,38 @@ export function headerIndex(header: readonly string[], name: string): number {
 
 /**
  * Optional read-only columns drive_sheet_read finds by their header name when they are not mapped (configs saved
- * before the column existed, or left "Không dùng"): "Ảnh bìa" (v1.1.2) and "Lời chào tin nhắn" (v1.1.3).
+ * before the column existed, or left "Không dùng"): "Ảnh bìa" (v1.1.2), "Lời chào tin nhắn" (v1.1.3) and "Bài viết
+ * có sẵn" (v1.1.4).
  */
 export const AUTO_DETECT_COLUMN_KEYS = [
   "cover",
   "welcomeMessage",
+  "existingPost",
 ] as const satisfies readonly SheetColumnKey[]
 export type AutoDetectColumnKey = (typeof AUTO_DETECT_COLUMN_KEYS)[number]
 
 /**
- * 0-based index of the first header cell named like `key` (SHEET_COLUMN_ALIASES[key], earlier aliases win) that is
- * not one of `taken` (indexes already mapped to other columns); -1 when none.
+ * Header names an unmapped column is silently auto-detected by, when narrower than SHEET_COLUMN_ALIASES (which the
+ * configuration UI suggests and the user confirms). "Bài viết có sẵn" (v1.1.4): a post wins over Link Drive, so a
+ * generic "Post ID" / "ID bài viết" / "Mã bài viết" column the user keeps for something else must never be picked up
+ * without the user mapping it.
+ */
+export const AUTO_DETECT_ALIASES: Partial<
+  Record<AutoDetectColumnKey, readonly string[]>
+> = {
+  existingPost: [
+    "bai viet co san",
+    "bai co san",
+    "bai viet goc",
+    "link bai viet goc",
+    "existing post",
+  ],
+}
+
+/**
+ * 0-based index of the first header cell named like `key` (AUTO_DETECT_ALIASES[key] when set, else
+ * SHEET_COLUMN_ALIASES[key]; earlier aliases win) that is not one of `taken` (indexes already mapped to other
+ * columns); -1 when none.
  */
 export function detectAutoHeader(
   key: AutoDetectColumnKey,
@@ -423,7 +460,7 @@ export function detectAutoHeader(
   taken: ReadonlySet<number> = new Set()
 ): number {
   const keys = header.map((h) => normalizeHeader(h))
-  for (const alias of SHEET_COLUMN_ALIASES[key]) {
+  for (const alias of AUTO_DETECT_ALIASES[key] ?? SHEET_COLUMN_ALIASES[key]) {
     const i = keys.findIndex((k, idx) => k === alias && !taken.has(idx))
     if (i >= 0) return i
   }
