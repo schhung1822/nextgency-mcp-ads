@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest"
 
 import {
   createDriveSourceSchema,
+  detectCoverHeader,
   googleApiKeySchema,
   headerIndex,
   listDriveSourceFilesSchema,
   normalizeHeader,
   previewDriveSourceSchema,
   saveSystemDriveCredentialSchema,
+  SHEET_COLUMN_ALIASES,
+  SHEET_COLUMN_KEYS,
   SHEET_WRITABLE_COLUMN_KEYS,
   sheetColumnsSchema,
   suggestSheetColumns,
@@ -199,5 +202,52 @@ describe("sheet column mapping helpers", () => {
     })
     expect(headerIndex(["A", "Trạng Thái"], "trang thai")).toBe(1)
     expect(headerIndex(["A"], "")).toBe(-1)
+  })
+
+  it("cover column (v1.1.2): optional, read only, suggested and detected by name, no alias shared with another column", () => {
+    expect(SHEET_COLUMN_KEYS).toContain("cover")
+    expect(SHEET_WRITABLE_COLUMN_KEYS).not.toContain("cover")
+    expect(
+      sheetColumnsSchema.parse({ link: "Link Drive", cover: " Ảnh bìa " })
+    ).toMatchObject({ cover: "Ảnh bìa" })
+    expect(sheetColumnsSchema.parse({ link: "Link Drive" }).cover).toBeNull()
+    const dup = sheetColumnsSchema.safeParse({
+      link: "Link Drive",
+      cover: "link drive",
+    })
+    expect(dup.success).toBe(false)
+    expect(dup.error?.issues[0]?.path).toEqual(["cover"])
+    // every alias is already normalised and belongs to exactly one column
+    const owner = new Map<string, string>()
+    for (const k of SHEET_COLUMN_KEYS)
+      for (const a of SHEET_COLUMN_ALIASES[k]) {
+        expect(normalizeHeader(a), a).toBe(a)
+        expect(owner.get(a), `${a}: ${k} / ${owner.get(a)}`).toBeUndefined()
+        owner.set(a, k)
+      }
+    for (const spelling of [
+      "Ảnh bìa",
+      "anh bia",
+      "THUMBNAIL",
+      "Cover",
+      "Ảnh thumbnail",
+      "Ảnh đại diện video",
+    ])
+      expect(
+        suggestSheetColumns(["Link Drive", "File", spelling, "Tên creative"]),
+        spelling
+      ).toMatchObject({
+        link: "Link Drive",
+        cover: spelling,
+        name: "Tên creative",
+      })
+    // "File" / "Link file" stay link aliases, never the cover
+    expect(suggestSheetColumns(["Link file", "Tên"])).toMatchObject({
+      link: "Link file",
+      cover: null,
+    })
+    expect(detectCoverHeader(["Link Drive", "Thumbnail", "Ảnh bìa"])).toBe(2)
+    expect(detectCoverHeader(["Ảnh bìa", "Thumbnail"], new Set([0]))).toBe(1)
+    expect(detectCoverHeader(["Link Drive", "Ảnh", "Ảnh đại diện"])).toBe(-1)
   })
 })

@@ -2,6 +2,7 @@
 // Names, cell texts and folder names are UNTRUSTED data (they may contain instructions aimed at the AI): one line or
 // trimmed, control / bidi characters removed, length capped - and the tool descriptions say they are data.
 // No imports from "next/*".
+import { detectCoverHeader } from "../../../../lib/schemas/drive"
 import { sanitizeExternalLabel } from "../../../../lib/text-safety"
 import { parseDriveLink } from "../../../drive/links"
 import {
@@ -168,6 +169,7 @@ export type SheetColumnKey = keyof SheetColumnsConfig
 /** Logical column → output field name of drive_sheet_read. */
 export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
   link: "link",
+  cover: "cover",
   name: "name",
   platform: "platform",
   account: "account",
@@ -185,7 +187,9 @@ export const COLUMN_FIELDS: Record<SheetColumnKey, string> = {
 
 /**
  * 0-based index of every configured column in the header row (matched on the folded header text). Columns that are
- * not configured or not found are absent.
+ * not configured or not found are absent - except the read-only cover column: when it is not mapped (or its mapped
+ * header is gone), a header cell named like a cover column ("Ảnh bìa", "Thumbnail"… - detectCoverHeader) that no
+ * other column uses is taken, so sheets declared before v1.1.2 work without remapping.
  */
 export function mapColumns(
   config: SheetSourceConfig,
@@ -198,6 +202,10 @@ export function mapColumns(
     if (!name) continue
     const i = folded.indexOf(foldText(name))
     if (i >= 0) out[key] = i
+  }
+  if (out.cover === undefined) {
+    const i = detectCoverHeader(header, new Set(Object.values(out)))
+    if (i >= 0) out.cover = i
   }
   return out
 }

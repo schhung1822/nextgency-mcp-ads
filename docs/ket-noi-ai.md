@@ -119,9 +119,10 @@ AI **không chuyển được file** (ảnh, video) sang MCP, nên Ads MCP tự 
 3. **MCP → Tạo/Sửa MCP**: bước Nền tảng chọn thư mục / sheet ở khối **Google Drive**; bước Quyền bật quyền **Tạo mới** cho nền tảng muốn tải ảnh/video lên, giữ **Cho phép dùng link Drive công khai** và **Cho phép ghi trạng thái vào Google Sheet** (mặc định bật).
 4. Trong AI: “Lên quảng cáo TikTok tạm dừng cho TKQC X bằng video ‘ra-mat-sp.mp4’ trong thư mục Creative T10” hoặc “Đọc các dòng ‘Chờ lên’ trong sheet Kế hoạch creative, lên quảng cáo cho từng dòng rồi ghi trạng thái vào sheet”.
 
-- **Ảnh** dùng được cho cả 4 nền tảng (Meta ≤ 30 MB; Google Ads ≤ 5 MB JPEG/PNG/GIF; TikTok ≤ 30 MB JPG/PNG; OpenAI Ads ≤ 20 MB JPEG/PNG/WebP). **Video** (MP4/MOV ≤ 500 MB) chỉ Meta và TikTok: TikTok ≤ 10 MB / Meta ≤ 50 MB xong ngay; lớn hơn được **tải nền** vài phút — nói “kiểm tra video đã tải xong chưa” để AI xem tiến độ.
+- **Ảnh** dùng được cho cả 4 nền tảng (Meta ≤ 30 MB; Google Ads ≤ 5 MB JPEG/PNG/GIF; TikTok ≤ 30 MB JPG/PNG; OpenAI Ads ≤ 20 MB JPEG/PNG/WebP). **Video** (MP4/MOV ≤ 500 MB) chỉ Meta và TikTok: TikTok ≤ 10 MB / Meta ≤ 20 MB xong ngay; lớn hơn được **tải nền** vài phút — nói “kiểm tra video đã tải xong chưa” để AI xem tiến độ.
+- **Ảnh bìa video**: dán link Drive của ảnh vào câu lệnh (“…ảnh bìa https://drive.google.com/file/d/…”), hoặc dùng cột **Ảnh bìa** trong Google Sheet (hay để ảnh chung ô Link Drive với video). Meta: không đưa ảnh bìa thì hệ thống tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong (video vừa tải có thể cần vài phút).
 - File đã tải lên đúng TKQC trước đó được **dùng lại mã media** (không tải lại) — trừ khi file trên Drive đã thay đổi. Mọi quảng cáo AI tạo đều **tạm dừng**.
-- Tệp đính kèm trong **ChatGPT bản web** cũng tải lên được (video tối đa 10 MB TikTok / 50 MB Meta — lớn hơn hãy đưa lên Google Drive).
+- Tệp đính kèm trong **ChatGPT bản web** cũng tải lên được (video tối đa 10 MB TikTok / 50 MB Meta — lớn hơn hãy đưa lên Google Drive; ngưỡng này khác ngưỡng tải nền 20 MB của video Drive trên Meta).
 
 ## Apify — lấy dữ liệu sàn TMĐT, mạng xã hội, Google (tuỳ chọn)
 AI lấy dữ liệu công khai (Shopee, Lazada, TikTok Shop, TikTok, Thư viện quảng cáo / Trang Facebook, Instagram, YouTube, Google Maps / Search / Ads Transparency, website) qua **Apify** bằng token của đơn vị bạn, rồi tự phân tích. Hệ thống tự chọn công cụ thu thập (Actor) trong danh mục đã chọn lọc. Hướng dẫn đầy đủ (tạo token, xoay vòng, chi phí, câu lệnh mẫu, giới hạn, xử lý lỗi): **[huong-dan-apify.md](huong-dan-apify.md)**.

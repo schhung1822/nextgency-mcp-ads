@@ -46,6 +46,11 @@ export class ProviderError extends Error {
   readonly retryAfterMs?: number
   /** log-only data of an uncertain write (ProviderErrorAudit) */
   readonly audit?: ProviderErrorAudit
+  /**
+   * Specific code shown to the AI instead of `code` (e.g. "video_processing", "video_failed") so it can react; `code`
+   * keeps the generic class used for log status / retries.
+   */
+  readonly toolCode?: string
 
   constructor(args: {
     platform: Platform
@@ -58,6 +63,7 @@ export class ProviderError extends Error {
     retryAfterMs?: number
     cause?: unknown
     audit?: ProviderErrorAudit
+    toolCode?: string
   }) {
     super(args.message, { cause: args.cause })
     this.name = "ProviderError"
@@ -69,12 +75,13 @@ export class ProviderError extends Error {
     this.upstream = args.upstream
     this.retryAfterMs = args.retryAfterMs
     this.audit = args.audit
+    this.toolCode = args.toolCode
   }
 
   toJSON() {
     return {
       platform: this.platform,
-      code: this.code,
+      code: this.toolCode ?? this.code,
       message: this.userMessageVi,
       hint: this.hint,
       retryable: this.retryable,
@@ -101,6 +108,7 @@ export function withErrorAudit(e: unknown, platform: Platform, audit: ProviderEr
     retryAfterMs: pe?.retryAfterMs,
     cause: pe?.cause ?? e,
     audit,
+    toolCode: pe?.toolCode,
   })
 }
 

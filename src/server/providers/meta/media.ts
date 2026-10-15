@@ -5,11 +5,23 @@
 // Video: /act_{id}/advideos with file_url (Meta's servers download it - residual risk accepted: the fetch
 //        happens on Meta's network, not ours), then poll status until ready within the wait budget
 //        (deadlineAt wins, else maxWaitMs, default META_TIMINGS.videoMaxWaitMs); when the budget ends first the id is
-//        returned with processing: true.
+//        returned with processing: true. The library name (`name` + `title`) is unique ("<name> · <6 hex>", D8): after
+//        an ambiguous create timeout the video is looked up once by that title (GET advideos?title=, best effort [L])
+//        and returned with recovered: true instead of "may have been created".
+// Status (D7): video_status ready → usable; processing / unknown values → still processing; error / expired / a phase
+//        with status error → failed (phase error messages, sanitised). getMetaMediaStatus = AdsProvider.getMediaStatus.
+// Automatic video cover (D1-D3, used by meta_create_ad): Meta's preferred thumbnail of a READY video
+//        (GET /{video_id}?fields=status,picture,thumbnails{uri,is_preferred,width,height}); the signed fbcdn uri is
+//        downloaded by mcp-core's SSRF-guarded MutationOptions.fetchImage and uploaded as adimages bytes → image_hash
+//        (Meta: do not use FB CDN URLs as image_url). The uri is never returned, logged or stored.
 // Large videos (background job): uploadMetaVideoChunked - resumable upload_phase start → transfer → finish on
 //        graph-video.facebook.com (meta.md §5 Media "Upload theo phần"), chunk offsets decided by Meta.
 // deadlineAt: create calls use min(own timeout, deadlineAt - now - 1 s); a create call that times out is never retried
 //        (the media may exist - media-deadline.ts).
+import { randomBytes } from "node:crypto"
+
+import { redactString } from "../../audit/redact"
+import { sanitizeExternalLabel } from "../../../lib/text-safety"
 import { isProviderError, ProviderError } from "../errors"
 import {
   anySignal,
@@ -25,7 +37,9 @@ import { sleep } from "../rate-limit"
 import type {
   ChunkedVideoUploadRequest,
   MediaRef,
+  MediaStatus,
   MediaUploadRequest,
+  MutationOptions,
   ProviderContext,
 } from "../types"
 import {
@@ -39,6 +53,25 @@ import {
 import { callCtx, invalid } from "./shared"
 
 export const MAX_IMAGE_BYTES = 30 * 1024 * 1024
+
+/** Video status / cover / recovery tuning - mutable for tests. */
+export const META_VIDEO = {
+  /** GET advideos?title= after an ambiguous file_url timeout (runs after the deadline: kept short) */
+  recoveryLookupMs: 6_000,
+  /** a recovered video must have been created at most this long before the upload call started */
+  recoverySkewMs: 60_000,
+  /** status (+ thumbnails) read of one video */
+  infoTimeoutMs: 10_000,
+  /** ownership fallback scan of act/advideos (C-M2): page size and pages */
+  scanPageSize: 100,
+  scanPages: 2,
+}
+
+/** Unique, recognisable library name of a file_url upload (D8): "<name> · <6 hex chars>" (≤ 255 chars). */
+export function uniqueVideoName(base: string | undefined): string {
+  const clean = (base ?? "").replace(/\s+/g, " ").trim() || "video"
+  return `${clean.slice(0, 240)} · ${randomBytes(3).toString("hex")}`
+}
 
 /** Resumable (chunked) video upload tuning - mutable for tests. */
 export const META_CHUNKED = {
@@ -155,20 +188,27 @@ export async function uploadMetaMedia(
   // image bytes never need the URL (informational only); a video is fetched by Meta from it
   if (!/^https?:\/\//i.test(r.url))
     throw invalid("URL phải bắt đầu bằng http:// hoặc https://.")
-  const videoName = r.name || r.fileName
+  const videoName = uniqueVideoName(r.name || r.fileName)
   const timeoutMs = createTimeoutMs("meta", 120_000, r.deadlineAt)
-  const created = await createOnce("meta", () =>
-    graph<{ id?: string }>(call, {
+  const startedAt = Date.now()
+  let created: { id?: string }
+  try {
+    created = await graph<{ id?: string }>(call, {
       method: "POST",
       path: `${account}/advideos`,
-      params: {
-        file_url: r.url,
-        ...(videoName ? { name: videoName.slice(0, 255) } : {}),
-      },
+      // name + title: which one feeds the advideos `title` filter is undocumented [L] - send both
+      params: { file_url: r.url, name: videoName, title: videoName },
       idempotent: false,
       timeoutMs,
     })
-  )
+  } catch (e) {
+    if (!isProviderError(e) || e.code !== "timeout") throw e
+    // never re-sent: look the video up once by its unique title (best effort), else "may have been created"
+    const found = await recoverVideoByTitle(call, account, videoName, startedAt)
+    if (found)
+      return { type: "video", id: found, url: null, processing: true, recovered: true }
+    throw maybeCreatedError("meta", e)
+  }
   if (!created.id) {
     throw new ProviderError({
       platform: "meta",
@@ -184,19 +224,367 @@ export async function uploadMetaMedia(
   )
 }
 
-async function videoStatus(
+/**
+ * GET act_{id}/advideos?title=<unique name> once after an ambiguous file_url timeout (D8, [L]: exact vs substring
+ * match and name → title are undocumented, so the title is compared here too). Exactly one video with that title,
+ * created around the upload → its id; anything else (none, several, an error) → null. Never throws.
+ */
+async function recoverVideoByTitle(
+  call: MetaCallContext,
+  account: string,
+  title: string,
+  startedAt: number
+): Promise<string | null> {
+  try {
+    const res = await graph<{
+      data?: { id?: unknown; title?: unknown; created_time?: unknown }[]
+    }>(
+      call,
+      {
+        method: "GET",
+        path: `${account}/advideos`,
+        params: { title, fields: "id,title,created_time", limit: 10 },
+        idempotent: true,
+        timeoutMs: META_VIDEO.recoveryLookupMs,
+      }
+    )
+    const since = startedAt - META_VIDEO.recoverySkewMs
+    const hits = (res.data ?? []).filter((v) => {
+      if (v.id === undefined || v.id === null || v.title !== title) return false
+      // a missing / unparsable created_time is not a match (S-L4)
+      const at = typeof v.created_time === "string" ? metaTime(v.created_time) : NaN
+      return !Number.isNaN(at) && at >= since
+    })
+    return hits.length === 1 ? String(hits[0]!.id) : null
+  } catch {
+    return null
+  }
+}
+
+/** Meta times look like 2026-10-15T08:00:00+0000 (no colon in the offset). */
+function metaTime(s: string): number {
+  return Date.parse(s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2"))
+}
+
+interface PhaseStatus {
+  status?: string
+  errors?: { code?: unknown; message?: unknown }[]
+}
+
+interface RawVideoStatus {
+  video_status?: string
+  processing_progress?: unknown
+  uploading_phase?: PhaseStatus
+  processing_phase?: PhaseStatus
+  publishing_phase?: PhaseStatus
+}
+
+/** Normalised status of one video (D7). */
+export interface MetaVideoState {
+  kind: "ready" | "processing" | "failed"
+  /** Meta's video_status as sent (for logs / tests) */
+  raw: string | null
+  /** processing_progress 0-100 when sent */
+  progress: number | null
+  /** failed: Vietnamese reason (phase error messages sanitised), else null */
+  error: string | null
+}
+
+const KNOWN_VIDEO_STATUSES = new Set(["ready", "processing", "error", "expired"])
+
+/** Phase error messages, sanitised (no URL / secret, ≤ 300 chars), or null. */
+function phaseErrors(st: RawVideoStatus): string | null {
+  const msgs: string[] = []
+  for (const phase of [st.uploading_phase, st.processing_phase, st.publishing_phase]) {
+    for (const err of phase?.errors ?? []) {
+      if (typeof err?.message === "string" && err.message.trim())
+        msgs.push(err.message.trim())
+    }
+  }
+  if (msgs.length === 0) return null
+  const text = redactString([...new Set(msgs)].join("; ")).replace(/https?:\/\/\S+/gi, "[url]")
+  // external text shown to the AI: one line, no control / bidi / zero-width characters (S-L3)
+  return sanitizeExternalLabel(text, 300)
+}
+
+/**
+ * status object of GET /{video_id}?fields=status → ready / processing / failed (D7). error, expired or a phase whose
+ * status is "error" = failed; unknown values (and a missing status) = still processing (logged without data).
+ */
+export function classifyVideoStatus(st: RawVideoStatus | undefined): MetaVideoState {
+  const raw = typeof st?.video_status === "string" ? st.video_status : null
+  const p = Number(st?.processing_progress)
+  const progress =
+    st?.processing_progress !== undefined && Number.isFinite(p)
+      ? Math.max(0, Math.min(100, Math.round(p)))
+      : null
+  const phaseFailed = [st?.uploading_phase, st?.processing_phase, st?.publishing_phase].some(
+    (ph) => ph?.status === "error"
+  )
+  if (raw === "ready" && !phaseFailed)
+    return { kind: "ready", raw, progress: 100, error: null }
+  if (raw === "error" || raw === "expired" || phaseFailed) {
+    const reason =
+      (st && phaseErrors(st)) ??
+      (raw === "expired"
+        ? "phiên tải video đã hết hạn hoặc bị huỷ trên Meta"
+        : "định dạng/kích thước không hợp lệ hoặc Meta không tải được file")
+    return { kind: "failed", raw, progress, error: reason }
+  }
+  if (raw !== null && !KNOWN_VIDEO_STATUSES.has(raw))
+    console.warn(`[meta] unknown video_status "${raw.slice(0, 40).replace(/[^\w-]/g, "?")}" - treated as processing`)
+  return { kind: "processing", raw, progress, error: null }
+}
+
+interface RawThumb {
+  uri?: unknown
+  is_preferred?: unknown
+}
+
+/** Status of a video (+ Meta's preferred thumbnail uri when asked) - the uri is a signed CDN URL: never returned. */
+export interface MetaVideoInfo extends MetaVideoState {
+  id: string
+  /** preferred thumbnail (else the first one, else `picture` of a READY video); null when none / not asked */
+  thumbnailUri: string | null
+}
+
+/** GET /{video_id}?fields=status(+picture,thumbnails{…}) → normalised status (+ thumbnail uri). */
+export async function readMetaVideo(
   call: MetaCallContext,
   id: string,
-  timeoutMs?: number
-): Promise<string | undefined> {
-  const st = await graph<{ status?: { video_status?: string } }>(call, {
-    method: "GET",
-    path: id,
-    params: { fields: "status" },
-    idempotent: true,
-    timeoutMs,
+  o: { thumbnails?: boolean; timeoutMs?: number } = {}
+): Promise<MetaVideoInfo> {
+  type Res = { status?: RawVideoStatus; picture?: unknown; thumbnails?: { data?: RawThumb[] } }
+  const read = (fields: string) =>
+    graph<Res>(call, {
+      method: "GET",
+      path: id,
+      params: { fields },
+      idempotent: true,
+      timeoutMs: o.timeoutMs ?? META_VIDEO.infoTimeoutMs,
+    })
+  let res: Res
+  if (!o.thumbnails) res = await read("status")
+  else {
+    try {
+      res = await read("status,picture,thumbnails{uri,is_preferred,width,height}")
+    } catch (e) {
+      // C-M1: the thumbnails{…} expansion is not documented for ad videos - one retry without it (picture only)
+      if (isProviderError(e) && ["auth_invalid", "rate_limited", "timeout", "not_found", "permission_denied"].includes(e.code)) throw e
+      res = await read("status,picture")
+    }
+  }
+  const state = classifyVideoStatus(res.status)
+  let thumbnailUri: string | null = null
+  if (o.thumbnails && state.kind === "ready") {
+    const list = (res.thumbnails?.data ?? []).filter(
+      (t) => typeof t?.uri === "string" && /^https:\/\//i.test(t.uri)
+    )
+    const pick = list.find((t) => t.is_preferred === true) ?? list[0]
+    // `picture` only once ready: while processing it is Meta's generic placeholder
+    thumbnailUri =
+      (pick?.uri as string | undefined) ??
+      (typeof res.picture === "string" && /^https:\/\//i.test(res.picture) ? res.picture : null)
+  }
+  return { ...state, id, thumbnailUri }
+}
+
+/** Video still processing (D4): a non-retryable tool error "video_processing". */
+export function videoProcessingError(id: string, progress: number | null): ProviderError {
+  return new ProviderError({
+    platform: "meta",
+    code: "invalid_request",
+    toolCode: "video_processing",
+    message: `meta: video ${id} is still processing`,
+    userMessageVi: `Video ${id} đang được Meta xử lý${progress !== null ? ` (${progress}%)` : ""} nên chưa lấy được ảnh bìa tự động - chưa tạo quảng cáo.`,
+    hint: "Thử lại sau ít phút (xem trạng thái bằng ads_get_media_upload với video_id), hoặc truyền ảnh bìa: image_drive_file (ảnh trên Google Drive), image_hash hoặc image_url.",
   })
-  return st.status?.video_status
+}
+
+/** Video processing failed / expired (D4): tool error "video_failed" with Meta's (sanitised) reason. */
+export function videoFailedError(id: string, reason: string | null): ProviderError {
+  return new ProviderError({
+    platform: "meta",
+    code: "invalid_request",
+    toolCode: "video_failed",
+    message: `meta: video ${id} processing failed`,
+    userMessageVi: `Meta xử lý video ${id} thất bại${reason ? `: ${reason}` : ""}. Video này không dùng được để tạo quảng cáo.`,
+    hint: "Kiểm tra video (MP4/MOV, H.264, không quá ngắn) rồi tải lên lại bằng ads_upload_media (video Google Drive: force_reupload=true).",
+  })
+}
+
+/** Ready video without any thumbnail (D1 auto cover impossible). */
+function noThumbnailError(id: string): ProviderError {
+  return new ProviderError({
+    platform: "meta",
+    code: "invalid_request",
+    toolCode: "video_thumbnail_missing",
+    message: `meta: video ${id} has no thumbnail`,
+    userMessageVi: `Meta chưa có ảnh bìa tự động cho video ${id} - chưa tạo quảng cáo.`,
+    hint: "Truyền ảnh bìa: image_drive_file (ảnh trên Google Drive), image_hash (ads_upload_media) hoặc image_url.",
+  })
+}
+
+/**
+ * Signed uri of Meta's preferred thumbnail of a READY video (D1). processing → video_processing, failed →
+ * video_failed, ready without thumbnail → video_thumbnail_missing. The uri is for immediate use only (validate_only
+ * preview or a download right away) - never returned, logged or stored.
+ */
+export async function metaVideoCoverUri(
+  ctx: ProviderContext<MetaCredentials>,
+  videoId: string,
+  deadlineAt?: number
+): Promise<string> {
+  const info = await readMetaVideo(callCtx(ctx), videoId, {
+    thumbnails: true,
+    timeoutMs: stepTimeout(META_VIDEO.infoTimeoutMs, deadlineAt),
+  })
+  if (info.kind === "processing") throw videoProcessingError(videoId, info.progress)
+  if (info.kind === "failed") throw videoFailedError(videoId, info.error)
+  if (!info.thumbnailUri) throw noThumbnailError(videoId)
+  return info.thumbnailUri
+}
+
+/**
+ * D2: download Meta's thumbnail through mcp-core's SSRF-guarded fetch (opts.fetchImage) and upload the BYTES to
+ * adimages → image_hash. Any download failure becomes a neutral error that never carries the uri.
+ */
+/** Timeout of one cover sub-step: its own bound, never past the execution deadline (≥ 1 s). */
+function stepTimeout(ownMs: number, deadlineAt?: number): number {
+  if (deadlineAt === undefined) return ownMs
+  return Math.max(1_000, Math.min(ownMs, deadlineAt - Date.now()))
+}
+
+export async function uploadMetaCoverFromUri(
+  ctx: ProviderContext<MetaCredentials>,
+  uri: string,
+  fetchImage: MutationOptions["fetchImage"],
+  deadlineAt?: number
+): Promise<string> {
+  if (!fetchImage) {
+    throw new ProviderError({
+      platform: "meta",
+      code: "invalid_request",
+      message: "meta: automatic video cover needs mcp-core's guarded image fetch",
+      userMessageVi: "Lỗi nội bộ: chưa có bộ tải ảnh an toàn để lấy ảnh bìa video.",
+    })
+  }
+  let img: { bytes: Uint8Array; contentType: string }
+  try {
+    img = await fetchImage(uri, { maxBytes: MAX_IMAGE_BYTES })
+  } catch {
+    // the cause may describe the signed URL: dropped on purpose
+    throw new ProviderError({
+      platform: "meta",
+      code: "upstream_error",
+      toolCode: "video_cover_failed",
+      message: "meta: automatic video cover download failed",
+      userMessageVi: "Không tải được ảnh bìa Meta tự chọn của video - chưa tạo quảng cáo.",
+      hint: "Thử lại sau ít phút, hoặc truyền ảnh bìa: image_drive_file (ảnh trên Google Drive) hoặc image_hash.",
+    })
+  }
+  const ref = await uploadMetaMedia(ctx, {
+    type: "image",
+    // informational only (the adapter uses the bytes): never the signed uri
+    url: "meta-video-thumbnail",
+    bytes: img.bytes,
+    contentType: img.contentType,
+    fileName: "video-cover.jpg",
+    deadlineAt,
+  })
+  return ref.id
+}
+
+/**
+ * AdsProvider.getMediaStatus (D7): live status of a video. verifyAccount (an id typed by the AI): the video must be
+ * in this ad account's library - GET act/advideos filtering id IN [id] ([M]: works in practice, undocumented);
+ * not listed (or the check fails) → not_found.
+ */
+export async function getMetaMediaStatus(
+  ctx: ProviderContext<MetaCredentials>,
+  q: { type: "video"; id: string; verifyAccount?: boolean }
+): Promise<MediaStatus> {
+  if (!/^\d{1,30}$/.test(q.id)) throw invalid("video_id chỉ gồm chữ số.")
+  const call = callCtx(ctx)
+  if (q.verifyAccount) await assertVideoInAccount(call, actId(ctx.account.externalId), q.id)
+  // thumbnails only tell has_thumbnail; readMetaVideo falls back to status,picture when the expansion fails
+  const info = await readMetaVideo(call, q.id, { thumbnails: true })
+  return {
+    type: "video",
+    id: q.id,
+    status: info.kind,
+    progressPercent: info.progress,
+    error: info.error,
+    hasThumbnail: info.kind === "ready" ? info.thumbnailUri !== null : null,
+  }
+}
+
+/**
+ * S-M1: an AI-supplied video id must belong to the ad account before its status / cover is read. Ids this app
+ * uploaded to the account (opts.isKnownMedia - mcp-core's records) are trusted; any other id is checked in the
+ * account's library. Failure → a neutral not_found that says nothing about the video's state.
+ */
+export async function ensureMetaVideoInAccount(
+  ctx: ProviderContext<MetaCredentials>,
+  id: string,
+  opts: Pick<MutationOptions, "isKnownMedia">
+): Promise<void> {
+  if (opts.isKnownMedia && (await opts.isKnownMedia({ type: "video", id }).catch(() => false))) return
+  await assertVideoInAccount(callCtx(ctx), actId(ctx.account.externalId), id)
+}
+
+/**
+ * The video is in act/advideos. First the (undocumented [M]) filtering id IN [id]: listed → ok; an empty answer →
+ * not found. A filtering error, or an answer listing OTHER videos (filter ignored), means "could not verify" → scan
+ * the first META_VIDEO.scanPages pages (fields=id, limit scanPageSize) instead (C-M2).
+ */
+async function assertVideoInAccount(call: MetaCallContext, account: string, id: string): Promise<void> {
+  const notFound = () =>
+    new ProviderError({
+      platform: "meta",
+      code: "not_found",
+      message: `meta: video ${id} not found in ${account}`,
+      userMessageVi: `Không thấy video ${id} trong thư viện video của tài khoản quảng cáo này.`,
+      hint: "Kiểm tra lại video_id và account_id (video phải được tải lên đúng tài khoản quảng cáo).",
+    })
+  type Page = { data?: { id?: unknown }[]; paging?: { cursors?: { after?: string }; next?: string } }
+  const fatal = (e: unknown) => isProviderError(e) && (e.code === "auth_invalid" || e.code === "rate_limited")
+  try {
+    const res = await graph<Page>(call, {
+      method: "GET",
+      path: `${account}/advideos`,
+      params: { fields: "id", filtering: [{ field: "id", operator: "IN", value: [id] }], limit: 5 },
+      idempotent: true,
+      timeoutMs: META_VIDEO.infoTimeoutMs,
+    })
+    const data = res.data ?? []
+    if (data.some((v) => String(v.id) === id)) return
+    if (data.length === 0) throw notFound()
+    // other videos listed: the filter was ignored → scan below
+  } catch (e) {
+    if (fatal(e)) throw e
+    if (isProviderError(e) && e.code === "not_found" && e.message.startsWith(`meta: video ${id} not found`)) throw e
+  }
+  let after: string | undefined
+  for (let page = 0; page < META_VIDEO.scanPages; page++) {
+    let res: Page
+    try {
+      res = await graph<Page>(call, {
+        method: "GET",
+        path: `${account}/advideos`,
+        params: { fields: "id", limit: META_VIDEO.scanPageSize, ...(after ? { after } : {}) },
+        idempotent: true,
+        timeoutMs: META_VIDEO.infoTimeoutMs,
+      })
+    } catch (e) {
+      if (fatal(e)) throw e
+      throw notFound()
+    }
+    if ((res.data ?? []).some((v) => String(v.id) === id)) return
+    after = res.paging?.next ? res.paging.cursors?.after : undefined
+    if (!after) break
+  }
+  throw notFound()
 }
 
 /** Poll GET /{video_id}?fields=status until ready; at the deadline (or a slow status call) → processing: true. */
@@ -215,25 +603,17 @@ async function waitMetaVideo(
   if (deadline === null) return processing
   let interval = META_TIMINGS.pollIntervalMs
   for (;;) {
-    let vs: string | undefined
+    let st: MetaVideoState
     try {
-      vs = await videoStatus(call, id, pollCallTimeoutMs(deadline))
+      st = await readMetaVideo(call, id, { timeoutMs: pollCallTimeoutMs(deadline) })
     } catch (e) {
       // a slow status call must not lose the created id
       if (isProviderError(e) && e.code === "timeout") return processing
       throw e
     }
-    if (vs === "ready") return { type: "video", id, url: null }
-    if (vs === "error") {
-      throw new ProviderError({
-        platform: "meta",
-        code: "invalid_request",
-        message: `meta: video ${id} processing error`,
-        userMessageVi:
-          "Meta xử lý video thất bại (định dạng/kích thước không hợp lệ hoặc URL không tải được).",
-      })
-    }
-    // still processing: the id is usable once Meta finishes; stop waiting at the deadline
+    if (st.kind === "ready") return { type: "video", id, url: null }
+    if (st.kind === "failed") throw videoFailedError(id, st.error)
+    // still processing (or an unknown status): the id is usable once Meta finishes; stop waiting at the deadline
     const left = deadline - Date.now()
     if (left <= 0) return processing
     await sleep(Math.min(interval, left), call.signal)
@@ -499,8 +879,8 @@ async function finishSession(
       }
       if (earlierTransient) {
         // an earlier finish may have gone through: accept it when Meta already processes the video
-        const vs = await videoStatus(call, videoId).catch(() => undefined)
-        if (vs === "processing" || vs === "ready") return
+        const st = await readMetaVideo(call, videoId).catch(() => null)
+        if (st?.raw === "processing" || st?.raw === "ready") return
       }
       if (isProviderError(e) && e.code === "timeout")
         throw maybeCreatedError("meta", e)

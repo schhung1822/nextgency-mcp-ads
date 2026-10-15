@@ -23,7 +23,13 @@ import {
   type FileType,
 } from "../../../net/media-type"
 import { isMediaBusyError, withMediaSlot } from "../../../net/media-slots"
-import { fetchMediaBytes, MEDIA_LIMITS, probeMedia } from "../../../net/ssrf"
+import {
+  fetchMediaBytes,
+  MEDIA_LIMITS,
+  probeMedia,
+  safeFetch,
+  sniffImageMime,
+} from "../../../net/ssrf"
 import {
   isTelegramMediaError,
   prepareAttachment,
@@ -38,8 +44,11 @@ import {
 import { OPENAI_IMAGE_MAX_BYTES } from "../../../providers/openai-ads/media"
 import { TIKTOK_IMAGE_MAX_BYTES } from "../../../providers/tiktok/media"
 import type {
+  AdsProvider,
   MediaRef,
+  MediaStatus,
   MediaUploadRequest,
+  MutationOptions,
   Platform,
 } from "../../../providers/types"
 import {
@@ -127,11 +136,20 @@ const OPENAI_MIN_SIDE = 640
 const VIDEO_WAIT_MARGIN_MS = 8_000
 
 /**
- * Videos the platform downloads by URL within the tool call (Drive relay /dl/…, ChatGPT attachment link): TikTok
- * UPLOAD_BY_URL "better within 10 MB" (10 s request timeout), Meta file_url ≤ 50 MB (owner decision 2026-10-09).
- * Larger Drive videos go through the background chunked upload job; larger ChatGPT videos are refused.
+ * Drive videos the platform downloads by URL within the tool call (relay /dl/…): TikTok UPLOAD_BY_URL "better within
+ * 10 MB" (10 s request timeout), Meta file_url ≤ 20 MB (v1.1.2 D6: 28-38 MB file_url uploads timed out inside the
+ * call budget). Larger Drive videos go through the background chunked upload job.
  */
 export const RELAY_VIDEO_MAX_BYTES: Partial<Record<Platform, number>> = {
+  tiktok: 10 * 1024 * 1024,
+  meta: 20 * 1024 * 1024,
+}
+
+/**
+ * ChatGPT-attached videos (the platform downloads the signed link within the call; there is no background path):
+ * caps unchanged by D6 (owner decision 2026-10-09) - larger ones are refused with a pointer to Google Drive.
+ */
+export const CHATGPT_VIDEO_MAX_BYTES: Partial<Record<Platform, number>> = {
   tiktok: 10 * 1024 * 1024,
   meta: 50 * 1024 * 1024,
 }
@@ -211,6 +229,13 @@ const output = writeOutputSchema.extend({
   existing: z.boolean().optional(),
   /** background upload: queued | uploading | processing */
   upload_status: z.string().optional(),
+  /**
+   * video: the upload call timed out but the video was found again in the library by its unique name (Meta) - the id
+   * is that video, nothing was uploaded twice
+   */
+  recovered: z.boolean().optional(),
+  /** reused Meta video: live status on the platform (processing | ready | failed) when it could be read */
+  media_status: z.enum(["processing", "ready", "failed"]).optional(),
 })
 
 type UploadArgs = {
@@ -239,7 +264,7 @@ export function register(
     name: NAME,
     title: "Tải ảnh / video lên tài khoản",
     description:
-      'Dùng khi cần đưa một ảnh hoặc video vào thư viện của tài khoản quảng cáo để dùng khi tạo quảng cáo; trả về id media (Meta image_hash/video_id, TikTok image_id/video_id, Google asset, OpenAI file_id). Gọi ads_list_accounts trước để có account_id. Chọn đúng MỘT nguồn: drive_file = file_id hoặc link Google Drive (lấy từ drive_list_files / drive_sheet_read; link Drive đưa vào url cũng được xử lý như Drive); file = tệp người dùng đính kèm trong ChatGPT; url = link http(s) công khai tải trực tiếp được (cần type; không hỗ trợ địa chỉ nội bộ). File Drive đã tải lên đúng tài khoản này trước đó → trả luôn id cũ (reused: true, không cần xác nhận); force_reupload=true để tải lại (vd khi nền tảng báo media không còn). Ảnh: Meta ≤30 MB, Google JPEG/PNG/GIF ≤5 MB, TikTok JPG/PNG, OpenAI JPEG/PNG/WebP ≤20 MB. Video ≤500 MB, chỉ Meta và TikTok (Google Ads: video phải là video YouTube - link youtube.com/youtu.be hoặc ID 11 ký tự trong url; OpenAI Ads chỉ nhận ảnh); có thể trả processing: true (id vẫn dùng được, nền tảng đang xử lý). Video Drive lớn (TikTok > 10 MB, Meta > 50 MB) được tải ở chế độ nền: trả status "queued" + upload_id → gọi ads_get_media_upload sau ít phút để lấy media_id; video đính kèm ChatGPT lớn hơn mức đó phải đưa lên Google Drive. Ảnh do ChatGPT/Gemini tự tạo không gửi được. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.',
+      'Dùng khi cần đưa một ảnh hoặc video vào thư viện của tài khoản quảng cáo để dùng khi tạo quảng cáo; trả về id media (Meta image_hash/video_id, TikTok image_id/video_id, Google asset, OpenAI file_id). Gọi ads_list_accounts trước để có account_id. Chọn đúng MỘT nguồn: drive_file = file_id hoặc link Google Drive (từ drive_list_files / drive_sheet_read; link Drive trong url cũng được); file = tệp người dùng đính kèm trong ChatGPT; url = link http(s) công khai tải trực tiếp được (cần type). File Drive đã tải lên đúng tài khoản này → trả id cũ (reused: true, không cần xác nhận); force_reupload=true để tải lại. Ảnh: Meta ≤30 MB, Google JPEG/PNG/GIF ≤5 MB, TikTok JPG/PNG, OpenAI JPEG/PNG/WebP ≤20 MB. Video ≤500 MB, chỉ Meta và TikTok (Google Ads: link YouTube hoặc ID 11 ký tự trong url; OpenAI Ads chỉ nhận ảnh); có thể trả processing: true (id vẫn dùng được, xem trạng thái bằng ads_get_media_upload). Video Drive lớn (TikTok > 10 MB, Meta > 20 MB) tải ở chế độ nền: trả status "queued" + upload_id → gọi ads_get_media_upload sau ít phút để lấy media_id; video đính kèm ChatGPT > 10 MB (TikTok) / 50 MB (Meta) phải đưa lên Google Drive. Ảnh bìa video Meta không cần tải riêng: meta_create_ad nhận image_drive_file hoặc tự lấy ảnh bìa Meta. Ảnh do ChatGPT/Gemini tự tạo không gửi được. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.',
     kind: "write",
     annotations: CREATE_ANNOTATIONS,
     meta: UPLOAD_META,
@@ -390,6 +415,7 @@ export function register(
               ...(type === "video"
                 ? { processing: media.processing === true }
                 : {}),
+              ...(media.recovered ? { recovered: true } : {}),
               result: mediaResult(account.platform, media),
             },
             summary: uploadedSummary(media, type === "image" ? "ảnh" : "video"),
@@ -590,8 +616,246 @@ function mediaResult(
 
 function uploadedSummary(media: MediaRef, what: string): string {
   return media.processing
-    ? `Đã tải ${what} lên, id: ${media.id} - nền tảng đang xử lý video (id dùng được; kiểm tra lại sau ít phút nếu tạo quảng cáo báo lỗi).`
+    ? `Đã tải ${what} lên, id: ${media.id} - nền tảng đang xử lý video (id dùng được; xem trạng thái bằng ads_get_media_upload với video_id trước khi tạo quảng cáo).`
     : `Đã tải ${what} lên, id: ${media.id}.`
+}
+
+/** D8: the upload call timed out but the video was found again in the library by its unique name. */
+function RECOVERED_NOTE(id: string): string {
+  return `Nền tảng phản hồi chậm nhưng đã tìm lại được video vừa tải (id ${id}) trong thư viện - không tải trùng.`
+}
+
+/** Live status of an uploaded video where the platform can tell (Meta getMediaStatus); null = unknown / unsupported. */
+export async function liveVideoStatus(
+  env: ToolEnv,
+  provider: AdsProvider,
+  account: GrantAccount,
+  videoId: string
+): Promise<MediaStatus | null> {
+  if (!provider.getMediaStatus) return null
+  try {
+    const ctx = await env.providerCtx(account)
+    return await provider.getMediaStatus(ctx, { type: "video", id: videoId })
+  } catch {
+    return null
+  }
+}
+
+/** Image types accepted from a URL the platform returned (Meta video thumbnails are JPEG / PNG). */
+const PLATFORM_IMAGE_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+])
+
+/**
+ * MutationOptions.fetchImage (D2): ONE download of an image URL the platform returned (Meta video thumbnail = signed
+ * fbcdn link) through the SSRF guard - https only on every hop, pinned addresses, size cap, overall deadline, magic
+ * bytes. The URL is never logged; error messages never carry it.
+ */
+export function fetchPlatformImage(
+  env: Pick<ToolEnv, "signal" | "grant">,
+  deadline: number
+): NonNullable<MutationOptions["fetchImage"]> {
+  return async (url, o) => {
+    // S-L2: Meta CDN hosts only - the first URL and the final hop (redirects are re-checked by safeFetch too)
+    if (!isPlatformImageHost(url))
+      throw invalid(
+        "url_not_allowed",
+        "Ảnh của nền tảng nằm ở địa chỉ không được phép."
+      )
+    const totalTimeoutMs = Math.max(
+      1_000,
+      Math.min(20_000, deadline - Date.now() - COVER_UPLOAD_RESERVE_MS)
+    )
+    return withCoverSlot(env.grant.mcpId, deadline, async () => {
+      const res = await safeFetch(url, {
+        method: "GET",
+        readBody: true,
+        httpsOnly: true,
+        maxBytes: Math.min(o.maxBytes, MEDIA_LIMITS.image.maxBytes),
+        timeoutMs: Math.min(15_000, totalTimeoutMs),
+        totalTimeoutMs,
+        signal: env.signal,
+      })
+      if (!isPlatformImageHost(res.finalUrl))
+        throw invalid(
+          "url_not_allowed",
+          "Ảnh của nền tảng nằm ở địa chỉ không được phép."
+        )
+      if (
+        res.status < 200 ||
+        res.status >= 300 ||
+        !res.body ||
+        res.body.length === 0
+      )
+        throw invalid("media_unreachable", "Không tải được ảnh từ nền tảng.")
+      const contentType = sniffImageMime(res.body)
+      if (!contentType || !PLATFORM_IMAGE_MIMES.has(contentType))
+        throw invalid("media_wrong_type", "Nền tảng không trả ảnh hợp lệ.")
+      return { bytes: new Uint8Array(res.body), contentType }
+    })
+  }
+}
+
+/** Hosts a platform image (Meta video thumbnail) may be downloaded from (S-L2). */
+export const PLATFORM_IMAGE_HOST_SUFFIXES = [
+  ".fbcdn.net",
+  ".facebook.com",
+  ".fbsbx.com",
+] as const
+
+function isPlatformImageHost(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    const host = u.hostname.toLowerCase()
+    return (
+      u.protocol === "https:" &&
+      PLATFORM_IMAGE_HOST_SUFFIXES.some((s) => host.endsWith(s))
+    )
+  } catch {
+    return false
+  }
+}
+
+/** kept for the adimages upload + the create call after a cover download */
+const COVER_UPLOAD_RESERVE_MS = 15_000
+/** how long a cover step waits for its MCP's cover slot (a parallel cover of the same MCP) */
+const COVER_SLOT_WAIT_MS = 5_000
+
+/**
+ * Media slot of a cover step (Drive cover download, Meta automatic cover) - C-M3: its own key `<mcp>:cover` (an
+ * ads_upload_media of the same MCP does not block it) and a short wait instead of failing at once (the confirmation
+ * may already be consumed). Still busy → media_busy with a retry hint.
+ */
+export async function withCoverSlot<T>(
+  mcpId: string,
+  deadline: number,
+  fn: () => Promise<T>
+): Promise<T> {
+  const until = Math.min(
+    Date.now() + COVER_SLOT_WAIT_MS,
+    deadline - COVER_UPLOAD_RESERVE_MS
+  )
+  for (;;) {
+    try {
+      return await withMediaSlot(fn, { key: `${mcpId}:cover` })
+    } catch (e) {
+      if (!isMediaBusyError(e)) throw e
+      if (e.reason === "key" && Date.now() + 250 < until) {
+        await new Promise((r) => setTimeout(r, 250))
+        continue
+      }
+      throw new McpToolError({
+        code: "media_busy",
+        messageVi: "Máy chủ đang tải tệp khác, chưa xử lý được ảnh bìa.",
+        hint: "Thử lại sau vài giây.",
+        logStatus: "rate_limited",
+      })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Google Drive image named inside another tool's input (meta_create_ad creative.image_drive_file - D5)
+// ---------------------------------------------------------------------------
+
+export interface DriveCover {
+  item: ResolvedDriveItem
+  fileId: string
+  /** "name (x MB)" for previews / labels - the file name is external data */
+  label: string
+  /** image id of this exact file version already in the ad account (reuse), else null */
+  reusedId: string | null
+}
+
+/**
+ * Both steps: resolve a Drive image in the MCP's Drive scope (granted folders / public links when allowed), check it
+ * is an image of the platform's types and size, and look up a reusable upload. Nothing is downloaded.
+ */
+export async function resolveDriveCover(
+  env: ToolEnv,
+  account: GrantAccount,
+  ref: string
+): Promise<DriveCover> {
+  const r = await driveCall(() =>
+    resolveDriveItem(env.grant, ref, {
+      want: "media",
+      allowPublic: drivePublicUsable(env.grant),
+      signal: env.signal,
+    })
+  )
+  const file = r.file
+  env.log.addObjectIds([file.id])
+  if (r.family !== "image") {
+    throw invalid(
+      "media_type_mismatch",
+      "File Google Drive dùng làm ảnh bìa / ảnh quảng cáo phải là ảnh, không phải video.",
+      "Chọn file ảnh (JPG/PNG) trên Google Drive."
+    )
+  }
+  const rule = imageRule(account.platform)
+  if (!rule.mimes.has(file.mimeType.toLowerCase()))
+    throw wrongImageType(account.platform)
+  if (file.sizeBytes !== null && file.sizeBytes > rule.maxBytes)
+    throw imageTooLarge(account.platform, file.sizeBytes)
+  const facts = fileFacts(file)
+  let reusedId: string | null = null
+  if (r.contentKey) {
+    const hit = await findReusableMedia({
+      adAccountId: account.id,
+      driveFileId: file.id,
+      contentKey: r.contentKey,
+    })
+    if (hit && hit.mediaType === "image") reusedId = hit.mediaId
+  }
+  return {
+    item: r,
+    fileId: file.id,
+    label: `${facts.name}${facts.size_mb !== null ? ` (${facts.size_mb} MB)` : ""}`,
+    reusedId,
+  }
+}
+
+/** Execution: the image id of the Drive cover in the ad account - reused, or downloaded + uploaded (bytes) + recorded. */
+export async function uploadDriveCover(
+  env: ToolEnv,
+  account: GrantAccount,
+  cover: DriveCover,
+  deadline: number = Date.now() + MEDIA_CALL_BUDGET_MS
+): Promise<{ id: string; reused: boolean }> {
+  if (cover.reusedId) return { id: cover.reusedId, reused: true }
+  const provider = providerFor(account.platform, "upload_media")
+  const media = await driveImage(
+    env,
+    provider,
+    account,
+    cover.item,
+    { platform: account.platform, account_id: account.externalId },
+    deadline,
+    {
+      slot: (fn) => withCoverSlot(env.grant.mcpId, deadline, fn),
+      uploadDeadline: deadline - COVER_UPLOAD_RESERVE_MS,
+    }
+  )
+  env.log.addObjectIds([media.id])
+  if (cover.item.contentKey) {
+    await recordMediaUpload({
+      adAccountId: account.id,
+      driveFileId: cover.fileId,
+      contentKey: cover.item.contentKey,
+      mediaType: "image",
+      mediaId: media.id,
+      mediaUrl: stableMediaUrl(account.platform, media),
+      sizeBytes: cover.item.file.sizeBytes,
+      sourceId: cover.item.source?.id ?? null,
+      mcpId: env.grant.mcpId,
+    }).catch(() => {
+      // reuse is an optimisation: a failed bookkeeping row never fails an upload that happened
+    })
+  }
+  return { id: media.id, reused: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +948,24 @@ async function uploadFromDrive(
       driveFileId: file.id,
       contentKey: r.contentKey,
     })
-    if (hit && hit.mediaType === family) {
+    // a reused video is checked live where the platform can tell (Meta): a video that failed on the platform is not
+    // handed out again - it is uploaded anew (D8); an unreadable status keeps the reuse
+    const live =
+      hit && hit.mediaType === "video" && family === "video"
+        ? await liveVideoStatus(env, provider, account, hit.mediaId)
+        : null
+    // a confirm_token means the preview chose to upload (the reused video had failed): when the live status cannot
+    // be read now, the failed id is not handed out as "reused" - the confirmed upload runs (C-Low)
+    const unverifiedAtConfirm =
+      !!args.confirm_token &&
+      hit?.mediaType === "video" &&
+      live === null &&
+      !!provider.getMediaStatus
+    if (live?.status === "failed") {
+      warnings.push(
+        `Video đã tải trước đó (id ${hit!.mediaId}) bị nền tảng báo lỗi xử lý - tải lại từ Google Drive.`
+      )
+    } else if (hit && hit.mediaType === family && !unverifiedAtConfirm) {
       env.log.addObjectIds([hit.mediaId])
       return {
         structured: {
@@ -692,6 +973,7 @@ async function uploadFromDrive(
           platform: account.platform,
           account_id: account.externalId,
           reused: true,
+          ...(live ? { media_status: live.status } : {}),
           warnings,
           result: {
             media: {
@@ -706,7 +988,7 @@ async function uploadFromDrive(
             drive: driveInfo,
           },
         },
-        summary: `File "${facts.name}" đã có trên tài khoản này - dùng lại id: ${hit.mediaId} (không tải lại; force_reupload=true để tải lại).`,
+        summary: `File "${facts.name}" đã có trên tài khoản này - dùng lại id: ${hit.mediaId} (không tải lại; force_reupload=true để tải lại).${live?.status === "processing" ? ` Nền tảng đang xử lý video${live.progressPercent !== null ? ` (${live.progressPercent}%)` : ""} - xem bằng ads_get_media_upload với video_id trước khi tạo quảng cáo.` : ""}`,
       }
     }
   }
@@ -762,8 +1044,10 @@ async function uploadFromDrive(
           ? await driveImage(env, provider, account, r, args, deadline)
           : await driveVideo(env, provider, account, r, args, deadline)
       env.log.addObjectIds([media.id])
-      // a video still processing is not recorded for reuse (API review #6): it may still fail on the platform
-      if (media.processing !== true) {
+      // a video still processing is recorded for reuse only on Meta (D8: no duplicate upload when the AI asks again;
+      // a reused Meta video is checked live and a failed one is uploaded anew). Elsewhere (API review #6) it may
+      // still fail on the platform, so it is not recorded.
+      if (media.processing !== true || platform === "meta") {
         await recordMediaUpload({
           adAccountId: account.id,
           driveFileId: file.id,
@@ -780,11 +1064,14 @@ async function uploadFromDrive(
       }
       return {
         structured: {
-          warnings,
+          warnings: media.recovered
+            ? [...warnings, RECOVERED_NOTE(media.id)]
+            : warnings,
           reused: false,
           ...(family === "video"
             ? { processing: media.processing === true }
             : {}),
+          ...(media.recovered ? { recovered: true } : {}),
           result: mediaResult(platform, media, { drive: driveInfo }),
         },
         summary: uploadedSummary(
@@ -811,10 +1098,18 @@ async function driveImage(
   account: GrantAccount,
   r: ResolvedDriveItem,
   args: UploadArgs,
-  deadline: number
+  deadline: number,
+  o: {
+    /** media slot wrapper (default: the MCP's upload slot) */
+    slot?: <T>(fn: () => Promise<T>) => Promise<T>
+    /** deadline of the platform upload call (cover steps) */
+    uploadDeadline?: number
+  } = {}
 ): Promise<MediaRef> {
   const rule = imageRule(account.platform)
-  return withUploadSlot(env.grant.mcpId, async () => {
+  const slot =
+    o.slot ?? (<T>(fn: () => Promise<T>) => withUploadSlot(env.grant.mcpId, fn))
+  return slot(async () => {
     const bytes = await driveCall(() =>
       downloadDriveBytes(r.auth, r.file.id, {
         maxBytes: rule.maxBytes,
@@ -844,6 +1139,9 @@ async function driveImage(
       bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
       contentType: type.mime,
       fileName: sanitizeFileName(r.file.name, type.ext),
+      ...(o.uploadDeadline !== undefined
+        ? { deadlineAt: o.uploadDeadline }
+        : {}),
     })
   })
 }
@@ -1311,8 +1609,8 @@ async function uploadChatgptFile(
       probe.contentLength > MEDIA_LIMITS.video.maxBytes
     )
       throw videoTooLarge(probe.contentLength)
-    // the platform downloads the link within this call: same size cap as the Drive relay path
-    const relayMax = RELAY_VIDEO_MAX_BYTES[platform] ?? 0
+    // the platform downloads the link within this call (no background path for attachments): own cap (D6)
+    const relayMax = CHATGPT_VIDEO_MAX_BYTES[platform] ?? 0
     if (probe.contentLength !== null && probe.contentLength > relayMax) {
       throw invalid(
         "media_too_large",
@@ -1366,8 +1664,11 @@ async function uploadChatgptFile(
         env.log.addObjectIds([media.id])
         return {
           structured: {
-            warnings: videoWarnings,
+            warnings: media.recovered
+              ? [...videoWarnings, RECOVERED_NOTE(media.id)]
+              : videoWarnings,
             processing: media.processing === true,
+            ...(media.recovered ? { recovered: true } : {}),
             result: mediaResult(platform, media),
           },
           summary: uploadedSummary(media, `video "${label}"`),

@@ -4,6 +4,7 @@
 // API key); the ad platforms are the flow fakes; ChatGPT downloads use the media fetch override.
 import { randomUUID } from "node:crypto"
 import { eq, inArray } from "drizzle-orm"
+import { z } from "zod"
 import {
   afterAll,
   beforeAll,
@@ -57,6 +58,14 @@ import { UPLOAD_JOB_LIMITS, updateUploadJob } from "@/server/drive/upload-jobs"
 import { enqueueVideoUpload } from "@/server/drive/upload-queue"
 import { probeMedia } from "@/server/net/ssrf"
 import { invalidateGrantCache } from "@/server/mcp/grant"
+import { ProviderError } from "@/server/providers/errors"
+import { getProvider } from "@/server/providers/registry"
+import type {
+  MediaStatus,
+  MutationOptions,
+  MutationResult,
+  ProviderExtension,
+} from "@/server/providers/types"
 import { setMediaFetchImpl } from "@/server/notifications/media"
 import {
   SA_EMAIL,
@@ -321,9 +330,10 @@ function driveFiles(): FakeFile[] {
 }
 
 const SHEET_TITLE = "Creative tuần 41"
+// "Ảnh bìa" (v1.1.2) is left out here so the column letters below stay put - the cover test appends it
 const HEADER = [
   ...Object.values(DEFAULT_SHEET_COLUMNS).filter(
-    (h) => h !== "Tiêu đề" && h !== "Link đích"
+    (h) => h !== "Tiêu đề" && h !== "Link đích" && h !== "Ảnh bìa"
   ),
   "Khác",
 ]
@@ -1726,6 +1736,133 @@ describe.skipIf(!hasDb)(
       }
     })
 
+    it("sheet cover column (v1.1.2): mapped or detected by name, resolved like the link cell, broken / video covers are row problems, same-cell convention unchanged", async () => {
+      __resetSheetsLimiter()
+      const m = await mcpWith(
+        "staff",
+        { platforms: createAll(), settings: { drivePublicLinks: true } },
+        [src.sheet, src.company]
+      )
+      // append a cover column (the source config maps "Ảnh bìa" - DEFAULT_SHEET_COLUMNS); new arrays, HEADER untouched
+      const withCover = (name: string) => {
+        g.grid = g.grid.map((r, i) => [...r, i === 0 ? name : ""])
+      }
+      const at = HEADER.length
+      withCover("Ảnh bìa")
+      // row 2: a public image; row 4: a video (not an image); row 5: another staff member's private file
+      g.grid[1]![at] =
+        `https://drive.google.com/file/d/${IDS.pubJpg}/view?resourcekey=${PUB_RK} https://drive.google.com/file/d/${IDS.companyPng}/view`
+      g.grid[3]![at] = `https://drive.google.com/file/d/${IDS.bigVideo}/view`
+      g.grid[4]![at] = `https://drive.google.com/file/d/${IDS.staff2Jpg}/view`
+      // row 3: plain text without any link (item C) = no cover, not a row problem
+      g.grid[2]![at] = "Meta tự chọn -"
+      const r = await w.call(m.key, "drive_sheet_read", {
+        source_id: src.sheet,
+      })
+      expect(r.isError, r.text).toBe(false)
+      expect(r.sc.columns.cover).toBe("Ảnh bìa")
+      const [logo, pub, secret, nolink] = r.sc.rows as Record<string, any>[]
+      // the first link of the cell, resolved like the files (opaque drf_ ref, never the resource key)
+      expect(logo!.cover).toMatchObject({
+        file_id: IDS.pubJpg,
+        access: "public",
+        type: "image",
+      })
+      expect(logo!.cover.drive_file).toMatch(/^drf_/)
+      expect(JSON.stringify(r.sc)).not.toMatch(/resourcekey|0-pubKey/i)
+      expect(logo!.values).not.toHaveProperty("cover")
+      expect(
+        logo!.problems.some((p: { code: string }) =>
+          p.code.startsWith("cover_")
+        )
+      ).toBe(false)
+      expect(pub!.cover).toBeNull()
+      expect(
+        pub!.problems.some((p: { code: string }) => p.code.startsWith("cover_"))
+      ).toBe(false)
+      expect(secret!.cover).toMatchObject({
+        file_id: IDS.bigVideo,
+        type: "video",
+      })
+      expect(secret!.problems.map((p: { code: string }) => p.code)).toContain(
+        "cover_not_image"
+      )
+      expect(nolink!.cover).toMatchObject({
+        file_id: IDS.staff2Jpg,
+        access: "not_accessible",
+      })
+      expect(nolink!.problems).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "cover_drive_not_public",
+            message: expect.stringMatching(/^Ảnh bìa: /),
+          }),
+        ])
+      )
+
+      // a config saved before v1.1.2 (no cover key) + the column named "Thumbnail": detected by name
+      const [orig] = await db
+        .select({ config: driveSources.config })
+        .from(driveSources)
+        .where(eq(driveSources.id, src.sheet))
+      const legacyColumns = Object.fromEntries(
+        Object.entries(DEFAULT_SHEET_COLUMNS).filter(([k]) => k !== "cover")
+      )
+      await db
+        .update(driveSources)
+        .set({
+          config: {
+            headerRow: 1,
+            columns: legacyColumns as unknown as SheetSourceConfig["columns"],
+            writeback: true,
+          } as SheetSourceConfig,
+        })
+        .where(eq(driveSources.id, src.sheet))
+      try {
+        const legacy = await mcpWith(
+          "staff",
+          { platforms: createAll(), settings: { drivePublicLinks: true } },
+          [src.sheet, src.company]
+        )
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Thumbnail"]
+        __clearSheetsCache()
+        const lr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          resolve_files: false,
+        })
+        expect(lr.isError, lr.text).toBe(false)
+        expect(lr.sc.columns.cover).toBe("Thumbnail")
+        expect((lr.sc.rows as Record<string, any>[])[0]!.cover).toEqual({
+          file_id: IDS.pubJpg,
+          access: "unchecked",
+        })
+
+        // no cover-like header: no cover field; the old "video + cover image in the Link Drive cell" still lists both
+        g.grid[0] = [...g.grid[0]!.slice(0, at), "Ghi chú riêng"]
+        __clearSheetsCache()
+        g.grid[1]![col("Link Drive")] =
+          `https://drive.google.com/file/d/${IDS.midVideo}/view\nhttps://drive.google.com/file/d/${IDS.companyPng}/view`
+        const nr = await w.call(legacy.key, "drive_sheet_read", {
+          source_id: src.sheet,
+        })
+        expect(nr.isError, nr.text).toBe(false)
+        expect(nr.sc.columns).not.toHaveProperty("cover")
+        const first = (nr.sc.rows as Record<string, any>[])[0]!
+        expect(first).not.toHaveProperty("cover")
+        expect(first.files.map((f: { type: string }) => f.type)).toEqual([
+          "video",
+          "image",
+        ])
+        expect(first.problems).toEqual([])
+      } finally {
+        await db
+          .update(driveSources)
+          .set({ config: orig!.config })
+          .where(eq(driveSources.id, src.sheet))
+        invalidateGrantCache()
+      }
+    })
+
     it("ChatGPT file: images downloaded through the guarded path and uploaded as bytes; videos by link; logs never keep the link", async () => {
       const m = await mcpWith(
         "staff",
@@ -2141,7 +2278,7 @@ describe.skipIf(!hasDb)(
       )
     })
 
-    it("video thresholds: 12 MB → TikTok background job, Meta relay; a relay upload still processing is not recorded for reuse; ChatGPT videos above the threshold are refused", async () => {
+    it("video thresholds: 12 MB → TikTok background job, Meta relay (≤ 20 MB, D6); a Meta relay upload still processing IS recorded for reuse (D8); 25 MB → Meta background job; ChatGPT videos keep their own caps", async () => {
       const m = await mcpWith(
         "staff",
         { platforms: createAll(), settings: { twoStepConfirm: false } },
@@ -2168,11 +2305,34 @@ describe.skipIf(!hasDb)(
       const up = uploads()[0]!.args as { url: string; deadlineAt: number }
       expect(up.url).toMatch(/\/dl\/adr_/)
       expect(up.deadlineAt).toBeGreaterThan(Date.now())
+      // D8: recorded even while Meta processes (no duplicate upload when asked again; reuse is checked live)
       const rows = await db
         .select()
         .from(driveMediaUploads)
         .where(eq(driveMediaUploads.driveFileId, IDS.midVideo))
-      expect(rows).toEqual([])
+      expect(rows).toEqual([
+        expect.objectContaining({ mediaId: "img_1", mediaType: "video" }),
+      ])
+
+      // D6: Meta relay only up to 20 MB - a 25 MB Drive video goes to the background job
+      const v25 = id("Video25")
+      g.files.set(v25, {
+        id: v25,
+        name: "25mb.mp4",
+        mimeType: "video/mp4",
+        parents: [IDS.company],
+        sa: true,
+        bytes: MP4,
+        size: 25 * MB,
+      })
+      const meta25 = await w.call(m.key, "ads_upload_media", {
+        platform: "meta",
+        account_id: conns.meta.accounts[0]!.externalId,
+        drive_file: v25,
+      })
+      expect(meta25.isError, meta25.text).toBe(false)
+      expect(meta25.sc.status).toBe("queued")
+      expect(uploads()).toHaveLength(1)
 
       // TikTok image > 10 MB: warned in the preview
       const strict = await mcpWith("staff", { platforms: createAll() }, [
@@ -2206,6 +2366,452 @@ describe.skipIf(!hasDb)(
       expect(cg.isError).toBe(true)
       expect(cg.sc.code).toBe("media_too_large")
       expect(cg.sc.hint).toContain("Google Drive")
+
+      // ChatGPT attachment to Meta: its own cap stays 50 MB (30 MB passes, 60 MB is refused)
+      const chatgpt = (bytes: number, fileId: string) => {
+        vi.mocked(probeMedia).mockResolvedValueOnce({
+          finalUrl: "https://files.oaiusercontent.com/f/clip.mp4",
+          contentType: "video/mp4",
+          contentLength: bytes,
+          warnings: [],
+        } as unknown as Awaited<ReturnType<typeof probeMedia>>)
+        return w.call(m.key, "ads_upload_media", {
+          platform: "meta",
+          account_id: conns.meta.accounts[0]!.externalId,
+          file: {
+            download_url: "https://files.oaiusercontent.com/f/clip.mp4?sig=1",
+            file_id: fileId,
+            mime_type: "video/mp4",
+            file_name: "clip.mp4",
+          },
+        })
+      }
+      const cg30 = await chatgpt(30 * MB, "file_cg30")
+      expect(cg30.isError, cg30.text).toBe(false)
+      expect(cg30.sc.status).toBe("success")
+      const cg60 = await chatgpt(60 * MB, "file_cg60")
+      expect(cg60.isError).toBe(true)
+      expect(cg60.sc.code).toBe("media_too_large")
+      expect(cg60.text).toContain("50 MB")
+    })
+    it("Meta video status (v1.1.2 D7/D8): reused videos checked live, ads_get_media_upload live status for done jobs and lookup by video_id", async () => {
+      const meta = getProvider("meta")
+      const statuses: Record<string, Partial<MediaStatus>> = {}
+      const statusCalls: { id: string; verifyAccount?: boolean }[] = []
+      const unreadable = new Set<string>()
+      meta.getMediaStatus = async (_ctx, q) => {
+        statusCalls.push({ id: q.id, verifyAccount: q.verifyAccount })
+        if (unreadable.has(q.id)) throw new Error("platform down")
+        if (q.id === "404404") {
+          throw new ProviderError({
+            platform: "meta",
+            code: "not_found",
+            message: "not in library",
+            userMessageVi: "Không thấy video trong thư viện.",
+          })
+        }
+        return {
+          type: "video",
+          id: q.id,
+          status: "ready",
+          progressPercent: 100,
+          error: null,
+          hasThumbnail: true,
+          ...statuses[q.id],
+        }
+      }
+      try {
+        const m = await mcpWith(
+          "staff",
+          { platforms: createAll(), settings: { twoStepConfirm: false } },
+          [src.company]
+        )
+        const acct = conns.meta.accounts[0]!
+        const base = { platform: "meta", account_id: acct.externalId }
+
+        // relay upload still processing → recorded (D8); asked again → reused with the live status
+        w.state.uploadOverride = { id: "31337", processing: true }
+        const first = await w.call(m.key, "ads_upload_media", {
+          ...base,
+          drive_file: IDS.midVideo,
+        })
+        expect(first.sc).toMatchObject({ status: "success", processing: true })
+        statuses["31337"] = { status: "processing", progressPercent: 40 }
+        const again = await w.call(m.key, "ads_upload_media", {
+          ...base,
+          drive_file: IDS.midVideo,
+        })
+        expect(again.sc).toMatchObject({
+          reused: true,
+          media_status: "processing",
+          result: { media: { id: "31337" } },
+        })
+        expect(again.text).toContain("Nền tảng đang xử lý video (40%)")
+        expect(uploads()).toHaveLength(1)
+        // the platform says the video failed → uploaded anew instead of handing out a dead id
+        statuses["31337"] = { status: "failed", error: "Video quá ngắn" }
+        w.state.uploadOverride = { id: "31338" }
+        const anew = await w.call(m.key, "ads_upload_media", {
+          ...base,
+          drive_file: IDS.midVideo,
+        })
+        expect(anew.isError, anew.text).toBe(false)
+        expect(anew.sc.reused).toBe(false)
+        expect(anew.sc.warnings.join(" ")).toContain("báo lỗi xử lý")
+        expect(uploads()).toHaveLength(2)
+
+        // C-Low: preview saw the reused video failed (→ upload + confirmation); at confirm the live status cannot be
+        // read → the failed id is NOT handed out as reused, the confirmed upload runs
+        const strict = await mcpWith("staff", { platforms: createAll() }, [
+          src.company,
+        ])
+        statuses["31338"] = { status: "failed" }
+        const pre = await w.call(strict.key, "ads_upload_media", {
+          ...base,
+          drive_file: IDS.midVideo,
+        })
+        expect(pre.sc.status).toBe("confirmation_required")
+        unreadable.add("31338")
+        w.state.uploadOverride = { id: "31339" }
+        const confirmed = await w.call(strict.key, "ads_upload_media", {
+          ...base,
+          drive_file: IDS.midVideo,
+          confirm_token: pre.sc.confirm_token,
+        })
+        expect(confirmed.isError, confirmed.text).toBe(false)
+        expect(confirmed.sc).toMatchObject({
+          status: "success",
+          reused: false,
+          result: { media: { id: "31339" } },
+        })
+        expect(uploads()).toHaveLength(3)
+        unreadable.clear()
+        statuses["31338"] = {}
+
+        // background job done while Meta still processes → live status, can_create_ad false
+        const queued = await w.call(m.key, "ads_upload_media", {
+          ...base,
+          drive_file: IDS.bigVideo,
+        })
+        const uploadId = queued.sc.upload_id as string
+        await updateUploadJob(uploadId, { status: "done", mediaId: "5550001" })
+        statuses["5550001"] = { status: "processing", progressPercent: 35 }
+        const st = await w.call(m.key, "ads_get_media_upload", {
+          upload_id: uploadId,
+        })
+        expect(st.isError, st.text).toBe(false)
+        expect(st.sc.uploads[0]).toMatchObject({
+          status: "done",
+          media_id: "5550001",
+          media_status: "processing",
+          can_create_ad: false,
+          next_step: expect.stringContaining("35%"),
+        })
+        expect(st.text).toContain("đang xử lý")
+        // ready but Meta has no automatic cover → not creatable as is (a cover must be passed)
+        statuses["5550001"] = { status: "ready", hasThumbnail: false }
+        const noThumb = await w.call(m.key, "ads_get_media_upload", {
+          upload_id: uploadId,
+        })
+        expect(noThumb.sc.uploads[0]).toMatchObject({
+          media_status: "ready",
+          can_create_ad: false,
+          next_step: expect.stringContaining("image_drive_file"),
+        })
+        statuses["5550001"] = { status: "ready" }
+        const ok = await w.call(m.key, "ads_get_media_upload", {})
+        expect(ok.sc.uploads[0]).toMatchObject({
+          upload_id: uploadId,
+          media_status: "ready",
+          can_create_ad: true,
+          next_step: expect.stringContaining("meta_create_ad"),
+        })
+        statuses["5550001"] = { status: "failed", error: "Định dạng lỗi" }
+        const bad = await w.call(m.key, "ads_get_media_upload", {
+          upload_id: uploadId,
+        })
+        expect(bad.sc.uploads[0]).toMatchObject({
+          status: "done",
+          media_status: "failed",
+          can_create_ad: false,
+          error: { code: "video_failed", message: "Định dạng lỗi" },
+        })
+
+        // lookup by video_id: an id from our own records is trusted, any other must be in the account library
+        statusCalls.length = 0
+        const known = await w.call(m.key, "ads_get_media_upload", {
+          ...base,
+          video_id: "31338",
+        })
+        expect(known.isError, known.text).toBe(false)
+        expect(known.sc.video).toMatchObject({
+          video_id: "31338",
+          platform: "meta",
+          account_id: acct.externalId,
+          media_status: "ready",
+          can_create_ad: true,
+          has_thumbnail: true,
+        })
+        expect(statusCalls).toEqual([{ id: "31338", verifyAccount: false }])
+        statuses["987654"] = { status: "processing", progressPercent: 10 }
+        const foreignId = await w.call(m.key, "ads_get_media_upload", {
+          ...base,
+          video_id: "987654",
+        })
+        expect(foreignId.sc.video).toMatchObject({
+          media_status: "processing",
+          progress_percent: 10,
+          can_create_ad: false,
+        })
+        expect(statusCalls[1]).toEqual({ id: "987654", verifyAccount: true })
+        // C-M2: an id uploaded by this app outside Drive (ChatGPT file) is known from the logged upload
+        w.state.uploadOverride = { id: "777111" }
+        const cgUp = await w.call(m.key, "ads_upload_media", {
+          ...base,
+          file: {
+            download_url: "https://files.oaiusercontent.com/f/clip.mp4?sig=1",
+            file_id: "file_known1",
+            mime_type: "video/mp4",
+            file_name: "clip.mp4",
+          },
+        })
+        expect(cgUp.isError, cgUp.text).toBe(false)
+        await flushMcpLogs()
+        const fromLog = await w.call(m.key, "ads_get_media_upload", {
+          ...base,
+          video_id: "777111",
+        })
+        expect(fromLog.isError, fromLog.text).toBe(false)
+        expect(statusCalls[statusCalls.length - 1]).toEqual({
+          id: "777111",
+          verifyAccount: false,
+        })
+        const missing = await w.call(m.key, "ads_get_media_upload", {
+          ...base,
+          video_id: "404404",
+        })
+        expect(missing.isError).toBe(true)
+        expect(missing.sc.code).toBe("not_found")
+
+        // input checks + scope
+        const cases: [Record<string, unknown>, string][] = [
+          [{ video_id: "123" }, "media_lookup_incomplete"],
+          [{ ...base, video_id: "12a" }, "invalid_video_id"],
+          [
+            { ...base, video_id: "123", upload_id: uploadId },
+            "media_lookup_conflict",
+          ],
+          [
+            {
+              platform: "tiktok",
+              account_id: conns.tiktok.accounts[0]!.externalId,
+              video_id: "123",
+            },
+            "unsupported",
+          ],
+        ]
+        for (const [args, code] of cases) {
+          const r = await w.call(m.key, "ads_get_media_upload", args)
+          expect(r.isError, JSON.stringify(args)).toBe(true)
+          expect(r.sc.code).toBe(code)
+        }
+        const noMeta = await mcpWith(
+          "staff",
+          {
+            platforms: {
+              tiktok: {
+                permissions: ["read", "create"],
+                connections: [{ conn: conns.tiktok }],
+              },
+            },
+          },
+          []
+        )
+        const outside = await w.call(noMeta.key, "ads_get_media_upload", {
+          ...base,
+          video_id: "31338",
+        })
+        // Meta is not in that MCP at all (schema refuses the platform); a foreign account is out of scope
+        expect(outside.isError).toBe(true)
+        const before = statusCalls.length
+        const otherAcct = await w.call(m.key, "ads_get_media_upload", {
+          platform: "meta",
+          account_id: "act_999999999",
+          video_id: "31338",
+        })
+        expect(otherAcct.isError).toBe(true)
+        expect(otherAcct.sc.code).toBe("account_not_in_scope")
+        expect(statusCalls.length).toBe(before)
+      } finally {
+        delete (meta as { getMediaStatus?: unknown }).getMediaStatus
+      }
+    })
+
+    it("cover image from Google Drive in a create-ad tool (v1.1.2 D5): preview uploads nothing, confirm is bound to the file id, upload once then reuse, scope enforced, refs logged as ids", async () => {
+      const meta = getProvider("meta")
+      const seen: {
+        dryRun: boolean
+        driveImage?: MutationOptions["driveImage"]
+        fetchImage: boolean
+      }[] = []
+      const coverExt: ProviderExtension = {
+        name: "meta_fake_cover_ad",
+        permission: "create",
+        title: "Fake QC ảnh bìa",
+        description: "Dùng khi kiểm thử ảnh bìa Google Drive.",
+        input: z.object({
+          name: z.string().max(100),
+          creative: z.object({
+            type: z.literal("video"),
+            video_id: z.string().max(30),
+            image_drive_file: z.string().max(2048).optional(),
+          }),
+        }),
+        write: true,
+        driveImageRef: (i: { creative: { image_drive_file?: string } }) =>
+          i.creative.image_drive_file,
+        async run(
+          _ctx,
+          input: { name: string },
+          opts
+        ): Promise<MutationResult> {
+          seen.push({
+            dryRun: opts.dryRun === true,
+            driveImage: opts.driveImage,
+            fetchImage: typeof opts.fetchImage === "function",
+          })
+          return {
+            preview: opts.dryRun === true,
+            changes: [
+              {
+                objectId: opts.dryRun ? "(mới)" : "ad_9",
+                level: "ad",
+                field: "create",
+                before: null,
+                after: { name: input.name },
+              },
+            ],
+            warnings: [],
+            createdIds: opts.dryRun ? [] : ["ad_9"],
+          }
+        },
+      }
+      meta.extensions.push(coverExt)
+      try {
+        const m = await mcpWith("staff", { platforms: createAll() }, [
+          src.staff,
+        ])
+        expect((await w.tools(m.key)).names).toContain("meta_fake_cover_ad")
+        const acct = conns.meta.accounts[0]!
+        const link = `https://drive.google.com/file/d/${IDS.staffJpg}/view?usp=sharing&resourcekey=0-secretRK42`
+        const call = (ref: string, extra: Record<string, unknown> = {}) =>
+          w.call(m.key, "meta_fake_cover_ad", {
+            account_id: acct.externalId,
+            name: "QC video",
+            creative: { type: "video", video_id: "555", image_drive_file: ref },
+            ...extra,
+          })
+
+        const pre = await call(link)
+        expect(pre.isError, pre.text).toBe(false)
+        expect(pre.sc.status).toBe("confirmation_required")
+        expect(pre.sc.preview.changes).toContainEqual(
+          expect.objectContaining({
+            field: "image_drive_file",
+            object_id: IDS.staffJpg,
+            object: expect.stringContaining("banner tuần 41.jpg"),
+            after: expect.stringContaining("khi xác nhận"),
+          })
+        )
+        expect(uploads()).toHaveLength(0)
+        expect(seen[0]).toMatchObject({ dryRun: true, fetchImage: false })
+        expect(seen[0]!.driveImage?.label).toContain("banner tuần 41.jpg")
+        expect(seen[0]!.driveImage?.imageHash).toBeUndefined()
+
+        // S-L5: the file changed on Drive between preview and confirm → the token no longer matches
+        const jpg = g.files.get(IDS.staffJpg)!
+        jpg.size = (jpg.bytes?.length ?? 0) + 1
+        const changed = await call(IDS.staffJpg, {
+          confirm_token: pre.sc.confirm_token,
+        })
+        expect(changed.isError).toBe(true)
+        expect(changed.sc.code).toBe("confirm_args_mismatch")
+        expect(uploads()).toHaveLength(0)
+        jpg.size = undefined
+
+        // confirmed with ANOTHER form of the same file (bare id): same action
+        const done = await call(IDS.staffJpg, {
+          confirm_token: pre.sc.confirm_token,
+        })
+        expect(done.isError, done.text).toBe(false)
+        expect(done.sc.status).toBe("success")
+        expect(uploads()).toHaveLength(1)
+        const up = uploads()[0]!.args as { type: string; bytes?: Uint8Array }
+        expect(up.type).toBe("image")
+        expect(up.bytes?.length).toBeGreaterThan(0)
+        // S-L2: the platform-image fetcher only goes to tools that declare fetchesPlatformImages (meta_create_ad)
+        expect(seen[1]).toMatchObject({
+          dryRun: false,
+          fetchImage: false,
+          driveImage: { imageHash: "img_1" },
+        })
+        expect(done.sc.changes).toContainEqual(
+          expect.objectContaining({
+            object_id: "img_1",
+            field: "media_uploaded",
+          })
+        )
+        const rows = await db
+          .select()
+          .from(driveMediaUploads)
+          .where(eq(driveMediaUploads.driveFileId, IDS.staffJpg))
+        expect(rows).toEqual([
+          expect.objectContaining({ mediaId: "img_1", mediaType: "image" }),
+        ])
+
+        // the same file again: preview already says "reuse", the confirmation uploads nothing
+        const pre2 = await call(IDS.staffJpg)
+        expect(pre2.sc.preview.changes).toContainEqual(
+          expect.objectContaining({
+            field: "image_drive_file",
+            after: expect.stringContaining("dùng lại"),
+          })
+        )
+        expect(seen[2]!.driveImage).toMatchObject({ imageHash: "img_1" })
+        const done2 = await call(IDS.staffJpg, {
+          confirm_token: pre2.sc.confirm_token,
+        })
+        expect(done2.sc.status).toBe("success")
+        expect(uploads()).toHaveLength(1)
+
+        // a token of one file never confirms another file
+        const pre3 = await call(IDS.staffJpg)
+        const wrong = await call(IDS.staffVideo, {
+          confirm_token: pre3.sc.confirm_token,
+        })
+        expect(wrong.isError).toBe(true)
+
+        // a video is not a cover; another staff member's file is out of scope; nothing ran
+        const vid = await call(IDS.staffVideo)
+        expect(vid.isError).toBe(true)
+        expect(vid.sc.code).toBe("media_type_mismatch")
+        const foreign = await call(IDS.staff2Jpg)
+        expect(foreign.isError).toBe(true)
+        expect(foreign.sc.code).toBe("drive_not_in_scope")
+        expect(seen.filter((s) => !s.dryRun)).toHaveLength(2)
+
+        // logs and pending actions keep the file id only (no resource key, no link query)
+        await flushMcpLogs()
+        const logs = await db
+          .select()
+          .from(mcpCallLogs)
+          .where(eq(mcpCallLogs.mcpId, m.id))
+        expect(logs.length).toBeGreaterThan(0)
+        expect(JSON.stringify(logs)).not.toContain("secretRK42")
+        expect(JSON.stringify(logs)).toContain(IDS.staffJpg)
+      } finally {
+        meta.extensions.splice(meta.extensions.indexOf(coverExt), 1)
+      }
     })
 
     it("drive_sheet_update_rows: counts against the MCP write limit; ids must be ids; a formula-like note is neutralised", async () => {

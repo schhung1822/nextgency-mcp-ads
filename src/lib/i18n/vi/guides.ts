@@ -275,7 +275,7 @@ export const guides = {
           {
             title: "Google Drive",
             detail:
-              "Cho phép dùng link Drive công khai (mặc định bật): AI lấy được ảnh, video từ link \"Bất kỳ ai có đường liên kết\" bạn dán vào chat - cần quản trị viên đã lưu API key.\nCho phép ghi trạng thái vào Google Sheet (mặc định bật): sau khi lên quảng cáo, AI ghi trạng thái, mã quảng cáo vào đúng dòng của sheet đã bật ghi; mỗi lần ghi tính vào giới hạn thao tác ghi / 10 phút.\nAI chỉ tải được ảnh, video lên khi MCP có quyền Tạo mới ở nền tảng đó. Video lớn (TikTok > 10 MB, Meta > 50 MB) được tải ở chế độ nền vài phút.",
+              "Cho phép dùng link Drive công khai (mặc định bật): AI lấy được ảnh, video từ link \"Bất kỳ ai có đường liên kết\" bạn dán vào chat - cần quản trị viên đã lưu API key.\nCho phép ghi trạng thái vào Google Sheet (mặc định bật): sau khi lên quảng cáo, AI ghi trạng thái, mã quảng cáo vào đúng dòng của sheet đã bật ghi; mỗi lần ghi tính vào giới hạn thao tác ghi / 10 phút.\nAI chỉ tải được ảnh, video lên khi MCP có quyền Tạo mới ở nền tảng đó. Video lớn (TikTok > 10 MB, Meta > 20 MB) được tải ở chế độ nền vài phút.",
           },
           {
             title: "Apify (khi đã bật ở bước 2)",
@@ -958,7 +958,7 @@ export const guides = {
       },
     ],
     tips: [
-      "Video và ảnh bìa để chung một ô Link Drive (mỗi link một dòng trong ô).",
+      "Ảnh bìa video: cột Ảnh bìa, hoặc chung một ô Link Drive với video (mỗi link một dòng trong ô). Meta để trống thì tự lấy ảnh bìa Meta chọn.",
       "Không sắp xếp, chèn, xoá dòng khi AI đang chạy.",
     ],
     warnings: [

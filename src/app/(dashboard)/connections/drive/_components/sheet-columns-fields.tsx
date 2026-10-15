@@ -42,7 +42,7 @@ const NONE = "__none__"
 
 export type SheetColumnsValue = Record<SheetColumnKey, string | null>
 
-/** Link Drive, Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích */
+/** Link Drive, Ảnh bìa (v1.1.2, read only), Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích */
 const READ_KEYS = SHEET_COLUMN_KEYS.filter(
   (k) => !SHEET_WRITABLE_COLUMN_KEYS.includes(k)
 )

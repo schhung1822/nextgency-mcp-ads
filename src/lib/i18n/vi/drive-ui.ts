@@ -365,6 +365,7 @@ export const driveUi = {
       "Khi bật ghi trạng thái, hệ thống chỉ ghi vào các cột này (dạng chữ, không chạy công thức). Cột Trạng thái là bắt buộc, các cột khác tuỳ chọn.",
     columns: {
       link: "Link Drive",
+      cover: "Ảnh bìa",
       name: "Tên creative",
       platform: "Nền tảng",
       account: "Tài khoản QC",
@@ -381,6 +382,8 @@ export const driveUi = {
     } as Record<string, string>,
     /** short help under some column pickers (tuỳ chọn) */
     columnHelp: {
+      cover:
+        "Tuỳ chọn. Link Drive của ảnh bìa cho video ở dòng đó (AI chỉ đọc). Chọn Không dùng mà sheet có cột tên “Ảnh bìa” thì AI vẫn tự nhận ra.",
       mediaId:
         "Tuỳ chọn. AI ghi mã ảnh / video trên nền tảng sau khi tải lên.",
       adIds: "Tuỳ chọn. AI ghi mã các quảng cáo đã tạo từ dòng này.",
@@ -403,7 +406,7 @@ export const driveUi = {
       "Email đang chỉ có quyền Người xem trên sheet. Cấp quyền Người chỉnh sửa rồi bấm Kiểm tra lại để bật.",
     writebackNeedsStatus: "Chọn cột Trạng thái để bật ghi trạng thái.",
     templateHint:
-      "Mẫu cột gợi ý: Link Drive · Tên creative · Nền tảng · Tài khoản QC · Nội dung · Tiêu đề · Link đích · Trạng thái · Mã media · Mã quảng cáo · Link bài viết · Link chiến dịch · Ghi chú hệ thống · Cập nhật lúc.",
+      "Mẫu cột gợi ý: Link Drive · Ảnh bìa · Tên creative · Nền tảng · Tài khoản QC · Nội dung · Tiêu đề · Link đích · Trạng thái · Mã media · Mã quảng cáo · Link bài viết · Link chiến dịch · Ghi chú hệ thống · Cập nhật lúc.",
     back: "Quay lại",
     next: "Tiếp tục",
     save: "Lưu thư mục / sheet",
@@ -450,6 +453,12 @@ export const driveUi = {
     columnsWriteOff: "(đang tắt)",
     /** link columns not mapped yet (sheets declared before v1.0.8) */
     columnsUnused: (labels: string) => `Chưa dùng: ${labels}`,
+    /** cover column not mapped but found by its header name (drive_sheet_read reads it anyway) */
+    coverAuto: (label: string, name: string) =>
+      `${name === label ? name : `${label}: ${name}`} (tự nhận)`,
+    coverAutoTitle: "Tự nhận theo tên cột - AI đọc cột này làm ảnh bìa video",
+    coverMissing:
+      "Chưa có cột Ảnh bìa (tuỳ chọn) - thêm cột “Ảnh bìa” vào sheet nếu muốn mỗi video có ảnh bìa riêng.",
     usedByTitle: "Đang dùng trong MCP",
     usedByNone: "Chưa có MCP nào dùng thư mục / sheet này.",
     usedByOther: (n: number) => `+ ${n} MCP của người khác`,
@@ -647,7 +656,7 @@ export const driveUi = {
           {
             title: "Sheet: ánh xạ cột",
             detail:
-              "Hệ thống gợi ý theo tên cột trong dòng tiêu đề. Bắt buộc: cột Link Drive. Nên có: Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích.",
+              "Hệ thống gợi ý theo tên cột trong dòng tiêu đề. Bắt buộc: cột Link Drive. Nên có: Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích. Tuỳ chọn: Ảnh bìa (ảnh bìa riêng cho video của từng dòng).",
           },
           {
             title: "Sheet: ghi trạng thái",

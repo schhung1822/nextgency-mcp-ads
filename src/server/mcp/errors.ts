@@ -117,14 +117,15 @@ export function mapToolError(e: unknown): MappedError {
       : null
     return {
       payload: {
+        // the specific toolCode (video_processing…) is shown to the AI; hints and log status use the generic class
         code: j.code,
         message: redactString(j.message).slice(0, 1000),
         platform: j.platform,
         platform_error: platformError,
-        hint: redactString(j.hint ?? PROVIDER_HINTS[j.code] ?? "").slice(0, 500) || null,
+        hint: redactString(j.hint ?? PROVIDER_HINTS[e.code] ?? "").slice(0, 500) || null,
         retryable: j.retryable,
       },
-      logStatus: j.code === "permission_denied" || j.code === "action_required" ? "denied" : j.code === "invalid_request" ? "invalid_request" : "error",
+      logStatus: e.code === "permission_denied" || e.code === "action_required" ? "denied" : e.code === "invalid_request" ? "invalid_request" : "error",
       logMessage: redactString(`${e.message}${up?.message ? ` | ${up.message}` : ""}`).slice(0, 2000),
       upstreamRequestId: up?.requestId ?? null,
     }

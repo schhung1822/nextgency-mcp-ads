@@ -8,6 +8,7 @@
 /** Recommended header row, in this order (the system recognises these names without any column mapping). */
 export const BULK_SHEET_COLUMNS = [
   "Link Drive",
+  "Ảnh bìa",
   "Tên creative",
   "Nền tảng",
   "Tài khoản QC",
@@ -39,6 +40,7 @@ export const BULK_TEMPLATE_FILE_NAME = "mau-sheet-len-quang-cao.csv"
 export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
   [
     "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view",
+    "",
     "Banner serum 1080x1080",
     "Meta",
     "act_1234567890",
@@ -48,7 +50,8 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
     "Chờ lên",
   ],
   [
-    "https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view\nhttps://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view",
+    "https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view",
+    "https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view",
     "Ra mắt serum - video 15s + ảnh bìa",
     "TikTok",
     "7212345678901234567",
@@ -59,6 +62,7 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
   ],
   [
     "https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view\nhttps://drive.google.com/file/d/1EfGhIjKlMnOpQrStUvWxYz4567890/view\nhttps://drive.google.com/file/d/1FgHiJkLmNoPqRsTuVwXyZ56789012/view",
+    "",
     "Bộ 3 ảnh serum - mỗi ảnh 1 quảng cáo",
     "Facebook",
     "Shop Mỹ Phẩm - TKQC chính",
@@ -66,6 +70,17 @@ export const BULK_TEMPLATE_ROWS: readonly (readonly string[])[] = [
     "Serum Vitamin C",
     "https://congty.vn/serum",
     "",
+  ],
+  [
+    "https://drive.google.com/file/d/1GhIjKlMnOpQrStUvWxYz678901234/view",
+    "",
+    "Video review serum - ảnh bìa Meta tự chọn",
+    "Meta",
+    "act_1234567890",
+    "Khách thật dùng thật sau 14 ngày",
+    "Serum Vitamin C",
+    "https://congty.vn/serum",
+    "Chờ lên",
   ],
 ]
 
@@ -78,7 +93,7 @@ function csvCell(v: string): string {
   return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
 }
 
-/** CSV template: UTF-8 BOM (Excel shows Vietnamese correctly), CRLF, header + example rows padded to 14 cells. */
+/** CSV template: UTF-8 BOM (Excel shows Vietnamese correctly), CRLF, header + example rows padded to the header width. */
 export function buildSheetTemplateCsv(): string {
   const width = BULK_SHEET_COLUMNS.length
   const rows = [
@@ -227,6 +242,26 @@ function newStructureTools(platform: BulkPlatform): string {
     .join("; ")
 }
 
+/** How a video gets its cover image, per platform (OpenAI Ads has no video ads → nothing). */
+const COVER_BY_PLATFORM: Partial<
+  Record<Exclude<BulkPlatform, "sheet">, string>
+> = {
+  meta: "Meta: truyền ảnh bìa vào meta_create_ad - image_hash nếu ảnh đã tải lên ở bước b, không thì image_drive_file = drive_file (hoặc file_id) của cover; dòng không có ảnh bìa thì bỏ trống, hệ thống tự lấy ảnh bìa Meta khi video đã xử lý xong (tool báo video_processing thì làm như video đang tải nền ở bước b).",
+  tiktok:
+    "TikTok: tải ảnh bìa bằng ads_upload_media (nếu chưa tải ở bước b) rồi dùng mã ảnh đó làm ảnh bìa của video.",
+}
+
+/** Step 5d sentence about video covers: the "Ảnh bìa" column (cover), else an image in the same Link Drive cell. */
+function coverText(platform: BulkPlatform): string {
+  const keys =
+    platform === "sheet"
+      ? (Object.keys(CREATE_TOOLS) as Exclude<BulkPlatform, "sheet">[])
+      : [platform]
+  const lines = keys.flatMap((k) => COVER_BY_PLATFORM[k] ?? [])
+  if (lines.length === 0) return ""
+  return ` Ảnh bìa của video: cover của dòng (cột Ảnh bìa); dòng không có cover thì dùng ảnh nằm cùng ô Link Drive với video. ${lines.join(" ")}`
+}
+
 /** The work itself (numbered steps) - shared by the full prompt and the skill. */
 export function buildBulkAdsRule(input: BulkAdsInput): string {
   const n = clampBatch(input.batchSize)
@@ -281,7 +316,7 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
     `   a. Nền tảng: ${platformLine}. Tài khoản quảng cáo: ${accountLine}.`,
     '   b. Tải từng file của dòng lên tài khoản đó bằng ads_upload_media với drive_file = drive_file (hoặc file_id) của file trong kết quả drive_sheet_read. File đã tải lên tài khoản này trước đây trả reused: true - dùng luôn mã cũ, không tải lại. Video lớn trả status = "queued" kèm upload_id: gọi ads_get_media_upload sau vài phút cho tới khi có media_id; vẫn chưa xong thì để dòng ở trạng thái đang xử lý với ghi chú "Video đang tải nền" và làm dòng tiếp theo.',
     `   ${structureLine}`,
-    `   d. Tạo quảng cáo bằng tool tạo quảng cáo của nền tảng (${toolList(input.platform, "ad")}) với mã media vừa có và Nội dung, Tiêu đề, Link đích, Tên creative của dòng. Video cần ảnh bìa: dùng ảnh nằm cùng ô Link Drive. Nhiều ảnh trong một ô: mỗi ảnh một quảng cáo. Quảng cáo luôn ở trạng thái TẠM DỪNG - không bật.`,
+    `   d. Tạo quảng cáo bằng tool tạo quảng cáo của nền tảng (${toolList(input.platform, "ad")}) với mã media vừa có và Nội dung, Tiêu đề, Link đích, Tên creative của dòng.${coverText(input.platform)} Nhiều ảnh trong một ô: mỗi ảnh một quảng cáo. Quảng cáo luôn ở trạng thái TẠM DỪNG - không bật.`,
     '   e. Tool trả status = "confirmation_required": cho tôi xem bản xem trước (gom các mục của cả lượt nếu được), chờ tôi đồng ý rồi mới gọi lại với confirm_token. Không tự đồng ý thay tôi.',
     input.structure === "new"
       ? `6. Ngân sách: không đặt ngân sách/ngày khác ${budget}. Tool báo vượt trần của MCP thì ghi lỗi, không thử mức cao hơn.`

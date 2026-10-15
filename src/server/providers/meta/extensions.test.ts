@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { __resetBuckets } from "../rate-limit"
-import type { ProviderExtension } from "../types"
+import type { MutationOptions, ProviderExtension } from "../types"
 import type { MetaCredentials } from "./client"
 import { metaExtensions, type MetaWriteResult } from "./extensions"
 import { graphError, json, mockGraph, providerCtx, type Route } from "./test-utils"
@@ -14,7 +14,7 @@ function ext(name: string) {
   return e as ProviderExtension<MetaCredentials, unknown, MetaWriteResult>
 }
 
-async function run(name: string, raw: unknown, opts: { dryRun?: boolean } = {}, ctx = providerCtx()) {
+async function run(name: string, raw: unknown, opts: MutationOptions = {}, ctx = providerCtx()) {
   const e = ext(name)
   const input = e.input.parse(raw)
   return e.run(ctx, input, opts)
@@ -196,6 +196,8 @@ const advertisable: Route[] = [
     "me/accounts",
     () => json({ data: [{ id: "777", name: "Via Page", tasks: ["ADVERTISE"] }, { id: "666", name: "Mod only", tasks: ["MODERATE"] }] }),
   ],
+  // video library of act_1001 (S-M1 ownership check): only video 555 (filtering id IN […])
+  ["GET", "act_1001/advideos", (c) => json({ data: (c.params.filtering ?? "").includes('"555"') ? [{ id: "555" }] : [] })],
 ]
 
 describe("meta_create_ad", () => {
@@ -249,15 +251,17 @@ describe("meta_create_ad", () => {
     expect(creative.url_tags).toBe("utm_source=facebook")
   })
 
-  it("video ad requires a thumbnail; existing post uses object_story_id", async () => {
+  it("video ad without a cover needs a ready video (auto cover, D1); existing post uses object_story_id", async () => {
     const m = mockGraph([
       ["GET", "2001", () => json(adset)],
       ...advertisable,
+      ["GET", "555", () => json({ status: { video_status: "processing" } })],
       ["POST", "act_1001/ads", () => json({ id: "12" })],
     ])
     await expect(
       run("meta_create_ad", { adset_id: "2001", name: "V", page_id: "888", creative: { type: "video", video_id: "555" } })
-    ).rejects.toThrow(/thumbnail/)
+    ).rejects.toMatchObject({ toolCode: "video_processing" })
+    expect(m.mutatingPosts()).toHaveLength(0)
     await run("meta_create_ad", { adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: "888_999" } })
     const creative = JSON.parse(m.mutatingPosts()[0].params.creative)
     expect(creative.object_story_id).toBe("888_999")
@@ -380,3 +384,531 @@ describe("meta_update_targeting", () => {
     expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
   })
 })
+describe("meta_create_ad - video cover (D1-D5)", () => {
+  const adset = {
+    id: "2001",
+    name: "Nhóm",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "OFFSITE_CONVERSIONS",
+    campaign: { id: "3001", objective: "OUTCOME_SALES" },
+  };
+  const URI =
+    "https://scontent.xx.fbcdn.net/v/t15/thumb.jpg?oh=SIGNEDOH&oe=6720AB00";
+  const HASH = "c0ffee00c0ffee00c0ffee00c0ffee00";
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9, 9, 9, 9, 9]);
+  const video = (extra: Record<string, unknown> = {}) => ({
+    adset_id: "2001",
+    name: "Video ad",
+    page_id: "888",
+    creative: { type: "video", video_id: "555", message: "Xem ngay", ...extra },
+  });
+  const ready: Route = [
+    "GET",
+    "555",
+    () =>
+      json({
+        status: { video_status: "ready" },
+        thumbnails: {
+          data: [
+            { uri: "https://scontent.xx.fbcdn.net/other.jpg" },
+            { uri: URI, is_preferred: true },
+          ],
+        },
+      }),
+  ];
+  const fetchImage = vi.fn(async () => ({
+    bytes: JPEG,
+    contentType: "image/jpeg",
+  }));
+  beforeEach(() => fetchImage.mockClear());
+
+  const creativeOf = (m: ReturnType<typeof mockGraph>, validate = false) => {
+    const post = m.calls.find(
+      (c) =>
+        c.method === "POST" &&
+        c.path === "act_1001/ads" &&
+        (c.params.execution_options ?? "").includes("validate_only") ===
+          validate,
+    )!;
+    return JSON.parse(post.params.creative) as {
+      object_story_spec: {
+        video_data?: Record<string, unknown>;
+        link_data?: Record<string, unknown>;
+      };
+    };
+  };
+
+  it("no cover + video still processing → video_processing (with %), nothing is sent (preview and execute)", async () => {
+    for (const opts of [{ dryRun: true }, { fetchImage }]) {
+      const m = mockGraph([
+        ["GET", "2001", () => json(adset)],
+        ...advertisable,
+        [
+          "GET",
+          "555",
+          () =>
+            json({
+              status: { video_status: "processing", processing_progress: 20 },
+              picture: "https://scontent.fbcdn.net/placeholder.jpg",
+            }),
+        ],
+        ["POST", /.*/, () => json({ id: "x" })],
+      ]);
+      const e = await run("meta_create_ad", video(), opts).catch(
+        (x: unknown) => x,
+      );
+      expect(
+        (e as { toJSON(): Record<string, unknown> }).toJSON(),
+      ).toMatchObject({ code: "video_processing", retryable: false });
+      expect((e as Error & { userMessageVi: string }).userMessageVi).toContain(
+        "20%",
+      );
+      expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    }
+    expect(fetchImage).not.toHaveBeenCalled();
+  });
+
+  it("no cover + failed / expired video → video_failed", async () => {
+    mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ["GET", "555", () => json({ status: { video_status: "expired" } })],
+    ]);
+    await expect(
+      run("meta_create_ad", video(), { dryRun: true }),
+    ).rejects.toMatchObject({ toolCode: "video_failed" });
+  });
+
+  it("preview with the automatic cover: validate_only gets Meta's thumbnail, the preview never shows the signed uri; nothing uploaded", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ready,
+      ["POST", "act_1001/ads", () => json({ success: true })],
+    ]);
+    const res = await run("meta_create_ad", video(), { dryRun: true });
+    expect(res.preview).toBe(true);
+    expect(m.mutatingPosts()).toHaveLength(0);
+    expect(m.calls.some((c) => c.path === "act_1001/adimages")).toBe(false);
+    expect(creativeOf(m, true).object_story_spec.video_data).toMatchObject({
+      video_id: "555",
+      image_url: URI,
+    });
+    const shown = JSON.stringify({
+      payload: res.payload,
+      changes: res.changes,
+      warnings: res.warnings,
+    });
+    expect(shown).not.toContain("fbcdn");
+    expect(shown).not.toContain("SIGNEDOH");
+    expect(shown).toContain("<ảnh bìa Meta tự chọn từ video>");
+    expect(res.warnings.join(" ")).toMatch(/tự dùng ảnh bìa Meta/);
+    // the thumbnails were asked for with the status
+    expect(m.calls.find((c) => c.path === "555")!.params.fields).toBe(
+      "status,picture,thumbnails{uri,is_preferred,width,height}",
+    );
+  });
+
+  it("execute with the automatic cover: guarded download → adimages bytes → image_hash in video_data (no image_url, no uri anywhere)", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ready,
+      [
+        "POST",
+        "act_1001/adimages",
+        () =>
+          json({
+            images: {
+              bytes: {
+                hash: HASH,
+                url: "https://scontent.fbcdn.net/adimg.jpg",
+              },
+            },
+          }),
+      ],
+      ["POST", "act_1001/ads", () => json({ id: "77" })],
+    ]);
+    const res = await run("meta_create_ad", video(), { fetchImage });
+    expect(fetchImage).toHaveBeenCalledWith(URI, {
+      maxBytes: 30 * 1024 * 1024,
+    });
+    expect(
+      m.calls.find((c) => c.path === "act_1001/adimages")!.params.bytes,
+    ).toBe(Buffer.from(JPEG).toString("base64"));
+    const data = creativeOf(m).object_story_spec.video_data!;
+    expect(data).toMatchObject({
+      video_id: "555",
+      image_hash: HASH,
+      message: "Xem ngay",
+    });
+    expect(data.image_url).toBeUndefined();
+    expect(res.createdIds).toEqual(["77"]);
+    expect(res.warnings.join(" ")).toContain(`image_hash ${HASH}`);
+    const shown = JSON.stringify(res);
+    expect(shown).not.toContain("fbcdn");
+    expect(shown).not.toContain("SIGNEDOH");
+  });
+
+  it("execute without mcp-core's guarded fetch → refused before the ad is created", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ready,
+      ["POST", /.*/, () => json({ id: "x" })],
+    ]);
+    await expect(run("meta_create_ad", video())).rejects.toMatchObject({
+      code: "invalid_request",
+    });
+    expect(m.mutatingPosts()).toHaveLength(0);
+  });
+
+  it("a validate_only error that echoes the thumbnail URL is scrubbed", async () => {
+    mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ready,
+      [
+        "POST",
+        "act_1001/ads",
+        () =>
+          graphError(100, 3858258, {
+            message: `Image wasn't downloaded from ${URI}`,
+            error_user_msg: `Không tải được ${URI}`,
+          }),
+      ],
+    ]);
+    const e = await run("meta_create_ad", video(), { dryRun: true }).catch(
+      (x: unknown) => x,
+    );
+    const text =
+      JSON.stringify((e as { toJSON(): unknown }).toJSON()) +
+      String((e as Error).message);
+    expect(text).not.toContain("SIGNEDOH");
+    expect(text).not.toContain("fbcdn");
+    expect(text).toContain("[ảnh bìa]");
+  });
+
+  it("explicit image_hash / image_url win over the automatic cover (no thumbnail read on execute); a processing video only warns in the preview", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      [
+        "GET",
+        "555",
+        () =>
+          json({
+            status: { video_status: "processing", processing_progress: 70 },
+          }),
+      ],
+      ["POST", "act_1001/ads", () => json({ id: "78" })],
+    ]);
+    const pre = await run("meta_create_ad", video({ image_hash: HASH }), {
+      dryRun: true,
+    });
+    expect(pre.warnings.join(" ")).toContain("70%");
+    await run(
+      "meta_create_ad",
+      video({ image_url: "https://cdn.shop.vn/cover.jpg" }),
+      { fetchImage },
+    );
+    expect(creativeOf(m).object_story_spec.video_data).toMatchObject({
+      image_url: "https://cdn.shop.vn/cover.jpg",
+    });
+    expect(fetchImage).not.toHaveBeenCalled();
+    expect(
+      m.calls.filter(
+        (c) =>
+          c.path === "555" && (c.params.fields ?? "").includes("thumbnails"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("only one image source", async () => {
+    mockGraph([["GET", "2001", () => json(adset)]]);
+    await expect(
+      run(
+        "meta_create_ad",
+        video({
+          image_hash: HASH,
+          image_drive_file: "1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+        }),
+      ),
+    ).rejects.toThrow(
+      /Chỉ truyền một trong image_hash, image_url hoặc image_drive_file/,
+    );
+  });
+
+  it("Drive cover (opts.driveImage): execute uses the uploaded image_hash; preview shows the file label, validates with Meta's thumbnail stand-in", async () => {
+    const drive = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345";
+    const e = ext("meta_create_ad");
+    expect(
+      e.driveImageRef!(e.input.parse(video({ image_drive_file: drive }))),
+    ).toBe(drive);
+    expect(
+      e.driveImageRef!(
+        e.input.parse({
+          adset_id: "2001",
+          name: "P",
+          creative: { type: "existing_post", object_story_id: "888_1" },
+        }),
+      ),
+    ).toBeUndefined();
+
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ready,
+      ["POST", "act_1001/ads", () => json({ id: "79" })],
+    ]);
+    const exec = await e.run(
+      providerCtx(),
+      e.input.parse(video({ image_drive_file: drive })),
+      {
+        fetchImage,
+        driveImage: { label: "bia.jpg (0.2 MB)", imageHash: HASH },
+      },
+    );
+    expect(creativeOf(m).object_story_spec.video_data).toMatchObject({
+      image_hash: HASH,
+    });
+    expect(fetchImage).not.toHaveBeenCalled();
+    expect(JSON.stringify(exec.payload)).toContain(
+      "<ảnh bìa từ Google Drive: bia.jpg (0.2 MB)>",
+    );
+
+    const pre = await e.run(
+      providerCtx(),
+      e.input.parse(video({ image_drive_file: drive })),
+      {
+        dryRun: true,
+        driveImage: { label: "bia.jpg (0.2 MB)" },
+      },
+    );
+    expect(creativeOf(m, true).object_story_spec.video_data!.image_url).toBe(
+      URI,
+    );
+    expect(JSON.stringify(pre)).not.toContain("fbcdn");
+    expect(JSON.stringify(pre.payload)).toContain("bia.jpg (0.2 MB)");
+    // execution without the uploaded hash is an internal error (mcp-core always uploads first)
+    await expect(
+      e.run(providerCtx(), e.input.parse(video({ image_drive_file: drive })), {
+        fetchImage,
+      }),
+    ).rejects.toThrow(/Lỗi nội bộ/);
+  });
+
+  it("Drive cover preview while the video is processing: validate_only skipped with a warning (Meta decides at creation)", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ["GET", "555", () => json({ status: { video_status: "processing" } })],
+      ["POST", /.*/, () => json({ success: true })],
+    ]);
+    const res = await run(
+      "meta_create_ad",
+      video({ image_drive_file: "1AbCdEfGhIjKlMnOpQrStUvWxYz012345" }),
+      { dryRun: true },
+    );
+    expect(res.preview).toBe(true);
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    expect(res.warnings.join(" ")).toContain("validate_only");
+  });
+
+  it("link creative with a Drive image: link_data.image_hash from opts.driveImage; preview validates without a picture", async () => {
+    const link = {
+      adset_id: "2001",
+      name: "L",
+      page_id: "888",
+      creative: {
+        type: "link",
+        link: "https://shop.vn",
+        image_drive_file: "1AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+      },
+    };
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ["POST", "act_1001/ads", () => json({ id: "80" })],
+    ]);
+    const e = ext("meta_create_ad");
+    await e.run(providerCtx(), e.input.parse(link), {
+      dryRun: true,
+      driveImage: { label: "anh.png" },
+    });
+    const vd = creativeOf(m, true).object_story_spec.link_data!;
+    expect(vd.picture).toBeUndefined();
+    expect(vd.image_hash).toBeUndefined();
+    await e.run(providerCtx(), e.input.parse(link), {
+      fetchImage,
+      driveImage: { label: "anh.png", imageHash: HASH },
+    });
+    expect(creativeOf(m).object_story_spec.link_data).toMatchObject({
+      image_hash: HASH,
+      link: "https://shop.vn",
+    });
+  });
+});
+describe("meta_create_ad - video ownership before any status / cover read (S-M1)", () => {
+  const adset = {
+    id: "2001",
+    name: "Nhóm",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "OFFSITE_CONVERSIONS",
+    campaign: { id: "3001", objective: "OUTCOME_SALES" },
+  };
+  const pages = advertisable.filter(([, path]) => path !== "act_1001/advideos");
+  const video = (id: string, extra: Record<string, unknown> = {}) => ({
+    adset_id: "2001",
+    name: "V",
+    page_id: "888",
+    creative: { type: "video", video_id: id, ...extra },
+  });
+  const status: Route = [
+    "GET",
+    /^9\d+$/,
+    () =>
+      json({ status: { video_status: "processing", processing_progress: 61 } }),
+  ];
+
+  it("a video of another account: neutral not_found (no status, no %), the video node is never read - auto and Drive branches", async () => {
+    for (const extra of [
+      {},
+      { image_drive_file: "1AbCdEfGhIjKlMnOpQrStUvWxYz012345" },
+    ]) {
+      const m = mockGraph([
+        ["GET", "2001", () => json(adset)],
+        ...pages,
+        ["GET", "act_1001/advideos", () => json({ data: [] })],
+        status,
+      ]);
+      const e = await run("meta_create_ad", video("9001", extra), {
+        dryRun: true,
+        driveImage: { label: "x.jpg" },
+      }).catch((x: unknown) => x);
+      expect(
+        (e as { toJSON(): Record<string, unknown> }).toJSON(),
+      ).toMatchObject({ code: "not_found" });
+      expect(JSON.stringify((e as { toJSON(): unknown }).toJSON())).not.toMatch(
+        /61|xử lý/,
+      );
+      expect(m.calls.some((c) => c.path === "9001")).toBe(false);
+    }
+  });
+
+  it("explicit cover + unverified video: no status read, no warning (Meta decides)", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...pages,
+      ["GET", "act_1001/advideos", () => json({ data: [] })],
+      status,
+      ["POST", "act_1001/ads", () => json({ success: true })],
+    ]);
+    const res = await run(
+      "meta_create_ad",
+      video("9002", { image_hash: "c0ffee00c0ffee00c0ffee00c0ffee00" }),
+      { dryRun: true },
+    );
+    expect(res.warnings.join(" ")).not.toContain("61%");
+    expect(m.calls.some((c) => c.path === "9002")).toBe(false);
+  });
+
+  it("an id this app uploaded (opts.isKnownMedia) skips the platform check", async () => {
+    const isKnownMedia = vi.fn(async () => true);
+    const m = mockGraph([["GET", "2001", () => json(adset)], ...pages, status]);
+    await expect(
+      run("meta_create_ad", video("9003"), { dryRun: true, isKnownMedia }),
+    ).rejects.toMatchObject({ toolCode: "video_processing" });
+    expect(isKnownMedia).toHaveBeenCalledWith({ type: "video", id: "9003" });
+    expect(m.calls.some((c) => c.path === "act_1001/advideos")).toBe(false);
+  });
+
+  it("C-M2: the id filter fails or is ignored → the first library pages are scanned instead", async () => {
+    // filter rejected, video on page 2
+    let scans = 0;
+    mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...pages,
+      [
+        "GET",
+        "act_1001/advideos",
+        (c) => {
+          if (c.params.filtering)
+            return graphError(100, undefined, { message: "Invalid filtering" });
+          scans++;
+          return c.params.after
+            ? json({ data: [{ id: "9004" }] })
+            : json({
+                data: [{ id: "1" }, { id: "2" }],
+                paging: {
+                  cursors: { after: "CUR" },
+                  next: "https://graph.facebook.com/next",
+                },
+              });
+        },
+      ],
+      status,
+    ]);
+    await expect(
+      run("meta_create_ad", video("9004"), { dryRun: true }),
+    ).rejects.toMatchObject({ toolCode: "video_processing" });
+    expect(scans).toBe(2);
+    // filter ignored (other videos listed), not found in the scanned pages → not_found
+    mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...pages,
+      ["GET", "act_1001/advideos", () => json({ data: [{ id: "1" }] })],
+      status,
+    ]);
+    await expect(
+      run("meta_create_ad", video("9005"), { dryRun: true }),
+    ).rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
+describe("meta video status - fallbacks (C-M1, S-L3, S-L4)", () => {
+  it("readMetaVideo: thumbnails{…} expansion rejected → one retry with status,picture (picture only when ready)", async () => {
+    const { getMetaMediaStatus, metaVideoCoverUri } = await import("./media");
+    const m = mockGraph([
+      [
+        "GET",
+        "9100",
+        (c) =>
+          c.params.fields.includes("thumbnails")
+            ? graphError(100, undefined, {
+                message:
+                  "(#100) Tried accessing nonexisting field (thumbnails)",
+              })
+            : json({
+                status: { video_status: "ready" },
+                picture: "https://scontent.fbcdn.net/p.jpg",
+              }),
+      ],
+    ]);
+    expect(await metaVideoCoverUri(providerCtx(), "9100")).toBe(
+      "https://scontent.fbcdn.net/p.jpg",
+    );
+    expect(m.calls.map((c) => c.params.fields)).toEqual([
+      "status,picture,thumbnails{uri,is_preferred,width,height}",
+      "status,picture",
+    ]);
+    expect(
+      (await getMetaMediaStatus(providerCtx(), { type: "video", id: "9100" }))
+        .hasThumbnail,
+    ).toBe(true);
+  });
+
+  it("phase error text is one sanitised line (no control / bidi characters)", async () => {
+    const { classifyVideoStatus } = await import("./media");
+    const st = classifyVideoStatus({
+      video_status: "error",
+      processing_phase: {
+        status: "error",
+        errors: [{ message: "Bad‮video\u0007\nline2" }],
+      },
+    });
+    expect(st.error).toBe("Badvideo line2");
+  });
+});

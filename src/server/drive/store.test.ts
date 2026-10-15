@@ -140,6 +140,7 @@ describe("config normalisation", () => {
       headerRow: 1,
       columns: {
         link: "Link Drive",
+        cover: null,
         name: null,
         platform: null,
         account: null,
@@ -167,6 +168,8 @@ describe("config normalisation", () => {
       note: "Ghi chú",
       postLink: null,
       campaignLink: null,
+      // v1.1.2: no cover key → not mapped (drive_sheet_read then detects a "Ảnh bìa" header by name)
+      cover: null,
     })
     expect(
       normalizeSheetConfig({

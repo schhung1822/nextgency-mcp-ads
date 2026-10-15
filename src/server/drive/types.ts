@@ -117,6 +117,8 @@ export interface FolderSourceConfig {
 /** Header names (as typed in the sheet's header row) mapped to logical columns. */
 export interface SheetColumnsConfig {
   link: string
+  /** cover image (thumbnail) of the row's video - read only, never written (v1.1.2) */
+  cover?: string | null
   name?: string | null
   platform?: string | null
   account?: string | null
@@ -147,6 +149,7 @@ export const DEFAULT_SHEET_COLUMNS: Required<{
   [K in keyof SheetColumnsConfig]: string
 }> = {
   link: "Link Drive",
+  cover: "Ảnh bìa",
   name: "Tên creative",
   platform: "Nền tảng",
   account: "Tài khoản QC",

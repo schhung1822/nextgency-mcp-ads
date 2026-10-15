@@ -6,6 +6,7 @@ import type { ChunkedVideoUploadRequest } from "../types"
 import { META_TIMINGS } from "./client"
 import {
   META_CHUNKED,
+  META_VIDEO,
   resendRange,
   uploadMetaMedia,
   uploadMetaVideoChunked,
@@ -22,6 +23,7 @@ const savedTimings = { ...META_TIMINGS }
 const savedChunked = { ...META_CHUNKED }
 const savedDeadline = { ...MEDIA_DEADLINE }
 const savedPoll = { ...POLL_CALL_TIMEOUT }
+const savedVideo = { ...META_VIDEO }
 beforeEach(() => {
   __resetBuckets()
   META_TIMINGS.pollIntervalMs = 5
@@ -36,6 +38,7 @@ afterEach(() => {
   Object.assign(META_CHUNKED, savedChunked)
   Object.assign(MEDIA_DEADLINE, savedDeadline)
   Object.assign(POLL_CALL_TIMEOUT, savedPoll)
+  Object.assign(META_VIDEO, savedVideo)
   vi.unstubAllGlobals()
 })
 
@@ -547,6 +550,8 @@ describe("uploadMetaMedia - deadlineAt", () => {
   })
 
   it("video create timing out at the deadline → 'có thể đã tạo' error, sent once (no retry)", async () => {
+    // the recovery lookup by title (D8) hangs too here: it gives up after its own short timeout
+    META_VIDEO.recoveryLookupMs = 50
     mockGraph([])
     const f = hangWhen(() => true)
     const started = Date.now()
@@ -562,7 +567,14 @@ describe("uploadMetaMedia - deadlineAt", () => {
       userMessageVi: expect.stringMatching(/có thể đã tạo trên nền tảng/),
     })
     expect(Date.now() - started).toBeLessThan(2_000)
-    expect(f).toHaveBeenCalledTimes(1)
+    // one create call (never re-sent) + one GET advideos?title= lookup
+    expect(f).toHaveBeenCalledTimes(2)
+    const [createUrl, createInit] = f.mock.calls[0]!
+    expect(String(createUrl)).toContain("/act_1001/advideos")
+    expect((createInit as RequestInit).method).toBe("POST")
+    const lookup = new URL(String(f.mock.calls[1]![0]))
+    expect(lookup.pathname).toMatch(/\/act_1001\/advideos$/)
+    expect(lookup.searchParams.get("title")).toMatch(/ · [0-9a-f]{6}$/)
   })
 
   it("image create timing out → 'có thể đã tạo' error, sent once", async () => {

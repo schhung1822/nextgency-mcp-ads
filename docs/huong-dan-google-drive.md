@@ -242,7 +242,7 @@ Service account riêng chỉ dùng cho thư mục / sheet **riêng** của chín
 - **Tên hiển thị**: tên dễ nhận ra, hiện trong danh sách và khi chọn nguồn cho MCP. Để trống = dùng tên trên Google Drive.
 - **Thư mục**: **Thư mục con AI được duyệt** — _Chỉ thư mục này_, _1 cấp con_, _2 cấp con_, _3 cấp con_. Áp dụng khi AI liệt kê file kèm thư mục con; nhiều cấp thì chậm hơn. AI vẫn mở được từng thư mục con khi bạn nói tên (ví dụ "thư mục Tuần 41/Video").
 - **Sheet**: khối **Ánh xạ cột**. Hệ thống tự gợi ý theo tên cột mẫu (Phần 4); nếu sheet của bạn đặt tên khác, chọn lại:
-  - **Cột AI đọc**: _Link Drive_ (**Bắt buộc**), _Tên creative_, _Nền tảng_, _Tài khoản QC_, _Nội dung_, _Tiêu đề_, _Link đích_. Cột nào không có thì chọn _Không dùng_.
+  - **Cột AI đọc**: _Link Drive_ (**Bắt buộc**), _Ảnh bìa_ (tuỳ chọn, ảnh bìa cho video — 4.1), _Tên creative_, _Nền tảng_, _Tài khoản QC_, _Nội dung_, _Tiêu đề_, _Link đích_. Cột nào không có thì chọn _Không dùng_.
   - Công tắc **Cho phép AI ghi trạng thái vào sheet** — chỉ bật được khi email có quyền **Người chỉnh sửa**. Nếu email mới có quyền Người xem: cấp thêm quyền rồi quay lại Bước 2 bấm **Kiểm tra** lại.
   - Mục **Cột ghi trạng thái (nâng cao)**: _Trạng thái_ (**bắt buộc** khi bật ghi), _Mã media_, _Mã quảng cáo_, _Link bài viết_, _Link chiến dịch_, _Ghi chú hệ thống_, _Cập nhật lúc_ (tuỳ chọn).
 - Bấm **Lưu thư mục / sheet**.
@@ -289,7 +289,8 @@ Tên cột dưới đây là tên hệ thống tự nhận ra. Đặt tên khác
 
 | Cột                | Bắt buộc              | Ai điền        | Ý nghĩa                                                                                                                                                                                            |
 | ------------------ | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Link Drive`       | ✔                     | Bạn            | Link file trên Drive (hoặc mã file). Nhiều file trong một ô (vd video + ảnh bìa): cách nhau bằng xuống dòng (Alt+Enter / Ctrl+Enter trong ô), dấu cách, dấu phẩy hoặc chấm phẩy — tối đa 10 link/ô |
+| `Link Drive`       | ✔                     | Bạn            | Link file trên Drive (hoặc mã file). Nhiều file trong một ô (vd nhiều ảnh, hoặc video + ảnh bìa nếu không dùng cột Ảnh bìa): cách nhau bằng xuống dòng (Alt+Enter / Ctrl+Enter trong ô), dấu cách, dấu phẩy hoặc chấm phẩy — tối đa 10 link/ô |
+| `Ảnh bìa`          |                       | Bạn            | **Tuỳ chọn.** Link Drive (hoặc mã file) của **ảnh bìa** (JPG, PNG) cho video ở dòng đó. AI chỉ đọc, không ghi. Ô có nhiều link → dùng link đầu. Ô chỉ có chữ, không có link (vd `Meta tự chọn`, `-`) được coi như để trống. Để trống: Meta tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong; TikTok dùng ảnh nằm cùng ô `Link Drive` |
 | `Tên creative`     |                       | Bạn            | Tên media / quảng cáo                                                                                                                                                                              |
 | `Nền tảng`         |                       | Bạn            | `Meta`, `Facebook`, `FB`, `Instagram`, `IG` · `TikTok` · `Google`, `Google Ads`, `YouTube` · `OpenAI`, `ChatGPT` (không phân biệt hoa thường)                                                      |
 | `Tài khoản QC`     |                       | Bạn            | **ID** (khuyên dùng) hoặc **tên** TKQC đúng như trong Ads MCP. TKQC phải nằm trong MCP. Tên trùng nhiều TKQC → ghi ID                                                                              |
@@ -306,27 +307,35 @@ Tên cột dưới đây là tên hệ thống tự nhận ra. Đặt tên khác
 
 Hai cột **Link bài viết** và **Link chiến dịch** (thêm ngày 10/10/2026) là **tuỳ chọn**: thêm hai cột này vào sheet rồi chọn chúng trong mục **Cột ghi trạng thái (nâng cao)** khi khai báo sheet — sheet đã khai báo trước đó: **Kết nối** → tab **Google Drive** → mở sheet → **Sửa cài đặt** để chọn. Sau khi tạo quảng cáo từ một dòng, AI ghi link bài viết và link chiến dịch nếu biết (chỉ link `https://`, không đoán). Sheet không có hai cột này vẫn chạy bình thường.
 
+Cột **Ảnh bìa** (thêm ngày 15/10/2026) cũng **tuỳ chọn** và AI **chỉ đọc**:
+
+- Sheet đã khai báo trước đó **không cần sửa cài đặt**: thêm một cột tên `Ảnh bìa` (hoặc `Thumbnail`, `Cover`, `Ảnh thumbnail`, `Ảnh đại diện video`) vào dòng tiêu đề là AI tự nhận ra. Sheet đặt tên khác: **Sửa cài đặt** → chọn cột ở ô **Ảnh bìa**.
+- File ảnh bìa theo cùng quy tắc với **Link Drive**: nằm trong thư mục đã gán cho MCP, hoặc là link công khai. Ảnh bìa không dùng được (chưa chia sẻ, là video…) → dòng báo vấn đề `cover_…` và AI bỏ qua dòng đó cho tới khi bạn sửa hoặc xoá trống ô.
+- Cách cũ — để link video và link ảnh bìa **chung một ô Link Drive** — vẫn dùng được. Dòng chỉ có ảnh thì để trống cột này.
+- Meta: không có ảnh bìa thì hệ thống tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong. TikTok: cần ảnh bìa (cột này hoặc chung ô Link Drive).
+
 ### 4.2 Dòng tiêu đề để dán nhanh
 
 Sao chép khối dưới đây, bấm vào ô **A1** của tab mới trong Google Sheet rồi dán (Ctrl+V) — mỗi tên cột tự vào một ô:
 
 ```text
-Link Drive	Tên creative	Nền tảng	Tài khoản QC	Nội dung	Tiêu đề	Link đích	Trạng thái	Mã media	Mã quảng cáo	Link bài viết	Link chiến dịch	Ghi chú hệ thống	Cập nhật lúc
+Link Drive	Ảnh bìa	Tên creative	Nền tảng	Tài khoản QC	Nội dung	Tiêu đề	Link đích	Trạng thái	Mã media	Mã quảng cáo	Link bài viết	Link chiến dịch	Ghi chú hệ thống	Cập nhật lúc
 ```
 
-Thứ tự đầy đủ (14 cột): Link Drive | Tên creative | Nền tảng | Tài khoản QC | Nội dung | Tiêu đề | Link đích | Trạng thái | Mã media | Mã quảng cáo | Link bài viết | Link chiến dịch | Ghi chú hệ thống | Cập nhật lúc.
+Thứ tự đầy đủ (15 cột): Link Drive | Ảnh bìa | Tên creative | Nền tảng | Tài khoản QC | Nội dung | Tiêu đề | Link đích | Trạng thái | Mã media | Mã quảng cáo | Link bài viết | Link chiến dịch | Ghi chú hệ thống | Cập nhật lúc.
 
 ### 4.3 Dòng ví dụ
 
 Dán vào ô **A2** (thay link và ID bằng của bạn):
 
 ```text
-https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view	Ra mắt serum - video 15s	TikTok	7212345678901234567	Da sáng sau 7 ngày, ưu đãi 30% tuần này	Serum Vitamin C	https://congty.vn/serum	Chờ lên
-https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view, https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view	Ra mắt serum - video dọc + ảnh bìa	TikTok	7212345678901234567	Da sáng sau 7 ngày	Serum Vitamin C	https://congty.vn/serum	Chưa tạo ads
-https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view	Banner serum 1080x1080	Facebook	Shop Mỹ Phẩm - TKQC chính	Freeship toàn quốc cho đơn từ 299k	Serum Vitamin C	https://congty.vn/serum
+https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view	https://drive.google.com/file/d/1GhIjKlMnOpQrStUvWxYz678901234/view	Ra mắt serum - video 15s	TikTok	7212345678901234567	Da sáng sau 7 ngày, ưu đãi 30% tuần này	Serum Vitamin C	https://congty.vn/serum	Chờ lên
+https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view, https://drive.google.com/file/d/1CdEfGhIjKlMnOpQrStUvWxYz234567/view		Ra mắt serum - video dọc + ảnh bìa	TikTok	7212345678901234567	Da sáng sau 7 ngày	Serum Vitamin C	https://congty.vn/serum	Chưa tạo ads
+https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view		Banner serum 1080x1080	Facebook	Shop Mỹ Phẩm - TKQC chính	Freeship toàn quốc cho đơn từ 299k	Serum Vitamin C	https://congty.vn/serum
+https://drive.google.com/file/d/1HiJkLmNoPqRsTuVwXyZ7890123456/view		Video review serum	Meta	act_1234567890	Khách thật dùng thật sau 14 ngày	Serum Vitamin C	https://congty.vn/serum	Chờ lên
 ```
 
-Dòng 3 có 2 file trong một ô (video + ảnh bìa) và ghi `Chưa tạo ads` — hệ thống hiểu như `Chờ lên`. Dòng 4 để trống **Trạng thái** — cũng được tính là "Chờ lên". Dòng 4 ghi **tên** TKQC thay cho ID (được, miễn tên không trùng). Các cột từ **Mã media** trở đi để trống — hệ thống tự ghi.
+Dòng 2 có ảnh bìa riêng ở cột **Ảnh bìa**. Dòng 3 dùng cách cũ: 2 file trong một ô **Link Drive** (video + ảnh bìa) và ghi `Chưa tạo ads` — hệ thống hiểu như `Chờ lên`. Dòng 4 để trống **Trạng thái** — cũng được tính là "Chờ lên". Dòng 4 ghi **tên** TKQC thay cho ID (được, miễn tên không trùng). Dòng 5 là video Meta không có ảnh bìa — hệ thống tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong. Các cột từ **Mã media** trở đi để trống — hệ thống tự ghi.
 
 ### 4.4 Trạng thái của một dòng
 
@@ -468,7 +477,7 @@ Mẹo: nói "**gộp xác nhận**" hoặc "cho tôi xem trước toàn bộ r�
 
 > "Tải video **TVC-60s-final.mov** (380 MB) trong thư mục **Creative T10** lên TKQC Meta **act_1234567890**."
 
-Video TikTok > 10 MB hoặc Meta > 50 MB được **tải nền**: AI xin xác nhận (bản xem trước ghi rõ tải nền, vài phút), rồi trả lời kiểu _"Đã đưa video vào hàng đợi, mã lượt tải …"_. Bạn có thể làm việc khác. Vài phút sau:
+Video TikTok > 10 MB hoặc Meta > 20 MB được **tải nền**: AI xin xác nhận (bản xem trước ghi rõ tải nền, vài phút), rồi trả lời kiểu _"Đã đưa video vào hàng đợi, mã lượt tải …"_. Bạn có thể làm việc khác. Vài phút sau:
 
 > "Kiểm tra video đã tải xong chưa."
 
@@ -478,13 +487,19 @@ AI xem tiến độ (`ads_get_media_upload`): **đang chờ → đang tải (x%)
 
 Video đã tải lên đúng TKQC đó trước đây sẽ **không tải lại** — AI dùng ngay mã cũ.
 
+**Ảnh bìa (thumbnail) cho video:**
+
+- **Muốn ảnh bìa riêng**: dán link Drive của ảnh vào câu lệnh, vd _"…tạo quảng cáo tạm dừng, ảnh bìa https://drive.google.com/file/d/…/view"_. Meta: AI truyền ảnh đó làm ảnh bìa của quảng cáo; TikTok: AI tải ảnh lên rồi dùng làm ảnh bìa. Ảnh theo cùng quy tắc với video (thư mục đã gán hoặc link công khai).
+- **Theo sheet**: cột **Ảnh bìa** (4.1), hoặc để chung ô **Link Drive** với video.
+- **Không đưa ảnh bìa (Meta)**: hệ thống tự lấy ảnh bìa do Meta chọn khi video **đã xử lý xong**. Video vừa tải có thể còn được Meta xử lý vài phút — AI báo video đang xử lý (kèm % nếu có); đợi rồi bảo AI thử lại, hoặc đưa ảnh bìa.
+
 ### 6.6 Ví dụ E — Ảnh đính kèm trong ChatGPT
 
 Chỉ **ChatGPT bản web** (chatgpt.com): bấm **+** đính kèm ảnh vào tin nhắn, rồi gõ:
 
 > "Tải ảnh tôi vừa đính kèm lên TKQC OpenAI Ads **Shop Mỹ Phẩm** rồi tạo quảng cáo tạm dừng trong nhóm **Serum** với tiêu đề _Serum Vitamin C - giảm 30%_."
 
-- Ảnh: theo giới hạn từng nền tảng (Phần 7). Video đính kèm: tối đa 10 MB (TikTok) / 50 MB (Meta) — lớn hơn hãy đưa lên Google Drive.
+- Ảnh: theo giới hạn từng nền tảng (Phần 7). Video đính kèm: tối đa 10 MB (TikTok) / 50 MB (Meta) — lớn hơn hãy đưa lên Google Drive (video Drive lớn được tải nền, Phần 7). Ảnh bìa cho video: dán link Drive của ảnh vào câu lệnh (6.5).
 - **Không** dùng được: ảnh do ChatGPT/Gemini **tự tạo** trong cuộc trò chuyện (AI không có tệp gốc để chuyển) — tải ảnh về máy rồi đính kèm lại, hoặc đưa lên Drive. App ChatGPT trên điện thoại hiện chưa chuyển tệp đúng cách — dùng bản web.
 - Claude và Gemini chưa chuyển được tệp bạn đính kèm cho MCP → dùng Google Drive.
 
@@ -521,10 +536,19 @@ Chỉ **ChatGPT bản web** (chatgpt.com): bấm **+** đính kèm ảnh vào ti
 | ----------------------- | -------- | -------- |
 | Định dạng               | MP4, MOV | MP4, MOV |
 | Tối đa                  | 500 MB   | 500 MB   |
-| Tải ngay trong lượt gọi | ≤ 10 MB  | ≤ 50 MB  |
-| Tải nền (vài phút)      | > 10 MB  | > 50 MB  |
+| Tải ngay trong lượt gọi | ≤ 10 MB  | ≤ 20 MB  |
+| Tải nền (vài phút)      | > 10 MB  | > 20 MB  |
 
-Video nhỏ có thể trả về kèm "nền tảng đang xử lý" — mã video vẫn dùng được ngay.
+Video nhỏ có thể trả về kèm "nền tảng đang xử lý" — mã video vẫn dùng được ngay. Ngưỡng 20 MB (Meta) áp dụng cho video từ Google Drive; video đính kèm ChatGPT vẫn tối đa 50 MB (6.6).
+
+**Ảnh bìa video** (chọn một):
+
+| Cách                                         | Meta                                               | TikTok                         |
+| -------------------------------------------- | -------------------------------------------------- | ------------------------------ |
+| Dán link Drive của ảnh vào câu lệnh          | ✔ (ưu tiên hơn ảnh tự động)                         | ✔ (AI tải ảnh lên làm ảnh bìa) |
+| Cột **Ảnh bìa** trong sheet (4.1)            | ✔                                                  | ✔                              |
+| Ảnh chung ô **Link Drive** với video         | ✔                                                  | ✔                              |
+| Không đưa ảnh bìa                            | Tự lấy ảnh bìa do Meta chọn khi video đã xử lý xong | Cần ảnh bìa                    |
 
 ### Tải nền
 
@@ -619,6 +643,7 @@ AI thường đọc mã lỗi (dạng `drive_…`) kèm thông báo; bạn chỉ
 | `drive_sheet_busy`                           | Google Sheet đang bận… / MCP này đã dùng hết 20 lượt đọc/ghi Google Sheet trong một phút.   | Đợi khoảng 1 phút; xử lý nhiều dòng hơn mỗi lần ghi.                                                                                                                   |
 | `drive_timeout`, `drive_upstream_error`      | Google Drive phản hồi quá lâu. / Google Drive / Google Sheets đang gặp lỗi.                 | Thử lại sau ít phút.                                                                                                                                                   |
 | `drive_invalid_sheet`                        | Sheet thiếu cột bắt buộc hoặc dòng tiêu đề không đúng.                                      | Ai đó đổi tên/xoá cột → sửa tên cột trong sheet hoặc **Sửa cài đặt** (ánh xạ cột).                                                                                     |
+| `cover_…` (vấn đề của dòng)                  | Ảnh bìa: … / Ảnh bìa phải là file ảnh (JPG, PNG…), không phải video.                       | Sửa link ở cột **Ảnh bìa** (chia sẻ / chuyển ảnh vào thư mục đã gán), hoặc xoá trống ô — Meta sẽ tự lấy ảnh bìa.                                                      |
 | `drive_sheet_tab_not_found`                  | Không tìm thấy trang tính (tab) đã khai báo…                                                | Khai báo lại bằng link của đúng tab.                                                                                                                                   |
 | `drive_writeback_disabled`                   | Sheet này không bật ghi trạng thái.                                                         | Bật **Cho phép AI ghi trạng thái vào sheet** ở trang sheet **và** **Cho phép ghi trạng thái vào Google Sheet** trong MCP.                                              |
 | `row_moved`                                  | Dòng trong sheet đã thay đổi (bị chèn, xoá hoặc sắp xếp lại) - đã bỏ qua để tránh ghi nhầm. | Bảo AI đọc lại sheet rồi ghi lại.                                                                                                                                      |
@@ -635,6 +660,8 @@ AI thường đọc mã lỗi (dạng `drive_…`) kèm thông báo; bạn chỉ
 | `upload_limit_reached`                             | MCP này / Các MCP của chủ sở hữu MCP này đang có N video tải lên ở chế độ nền… / Hệ thống đang có nhiều video chờ… | Đợi vài phút cho lượt trước xong (hỏi AI tiến độ).                                         |
 | `upload_queue_unavailable`                         | Không đưa được video vào hàng đợi tải nền (bộ xử lý nền chưa sẵn sàng).                                            | Thử lại sau ít phút; nếu vẫn lỗi, quản trị viên kiểm tra **worker** (Phần 10).             |
 | `upload_not_found`                                 | Không tìm thấy lượt tải nền này trong MCP.                                                                         | Bảo AI xem các lượt tải gần đây (không kèm mã).                                            |
+| `video_processing`                                 | Video Meta đang được xử lý…                                                                                        | Đợi vài phút rồi bảo AI thử lại, hoặc đưa ảnh bìa (link Drive) — 6.5.                       |
+| `video_failed`                                     | Meta không xử lý được video…                                                                                       | Kiểm tra video (định dạng, độ dài), tải lại hoặc dùng video khác.                          |
 | Lượt tải báo lỗi                                   | Việc tải lên bị gián đoạn do worker khởi động lại… / Lượt tải bị dừng vì quá lâu không cập nhật tiến độ…           | Bảo AI tải lại.                                                                            |
 | Lượt tải báo lỗi                                   | File video trên Google Drive đã bị thay đổi, xoá hoặc chuyển vào thùng rác sau khi yêu cầu tải lên.                | Đừng sửa/di chuyển video khi đang tải; tải lại.                                            |
 | Lượt tải báo lỗi                                   | Video không còn nằm trong thư mục Google Drive được cấp cho MCP…                                                   | Video bị chuyển khỏi thư mục, hoặc thư mục bị gỡ khỏi MCP.                                 |
@@ -689,7 +716,7 @@ Link "Bất kỳ ai có đường liên kết" làm lộ creative **chưa chạy
 
 ## Phần 10 — Ghi chú vận hành cho quản trị viên
 
-- **Worker phải chạy.** Video lớn (TikTok > 10 MB, Meta > 50 MB) do container `worker` tải nền, mỗi lần một video. Worker dừng → lượt tải nằm chờ (quá 24 giờ bị huỷ). Worker cũng chạy kiểm tra định kỳ nguồn Drive (6 giờ/lần), dọn link tạm hết hạn (hằng ngày) và đánh dấu lượt tải bị treo (10 phút/lần). Kiểm tra: `docker compose ps` (worker `running`), `docker compose logs -f --tail=200 worker`. Xem [van-hanh.md](van-hanh.md).
+- **Worker phải chạy.** Video lớn (TikTok > 10 MB, Meta > 20 MB) do container `worker` tải nền, mỗi lần một video. Worker dừng → lượt tải nằm chờ (quá 24 giờ bị huỷ). Worker cũng chạy kiểm tra định kỳ nguồn Drive (6 giờ/lần), dọn link tạm hết hạn (hằng ngày) và đánh dấu lượt tải bị treo (10 phút/lần). Kiểm tra: `docker compose ps` (worker `running`), `docker compose logs -f --tail=200 worker`. Xem [van-hanh.md](van-hanh.md).
 - **Đường dẫn `/dl/*` phải truy cập được từ Internet** để máy chủ Meta/TikTok tải video nhỏ. Tên miền đi qua **Cloudflare**: không bật Bot Fight Mode, challenge, Under Attack Mode, Browser Integrity Check cho `/dl/*`, không tạo rule "Cache Everything" cho `/dl/*` — xem [deploy-vps.md §9.2 bước 10](deploy-vps.md#92-cấu-hình-cloudflare-dashboard). Dùng **Cloudflare Access**: phải **Bypass** `/dl/*` — xem [deploy-vps.md §10b.8](deploy-vps.md#10b8-cloudflare-access-cho-giao-diện-web-tuỳ-chọn). Triệu chứng khi bị chặn: AI báo Meta/TikTok không tải được video.
 - **Băng thông:** video đi Drive → máy chủ → nền tảng, tốn băng thông cả chiều vào lẫn ra (không ghi đĩa). Video 500 MB = khoảng 1 GB lưu lượng.
 - **Bộ nhớ:** ảnh được giữ tạm trong RAM (tối đa 2 tệp cùng lúc mỗi tiến trình, dùng chung với Telegram); video tải nền chỉ giữ một đoạn (≤ 64 MB) mỗi lúc.

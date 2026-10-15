@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { normalizeSheetConfig } from "../../../drive/store"
 import { driveRefForLog } from "../../log-args"
 import type { GrantAccount, McpGrant } from "../../types"
 import { jobErrorText, uploadLogArgs } from "../common/upload-media"
@@ -11,6 +12,7 @@ import {
   foldText,
   isSheetLink,
   linkTokens,
+  mapColumns,
   matchAccount,
   neutralizeFormula,
   normalizePlatform,
@@ -218,6 +220,50 @@ describe("sheet link columns + status aliases (2026-10-10)", () => {
   it("COLUMN_FIELDS exposes the link columns to drive_sheet_read", () => {
     expect(COLUMN_FIELDS.postLink).toBe("post_link")
     expect(COLUMN_FIELDS.campaignLink).toBe("campaign_link")
+    expect(COLUMN_FIELDS.cover).toBe("cover")
+  })
+
+  it("mapColumns: a mapped cover column is used; without a mapping a header named like a cover column is detected", () => {
+    const header = [
+      "Link Drive",
+      "Tên creative",
+      "ẢNH BÌA",
+      "Thumbnail",
+      "Trạng thái",
+    ]
+    // mapped (any spelling of the configured name)
+    const mapped = normalizeSheetConfig({
+      columns: { link: "Link Drive", cover: "thumbnail" },
+    })
+    expect(mapColumns(mapped, header)).toMatchObject({ link: 0, cover: 3 })
+    // a config saved before v1.1.2 (no cover key) → detected by name ("Ảnh bìa" wins over "Thumbnail")
+    const legacy = normalizeSheetConfig({
+      columns: {
+        link: "Link Drive",
+        name: "Tên creative",
+        status: "Trạng thái",
+      },
+    })
+    expect(legacy.columns.cover).toBeNull()
+    expect(mapColumns(legacy, header)).toEqual({
+      link: 0,
+      name: 1,
+      cover: 2,
+      status: 4,
+    })
+    // a mapped cover header that is gone from the sheet → detection too
+    const gone = normalizeSheetConfig({
+      columns: { link: "Link Drive", cover: "Ảnh cũ" },
+    })
+    expect(mapColumns(gone, ["Link Drive", "anh bia video"]).cover).toBe(1)
+    // a header cell already used by another column is never taken; no cover-like header → no cover
+    const taken = normalizeSheetConfig({
+      columns: { link: "Thumbnail" },
+    })
+    expect(mapColumns(taken, ["Thumbnail", "Tên"])).toEqual({ link: 0 })
+    expect(mapColumns(legacy, ["Link Drive", "Ảnh", "File"]).cover).toBe(
+      undefined
+    )
   })
 
   it("statusFilter: default pending = its aliases + empty; a status matches every spelling; custom values by text", () => {

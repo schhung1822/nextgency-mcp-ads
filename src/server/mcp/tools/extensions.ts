@@ -2,14 +2,19 @@
 // Input = extension zod input + account_id (+ confirm_token / idempotency_key / reason for writes).
 // Permission = extension.permission on that platform; writes go through two-step confirmation
 // (opts.dryRun first). Extensions with invalid names / clashing names are skipped with a warning.
+// Drive image (ProviderExtension.driveImageRef, e.g. meta_create_ad creative.image_drive_file - D5): resolved here in
+// the MCP's Drive scope on BOTH steps (preview: label + reuse lookup, nothing uploaded; execution: downloaded +
+// uploaded as bytes / reused → MutationOptions.driveImage.imageHash). The confirmation / idempotency args carry the
+// resolved file id instead of the ref (a re-issued drf_ ref or another link form of the same file confirms the same
+// action). Executions also get MutationOptions.fetchImage (SSRF-guarded download of platform image URLs - D2).
 import { z } from "zod"
 import { getProvider, hasProvider } from "../../providers/registry"
 import { PLATFORMS, type FieldChange, type MutationResult, type Platform, type ProviderExtension } from "../../providers/types"
 import { previewChanges, type PreviewInfo } from "../confirm"
-import { denied } from "../errors"
+import { denied, McpToolError } from "../errors"
 import { assertGrant } from "../grant"
 import { DYNAMIC_DAILY_NOTE, enforceMoneyItems, legacyCapWarning, moneyLikePaths, requireMoneyCaps } from "../guardrails"
-import { stripMediaUrlQueries } from "../log-args"
+import { driveRefForLog, stripMediaUrlQueries } from "../log-args"
 import { changesForLog } from "../logging"
 import { accountIdSchema, writeFields } from "../schemas"
 import {
@@ -24,6 +29,9 @@ import {
 } from "../tool"
 import { grantAllows, type McpGrant } from "../types"
 import { writeOptions } from "../write-options"
+import { isKnownMedia } from "../known-media"
+import { MEDIA_CALL_BUDGET_MS } from "./telegram/attachment"
+import { fetchPlatformImage, resolveDriveCover, uploadDriveCover, type DriveCover } from "./common/upload-media"
 
 /** Tool-name prefix per platform shipped in this build (an extension of any other platform is skipped). */
 const PREFIX: Partial<Record<Platform, string>> = {
@@ -65,6 +73,47 @@ export function extensionSettingOn(grant: Pick<McpGrant, "settings">, ext: Pick<
 /** Refusal of an extension whose opt-in MCP setting is off (defence in depth - such tools are not even listed). */
 export const EXTENSION_SETTING_OFF =
   "MCP này chưa được quản trị viên cho phép dùng công cụ này (cần bật quyền tương ứng trong cấu hình MCP)."
+
+/** Keys of extension inputs that carry a Google Drive reference (file id / Drive link / drf_ ref). */
+const DRIVE_REF_KEY = /(^|_)drive_file$/
+
+/** Deep copy where every Drive reference (keys …drive_file) is replaced by `fn(value)`. */
+function mapDriveRefs(v: unknown, fn: (ref: string) => string, key: string | null = null, depth = 0): unknown {
+  if (typeof v === "string") return key !== null && DRIVE_REF_KEY.test(key) ? fn(v) : v
+  if (v === null || typeof v !== "object" || depth > 8) return v
+  if (Array.isArray(v)) return v.map((item) => mapDriveRefs(item, fn, key, depth + 1))
+  const out: Record<string, unknown> = {}
+  for (const [k, item] of Object.entries(v as Record<string, unknown>)) out[k] = mapDriveRefs(item, fn, k, depth + 1)
+  return out
+}
+
+/** Logged / stored args of an extension: media URL queries stripped, Drive refs reduced to the file id (no resource key). */
+export function extensionLogArgs(args: Record<string, unknown>): Record<string, unknown> {
+  return mapDriveRefs(stripMediaUrlQueries(args), driveRefForLog) as Record<string, unknown>
+}
+
+/**
+ * Confirmation / idempotency args: the Drive ref replaced by the resolved file id + file version (stable across ref
+ * forms; a file changed on Drive between preview and confirm no longer matches the token - S-L5).
+ */
+export function bindDriveRef(args: Record<string, unknown>, fileId: string, contentKey: string | null): Record<string, unknown> {
+  return mapDriveRefs(args, () => `drive:${fileId}@${contentKey ?? "?"}`) as Record<string, unknown>
+}
+
+/** Media sub-steps of a write (Drive cover upload, Meta automatic cover) keep this much of the call for the write. */
+const COVER_WORK_MS = 30_000
+
+/** A failure of the cover step after the confirmation was consumed: nothing was created - say how to retry. */
+function coverStepError(e: unknown): unknown {
+  if (!(e instanceof McpToolError)) return e
+  return new McpToolError({
+    code: e.code,
+    messageVi: e.messageVi,
+    hint: `${e.hint ? `${e.hint} ` : ""}Chưa tạo gì trên nền tảng: gọi lại công cụ KHÔNG kèm confirm_token để có bản xem trước mới rồi xác nhận lại.`,
+    logStatus: e.logStatus,
+    details: e.details,
+  })
+}
 
 function asRecord(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>
@@ -143,8 +192,9 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
     annotations,
     input,
     output,
-    // signed media URLs (image_url, video_url…) must not end up in mcp_call_logs / mcp_pending_actions
-    logArgs: (a) => stripMediaUrlQueries(a as Record<string, unknown>),
+    // signed media URLs (image_url, video_url…) and Drive resource keys must not end up in mcp_call_logs /
+    // mcp_pending_actions
+    logArgs: (a) => extensionLogArgs(a as Record<string, unknown>),
     async handler(args, env) {
       // idempotency_key stays in args: runWrite derives the deterministic adapter key from it
       const { account_id, confirm_token: _c, idempotency_key: _i, reason: _r, ...rest } = args as Record<string, unknown> & {
@@ -200,19 +250,48 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
       // GMV Max switch / strict worst-case daily-spend guard / change history (both steps)
       const wopts = writeOptions(env.grant, account)
       const pausedNote = ext.permission === "create" && !ext.createsActive ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : []
+      // media sub-steps (Drive cover, Meta automatic cover) are bounded from the call's arrival (C-M3)
+      const deadline = Date.now() + MEDIA_CALL_BUDGET_MS
+      const usesMedia = !!ext.driveImageRef || ext.fetchesPlatformImages === true
+      // ids this app uploaded to the account are trusted by the adapter's ownership checks (S-M1)
+      const knownMedia = { isKnownMedia: (q: { id: string }) => isKnownMedia(account, q.id) }
+      // Drive image of the input (D5): resolved on both steps (scope, type, size, file version, reuse)
+      const driveRef = ext.driveImageRef?.(parsed)
+      const cover: DriveCover | null = driveRef ? await resolveDriveCover(env, account, driveRef) : null
+      const coverRow = cover
+        ? [
+            {
+              object: `Google Drive: ${cover.label}`,
+              object_id: cover.fileId,
+              level: null,
+              field: "image_drive_file",
+              before: null,
+              after: cover.reusedId
+                ? `ảnh đã có trên tài khoản (id ${cover.reusedId}) - dùng lại`
+                : "ảnh sẽ được tải lên tài khoản khi xác nhận",
+            },
+          ]
+        : []
       return runWrite(env, {
-        args: args as Record<string, unknown>,
+        args: cover ? bindDriveRef(args as Record<string, unknown>, cover.fileId, cover.item.contentKey) : (args as Record<string, unknown>),
         account,
         alwaysConfirm: ext.alwaysConfirm === true,
+        // the write pacing never eats the time the media steps need
+        ...(usesMedia ? { pacingMaxWaitMs: Math.max(0, deadline - Date.now() - COVER_WORK_MS) } : {}),
         preview: async (): Promise<PreviewInfo> => {
           const ctx = await env.providerCtx(account)
-          const r = await ext.run(ctx, parsed, { ...wopts, dryRun: true })
+          const r = await ext.run(ctx, parsed, {
+            ...wopts,
+            ...knownMedia,
+            dryRun: true,
+            ...(cover ? { driveImage: { label: cover.label, ...(cover.reusedId ? { imageHash: cover.reusedId } : {}) } } : {}),
+          })
           if (isMutationResult(r)) {
             // adapters may attach the request body they would send (`payload`) - shown when small
             const payload = (r as MutationResult & { payload?: unknown }).payload
             const details = payload !== undefined && jsonLength(payload) <= 8_000 ? { payload } : undefined
             return {
-              changes: previewChanges(r.changes),
+              changes: [...previewChanges(r.changes), ...coverRow],
               warnings: [...moneyWarnings, ...pausedNote, ...r.warnings],
               effective_at: r.effectiveAt ?? null,
               ...(details ? { details } : {}),
@@ -220,18 +299,34 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
           }
           const details = asRecord(r)
           return {
-            changes: [{ object: ext.name, object_id: "-", level: null, field: ext.permission, before: null, after: "xem details" }],
+            changes: [{ object: ext.name, object_id: "-", level: null, field: ext.permission, before: null, after: "xem details" }, ...coverRow],
             warnings: [...moneyWarnings, ...pausedNote],
             effective_at: null,
             details: jsonLength(details) > 8_000 ? { _truncated: true } : details,
           }
         },
         execute: async (idempotencyKey, meta) => {
+          // the Drive image is uploaded (or reused) only now, after the confirmation
+          const uploaded = cover ? await uploadDriveCover(env, account, cover, deadline).catch((e: unknown) => {
+            throw coverStepError(e)
+          }) : null
+          const coverChanges: FieldChange[] =
+            cover && uploaded && !uploaded.reused
+              ? [{ objectId: uploaded.id, field: "media_uploaded", before: null, after: `Google Drive: ${cover.label} (${cover.fileId})` }]
+              : []
           const ctx = await env.providerCtx(account)
-          const r = await ext.run(ctx, parsed, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
+          const r = await ext.run(ctx, parsed, {
+            ...wopts,
+            ...knownMedia,
+            idempotencyKey,
+            confirmed: meta.confirmed,
+            // only tools that declare it may download platform images (S-L2)
+            ...(ext.fetchesPlatformImages ? { fetchImage: fetchPlatformImage(env, deadline), deadlineAt: deadline } : {}),
+            ...(cover && uploaded ? { driveImage: { label: cover.label, imageHash: uploaded.id } } : {}),
+          })
           if (isMutationResult(r)) {
             if (r.createdIds?.length) env.log.addObjectIds(r.createdIds)
-            const changes = withCreatedIds(r.changes, r.createdIds, ext.permission, ext.createsActive === true)
+            const changes = [...coverChanges, ...withCreatedIds(r.changes, r.createdIds, ext.permission, ext.createsActive === true)]
             return {
               structured: {
                 changes: (changesForLog(changes) ?? []) as unknown as Record<string, unknown>[],

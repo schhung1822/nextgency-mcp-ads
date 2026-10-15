@@ -31,6 +31,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { formatDate } from "@/lib/format"
 import { driveUi } from "@/lib/i18n/vi/drive-ui"
 import {
+  detectCoverHeader,
+  headerIndex,
   SHEET_COLUMN_KEYS,
   SHEET_WRITABLE_COLUMN_KEYS,
   type DriveSourceDetail,
@@ -270,6 +272,7 @@ export function DriveSourceDetailView({
             <InfoCard
               detail={detail}
               isAdmin={isAdmin}
+              sheetHeader={sheetHeader}
               onEdit={detail.canManage ? () => setEditOpen(true) : undefined}
             />
             <UsageCard detail={detail} />
@@ -335,19 +338,42 @@ function InfoRow({
 /** the two optional link columns added in v1.0.8 - older sheets often have them unmapped */
 const LINK_COLUMNS = ["postLink", "campaignLink"] as const satisfies readonly SheetColumnKey[]
 
+/**
+ * The read-only "Ảnh bìa" column when it is not mapped: drive_sheet_read then takes a header named like a cover
+ * column (detectCoverHeader). null = mapped or header unknown, "" = no such header, else the header cell.
+ */
+function autoCoverHeader(
+  sheet: NonNullable<DriveSourceDetail["sheet"]>,
+  header: readonly string[] | null
+): string | null {
+  if (sheet.columns.cover || !header) return null
+  const taken = new Set<number>()
+  for (const k of SHEET_COLUMN_KEYS) {
+    const name = sheet.columns[k]
+    const i = name ? headerIndex(header, name) : -1
+    if (i >= 0) taken.add(i)
+  }
+  const i = detectCoverHeader(header, taken)
+  return i >= 0 ? String(header[i] ?? "").trim() : ""
+}
+
 function InfoCard({
   detail,
   isAdmin,
+  sheetHeader,
   onEdit,
 }: {
   detail: DriveSourceDetail
   isAdmin: boolean
+  /** header row read by the sheet preview (null until loaded / on error) */
+  sheetHeader: string[] | null
   /** managers: opens the "Sửa cài đặt" dialog (map the missing columns) */
   onEdit?: () => void
 }) {
   const cred = detail.credential
   const sheet = detail.sheet
   const unusedLinks = sheet ? LINK_COLUMNS.filter((k) => !sheet.columns[k]) : []
+  const autoCover = sheet ? autoCoverHeader(sheet, sheetHeader) : null
   return (
     <Card>
       <CardHeader>
@@ -429,7 +455,20 @@ function InfoCard({
                             </li>
                           )
                         })}
+                        {!writeGroup && autoCover && (
+                          <li
+                            title={m.coverAutoTitle}
+                            className="max-w-full truncate rounded-md bg-muted px-1.5 py-0.5 text-xs"
+                          >
+                            {m.coverAuto(driveUi.wizard.columns.cover ?? "cover", autoCover)}
+                          </li>
+                        )}
                       </ul>
+                      )}
+                      {!writeGroup && autoCover === "" && (
+                        <span className="mt-0.5 text-xs text-pretty text-muted-foreground">
+                          {m.coverMissing}
+                        </span>
                       )}
                       {writeGroup && unusedLinks.length > 0 && (
                         <div className="mt-0.5 flex flex-col items-start gap-1.5">

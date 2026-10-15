@@ -131,6 +131,7 @@ const optionalColumn = z
 export const sheetColumnsSchema = z
   .object({
     link: columnName.pipe(z.string().min(1, { error: m.linkColumnRequired })),
+    cover: optionalColumn,
     name: optionalColumn,
     platform: optionalColumn,
     account: optionalColumn,
@@ -256,6 +257,7 @@ export function normalizeHeader(s: string): string {
 
 export type SheetColumnKey =
   | "link"
+  | "cover"
   | "name"
   | "platform"
   | "account"
@@ -272,6 +274,7 @@ export type SheetColumnKey =
 
 export const SHEET_COLUMN_KEYS: readonly SheetColumnKey[] = [
   "link",
+  "cover",
   "name",
   "platform",
   "account",
@@ -308,6 +311,22 @@ export const SHEET_COLUMN_ALIASES: Record<SheetColumnKey, readonly string[]> = {
     "file",
     "link creative",
     "drive link",
+  ],
+  // the video's cover image (thumbnail) - read only; also detected by these names when not mapped (detectCoverHeader)
+  cover: [
+    "anh bia",
+    "anh bia video",
+    "link anh bia",
+    "cover",
+    "anh cover",
+    "cover image",
+    "video cover",
+    "thumbnail",
+    "thumb",
+    "anh thumbnail",
+    "anh thumb",
+    "video thumbnail",
+    "anh dai dien video",
   ],
   name: ["ten creative", "ten", "creative", "ten file", "name"],
   platform: ["nen tang", "platform", "kenh"],
@@ -366,6 +385,23 @@ export function headerIndex(header: readonly string[], name: string): number {
   const want = normalizeHeader(name)
   if (!want) return -1
   return header.findIndex((h) => normalizeHeader(h) === want)
+}
+
+/**
+ * The "Ảnh bìa" column of a sheet whose source has no cover mapping (configs saved before v1.1.2 or left "Không
+ * dùng"): 0-based index of the first header cell named like a cover column (SHEET_COLUMN_ALIASES.cover, earlier
+ * aliases win) that is not one of `taken` (indexes already mapped to other columns); -1 when none.
+ */
+export function detectCoverHeader(
+  header: readonly string[],
+  taken: ReadonlySet<number> = new Set()
+): number {
+  const keys = header.map((h) => normalizeHeader(h))
+  for (const alias of SHEET_COLUMN_ALIASES.cover) {
+    const i = keys.findIndex((k, idx) => k === alias && !taken.has(idx))
+    if (i >= 0) return i
+  }
+  return -1
 }
 
 // ---------------------------------------------------------------------------

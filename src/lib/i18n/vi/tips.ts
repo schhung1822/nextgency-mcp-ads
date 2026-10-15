@@ -253,7 +253,7 @@ export const tips = {
           "**Cách 2 - nhập tệp mẫu:** bấm **Tải tệp mẫu CSV**. Trong Google Sheet chọn **Tệp → Nhập → Tải lên** rồi chọn tệp vừa tải.",
           "Ở hộp **Nhập tệp**: **Vị trí nhập** chọn **Chèn (các) trang tính mới**, bỏ chọn **Chuyển đổi văn bản thành số, ngày tháng và công thức** → **Nhập dữ liệu**.",
         ],
-        see: "Dòng 1 có 14 cột, từ Link Drive tới Cập nhật lúc. Tệp mẫu có thêm 3 dòng ví dụ - xoá đi khi điền thật.",
+        see: "Dòng 1 có 15 cột, từ Link Drive tới Cập nhật lúc. Tệp mẫu có thêm 4 dòng ví dụ - xoá đi khi điền thật.",
         href: "#mau-sheet",
         actionLabel: "Xem mẫu sheet",
       },
@@ -262,6 +262,7 @@ export const tips = {
         detail: "Một dòng = một ảnh, một video, hoặc vài ảnh cùng nội dung.",
         substeps: [
           "Dán link Drive của ảnh / video vào cột **Link Drive**. Nhiều file trong một ô: xuống dòng bằng **Ctrl+Enter** (Mac: **⌘+Enter**).",
+          "Video: dán link ảnh bìa vào cột **Ảnh bìa** (tuỳ chọn). Để trống thì Meta tự lấy ảnh bìa do Meta chọn; TikTok cần ảnh bìa (cột **Ảnh bìa** hoặc chung ô **Link Drive** với video).",
           "Ghi **Nền tảng**, **Tài khoản QC**, **Nội dung**, **Tiêu đề**, **Link đích**.",
           "Cột **Trạng thái**: để trống, hoặc ghi **Chờ lên** / **Chưa tạo ads**.",
           "Để trống 6 cột hệ thống, từ **Mã media** tới **Cập nhật lúc** - AI tự điền.",
@@ -358,7 +359,7 @@ export const tips = {
       copyHeader: "Sao chép dòng tiêu đề",
       download: "Tải tệp mẫu CSV",
       downloadHelp:
-        "Tệp CSV (UTF-8) có dòng tiêu đề + 3 dòng ví dụ: ảnh Meta, video TikTok kèm ảnh bìa, và nhiều ảnh trong một ô (mỗi ảnh một quảng cáo).",
+        "Tệp CSV (UTF-8) có dòng tiêu đề + 4 dòng ví dụ: ảnh Meta, video TikTok có ảnh bìa ở cột Ảnh bìa, nhiều ảnh trong một ô (mỗi ảnh một quảng cáo), và video Meta không ảnh bìa (Meta tự chọn).",
       downloaded: "Đã tải tệp mẫu",
       columnsTitle: "Ý nghĩa từng cột",
       columnsLabel: "Các cột của sheet",
@@ -373,7 +374,13 @@ export const tips = {
           who: "you",
           required: true,
           detail:
-            "Link file trên Google Drive. Nhiều file trong một ô (video + ảnh bìa, nhiều ảnh): mỗi link một dòng trong ô, tối đa 10 link.",
+            "Link file trên Google Drive. Nhiều file trong một ô (nhiều ảnh, hoặc video + ảnh bìa nếu không dùng cột Ảnh bìa): mỗi link một dòng trong ô, tối đa 10 link.",
+        },
+        {
+          name: "Ảnh bìa",
+          who: "you",
+          detail:
+            "Tuỳ chọn. Link Drive của ảnh bìa (JPG, PNG) cho video ở dòng đó. Để trống: Meta tự lấy ảnh bìa khi video xử lý xong; TikTok dùng ảnh nằm cùng ô Link Drive.",
         },
         {
           name: "Tên creative",
@@ -555,9 +562,9 @@ export const tips = {
     tips: [
       "Chạy lượt nhỏ 5-10 dòng: mỗi lệnh của AI có giới hạn thời gian, mỗi MCP chỉ được khoảng 20 lượt đọc + 20 lượt ghi Google Sheet mỗi phút, và mỗi lần tải file / tạo quảng cáo đều cần bạn đồng ý khi bật Xác nhận 2 bước. Lượt nhỏ dễ kiểm tra, lỗi thì làm lại nhanh.",
       'Muốn đồng ý một lần: nhắn "cho tôi xem trước toàn bộ rồi tôi đồng ý một lần" - AI trình bày danh sách trước khi làm.',
-      "Video lớn (TikTok trên 10 MB, Meta trên 50 MB) được tải ở chế độ nền vài phút: AI nhận mã lượt tải và kiểm tra lại bằng ads_get_media_upload. Mỗi MCP tải nền tối đa 3 video cùng lúc.",
+      "Video lớn (TikTok trên 10 MB, Meta trên 20 MB) được tải ở chế độ nền vài phút: AI nhận mã lượt tải và kiểm tra lại bằng ads_get_media_upload. Mỗi MCP tải nền tối đa 3 video cùng lúc.",
       "Không tải trùng: file đã tải lên đúng tài khoản đó trước đây sẽ dùng lại mã cũ ngay.",
-      "Video trên Meta và TikTok cần ảnh bìa: để link video và link ảnh bìa trong cùng ô Link Drive.",
+      "Ảnh bìa video: dán link ảnh vào cột Ảnh bìa, hoặc để chung ô Link Drive với video như trước. Meta: để trống thì hệ thống tự lấy ảnh bìa Meta chọn khi video đã xử lý xong (video vừa tải có thể cần vài phút).",
       "Đừng sắp xếp, lọc, chèn hay xoá dòng trong lúc AI đang chạy - dòng bị lệch sẽ bị bỏ qua để tránh ghi nhầm.",
       "Mã tài khoản dài (TikTok 19 chữ số) bị Google Sheet đổi thành số mũ: chọn cột Tài khoản QC → Định dạng → Số → Văn bản thuần túy trước khi gõ, hoặc ghi tên tài khoản.",
     ],

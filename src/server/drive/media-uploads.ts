@@ -51,6 +51,28 @@ export async function findReusableMedia(
   }
 }
 
+/**
+ * true when this media id was uploaded from Drive to this ad account by the app (drive_media_uploads - the relay path
+ * and the background job both record there). Used to trust a video id without asking the platform's library.
+ */
+export async function isKnownMediaId(
+  adAccountId: string,
+  mediaId: string,
+  tx: DbLike = db
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ mediaId: driveMediaUploads.mediaId })
+    .from(driveMediaUploads)
+    .where(
+      and(
+        eq(driveMediaUploads.adAccountId, adAccountId),
+        eq(driveMediaUploads.mediaId, mediaId)
+      )
+    )
+    .limit(1)
+  return !!row
+}
+
 export interface RecordMediaUploadInput extends MediaUploadKey {
   mediaType: DriveMediaFamily
   mediaId: string

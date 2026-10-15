@@ -355,6 +355,29 @@ export interface MutationOptions {
    * reads itself (TikTok GMV Max: /campaign/gmv_max/info/ budget). Throws a Vietnamese McpToolError when violated.
    */
   budgetChangeGuard?: (q: { current: number; next: number; currency: string }) => Promise<void>
+  /**
+   * EXECUTION only, set by mcp-core: SSRF-guarded download (https only, size-capped, image magic bytes checked) of an
+   * image URL returned BY THE PLATFORM (Meta video thumbnail = signed fbcdn URL). Adapters never fetch such a URL
+   * themselves and never return / log / store it. Absent → features that need it (Meta automatic video cover) refuse.
+   */
+  fetchImage?: (url: string, o: { maxBytes: number }) => Promise<{ bytes: Uint8Array; contentType: string }>
+  /**
+   * Google Drive image named by the input (ProviderExtension.driveImageRef), resolved by mcp-core in the MCP's Drive
+   * scope. Preview: label only - nothing is uploaded (imageHash only when this file version is already in the ad
+   * account). Execution: imageHash of the image uploaded / reused in this ad account (always set on execution).
+   */
+  driveImage?: { label: string; imageHash?: string }
+  /**
+   * Set by mcp-core: true when this media id is known to belong to the ad account because THIS APP uploaded it there
+   * (drive_media_uploads / logged uploads). Lets adapters skip the platform-side ownership check of an AI-supplied id
+   * (Meta video status / cover reads, v1.1.2 S-M1). Absent → adapters always check on the platform.
+   */
+  isKnownMedia?: (q: { type: "image" | "video"; id: string }) => Promise<boolean>
+  /**
+   * Absolute deadline (epoch ms) of media sub-steps of an EXECUTION (Meta automatic cover: status read, guarded
+   * download, adimages upload), counted from the tool call's arrival. Absent → the steps' own timeouts.
+   */
+  deadlineAt?: number
 }
 
 /**
@@ -578,6 +601,25 @@ export interface MediaRef {
   url?: string | null
   /** video only: true when the wait budget ended before the platform finished processing (id still usable later) */
   processing?: boolean
+  /**
+   * video only: the upload call timed out (outcome unknown) and the video was found again in the ad account's library
+   * by its unique name (Meta advideos?title=, best effort) - the id is that video, nothing was uploaded twice
+   */
+  recovered?: boolean
+}
+
+/** Live state of an uploaded video on the platform (AdsProvider.getMediaStatus). */
+export interface MediaStatus {
+  type: "video"
+  id: string
+  /** processing = still being uploaded / encoded (not usable in an ad yet) · ready = usable · failed = upload again */
+  status: "processing" | "ready" | "failed"
+  /** platform processing progress 0-100 when known */
+  progressPercent: number | null
+  /** Vietnamese reason when failed (sanitised platform message), else null */
+  error: string | null
+  /** ready videos: the platform extracted a thumbnail usable as automatic cover (null = not checked) */
+  hasThumbnail: boolean | null
 }
 
 export const LOOKUP_KINDS = [
@@ -680,6 +722,18 @@ export interface ProviderExtension<C = unknown, I = any, O = unknown> {
    * the generic "always created paused" notes are not shown. The adapter must warn itself.
    */
   createsActive?: true
+  /**
+   * Optional: Google Drive image reference carried by the input (meta_create_ad creative.image_drive_file - file id,
+   * Drive link or drf_ ref). mcp-core resolves it in the MCP's Drive scope on both steps, uploads it to the ad account
+   * on execution (reused per file version) and hands it over as MutationOptions.driveImage; the confirmation is bound
+   * to the resolved file id. undefined = no Drive image in this input.
+   */
+  driveImageRef?(input: I): string | undefined
+  /**
+   * true: the tool may download images returned BY THE PLATFORM (Meta video thumbnails) - mcp-core then hands it
+   * MutationOptions.fetchImage on execution. Other tools never get the fetcher.
+   */
+  fetchesPlatformImages?: true
   run(ctx: ProviderContext<C>, input: I, opts: MutationOptions): Promise<O>
 }
 
@@ -765,6 +819,11 @@ export interface AdsProvider<C = unknown> {
   uploadMedia(ctx: ProviderContext<C>, r: MediaUploadRequest): Promise<MediaRef>
   /** server-driven chunked video upload (Meta, TikTok); absent = not supported */
   uploadVideoChunked?(ctx: ProviderContext<C>, r: ChunkedVideoUploadRequest): Promise<MediaRef>
+  /**
+   * Optional (Meta): live status of an uploaded video. verifyAccount: the id came from the AI (not from our own upload
+   * records) - also check that the video is in this ad account's library (not found → ProviderError not_found).
+   */
+  getMediaStatus?(ctx: ProviderContext<C>, q: { type: "video"; id: string; verifyAccount?: boolean }): Promise<MediaStatus>
   lookup(
     ctx: ProviderContext<C>,
     kind: LookupKind,

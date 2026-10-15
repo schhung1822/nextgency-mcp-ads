@@ -6,7 +6,7 @@ import { copyMetaObject } from "./copy"
 import { metaCredentialFields, metaCredentialHint, metaGuide, parseMetaCredentials } from "./credentials"
 import { metaExtensions } from "./extensions"
 import { metaLookup } from "./lookup"
-import { uploadMetaMedia, uploadMetaVideoChunked } from "./media"
+import { getMetaMediaStatus, uploadMetaMedia, uploadMetaVideoChunked } from "./media"
 import { deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject } from "./mutate"
 import { getMetaObject, listMetaObjects } from "./objects"
 import { listMetaPages } from "./pages"
@@ -55,5 +55,6 @@ export const metaProvider: AdsProvider<MetaCredentials> = {
   deleteObject: deleteMetaObject,
   uploadMedia: uploadMetaMedia,
   uploadVideoChunked: uploadMetaVideoChunked,
+  getMediaStatus: getMetaMediaStatus,
   lookup: metaLookup,
 }

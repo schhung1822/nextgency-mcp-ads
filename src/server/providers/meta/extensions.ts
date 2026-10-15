@@ -2,13 +2,18 @@
 // Rules (meta.md §5): every create sends status=PAUSED; ABO campaigns send is_adset_budget_sharing_enabled;
 // targeting always carries targeting_automation.advantage_audience; Advantage+ creative features are OPT_OUT unless
 // requested; money in MAJOR units converted via toMetaMinor; dryRun = execution_options=["validate_only"].
+// meta_create_ad cover (D1-D5): explicit image_hash > image_url > image_drive_file (resolved + uploaded by mcp-core,
+// MutationOptions.driveImage) > video only: Meta's own preferred thumbnail of a READY video (preview: the signed uri
+// is used for validate_only only; execution: downloaded through opts.fetchImage → adimages → image_hash). The signed
+// uri never reaches the preview payload, summaries, changes, warnings or errors (replaced by a label).
 import { z } from "zod"
 
-import { isProviderError } from "../errors"
+import { isProviderError, ProviderError } from "../errors"
 import { metaCurrencyOffset, toMetaMinor } from "../money"
 import type { FieldChange, MutationOptions, MutationResult, ProviderContext, ProviderExtension } from "../types"
 import { actId, graph, graphPage, isIsoDateTimeWithOffset, type MetaCredentials } from "./client"
 import { advertisablePages } from "./lookup"
+import { ensureMetaVideoInAccount, metaVideoCoverUri, readMetaVideo, uploadMetaCoverFromUri } from "./media"
 import { validateOnly } from "./mutate"
 import { readNode, type RawNode } from "./objects"
 import { callCtx, fmtMoney, hasBudget, invalid } from "./shared"
@@ -259,7 +264,8 @@ async function runCreate(
   summary: Record<string, unknown>,
   warnings: string[],
   opts: MutationOptions,
-  level: "campaign" | "ad_group" | "ad"
+  level: "campaign" | "ad_group" | "ad",
+  o: { skipValidate?: boolean } = {}
 ): Promise<MetaWriteResult> {
   const change = (id: string): FieldChange => ({
     objectId: id,
@@ -270,7 +276,7 @@ async function runCreate(
     after: summary,
   })
   if (opts.dryRun) {
-    await validateOnly(ctx, `${actId(ctx.account.externalId)}/${edge}`, payload)
+    if (!o.skipValidate) await validateOnly(ctx, `${actId(ctx.account.externalId)}/${edge}`, payload)
     return { preview: true, changes: [change("(mới)")], warnings, payload: summary }
   }
   const id = await createObject(ctx, edge, payload, warnings)
@@ -634,6 +640,16 @@ const ctaInput = z
   })
   .strict()
 
+/** Google Drive image (cover / link image) - resolved and uploaded by mcp-core (ProviderExtension.driveImageRef). */
+const driveImageInput = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_048)
+  .describe(
+    "Ảnh trên Google Drive người dùng đưa (file_id / link Drive / mã drf_ từ drive_list_files, drive_sheet_read) - hệ thống tự tải lên khi xác nhận"
+  )
+
 const linkCreative = z
   .object({
     type: z.literal("link"),
@@ -643,6 +659,7 @@ const linkCreative = z
     description: z.string().max(255).optional(),
     image_hash: z.string().regex(/^[a-f0-9]{32}$/i).optional().describe("Từ ads_upload_media"),
     image_url: z.url().optional(),
+    image_drive_file: driveImageInput.optional(),
     call_to_action: ctaInput.optional(),
   })
   .strict()
@@ -650,9 +667,10 @@ const linkCreative = z
 const videoCreative = z
   .object({
     type: z.literal("video"),
-    video_id: digits.describe("Từ ads_upload_media type=video"),
-    image_hash: z.string().regex(/^[a-f0-9]{32}$/i).optional().describe("Ảnh thumbnail"),
-    image_url: z.url().optional().describe("Ảnh thumbnail"),
+    video_id: digits.describe("Từ ads_upload_media type=video / ads_get_media_upload"),
+    image_hash: z.string().regex(/^[a-f0-9]{32}$/i).optional().describe("Ảnh bìa (thumbnail) từ ads_upload_media"),
+    image_url: z.url().optional().describe("Ảnh bìa (thumbnail)"),
+    image_drive_file: driveImageInput.optional(),
     message: z.string().max(5000).optional(),
     title: z.string().max(255).optional(),
     link: z.url().optional(),
@@ -708,9 +726,10 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
     if (!input.page_id) throw invalid("Cần page_id (Trang chạy quảng cáo).", "Gọi ads_lookup kind=pages.")
     const spec: Record<string, unknown> = { page_id: input.page_id }
     if (input.instagram_user_id) spec.instagram_user_id = input.instagram_user_id
+    const imageSources = [c.image_hash, c.image_url, c.image_drive_file].filter((v) => v !== undefined).length
+    if (imageSources > 1) throw invalid("Chỉ truyền một trong image_hash, image_url hoặc image_drive_file.")
     if (c.type === "link") {
-      if (!c.image_hash && !c.image_url) warnings.push("Không có ảnh - Meta sẽ dùng ảnh lấy từ link (nếu có).")
-      if (c.image_hash && c.image_url) throw invalid("Chỉ truyền một trong image_hash hoặc image_url.")
+      if (imageSources === 0) warnings.push("Không có ảnh - Meta sẽ dùng ảnh lấy từ link (nếu có).")
       const linkData: Record<string, unknown> = { link: c.link }
       if (c.message) linkData.message = c.message
       if (c.headline) linkData.name = c.headline
@@ -721,7 +740,7 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
       if (cta) linkData.call_to_action = cta
       spec.link_data = linkData
     } else {
-      if (!c.image_hash && !c.image_url) throw invalid("Quảng cáo video cần ảnh thumbnail (image_hash hoặc image_url).")
+      // no cover given: applyCover() uses Meta's own thumbnail (ready video) - D1
       const videoData: Record<string, unknown> = { video_id: c.video_id }
       if (c.image_hash) videoData.image_hash = c.image_hash
       else if (c.image_url) videoData.image_url = c.image_url
@@ -758,9 +777,121 @@ export function buildAdPayload(input: CreateAdInput, adset: RawNode, warnings: s
     objective: campaign.objective ?? null,
     optimization_goal: goal || null,
     status: "PAUSED",
-    creative,
+    creative: structuredClone(creative),
   }
   return { payload, summary }
+}
+
+/** Labels shown instead of a cover that is not uploaded yet / a signed Meta URL (never in previews or logs). */
+export const META_AUTO_COVER_LABEL = "<ảnh bìa Meta tự chọn từ video>"
+export function driveCoverLabel(label: string | undefined): string {
+  return `<ảnh bìa từ Google Drive: ${label ?? "?"}>`
+}
+
+/** Error with every occurrence of the signed uri (and any fbcdn URL) removed - the uri must never leave the adapter. */
+function scrubUri(e: unknown, uri: string): unknown {
+  if (!isProviderError(e)) return e
+  const clean = (s: string | undefined | null) =>
+    s ? s.split(uri).join("[ảnh bìa]").replace(/https?:\/\/[^\s"']*fbcdn[^\s"']*/gi, "[ảnh bìa]") : s
+  return new ProviderError({
+    platform: e.platform,
+    code: e.code,
+    toolCode: e.toolCode,
+    message: clean(e.message) ?? "meta error",
+    userMessageVi: clean(e.userMessageVi) ?? "",
+    hint: clean(e.hint) ?? undefined,
+    retryable: e.retryable,
+    retryAfterMs: e.retryAfterMs,
+    upstream: e.upstream ? { ...e.upstream, message: clean(e.upstream.message ?? null) } : undefined,
+  })
+}
+
+/**
+ * Cover / link image of meta_create_ad (D1-D5). Mutates payload (what Meta gets) and summary (what is shown/logged).
+ * Returns the signed uri used for validate_only (preview, to scrub from errors) and whether validate_only must be
+ * skipped (preview of a Drive cover for a video whose own thumbnail is not available yet).
+ */
+function failedVideoNote(id: string, reason: string | null): string {
+  return `Meta báo video ${id} xử lý thất bại${reason ? ` (${reason})` : ""} - quảng cáo nhiều khả năng bị từ chối; nên tải video lên lại.`
+}
+
+async function applyCover(
+  ctx: ProviderContext<MetaCredentials>,
+  input: CreateAdInput,
+  payload: Record<string, unknown>,
+  summary: Record<string, unknown>,
+  warnings: string[],
+  opts: MutationOptions
+): Promise<{ uri: string | null; skipValidate: boolean }> {
+  const c = input.creative
+  if (c.type === "existing_post") return { uri: null, skipValidate: false }
+  const key = c.type === "video" ? "video_data" : "link_data"
+  const data = ((payload.creative as Record<string, unknown>).object_story_spec as Record<string, Record<string, unknown>>)[key]!
+  const shown = ((summary.creative as Record<string, unknown>).object_story_spec as Record<string, Record<string, unknown>>)[key]!
+  const imageField = c.type === "video" ? "image_url" : "picture"
+
+  if (c.image_drive_file !== undefined) {
+    const label = driveCoverLabel(opts.driveImage?.label)
+    const hash = opts.driveImage?.imageHash
+    if (hash) {
+      data.image_hash = shown.image_hash = hash
+      shown.image_source = label
+      return { uri: null, skipValidate: false }
+    }
+    if (!opts.dryRun) throw invalid("Lỗi nội bộ: ảnh Google Drive chưa được tải lên trước khi tạo quảng cáo.")
+    // preview: nothing uploaded yet (D3)
+    shown.image = `${label} - tải lên khi xác nhận`
+    if (c.type === "link") return { uri: null, skipValidate: false } // validated without picture meanwhile
+    // S-M1: the video's status is read only once it is known to belong to this ad account
+    await ensureMetaVideoInAccount(ctx, c.video_id, opts)
+    // validate_only needs a thumbnail: Meta's own (ready video) stands in for the Drive image, never shown
+    let uri: string | null = null
+    try {
+      uri = await metaVideoCoverUri(ctx, c.video_id)
+    } catch (e) {
+      // a failed video is said (C-Low), like with an explicit cover; processing / no thumbnail → Meta checks later
+      if (isProviderError(e) && e.toolCode === "video_failed") warnings.push(failedVideoNote(c.video_id, null))
+    }
+    if (uri) {
+      data[imageField] = uri
+      return { uri, skipValidate: false }
+    }
+    warnings.push("Chưa kiểm tra trước với Meta (validate_only) vì ảnh bìa Google Drive chỉ được tải lên khi xác nhận và video chưa có ảnh bìa Meta - Meta sẽ kiểm tra khi tạo.")
+    return { uri: null, skipValidate: true }
+  }
+
+  if (c.type !== "video") return { uri: null, skipValidate: false }
+  if (c.image_hash || c.image_url) {
+    // explicit cover (D4): passed through, Meta decides; preview notes a video that is not ready (best effort)
+    if (opts.dryRun) {
+      // S-M1: no status read of a video not verified to be in this ad account (no warning then - Meta decides)
+      const verified = await ensureMetaVideoInAccount(ctx, c.video_id, opts).then(
+        () => true,
+        () => false
+      )
+      const st = verified ? await readMetaVideo(callCtx(ctx), c.video_id).catch(() => null) : null
+      if (st?.kind === "processing")
+        warnings.push(`Video ${c.video_id} còn đang được Meta xử lý${st.progress !== null ? ` (${st.progress}%)` : ""} - Meta có thể từ chối hoặc duyệt chậm nếu tạo quảng cáo ngay.`)
+      if (st?.kind === "failed") warnings.push(failedVideoNote(c.video_id, st.error))
+    }
+    return { uri: null, skipValidate: false }
+  }
+
+  // automatic cover (D1-D3): READY video only - processing → video_processing, failed → video_failed.
+  // S-M1: an id not known to belong to this ad account → neutral not_found before any status / cover read.
+  await ensureMetaVideoInAccount(ctx, c.video_id, opts)
+  const uri = await metaVideoCoverUri(ctx, c.video_id, opts.deadlineAt)
+  if (opts.dryRun) {
+    data.image_url = uri
+    shown.image = `${META_AUTO_COVER_LABEL} - tải lên khi xác nhận`
+    warnings.push("Không có ảnh bìa: hệ thống sẽ tự dùng ảnh bìa Meta trích từ video (người dùng có thể đưa ảnh bìa riêng qua image_drive_file).")
+    return { uri, skipValidate: false }
+  }
+  const hash = await uploadMetaCoverFromUri(ctx, uri, opts.fetchImage, opts.deadlineAt)
+  data.image_hash = shown.image_hash = hash
+  shown.image_source = META_AUTO_COVER_LABEL
+  warnings.push(`Đã tự dùng ảnh bìa Meta trích từ video (image_hash ${hash}).`)
+  return { uri: null, skipValidate: false }
 }
 
 const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResult> = {
@@ -770,13 +901,20 @@ const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResul
   description:
     "Dùng khi cần tạo quảng cáo trong một nhóm quảng cáo Meta đã có (adset_id từ ads_list_objects hoặc " +
     "meta_create_adset). Quảng cáo luôn được tạo ở trạng thái TẠM DỪNG và phải qua Meta duyệt. Creative tạo kèm: " +
-    "`link` (ảnh + link: image_hash từ ads_upload_media), `video` (video_id từ ads_upload_media + ảnh thumbnail), " +
-    "hoặc `existing_post` (object_story_id dạng PAGEID_POSTID). Cần page_id (ads_lookup kind=pages) trừ khi dùng bài " +
+    "`link` (ảnh + link), `video` (video_id từ ads_upload_media / ads_get_media_upload) hoặc `existing_post` " +
+    "(object_story_id dạng PAGEID_POSTID). Ảnh (link) / ảnh bìa (video): truyền MỘT trong image_hash (ads_upload_media), " +
+    "image_url, hoặc image_drive_file = ảnh Google Drive người dùng đưa (file_id / link Drive / drf_ từ drive_list_files, " +
+    "drive_sheet_read) - hệ thống tự tải ảnh lên khi xác nhận (dùng lại nếu đã tải). Video không có ảnh bìa: hệ thống tự " +
+    "lấy ảnh bìa Meta trích từ video khi video đã sẵn sàng; video đang xử lý → lỗi video_processing (thử lại sau ít phút " +
+    "hoặc đưa ảnh bìa), video lỗi → video_failed (tải video lên lại). Cần page_id (ads_lookup kind=pages) trừ khi dùng bài " +
     "có sẵn; instagram_user_id tuỳ chọn (ads_lookup kind=instagram_accounts). Mọi tính năng Advantage+ creative " +
     "(tự sửa ảnh, đổi chữ, thêm nhạc…) gửi OPT_OUT trừ khi liệt kê trong advantage_creative_opt_in. Quảng cáo biểu " +
     "mẫu cần call_to_action.lead_gen_form_id. url_tags để gắn UTM.",
   input: createAdInput,
   write: true,
+  driveImageRef: (input) => (input.creative.type === "existing_post" ? undefined : input.creative.image_drive_file),
+  // automatic video cover: downloads Meta's own thumbnail through mcp-core's guarded fetch
+  fetchesPlatformImages: true,
   async run(ctx, input, opts) {
     const adset = await readNode(ctx, "adset", input.adset_id, [
       "id",
@@ -791,7 +929,12 @@ const createAd: ProviderExtension<MetaCredentials, CreateAdInput, MetaWriteResul
     // dry run AND execute: page_id and the Page of an existing post (PAGEID_POSTID) must be advertisable
     const postPage = input.creative.type === "existing_post" ? input.creative.object_story_id.split("_")[0] : undefined
     await assertAdvertisablePages(ctx, [input.page_id, postPage])
-    return runCreate(ctx, "ads", payload, summary, warnings, opts, "ad")
+    const cover = await applyCover(ctx, input, payload, summary, warnings, opts)
+    try {
+      return await runCreate(ctx, "ads", payload, summary, warnings, opts, "ad", { skipValidate: cover.skipValidate })
+    } catch (e) {
+      throw cover.uri ? scrubUri(e, cover.uri) : e
+    }
   },
 }
 

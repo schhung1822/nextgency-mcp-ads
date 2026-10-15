@@ -34,6 +34,9 @@ describe("bulk ads sheet template", () => {
         (k) => DEFAULT_SHEET_COLUMNS[k]
       )
     )
+    // v1.1.2: the optional "Ảnh bìa" column sits right after Link Drive and is filled by the user
+    expect(BULK_SHEET_COLUMNS.slice(0, 2)).toEqual(["Link Drive", "Ảnh bìa"])
+    expect(BULK_SYSTEM_COLUMNS).not.toContain("Ảnh bìa" as never)
   })
 
   it("copies the header as tab-separated cells", () => {
@@ -42,20 +45,26 @@ describe("bulk ads sheet template", () => {
     expect(tsv).not.toContain("\n")
   })
 
-  it("builds a UTF-8 BOM CSV with quoted multi-link cells and 14 cells per row", () => {
+  it("builds a UTF-8 BOM CSV with quoted multi-link cells and one cell per header column", () => {
     const csv = buildSheetTemplateCsv()
-    expect(csv.startsWith("﻿Link Drive,Tên creative,")).toBe(true)
+    expect(csv.startsWith("﻿Link Drive,Ảnh bìa,Tên creative,")).toBe(true)
     expect(csv.endsWith("\r\n")).toBe(true)
     // a cell holding several links (newline inside) is quoted
     expect(csv).toContain(
-      '"https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view\nhttps://'
+      '"https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view\nhttps://'
     )
-    expect(BULK_TEMPLATE_ROWS).toHaveLength(3)
+    expect(BULK_TEMPLATE_ROWS).toHaveLength(4)
     for (const row of BULK_TEMPLATE_ROWS)
-      expect(row.length).toBeLessThanOrEqual(14)
+      expect(row.length).toBeLessThanOrEqual(BULK_SHEET_COLUMNS.length)
+    // the TikTok video row has its cover in the "Ảnh bìa" column
+    const cover = BULK_SHEET_COLUMNS.indexOf("Ảnh bìa")
+    expect(BULK_TEMPLATE_ROWS[1]![cover]).toMatch(
+      /^https:\/\/drive\.google\.com\//
+    )
     // example statuses are values the sheet reader accepts as "pending"
+    const statusAt = BULK_SHEET_COLUMNS.indexOf("Trạng thái")
     for (const row of BULK_TEMPLATE_ROWS) {
-      const status = row[7] ?? ""
+      const status = row[statusAt] ?? ""
       expect(
         status === "" || SHEET_STATUS_ALIASES.pending.includes(status)
       ).toBe(true)
@@ -80,6 +89,27 @@ describe("bulk ads prompt builder", () => {
     expect(rule).toContain("Không tự tạo chiến dịch")
     expect(rule).toContain("Meta: meta_create_ad")
     expect(rule).toContain("TikTok: tiktok_create_ads")
+    // video covers: the "Ảnh bìa" column, else the old "same Link Drive cell" convention; per platform
+    expect(rule).toContain("cover của dòng (cột Ảnh bìa)")
+    expect(rule).toContain("cùng ô Link Drive với video")
+    expect(rule).toContain("image_drive_file")
+    expect(rule).toContain("video_processing")
+    expect(rule).toContain("TikTok: tải ảnh bìa bằng ads_upload_media")
+  })
+
+  it("cover sentence follows the platform: Meta only, TikTok only, none for OpenAI Ads", () => {
+    const meta = buildBulkAdsRule({ ...DEFAULT_BULK_ADS, platform: "meta" })
+    expect(meta).toContain("image_drive_file")
+    expect(meta).not.toContain("TikTok: tải ảnh bìa")
+    const tiktok = buildBulkAdsRule({ ...DEFAULT_BULK_ADS, platform: "tiktok" })
+    expect(tiktok).toContain("TikTok: tải ảnh bìa")
+    expect(tiktok).not.toContain("image_drive_file")
+    const openai = buildBulkAdsRule({
+      ...DEFAULT_BULK_ADS,
+      platform: "openai_ads",
+    })
+    expect(openai).not.toContain("Ảnh bìa")
+    expect(openai).toContain("Nhiều ảnh trong một ô")
   })
 
   it("new structure: one campaign + group per account with the typed budget", () => {

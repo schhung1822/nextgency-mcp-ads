@@ -148,7 +148,7 @@ Khi nghi lộ khoá, khi nhân sự giữ khoá nghỉ việc, hoặc định k�
   ```
 - Log container (stdout) được Docker xoay vòng: tối đa 5 file × 20 MB mỗi service. Access log của Caddy đã che `/mcp/<key>`, token link tạm video `/dl/<token>` và bỏ header `Authorization`/`Cookie`.
 - Link tạm video Google Drive (`/dl/…`) hết hạn sau 60 phút; job `drive.cleanup` (03:50 hằng ngày) xoá bản ghi đã hết hạn quá 24 giờ. Job `drive.health` (phút 40, mỗi 6 giờ) kiểm tra lại service account và các thư mục / sheet đã khai báo - trạng thái hiện ở **Kết nối → Google Drive**.
-- Video lớn từ Google Drive (Meta > 50 MB, TikTok > 10 MB) được **worker** tải lên ở nền (job `media.video_upload`, mỗi lần một video, có thể mất vài phút); AI xem tiến độ bằng `ads_get_media_upload`. Nếu container worker dừng, lượt tải nằm chờ; lượt tải bị treo (không báo tiến độ 30 phút) được job `media.upload_sweep` đánh dấu lỗi - chỉ cần yêu cầu AI tải lại.
+- Video lớn từ Google Drive (Meta > 20 MB, TikTok > 10 MB) được **worker** tải lên ở nền (job `media.video_upload`, mỗi lần một video, có thể mất vài phút); AI xem tiến độ bằng `ads_get_media_upload`. Nếu container worker dừng, lượt tải nằm chờ; lượt tải bị treo (không báo tiến độ 30 phút) được job `media.upload_sweep` đánh dấu lỗi - chỉ cần yêu cầu AI tải lại.
 - Video tải qua link tạm đi Drive → máy chủ → nền tảng: tốn băng thông VPS cả chiều vào lẫn ra (không ghi đĩa).
 
 ## Giám sát
