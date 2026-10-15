@@ -103,7 +103,7 @@ export function assertApifyEnabled(grant: McpGrant): void {
     throw denied(
       "permission_denied",
       "MCP này không được phép dùng Apify.",
-      'Chủ MCP bật "Cho phép AI lấy dữ liệu qua Apify" trong cấu hình MCP (bước Chọn quyền).'
+      'Chủ MCP bật thẻ Apify trong cấu hình MCP (phần Nền tảng & tài khoản).'
     )
   }
   if (grant.apifyTokens.length === 0) throw noTokenError()
@@ -387,7 +387,7 @@ export function capTooLowError(
   return invalid(
     "apify_run_cap_too_low",
     `Actor ${actorId} yêu cầu trần chi phí tối thiểu ${usd(cap.actorMinUsd)} mỗi lần chạy, cao hơn trần mỗi lần chạy của MCP (${usd(cap.settingsCapUsd)}).`,
-    'Chủ MCP có thể nâng "Trần mỗi lần chạy (USD)" (MCP → Cấu hình → Chọn quyền → Apify), hoặc chọn việc / Actor khác.'
+    'Chủ MCP có thể nâng "Trần mỗi lần chạy (USD)" (MCP → Cấu hình → Quyền → Apify), hoặc chọn việc / Actor khác.'
   )
 }
 

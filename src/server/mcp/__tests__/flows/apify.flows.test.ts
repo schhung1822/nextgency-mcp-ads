@@ -277,6 +277,42 @@ describe.skipIf(!hasDb)("Apify trong MCP (flows)", () => {
     expect(detail.sc.task_detail.input_schema.properties.url).toBeDefined()
   })
 
+  it("MCP chỉ dùng Apify (A5): chỉ có tool apify_*, không có ads_* / tool nền tảng, instructions không nhắc ads_*; chạy việc được", async () => {
+    const t = await addToken(w.users.staff, "only")
+    iso.tokenIds.clear()
+    iso.tokenIds.add(t.id)
+    const m = await w.mcp(w.users.staff, {
+      platforms: {},
+      settings: { apifyEnabled: true, apifyRunMaxUsd: 1, apifyDailyMaxUsd: 10 },
+    })
+    const { status, names } = await w.tools(m.key)
+    expect(status).toBe(200)
+    expect([...names].sort()).toEqual([...APIFY_CATALOG_TOOL_NAMES].sort())
+    expect(names.some((n) => !n.startsWith("apify_"))).toBe(false)
+    // a hidden ad tool cannot be called either
+    expect((await w.call(m.key, "ads_list_accounts", {})).isError).toBe(true)
+    const init = await w.rpc(
+      m.key,
+      "initialize",
+      {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "vitest-apify-only", version: "1" },
+      },
+      { modern: false }
+    )
+    expect(init.msg.result.instructions).toContain("apify_list_tasks")
+    expect(init.msg.result.instructions).not.toContain("ads_list_accounts")
+    const r = await runTask(m.key)
+    expect(r.isError, r.text).toBe(false)
+    expect(r.sc).toMatchObject({ status: "SUCCEEDED", task: "web_page_read" })
+    // with an ad platform added the same MCP does both (ads_* + apify_*)
+    const both = await apifyMcp(w.users.staff)
+    const bothNames = (await w.tools(both.key)).names
+    expect(bothNames).toContain("ads_list_accounts")
+    expect(bothNames).toContain("apify_run_task")
+  })
+
   it("apify_run_task: trần lần chạy = min(AI, MCP), token ghim, xong kịp → vài dòng đầu; get_run / get_results; log không có token", async () => {
     const t = await addToken(w.users.staff, "run")
     iso.tokenIds.clear()

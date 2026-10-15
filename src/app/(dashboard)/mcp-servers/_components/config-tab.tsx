@@ -40,7 +40,8 @@ import {
   APIFY_ENABLE_SWITCH_ID,
   APIFY_RUN_MAX_ID,
   APIFY_STORE_SWITCH_ID,
-  ApifyPermissionsSection,
+  ApifyPermissionsCard,
+  ApifyPlatformCard,
 } from "./apify-sections"
 import {
   DrivePermissionsSection,
@@ -125,7 +126,10 @@ function focusGmvMaxSwitch() {
   focusById(GMV_MAX_SWITCH_ID)
 }
 
-/** A refused Apify field (admin-only switch, staff widening of the caps): focus it, like the GMV Max switch. */
+/**
+ * A refused Apify field (admin-only switch, staff widening of the caps, Apify-only MCP without a token): focus it, like
+ * the GMV Max switch. The enable switch sits on the Apify platform card (section "Nền tảng & tài khoản").
+ */
 function apifyFieldToFocus(errors: StepErrors): string | null {
   if (errors.apifyStoreActors) return APIFY_STORE_SWITCH_ID
   if (errors.apifyRunMaxUsd) return APIFY_RUN_MAX_ID
@@ -214,7 +218,7 @@ export function ConfigTab({
   gmvMax?: GmvMaxFormContext
   /** viewer's 2FA state: the re-auth dialog (turning the GMV Max switch on) asks for the TOTP code too */
   twoFactorEnabled?: boolean
-  /** Apify token pool of the MCP OWNER (company + the owner's personal tokens) - the Apify card */
+  /** Apify token pool of the MCP OWNER (company + the owner's personal tokens) - the Apify platform card */
   apifyPool?: McpApifyPoolSummary | null
 }) {
   const router = useRouter()
@@ -373,6 +377,15 @@ export function ConfigTab({
               errors={errors}
               connections={connections}
               layout="grid"
+              extraCards={
+                <ApifyPlatformCard
+                  values={values}
+                  update={update}
+                  errors={errors}
+                  pool={apifyPool}
+                  ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
+                />
+              }
             />
             <TelegramChannelsSection
               values={values}
@@ -402,6 +415,17 @@ export function ConfigTab({
             <PermissionsSection
               values={values}
               update={update}
+              extraCards={
+                values.apifyEnabled ? (
+                  <ApifyPermissionsCard
+                    values={values}
+                    update={update}
+                    errors={errors}
+                    isAdmin={gmvMax.isAdmin}
+                    savedStoreOn={initial.apifyStoreActors}
+                  />
+                ) : undefined
+              }
               platformExtra={{
                 tiktok: (
                   <TiktokGmvMaxBlock
@@ -421,15 +445,6 @@ export function ConfigTab({
               update={update}
               sources={driveSources}
               publicLinksAvailable={drivePublicAvailable}
-            />
-            <ApifyPermissionsSection
-              values={values}
-              update={update}
-              errors={errors}
-              pool={apifyPool}
-              isAdmin={gmvMax.isAdmin}
-              savedStoreOn={initial.apifyStoreActors}
-              ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
             />
             <Alert>
               <HugeiconsIcon

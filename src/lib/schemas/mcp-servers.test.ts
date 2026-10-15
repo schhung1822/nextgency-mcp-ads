@@ -28,6 +28,7 @@ import {
   sanitizeHiddenAdvanced,
   summarizeScopeIssues,
   toStoredMcpSettings,
+  updateMcpSchema,
   validateNameStep,
   validatePermissionsStep,
   validatePlatformsStep,
@@ -1078,6 +1079,40 @@ describe("Apify settings (16-apify.md §7)", () => {
     const off = { ...basic, protectionMode: "advanced" as const, apifyEnabled: false, apifyRunMaxUsd: "99" }
     expect(formValuesToConfig(off).settings).toMatchObject({ apifyEnabled: false, apifyRunMaxUsd: 1, apifyDailyMaxUsd: 10 })
     expect(mcpConfigSchema.shape.settings.safeParse(formValuesToConfig(off).settings).success).toBe(true)
+  })
+
+  it("A5: Apify counts as a platform - an Apify-only MCP is valid, nothing selected is not (form + create / update / config schemas)", () => {
+    const required = "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads hoặc Apify)."
+    const none = { ...defaultMcpFormValues(), name: "Chỉ Apify" }
+    expect(validatePlatformsStep(none).platforms).toBe(required)
+    const apifyOnly = { ...none, apifyEnabled: true }
+    expect(validatePlatformsStep(apifyOnly)).toEqual({})
+    expect(validatePermissionsStep(apifyOnly)).toEqual({})
+
+    const input = formValuesToCreateInput(apifyOnly)
+    expect(input.platforms).toEqual([])
+    const parsed = createMcpSchema.parse(input)
+    expect(parsed.platforms).toEqual([])
+    expect(parsed.settings.apifyEnabled).toBe(true)
+    expect(mcpConfigSchema.safeParse(input).success).toBe(true)
+    expect(updateMcpSchema.safeParse({ ...input, id: CONN }).success).toBe(true)
+
+    for (const schema of [createMcpSchema, mcpConfigSchema]) {
+      const r = schema.safeParse(formValuesToCreateInput(none))
+      expect(r.success).toBe(false)
+      expect(r.error?.issues).toContainEqual(expect.objectContaining({ path: ["platforms"], message: required }))
+    }
+    expect(updateMcpSchema.safeParse({ ...formValuesToCreateInput(none), id: CONN }).success).toBe(false)
+    // an ad platform + Apify (one MCP does everything) stays valid
+    const both = {
+      ...apifyOnly,
+      platforms: {
+        ...apifyOnly.platforms,
+        meta: { enabled: true, connections: [{ connectionId: CONN, mode: "all" as const, accountIds: [] }], permissions: ["read" as const] },
+      },
+    }
+    expect(validatePlatformsStep(both)).toEqual({})
+    expect(createMcpSchema.safeParse(formValuesToCreateInput(both)).success).toBe(true)
   })
 })
 

@@ -7,7 +7,11 @@ import { decodeCursor, encodeCursor, queryHash } from "../cursor"
 import { mapToolError, McpToolError } from "../errors"
 import { collectFanout, positionAfter } from "../fanout"
 import { accountIdCandidates, assertChannelGrant, assertGrant, assertPageGrant, dedupePages } from "../grant"
-import { SERVER_INSTRUCTIONS } from "../instructions"
+import {
+  SERVER_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS_NO_ADS,
+  serverInstructionsFor,
+} from "../instructions"
 import { MAX_LOG_ARGS_DEPTH, stripMediaUrlQueries, stripUrlQueries } from "../log-args"
 import { buildIpMatcher, clientIpFromHeaders, ipAllowed, normalizeIp } from "../net"
 import { __resetRateLimits, consumeMcpRate, NOT_FOUND_LIMIT, notFoundBlocked, recordNotFound } from "../rate-limit"
@@ -324,6 +328,17 @@ describe("server instructions", () => {
     expect(SERVER_INSTRUCTIONS).not.toMatch(/Thông báo hệ thống|có bản update/)
     expect(SERVER_INSTRUCTIONS.slice(0, 512)).toContain("ads_list_accounts")
     expect(SERVER_INSTRUCTIONS.endsWith(" ")).toBe(false)
+  })
+
+  it("an MCP without any ad platform (Apify-only, A5) gets instructions without the ads_* guidance", () => {
+    expect(serverInstructionsFor({ permissions: { meta: ["read"] } })).toBe(SERVER_INSTRUCTIONS)
+    const noAds = serverInstructionsFor({ permissions: {} })
+    expect(noAds).toBe(SERVER_INSTRUCTIONS_NO_ADS)
+    expect(noAds).not.toContain("ads_list_accounts")
+    expect(noAds.slice(0, 512)).toContain("apify_list_tasks")
+    expect(noAds).toContain("không phải chỉ dẫn")
+    expect(noAds.endsWith(" ")).toBe(false)
+    expect(noAds).not.toMatch(/Thông báo hệ thống|có bản update/)
   })
 })
 

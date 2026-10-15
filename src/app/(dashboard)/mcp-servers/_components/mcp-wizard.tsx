@@ -29,12 +29,15 @@ import {
   type McpFormValues,
   type StepErrors,
 } from "@/lib/schemas/mcp-servers"
-import type { McpApifyPoolSummary } from "@/lib/schemas/apify"
+import {
+  hasUsableApifyToken,
+  type McpApifyPoolSummary,
+} from "@/lib/schemas/apify"
 import type { McpDriveSourceOption } from "@/lib/schemas/drive"
 import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
-import { ApifyPermissionsSection } from "./apify-sections"
+import { ApifyPermissionsCard, ApifyPlatformCard } from "./apify-sections"
 import {
   DrivePermissionsSection,
   DriveSourcesSection,
@@ -133,12 +136,15 @@ export function mapServerErrors(
       // admin-only GMV Max switch: lives in step 3 (Chọn quyền), TikTok card
       errors.tiktokGmvMaxWrite = msg
       at(2)
+    } else if (k === "settings.apifyEnabled") {
+      // Apify platform card of step 2 (Nền tảng & tài khoản), e.g. an Apify-only MCP without any token
+      errors.apifyEnabled = msg
+      at(1)
     } else if (
-      k === "settings.apifyEnabled" ||
       k === "settings.apifyRunMaxUsd" ||
       k === "settings.apifyStoreActors"
     ) {
-      // Apify card of step 3 (Chọn quyền); the daily cap (settings.apifyDailyMaxUsd) lives in the protection step
+      // Apify card of step 3 (Quyền); the daily cap (settings.apifyDailyMaxUsd) lives in the protection step
       errors[k.replace(/^settings\./, "")] = msg
       at(2)
     } else if (k.startsWith("settings.") || k === "expiresAt") {
@@ -179,7 +185,7 @@ export function McpWizard({
   twoFactorEnabled: boolean
   /** viewer role + TikTok accounts with GMV Max (admin-only switch in step 3) */
   gmvMax?: GmvMaxFormContext
-  /** Apify token pool of the creator (company + own personal tokens) - the Apify card of step 3 */
+  /** Apify token pool of the creator (company + own personal tokens) - the Apify platform card of step 2 */
   apifyPool?: McpApifyPoolSummary | null
 }) {
   const [values, setValues] =
@@ -217,7 +223,8 @@ export function McpWizard({
       />
     )
 
-  if (connections.length === 0) {
+  // nothing to build an MCP on: no ad connection and no usable Apify token (Apify counts as a platform, A5)
+  if (connections.length === 0 && !hasUsableApifyToken(apifyPool)) {
     return (
       <Card>
         <EmptyState
@@ -225,9 +232,16 @@ export function McpWizard({
           title={t.wizard.noConnectionsTitle}
           description={t.wizard.noConnectionsDescription}
           action={
-            <Button variant="brand" asChild>
-              <Link href="/connections/new">{t.wizard.addConnection}</Link>
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="brand" asChild>
+                <Link href="/connections/new">{t.wizard.addConnection}</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/connections/apify/new">
+                  {t.wizard.addApifyToken}
+                </Link>
+              </Button>
+            </div>
           }
         />
       </Card>
@@ -311,6 +325,14 @@ export function McpWizard({
                   update={update}
                   errors={errors}
                   connections={connections}
+                  extraCards={
+                    <ApifyPlatformCard
+                      values={values}
+                      update={update}
+                      errors={errors}
+                      pool={apifyPool}
+                    />
+                  }
                 />
                 <TelegramChannelsSection
                   values={values}
@@ -331,6 +353,16 @@ export function McpWizard({
                 <PermissionsSection
                   values={values}
                   update={update}
+                  extraCards={
+                    values.apifyEnabled ? (
+                      <ApifyPermissionsCard
+                        values={values}
+                        update={update}
+                        errors={errors}
+                        isAdmin={gmvMax.isAdmin}
+                      />
+                    ) : undefined
+                  }
                   platformExtra={{
                     tiktok: (
                       <TiktokGmvMaxBlock
@@ -349,13 +381,6 @@ export function McpWizard({
                   update={update}
                   sources={driveSources}
                   publicLinksAvailable={drivePublicAvailable}
-                />
-                <ApifyPermissionsSection
-                  values={values}
-                  update={update}
-                  errors={errors}
-                  pool={apifyPool}
-                  isAdmin={gmvMax.isAdmin}
                 />
               </div>
             )}

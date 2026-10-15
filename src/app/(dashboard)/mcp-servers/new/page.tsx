@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { PageHeader } from "@/components/app"
 import { DisclaimerGate } from "@/components/app/disclaimer-gate"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import { hasUsableApifyToken } from "@/lib/schemas/apify"
 import { acceptDisclaimerAction } from "@/server/actions/legal"
 import { createMcpAction } from "@/server/actions/mcp-servers"
 import { requireUser } from "@/server/auth/session"
@@ -39,12 +40,13 @@ export default async function NewMcpPage() {
         description={t.wizard.description}
         backHref="/mcp-servers"
       />
-      {/* "Miễn trừ trách nhiệm" popup first, once per version - not when there is no connection yet (the wizard only says "add one") */}
+      {/* "Miễn trừ trách nhiệm" popup first, once per version - not when there is nothing to build an MCP on yet (no ad
+          connection and no usable Apify token: the wizard only says "add one") */}
       <DisclaimerGate
         kind="mcp"
         cancelHref="/mcp-servers"
         accept={acceptDisclaimerAction}
-        disabled={connections.length === 0}
+        disabled={connections.length === 0 && !hasUsableApifyToken(apifyPool)}
         alreadyAccepted={accepted}
       >
         <McpWizard

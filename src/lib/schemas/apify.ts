@@ -154,6 +154,13 @@ export interface McpApifyPoolSummary {
   personal: number
 }
 
+/** The pool has a token usable right now: enough to build an Apify-only MCP on it (decision A5). */
+export function hasUsableApifyToken(
+  pool: Pick<McpApifyPoolSummary, "usableNow"> | null | undefined
+): boolean {
+  return (pool?.usableNow ?? 0) > 0
+}
+
 export function isUsableApifyStatus(
   status: ApifyTokenStatus,
   exhaustedUntil: string | null,

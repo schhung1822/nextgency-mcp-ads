@@ -42,6 +42,7 @@ import {
   formatPercent,
 } from "@/lib/format"
 import { mcp as t } from "@/lib/i18n/vi/mcp"
+import type { McpApifyPoolSummary } from "@/lib/schemas/apify"
 import { tiktokGmvMaxMcp as gmv } from "@/lib/i18n/vi/tiktok-gmv-max"
 import {
   analyzeScope,
@@ -52,7 +53,7 @@ import type {
   SelectableConnection,
 } from "@/server/services/mcp-servers"
 
-import { ApifySummaryRows } from "./apify-sections"
+import { ApifyScopeBlock, ApifySummaryRows } from "./apify-sections"
 import { DriveSummaryRows } from "./drive-sections"
 
 const o = t.overview
@@ -214,12 +215,15 @@ export function OverviewTab({
   mcp,
   connections,
   onOpenConfig,
+  apifyPool = null,
 }: {
   mcp: McpDetail
   /** connections the owner can use now (enabled accounts only) - what the MCP can really reach */
   connections: SelectableConnection[]
   /** switch to the Config tab (caps warning action) */
   onOpenConfig?: () => void
+  /** Apify token pool of the MCP OWNER (Apify platform block of "Phạm vi MCP") */
+  apifyPool?: McpApifyPoolSummary | null
 }) {
   const s = mcp.stats
   const noUsable = analyzeScope(mcp.config, connections).platforms.filter(
@@ -433,6 +437,8 @@ export function OverviewTab({
                 </ul>
               </div>
             ))}
+            {/* Apify counts as a platform of the MCP (decision A5) */}
+            <ApifyScopeBlock settings={mcp.settings} pool={apifyPool} />
             <dl className="divide-y">
               <SummaryRow label={o.summaryMode}>
                 {basic ? o.modeBasic : o.modeAdvanced}

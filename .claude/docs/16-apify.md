@@ -1,7 +1,7 @@
 # 16 — Apify: kết nối token + lấy dữ liệu qua MCP
 
 > Trạng thái: thiết kế chốt 2026-10-14, **đã triển khai 2026-10-15** — **§12 = bản thực tế** (tham chiếu chính khi sửa code Apify; §1–§11 giữ thiết kế, đã đồng bộ với code ở §4, §5, §7). API Apify: `providers/apify.md` (+ `providers/apify.openapi.json`). Nghiên cứu Actor: §6 + nguồn trong `providers/apify.md`.
-> Hướng dẫn người dùng: `docs/huong-dan-apify.md`. Quyết định A1–A4 = D8 ở `01-product-spec.md` §9.
+> Hướng dẫn người dùng: `docs/huong-dan-apify.md`. Quyết định A1–A4 = D8, A5 (thay A4, 2026-10-15) = D9 ở `01-product-spec.md` §9.
 
 ## 1. Mục tiêu
 
@@ -16,7 +16,8 @@
 | A1  | **Token công ty + token cá nhân** (giống Drive): admin thêm token "Dùng chung công ty" — mọi MCP bật Apify đều xoay vòng được; nhân viên (và admin) thêm token "Cá nhân" — chỉ MCP **của chính người đó** dùng. Kho của 1 MCP = token công ty + token cá nhân của **chủ MCP**.          |
 | A2  | **Danh mục chọn lọc + mở rộng tuỳ chọn**: mặc định chỉ dùng danh mục ~30 việc (mỗi việc có Actor chính + dự phòng, server tự đặt giới hạn an toàn). Công tắc **"Cho phép Actor ngoài danh mục"** (tìm trên Apify Store) — mặc định **tắt**, **chỉ admin bật** (giống công tắc GMV Max). |
 | A3  | **Trần chi phí mỗi lần chạy luôn bật** (mặc định **$1**, cả ở chế độ Cơ bản; Apify tự dừng run khi chạm trần qua `maxTotalChargeUsd`). **Trần theo ngày mỗi MCP chỉ ở Tùy chỉnh nâng cao.**                                                                                             |
-| A4  | MCP **vẫn cần ít nhất 1 nền tảng quảng cáo**; Apify là công cụ bổ sung (bật ở bước Quyền).                                                                                                                                                                                              |
+| A4  | ~~MCP **vẫn cần ít nhất 1 nền tảng quảng cáo**; Apify là công cụ bổ sung (bật ở bước Quyền).~~ — **đã thay bằng A5** (2026-10-15).                                                                                                                                                       |
+| A5  | (2026-10-15) **Apify là một nền tảng** ngang hàng Meta / TikTok / Google Ads / OpenAI Ads: thẻ nền tảng ở bước "Nền tảng & tài khoản", thẻ quyền ở bước "Quyền". MCP cần ít nhất 1 trong Meta / TikTok / Google Ads / OpenAI Ads / **Apify** → **MCP chỉ dùng Apify hợp lệ**; một MCP cũng có thể làm tất cả (đọc số liệu, tạo / sửa / bật tắt quảng cáo **và** lấy dữ liệu Apify để phân tích). |
 
 Phát hiện phải nói với người dùng (UI + tài liệu): Điều khoản Apify §4.3 **cấm một người lập nhiều tài khoản Personal** → xoay vòng chỉ hợp lệ giữa token của **các tài khoản Apify hợp pháp khác nhau**; nhiều token cùng một tài khoản **dùng chung credit** (hệ thống tự gộp theo `apify_user_id`).
 
@@ -106,7 +107,7 @@ Fallback Actor: chỉ chuyển sang Actor dự phòng khi Actor chính **không 
 
 | Khoá                  | Mặc định               | Ghi chú                                                                                                             |
 | --------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `apify_enabled`       | false (chỉ `=== true`) | bật nhóm tool `apify_*` (cần kho token ≥ 1)                                                                         |
+| `apify_enabled`       | false (chỉ `=== true`) | bật nhóm tool `apify_*` (cần kho token ≥ 1); = "nền tảng Apify" của MCP (A5) — không có nền tảng quảng cáo thì bắt buộc `true` + kho ≥ 1 token |
 | `apify_run_max_usd`   | 1                      | trần mỗi lần chạy, 0.05–20, **áp dụng cả ở Cơ bản** (A3)                                                            |
 | `apify_daily_max_usd` | 10                     | trần/ngày mỗi MCP (giờ VN), 0–1.000, 0 = không giới hạn; **chỉ áp ở advanced** — basic: `effectiveMcpSettings` → `UNLIMITED` |
 | `apify_store_actors`  | false (chỉ `=== true`) | Actor ngoài danh mục — **chỉ admin bật** (service kiểm tra như `tiktokGmvMaxWrite`); nhân viên giữ/tắt được         |
@@ -156,7 +157,7 @@ Quy tắc chung:
 - **Kết nối**: tab thứ 4 **Apify** (kiểm tra 360 px: rút gọn nhãn tab nếu cần) — bảng: Tên, Phạm vi (Công ty / Cá nhân), Tài khoản Apify (username · gói), Credit (đã dùng / giới hạn, ngày reset), Trạng thái, Kiểm tra lần cuối, menu thao tác; nhân viên thấy token công ty ở dạng chỉ xem. Nút chính `brand` "Thêm token Apify". `PageGuide` hướng dẫn lấy token (Console → Settings → API & Integrations) + cảnh báo ToS nhiều tài khoản + khuyên đặt hard limit chi tiêu trong Apify Console.
 - **Thêm token** `/connections/apify/new`: `DisclaimerGate kind="connection"`; form: Tên, Token (`SecretInput`), Phạm vi (admin: Công ty/Cá nhân; staff: cố định Cá nhân) → "Kiểm tra" (hiện username, gói, credit còn, ngày reset) → Lưu; sau khi lưu có nút "Thêm token khác". Lựa chọn Apify cũng xuất hiện ở wizard `/connections/new` (nhóm mới "Nguồn dữ liệu").
 - **Chi tiết** `/connections/apify/[id]`: thông tin, credit, MCP đang dùng được (ẩn danh với staff), lịch sử chạy gần đây (từ `apify_runs`, tối đa 20), nút Kiểm tra lại / Đổi tên / Thay token (re-auth) / Tắt-Bật / Xoá (`ConfirmDialog` gõ tên).
-- **MCP wizard / tab Cấu hình**: bước Quyền — thẻ **Apify**: công tắc "Cho phép AI lấy dữ liệu qua Apify" (hiện số token/tài khoản trong kho; không có token → tắt + link "Thêm token Apify"), ô "Trần mỗi lần chạy (USD)", công tắc "Cho phép Actor ngoài danh mục" (badge "Chỉ quản trị viên"). Bước Bảo vệ (Nâng cao) — "Trần Apify mỗi ngày (USD)". Ghi chú Cơ bản: trần mỗi lần chạy vẫn áp dụng. Tab Tổng quan: các dòng Apify.
+- **MCP wizard / tab Cấu hình** (A5, 2026-10-15): bước **Nền tảng & tài khoản** — **thẻ nền tảng Apify** sau 4 thẻ nền tảng quảng cáo, cùng kiểu (BrandIcon, tiêu đề "Apify", 1 dòng mô tả, công tắc "Dùng Apify trong MCP này"; thân thẻ: kho token của chủ MCP — số token / tài khoản Apify / dùng được ngay / công ty – cá nhân; không có token dùng được → công tắc khoá + link "Thêm token Apify"); luôn hiện, kể cả khi chủ MCP chưa có kết nối quảng cáo. Bước **Quyền** — **thẻ quyền Apify** trong cùng danh sách với thẻ quyền từng nền tảng (chỉ khi đã bật): ô "Trần mỗi lần chạy (USD)", công tắc "Cho phép Actor ngoài danh mục" (badge "Chỉ quản trị viên"), ghi chú điều khoản. Bước Bảo vệ (Nâng cao) — "Trần Apify mỗi ngày (USD)". Ghi chú Cơ bản: trần mỗi lần chạy vẫn áp dụng. Tab Tổng quan: khối Apify trong "Phạm vi MCP" + các dòng Apify. Danh sách MCP: icon Apify cạnh icon nền tảng.
 - Chuỗi tiếng Việt ở `src/lib/i18n/vi/apify.ts` (+ `mcp.ts`, `connections.ts`, `guides.ts`); icon thương hiệu Apify trong `BRAND_MARKS`.
 
 ## 9. Pháp lý & bảo mật
@@ -212,7 +213,16 @@ Tham chiếu chính khi sửa code Apify. Chi tiết tool / quy tắc: §7 (đã
 - E2E: `tests/e2e/apify.spec.ts` (tab Apify admin / nhân viên, trang thêm + miễn trừ trách nhiệm, 404 token người khác), `tests/e2e/authz-matrix.spec.ts`.
 - Pháp lý: `src/lib/disclaimers.test.ts` (mã băm `connection@2026-10-14`), `src/lib/legal.test.ts`.
 
-### 12.4 CHƯA thử với Apify thật (chưa có token)
+### 12.4 Apify là nền tảng của MCP (A5, 2026-10-15)
+
+- **Form** (`mcp-servers/_components/apify-sections.tsx`): `ApifyPlatformCard` (bước 2, truyền vào `PlatformsSection` qua `extraCards` — hiện cả khi không có kết nối quảng cáo; id công tắc `mcp-apify-enabled`), `ApifyPermissionsCard` (bước 3, truyền vào `PermissionsSection` qua `extraCards` khi `apifyEnabled`; `PermissionsSection` chỉ còn hiện "Hãy chọn ít nhất 1 nền tảng…" khi không có nền tảng nào kể cả Apify), `ApifyScopeBlock` (Tổng quan "Phạm vi MCP", cần `apifyPool` của chủ MCP). Bỏ nhóm "Lấy dữ liệu (không bắt buộc)". Lỗi server `settings.apifyEnabled` → bước 2 (wizard `mapServerErrors`) / focus công tắc trên thẻ nền tảng (tab Cấu hình); `settings.apifyRunMaxUsd` / `settings.apifyStoreActors` → bước 3.
+- **Kiểm tra**: client `validatePlatformsStep` + zod `mcpConfigSchema` / `createMcpSchema` / `updateMcpSchema` (`refineAtLeastOnePlatform`, lỗi ở `platforms`): ≥ 1 nền tảng quảng cáo **hoặc** `settings.apifyEnabled`; câu "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads hoặc Apify).". Service `assertApifyOnlyHasPool` (tạo + lưu, trong transaction): không có nền tảng quảng cáo + Apify bật → kho của **chủ MCP** (`loadGrantApifyTokens`, đúng kho grant xoay vòng) phải có ≥ 1 token, không thì lỗi trường `settings.apifyEnabled` (`MCP_ERRORS.apifyOnlyNoToken`).
+- **Trang**: `/mcp-servers/new` mở wizard (và hỏi miễn trừ trách nhiệm `mcp`) khi có ≥ 1 kết nối quảng cáo **hoặc** token Apify dùng được ngay (`hasUsableApifyToken`, `src/lib/schemas/apify.ts`); không có → trạng thái trống nêu cả hai + nút "Thêm kết nối" (brand) / "Thêm token Apify".
+- **Danh sách MCP**: `McpListItem.apifyEnabled` → icon Apify cạnh icon nền tảng (bảng + thẻ mobile), bộ lọc Nền tảng có "Apify"; MCP không có nền tảng quảng cáo không hiện tóm tắt quyền.
+- **MCP endpoint**: MCP chỉ dùng Apify không có `mcp_platform_permissions` → chỉ `apify_*` (+ `telegram_*` / `drive_*` nếu cấu hình nguồn / kênh); `serverInstructionsFor(grant)` trả `SERVER_INSTRUCTIONS_NO_ADS` (không nhắc `ads_list_accounts`). Tool `assertApifyEnabled` hướng chủ MCP tới "Nền tảng & tài khoản".
+- **Test**: `src/lib/schemas/mcp-servers.test.ts` (A5: chỉ Apify hợp lệ, không chọn gì → lỗi, cả create / update / config schema), `src/server/services/mcp-servers-apify-only.test.ts` (Postgres: tạo / sửa MCP chỉ dùng Apify cho nhân viên và admin, kho theo chủ MCP, kho trống → lỗi `settings.apifyEnabled`, tắt Apify khi không có nền tảng → lỗi `platforms`), `apify.flows.test.ts` (MCP chỉ dùng Apify: chỉ tool `apify_*`, instructions không có `ads_*`, chạy việc được), `unit.test.ts` (`serverInstructionsFor`), e2e `tests/e2e/mcp-servers.spec.ts` (thẻ Apify ở bước 2).
+
+### 12.5 CHƯA thử với Apify thật (chưa có token)
 
 - Dạng lỗi chính xác khi **hết credit** lúc start (HTTP status + `error.type`: 402 / 403 `platform-feature-disabled` / `not-enough-usage-*`…) — code phân loại theo nhiều biến thể và đọc lại limits trước khi đánh dấu `exhausted`; cần xác nhận bằng tài khoản thật.
 - Run đang chạy khi tài khoản hết credit (bị dừng hay chạy tiếp, `statusMessage`); độ trễ cập nhật `monthlyUsageUsd`; `maxTotalChargeUsd` với Actor pay-per-usage / PPE + usage.

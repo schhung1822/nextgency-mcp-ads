@@ -65,7 +65,11 @@ test.describe("MCP servers", () => {
     await page.fill("#mcp-name", name)
     await page.getByRole("button", { name: "Tiếp tục" }).click()
 
-    // ② first available platform + its first connection ("Tất cả tài khoản")
+    // ② Apify is a platform card after the ad platforms (A5), off by default
+    await expect(
+      page.getByRole("switch", { name: "Dùng Apify trong MCP này" })
+    ).toHaveAttribute("data-state", "unchecked")
+    // first available platform + its first connection ("Tất cả tài khoản")
     await page.getByRole("switch").first().click()
     const conn = page.locator('[id^="conn-"][role="checkbox"]').first()
     if ((await conn.getAttribute("data-state")) !== "checked")

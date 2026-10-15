@@ -206,12 +206,18 @@ export const guides = {
       },
       {
         title: "Bước 2 · Nền tảng & tài khoản",
-        summary: "Chọn AI được thấy những tài khoản quảng cáo nào.",
+        summary:
+          "Chọn AI được thấy những tài khoản quảng cáo nào và có được lấy dữ liệu qua Apify không. Cần ít nhất 1 nền tảng: Meta, TikTok, Google Ads, OpenAI Ads hoặc Apify.",
         steps: [
           {
             title: "Bật nền tảng cần dùng",
             detail:
-              "Chỉ hiện nền tảng bạn đã có kết nối. Chưa có? Bấm Thêm kết nối rồi quay lại.",
+              "Nền tảng quảng cáo chỉ hiện khi bạn đã có kết nối. Chưa có? Bấm Thêm kết nối rồi quay lại.",
+          },
+          {
+            title: "Apify (lấy dữ liệu)",
+            detail:
+              "Thẻ Apify nằm cùng các nền tảng quảng cáo: bật để AI lấy dữ liệu (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Google Maps, trang web…) bằng token Apify công ty + token cá nhân của chủ MCP (tự xoay vòng). Một MCP có thể vừa quản lý quảng cáo vừa lấy dữ liệu Apify, hoặc chỉ dùng Apify. Chưa có token dùng được thì công tắc bị khoá - bấm Thêm token Apify (Kết nối → Apify) rồi quay lại.",
           },
           {
             title: "Chọn kết nối",
@@ -272,9 +278,9 @@ export const guides = {
               "Cho phép dùng link Drive công khai (mặc định bật): AI lấy được ảnh, video từ link \"Bất kỳ ai có đường liên kết\" bạn dán vào chat - cần quản trị viên đã lưu API key.\nCho phép ghi trạng thái vào Google Sheet (mặc định bật): sau khi lên quảng cáo, AI ghi trạng thái, mã quảng cáo vào đúng dòng của sheet đã bật ghi; mỗi lần ghi tính vào giới hạn thao tác ghi / 10 phút.\nAI chỉ tải được ảnh, video lên khi MCP có quyền Tạo mới ở nền tảng đó. Video lớn (TikTok > 10 MB, Meta > 50 MB) được tải ở chế độ nền vài phút.",
           },
           {
-            title: "Apify (tuỳ chọn)",
+            title: "Apify (khi đã bật ở bước 2)",
             detail:
-              "Nhóm Lấy dữ liệu → thẻ Apify: bật Cho phép AI lấy dữ liệu qua Apify để AI chạy các việc lấy dữ liệu đã chọn lọc (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Google Maps…) bằng token Apify công ty + token cá nhân của chủ MCP (tự xoay vòng). Chưa có token? Thêm ở Kết nối → Apify.\nTrần mỗi lần chạy (mặc định 1 USD) luôn áp dụng, kể cả chế độ Cơ bản; mỗi lần chạy tốn credit Apify và tính vào giới hạn thao tác ghi.\nCho phép Actor ngoài danh mục: chỉ quản trị viên bật (khi sửa MCP phải nhập lại mật khẩu).",
+              "Thẻ Apify nằm cùng thẻ quyền của các nền tảng quảng cáo.\nTrần mỗi lần chạy (mặc định 1 USD) luôn áp dụng, kể cả chế độ Cơ bản; mỗi lần chạy tốn credit Apify và tính vào giới hạn thao tác ghi.\nCho phép Actor ngoài danh mục: chỉ quản trị viên bật (khi sửa MCP phải nhập lại mật khẩu).",
           },
         ],
         tips: [
@@ -409,6 +415,11 @@ export const guides = {
           title: "GMV Max (TikTok Shop)",
           detail:
             "Công tắc Cho phép AI thay đổi GMV Max nằm trong thẻ TikTok Ads ở khung Quyền. Chỉ quản trị viên bật được; nhân viên chỉ tắt được.",
+        },
+        {
+          title: "Apify",
+          detail:
+            "Bật / tắt thẻ Apify ở khung Nền tảng (cùng các nền tảng quảng cáo); trần mỗi lần chạy và Actor ngoài danh mục (chỉ quản trị viên) ở thẻ Apify của khung Quyền; trần Apify mỗi ngày ở khung Bảo vệ (Tùy chỉnh nâng cao).",
         },
       ],
       warnings: [
@@ -780,7 +791,7 @@ export const guides = {
       {
         title: "Bật Apify trong MCP",
         detail:
-          "Ở bước Quyền của MCP, bật Cho phép AI lấy dữ liệu qua Apify và đặt trần chi phí mỗi lần chạy.",
+          "Ở bước Nền tảng & tài khoản của MCP, bật thẻ Apify (Apify là một nền tảng như Meta, TikTok… - MCP có thể chỉ dùng Apify); ở bước Quyền đặt trần chi phí mỗi lần chạy.",
       },
       {
         title: "Theo dõi trạng thái",

@@ -150,9 +150,12 @@ Hệ thống tự kiểm tra lại mọi token **6 giờ một lần** (credit, 
 
 **MCP → Tạo MCP** (hoặc trang MCP → tab **Cấu hình**):
 
-1. Bước **Nền tảng & tài khoản**: MCP vẫn cần **ít nhất 1 nền tảng quảng cáo** — Apify là công cụ bổ sung.
-2. Bước **Quyền** → thẻ **Apify**:
-   - **Cho phép AI lấy dữ liệu qua Apify** — mặc định tắt. Thẻ hiện số token / tài khoản Apify trong kho của chủ MCP. Chưa có token → công tắc bị khoá, kèm link **Thêm token Apify**.
+1. Bước **Nền tảng & tài khoản** → thẻ **Apify** (nằm ngay sau các thẻ Meta / TikTok Ads / Google Ads / OpenAI Ads): bật công tắc. Apify là **một nền tảng** như các nền tảng quảng cáo — MCP cần **ít nhất 1 nền tảng** (Meta, TikTok, Google Ads, OpenAI Ads **hoặc Apify**), nên:
+   - một MCP có thể **vừa** xem / sửa / bật tắt / tạo quảng cáo **vừa** lấy dữ liệu Apify để phân tích;
+   - hoặc **chỉ dùng Apify** (không chọn nền tảng quảng cáo nào) — AI khi đó chỉ thấy công cụ `apify_*` (và Telegram nếu MCP có kênh). Chưa có kết nối quảng cáo nào vẫn tạo được MCP chỉ dùng Apify, miễn là kho có token dùng được.
+
+   Thẻ hiện kho token của **chủ MCP**: số token, số tài khoản Apify, số token dùng được ngay, bao nhiêu token công ty / cá nhân. Chưa có token dùng được → công tắc bị khoá, kèm nút **Thêm token Apify**. MCP chỉ dùng Apify mà kho trống thì không lưu được (báo lỗi ở thẻ Apify).
+2. Bước **Quyền** → thẻ **Apify** (hiện khi đã bật Apify ở bước 1, cùng danh sách với thẻ quyền của các nền tảng quảng cáo):
    - **Trần mỗi lần chạy (USD)** — 0,05–20, mặc định **1**. **Luôn áp dụng**, kể cả ở chế độ bảo vệ **Cơ bản**. AI có thể xin trần thấp hơn cho một lần chạy, không bao giờ cao hơn.
    - **Cho phép Actor ngoài danh mục** _(Chỉ quản trị viên)_ — cho AI tìm và chạy Actor bất kỳ trên Apify Store (hệ thống vẫn loại Actor rủi ro và chặn trường nhập nguy hiểm). Mặc định tắt. Nhân viên không bật được (tắt được nếu quản trị viên đã bật). Chỉ bật khi thật cần: Actor ngoài danh mục chưa được kiểm tra trước.
 3. Bước **Bảo vệ** → bật **Tùy chỉnh nâng cao** → **Trần Apify mỗi ngày (USD)** — mặc định **10**, `0` = không giới hạn. Tính tổng chi phí Apify của MCP trong một ngày (giờ Việt Nam), lần chạy chưa xong tính theo trần đã đặt. Chế độ **Cơ bản**: không có trần ngày.
@@ -284,7 +287,7 @@ Bấm vào một token để mở trang chi tiết:
 | `write_rate_limited`                      | Vượt **Giới hạn thao tác ghi / 10 phút** của MCP (mỗi lần chạy Actor tính 1 lượt)                                                                                                         | Đợi, hoặc tăng giới hạn (Bảo vệ → Tùy chỉnh nâng cao)                                                              |
 | Lần chạy **FAILED / ABORTED / TIMED-OUT** | Actor lỗi, chạm **trần chi phí** (Apify tự dừng) hoặc quá thời gian                                                                                                                       | Phần dữ liệu đã thu vẫn đọc được. Giảm số lượng, tăng trần mỗi lần chạy, hoặc thử Actor dự phòng                   |
 | Kết quả rỗng / dữ liệu mẫu                | Trang đích chặn (hay gặp: Shopee) hoặc gói Free                                                                                                                                           | Thử Actor dự phòng; dùng tài khoản gói Starter trở lên                                                             |
-| Không thấy công cụ `apify_*`              | MCP chưa bật **Cho phép AI lấy dữ liệu qua Apify**, hoặc kho không có token (công ty hoặc của chủ MCP)                                                                                    | Bật trong MCP → **Quyền** → thẻ **Apify**; thêm token. ChatGPT Business: **Refresh** plugin                        |
+| Không thấy công cụ `apify_*`              | MCP chưa bật thẻ **Apify**, hoặc kho không có token (công ty hoặc của chủ MCP)                                                                                                            | Bật trong MCP → **Nền tảng & tài khoản** → thẻ **Apify**; thêm token. ChatGPT Business: **Refresh** plugin         |
 
 ---
 

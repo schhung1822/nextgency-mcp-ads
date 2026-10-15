@@ -87,7 +87,8 @@ const msg = {
   nameTooLong: `Tên tối đa ${MCP_LIMITS.nameMax} ký tự.`,
   descTooLong: `Mô tả tối đa ${MCP_LIMITS.descriptionMax} ký tự.`,
   badChars: "Không dùng ký tự điều khiển hoặc ký tự đảo chiều văn bản.",
-  platformsRequired: "Chọn ít nhất 1 nền tảng.",
+  platformsRequired:
+    "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads hoặc Apify).",
   platformDuplicate: "Mỗi nền tảng chỉ được khai báo 1 lần.",
   connectionsRequired: "Chọn ít nhất 1 kết nối cho nền tảng này.",
   connectionDuplicate: "Kết nối bị chọn trùng.",
@@ -401,10 +402,26 @@ const nullableExpiry = z
   .optional()
   .transform((v) => (v ? new Date(v) : null))
 
-export const mcpConfigSchema = z.object({
+/**
+ * Decision A5 (16-apify.md §2): Apify counts as a platform - an MCP needs at least one ad platform OR Apify switched
+ * on (an Apify-only MCP is valid). The service also refuses an Apify-only MCP whose owner has no Apify token.
+ */
+function refineAtLeastOnePlatform(
+  v: { platforms: unknown[]; settings: { apifyEnabled: boolean } },
+  ctx: z.RefinementCtx
+) {
+  if (v.platforms.length === 0 && !v.settings.apifyEnabled)
+    ctx.addIssue({
+      code: "custom",
+      message: msg.platformsRequired,
+      path: ["platforms"],
+    })
+}
+
+/** mcpConfigSchema without the cross-field rule (extended by the create / update schemas, which add it again). */
+const mcpConfigObject = z.object({
   platforms: z
     .array(platformScopeSchema)
-    .min(1, msg.platformsRequired)
     .superRefine((arr, ctx) => {
       const ps = arr.map((p) => p.platform)
       if (new Set(ps).size !== ps.length)
@@ -430,6 +447,10 @@ export const mcpConfigSchema = z.object({
     .optional(),
 })
 
+export const mcpConfigSchema = mcpConfigObject.superRefine(
+  refineAtLeastOnePlatform
+)
+
 /** control characters (except newline/tab in descriptions) and bidi overrides - spoofing in UI/logs */
 const NAME_FORBIDDEN = NAME_FORBIDDEN_CHARS
 const DESC_FORBIDDEN = MULTILINE_FORBIDDEN_CHARS
@@ -449,14 +470,19 @@ const descriptionSchema = z
   .nullable()
   .transform((v) => (v ? v : null))
 
-export const createMcpSchema = mcpConfigSchema.extend({
+const createMcpObject = mcpConfigObject.extend({
   name: nameSchema,
   description: descriptionSchema,
 })
+export const createMcpSchema = createMcpObject.superRefine(
+  refineAtLeastOnePlatform
+)
 export type CreateMcpInput = z.input<typeof createMcpSchema>
 export type CreateMcpData = z.output<typeof createMcpSchema>
 
-export const updateMcpSchema = createMcpSchema.extend({ id: z.uuid(msg.id) })
+export const updateMcpSchema = createMcpObject
+  .extend({ id: z.uuid(msg.id) })
+  .superRefine(refineAtLeastOnePlatform)
 export type UpdateMcpInput = z.input<typeof updateMcpSchema>
 export type UpdateMcpData = z.output<typeof updateMcpSchema>
 
@@ -975,7 +1001,8 @@ export function validatePermissionsStep(v: McpFormValues): StepErrors {
 export function validatePlatformsStep(v: McpFormValues): StepErrors {
   const e: StepErrors = {}
   const enabled = MCP_PLATFORMS.filter((p) => v.platforms[p]?.enabled)
-  if (enabled.length === 0) e.platforms = msg.platformsRequired
+  // Apify counts as a platform (A5): an Apify-only MCP is valid
+  if (enabled.length === 0 && !v.apifyEnabled) e.platforms = msg.platformsRequired
   for (const p of enabled) {
     const d = v.platforms[p]
     if (d.connections.length === 0)

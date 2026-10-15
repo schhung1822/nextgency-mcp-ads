@@ -257,5 +257,12 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] MCP: settings `apify_*` (parser + `effectiveMcpSettings`), grant (kho token), tool `apify_*`, `SERVER_INSTRUCTIONS`, thẻ Apify ở bước Quyền + trần ngày ở bước Bảo vệ + tổng quan, công tắc Actor ngoài danh mục chỉ admin bật
 - [x] Tài liệu + pháp lý: `CLAUDE.md`, 01 (§1, §2, §3c, §4, D8), 02, 04, 05, 06, 07, 08, `.claude/rules/{mcp-server,logging-and-secrets}.md`, `docs/huong-dan-apify.md`, `docs/ket-noi-ai.md`, `README.md`, `legal.ts` (VI + EN, cập nhật 14/10/2026), miễn trừ trách nhiệm `connection` (thêm mục Apify, phiên bản 2026-10-14 + mã băm test); đồng bộ với code 2026-10-15: `16-apify.md` §4/§5/§7 + §12 bản thực tế, 03 (khoá settings), 05 (xác thực lại, giữ chỗ trần ngày, rủi ro chế độ Cơ bản), 01 §4, hướng dẫn bước 3–4 của wizard MCP (`guides.ts`)
 - [x] Kiểm chứng (2026-10-15): lint + typecheck + unit + Postgres + flows (2848 test) + e2e (lỗi 2FA ở auth.spec có sẵn từ v1.0.11) + build + smoke production + ảnh chụp; 2 vòng `security-reviewer` + rà lỗi logic, đã sửa hết
-- [ ] Smoke test bằng token Apify thật (nên gói Starter — gói Free một số Actor Shopee trả dữ liệu mẫu; Shopee VN best-effort); bổ sung kết quả smoke test vào `16-apify.md` §12.4 + `providers/apify.md` §15
+- [ ] Smoke test bằng token Apify thật (nên gói Starter — gói Free một số Actor Shopee trả dữ liệu mẫu; Shopee VN best-effort); bổ sung kết quả smoke test vào `16-apify.md` §12.5 + `providers/apify.md` §15
 - [x] Phát hành v1.1.0 (2026-10-15, qua rc; ghi chú phát hành: mọi người xác nhận lại miễn trừ trách nhiệm `connection`)
+
+## Apify là nền tảng của MCP (2026-10-15, quyết định A5 = D9, `16-apify.md` §12.4) - chưa phát hành
+- [x] Wizard + tab Cấu hình: thẻ nền tảng Apify ở bước "Nền tảng & tài khoản" (cùng kiểu thẻ nền tảng quảng cáo, hiện cả khi chưa có kết nối), thẻ quyền Apify ở bước "Quyền" (bỏ nhóm "Lấy dữ liệu (không bắt buộc)"); lỗi / focus theo bước mới
+- [x] Kiểm tra: ≥ 1 nền tảng quảng cáo hoặc Apify (form + zod create / update / config); service từ chối MCP chỉ dùng Apify khi kho token của chủ MCP trống
+- [x] `/mcp-servers/new` mở được khi chỉ có token Apify; trạng thái trống nêu Apify; Tổng quan: khối Apify trong "Phạm vi MCP"; danh sách MCP: icon + bộ lọc Apify; instructions riêng cho MCP không có nền tảng quảng cáo
+- [x] Test: schema, service (Postgres), flows (MCP chỉ dùng Apify chỉ có `apify_*`), unit instructions, e2e bước 2; tài liệu 01 (D9), 04, 06, 16, `docs/huong-dan-apify.md`, `docs/ket-noi-ai.md`
+- [ ] Orchestrator kiểm chứng UI (ảnh chụp bước 2 / 3 sáng-tối, 390 / 1440) + e2e đầy đủ; phát hành

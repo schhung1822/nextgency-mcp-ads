@@ -16,6 +16,8 @@ export const mcp = {
     searchLabel: "Tìm MCP",
     filterStatus: "Trạng thái",
     filterPlatform: "Nền tảng",
+    /** Apify used by the MCP (platform column / filter, like the ad platforms) */
+    apifyPlatform: "Apify",
     filterOwner: "Người tạo",
     viewAll: "Tất cả",
     viewMine: "Của tôi",
@@ -50,7 +52,7 @@ export const mcp = {
   wizard: {
     title: "Tạo MCP",
     description:
-      "4 bước: đặt tên, chọn tài khoản quảng cáo, chọn quyền và thiết lập bảo vệ.",
+      "4 bước: đặt tên, chọn nền tảng (tài khoản quảng cáo, Apify), chọn quyền và thiết lập bảo vệ.",
     steps: {
       name: { title: "Tên", description: "Đặt tên dễ nhớ" },
       platforms: {
@@ -71,10 +73,11 @@ export const mcp = {
       "MCP được tạo xong sẽ hiện link dùng được ngay - nhập lại mật khẩu (và mã 2FA nếu đã bật) để xác nhận. Thao tác này được ghi vào nhật ký.",
     reauthSubmit: "Xác minh và tạo MCP",
     fixErrors: "Vui lòng sửa các mục được đánh dấu.",
-    noConnectionsTitle: "Bạn chưa có kết nối quảng cáo nào",
+    noConnectionsTitle: "Bạn chưa có kết nối quảng cáo hay token Apify nào",
     noConnectionsDescription:
-      "MCP cần ít nhất 1 kết nối (Meta, TikTok, Google Ads hoặc OpenAI Ads). Thêm kết nối trước, rồi quay lại tạo MCP.",
+      "MCP cần ít nhất 1 nền tảng: kết nối quảng cáo (Meta, TikTok, Google Ads, OpenAI Ads) hoặc token Apify để AI lấy dữ liệu. Thêm kết nối hoặc token trước, rồi quay lại tạo MCP.",
     addConnection: "Thêm kết nối",
+    addApifyToken: "Thêm token Apify",
   },
 
   nameStep: {
@@ -88,9 +91,9 @@ export const mcp = {
   },
 
   platformsStep: {
-    cardTitle: "Chọn nền tảng và tài khoản quảng cáo",
+    cardTitle: "Chọn nền tảng và tài khoản",
     cardDescription:
-      "Chỉ hiện nền tảng bạn đã có kết nối. AI chỉ thấy các tài khoản bạn chọn ở đây.",
+      "Chọn ít nhất 1 nền tảng: nền tảng quảng cáo bạn đã có kết nối (AI chỉ thấy các tài khoản bạn chọn ở đây) hoặc Apify để AI lấy dữ liệu.",
     enablePlatform: (p: string) => `Dùng ${p} trong MCP này`,
     connectionsLabel: "Kết nối",
     noConnections: (p: string) => `Bạn chưa có kết nối ${p}.`,
@@ -356,12 +359,17 @@ export const mcp = {
 
   /** Apify block of the MCP form + overview (16-apify.md §8) */
   apify: {
-    /** step "Chọn quyền" subheading separating the Apify block from the blocks above it */
-    optionalGroup: "Lấy dữ liệu (không bắt buộc)",
     title: "Apify",
+    /** one line under the title of the Apify platform card (step "Nền tảng & tài khoản") */
+    platformDescription:
+      "Lấy dữ liệu sàn TMĐT, mạng xã hội, Google Maps, trang web… để AI phân tích.",
     description:
       "AI chạy các việc lấy dữ liệu đã chọn lọc (Shopee, Lazada, TikTok Shop, TikTok, Facebook, Instagram, YouTube, Google Maps, trang web…) trên tài khoản Apify để phân tích.",
-    enableLabel: "Cho phép AI lấy dữ liệu qua Apify",
+    /** overview "Phạm vi MCP": what the Apify platform block gives the AI */
+    enableLabel: "Lấy dữ liệu qua Apify",
+    /** platform card (on): where the Apify options live */
+    permissionsHint:
+      "Trần chi phí mỗi lần chạy và Actor ngoài danh mục: đặt ở phần Quyền.",
     enableHelp:
       "Mỗi lần chạy tốn credit của tài khoản Apify (token công ty + token cá nhân của chủ MCP, tự xoay vòng) và luôn có trần chi phí. Dữ liệu thu về là của bên thứ ba - AI chỉ dùng để phân tích.",
     pool: (s: { tokens: number; accounts: number; usableNow: number }) =>
@@ -389,7 +397,6 @@ export const mcp = {
     adminBadge: "Chỉ quản trị viên",
     staffLocked: "Chỉ quản trị viên được bật công tắc này.",
     staffCanTurnOff: "Quản trị viên đã bật cho MCP này - bạn có thể tắt.",
-    disabledNote: "Bật Apify để đặt trần chi phí và các tùy chọn khác.",
     /** protection step (advanced) */
     groupTitle: "Apify",
     groupDescription: "Giới hạn tiền Apify AI được dùng mỗi ngày cho MCP này.",
@@ -400,6 +407,9 @@ export const mcp = {
       `Apify: chế độ Cơ bản không có trần theo ngày, nhưng trần mỗi lần chạy (${runMax} USD) vẫn áp dụng.`,
     /** overview rows */
     summaryEnabled: "Apify",
+    runMaxLine: (usd: string) => `Trần mỗi lần chạy: ${usd}`,
+    overviewNoToken:
+      "Kho token Apify của chủ MCP đang trống - AI chưa thấy công cụ Apify. Thêm token ở trang Kết nối → Apify.",
     summaryRunMax: "Trần Apify mỗi lần chạy",
     summaryDaily: "Trần Apify mỗi ngày",
     summaryStore: "Actor ngoài danh mục Apify",

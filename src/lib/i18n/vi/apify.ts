@@ -204,7 +204,7 @@ export const apify = {
     never: "Chưa có",
     usageTitle: "MCP dùng được token này",
     usageNone:
-      "Chưa có MCP nào bật Apify dùng được token này. Bật Apify ở bước Quyền khi tạo hoặc sửa MCP.",
+      "Chưa có MCP nào bật Apify dùng được token này. Bật thẻ Apify ở bước Nền tảng & tài khoản khi tạo hoặc sửa MCP.",
     usageOther: (n: number) => `${n} MCP của người khác`,
     runsTitle: "Lần chạy gần đây",
     runsDescription:

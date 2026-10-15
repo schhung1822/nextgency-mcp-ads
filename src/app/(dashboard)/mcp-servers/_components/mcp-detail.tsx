@@ -244,6 +244,7 @@ export function McpDetailView({
           <OverviewTab
             mcp={mcp}
             connections={connections}
+            apifyPool={apifyPool}
             onOpenConfig={() => {
               changeTab("config", "caps")
               setCapsFocus((n) => n + 1)

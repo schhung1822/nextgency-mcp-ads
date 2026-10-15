@@ -78,6 +78,7 @@ import {
   type DriveMcpOwner,
 } from "@/server/services/drive-sources"
 import type { McpDriveSourceRef } from "@/lib/schemas/drive"
+import { loadGrantApifyTokens } from "@/server/apify/store"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import { parseMcpSettings } from "@/server/mcp/settings"
 import type { McpSettings, Permission, ProtectionMode } from "@/server/mcp/types"
@@ -132,7 +133,26 @@ export const MCP_ERRORS = {
     "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt: nâng trần chi phí Apify (mỗi lần chạy / mỗi ngày) cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
   apifyStoreStaffWidening:
     "MCP này đang được quản trị viên cho phép chạy Actor ngoài danh mục Apify: nâng trần chi phí Apify (mỗi lần chạy / mỗi ngày) hoặc chuyển sang chế độ bảo vệ Cơ bản cần quản trị viên lưu - hoặc tắt Actor ngoài danh mục rồi lưu.",
+  apifyOnlyNoToken:
+    "MCP chỉ dùng Apify cần ít nhất 1 token Apify (token công ty hoặc token cá nhân của chủ MCP). Thêm token ở trang Kết nối → Apify, hoặc chọn thêm 1 nền tảng quảng cáo.",
 } as const
+
+/**
+ * Decision A5 (16-apify.md §2): Apify counts as a platform, so an MCP may have no ad platform - but then it must have
+ * something usable: at least one token in the Apify pool of the MCP OWNER (company tokens + the owner's personal
+ * tokens, live, active | exhausted - exactly what the grant rotates through). Field error on settings.apifyEnabled.
+ */
+async function assertApifyOnlyHasPool(
+  tx: Tx | typeof db,
+  ownerId: string,
+  data: { platforms: readonly unknown[]; settings: { apifyEnabled: boolean } }
+): Promise<void> {
+  if (data.platforms.length > 0 || !data.settings.apifyEnabled) return
+  if ((await loadGrantApifyTokens(ownerId, tx)).length > 0) return
+  throw invalid(MCP_ERRORS.apifyOnlyNoToken, {
+    "settings.apifyEnabled": MCP_ERRORS.apifyOnlyNoToken,
+  })
+}
 
 /**
  * TikTok GMV Max write switch (settings.tiktokGmvMaxWrite) is admin-only: a non-admin may keep the stored value or
@@ -170,6 +190,8 @@ export interface McpListItem {
   tiktokGmvMaxWrite: boolean
   /** settings.protectionMode: basic = only the expiry applies (rows saved before the mode existed: advanced) */
   protectionMode: ProtectionMode
+  /** settings.apifyEnabled: Apify counts as a platform of the MCP (list icon / filter, decision A5) */
+  apifyEnabled: boolean
   name: string
   description: string | null
   ownerId: string
@@ -1098,6 +1120,7 @@ export async function listMcpServers(actor: McpActor): Promise<McpListItem[]> {
       capsMissing: missing.get(r.id) ?? [],
       tiktokGmvMaxWrite: parseMcpSettings(r.settings).tiktokGmvMaxWrite,
       protectionMode: parseMcpSettings(r.settings).protectionMode,
+      apifyEnabled: parseMcpSettings(r.settings).apifyEnabled,
     }
   })
 }
@@ -1247,6 +1270,7 @@ export async function getMcpServer(
     capsMissing: missing.get(r.id) ?? [],
     tiktokGmvMaxWrite: parseMcpSettings(r.settings).tiktokGmvMaxWrite,
     protectionMode: parseMcpSettings(r.settings).protectionMode,
+    apifyEnabled: parseMcpSettings(r.settings).apifyEnabled,
     notificationChannels: notificationChannelRefs,
     driveSources: driveSourceRefs,
   }
@@ -1336,6 +1360,7 @@ export async function createMcpServer(
   const reauthLog = { action: "mcp.create" as const, target: { type: "mcp", id: null, label: data.name } }
   await withReauth(actor, reauthLog, verify, async (tx) => {
     await assertScopesAllowed(tx, actor, data.platforms)
+    await assertApifyOnlyHasPool(tx, actor.id, data)
     await assertDailyCaps(tx, data.platforms, data.settings)
     await tx.insert(mcpServers).values({
       id,
@@ -1426,6 +1451,8 @@ export async function updateMcpServer(
       { id: row.ownerId, email: "", role: ownerRole },
       data.platforms
     )
+    // an Apify-only MCP needs a token in the pool of the MCP OWNER (not of the admin editing it)
+    await assertApifyOnlyHasPool(tx, row.ownerId, data)
     // every save makes the MCP a "caps required" one: a legacy MCP with write permissions must get its caps now
     await assertDailyCaps(tx, data.platforms, data.settings)
 

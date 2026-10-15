@@ -3,7 +3,7 @@
 // 2025-era `initialize` clients statelessly.
 import { createMcpHandler, McpServer, type McpHttpHandler } from "@modelcontextprotocol/server"
 import { safeErrorForLog } from "../audit/safe-error"
-import { MCP_SERVER_NAME, MCP_SERVER_VERSION, SERVER_INSTRUCTIONS } from "./instructions"
+import { MCP_SERVER_NAME, MCP_SERVER_VERSION, serverInstructionsFor } from "./instructions"
 import { ensureProvidersRegistered } from "./providers"
 import { registerAllowedTools } from "./registry"
 import { extraFromAuthInfo } from "./request-state"
@@ -14,7 +14,7 @@ export function buildMcpServer(ctx: Parameters<typeof extraFromAuthInfo>[0]): Mc
   const { grant, req } = extraFromAuthInfo(ctx)
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION, title: "Ads MCP by noti.vn" },
-    { instructions: SERVER_INSTRUCTIONS }
+    { instructions: serverInstructionsFor(grant) }
   )
   registerAllowedTools(server, { grant, req })
   return server

@@ -11,6 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import {
+  BrandIcon,
   createDataTableColumnHelper,
   DataTable,
   EmptyState,
@@ -40,6 +41,8 @@ import type { Permission } from "@/server/mcp/types"
 import type { McpListItem } from "@/server/services/mcp-servers"
 
 const c = t.list.col
+/** platform filter value of Apify (not an ad platform, matched on settings.apifyEnabled) */
+const APIFY_FILTER = "apify"
 const col = createDataTableColumnHelper<McpListItem>()
 
 // Columns appear as the card gets wider (container queries, so it also works in a narrow tablet layout).
@@ -77,6 +80,21 @@ function GmvMaxBadge({ on }: { on: boolean }) {
       title={tg.listBadgeHint}
     >
       {tg.listBadge}
+    </Badge>
+  )
+}
+
+/** Apify switched on: shown with the platform icons (Apify counts as a platform, decision A5). */
+function ApifyPlatformBadge({ on }: { on: boolean }) {
+  if (!on) return null
+  return (
+    <Badge
+      variant="outline"
+      title={t.list.apifyPlatform}
+      className="size-6 justify-center gap-1.5 rounded-full bg-card/60 p-0 font-medium"
+    >
+      <BrandIcon brand="apify" />
+      <span className="sr-only">{t.list.apifyPlatform}</span>
     </Badge>
   )
 }
@@ -180,11 +198,12 @@ function buildColumns(isAdmin: boolean) {
     col.accessor("platforms", {
       header: c.platforms,
       enableSorting: false,
-      cell: ({ getValue }) => (
+      cell: ({ row, getValue }) => (
         <div className="flex items-center gap-1">
           {getValue().map((p) => (
             <PlatformBadge key={p} platform={p} iconOnly />
           ))}
+          <ApifyPlatformBadge on={row.original.apifyEnabled} />
         </div>
       ),
     }),
@@ -192,7 +211,11 @@ function buildColumns(isAdmin: boolean) {
       header: c.permissions,
       enableSorting: false,
       meta: { className: HIDE_BELOW_3XL, headerClassName: HIDE_BELOW_3XL },
-      cell: ({ getValue }) => <PermissionSummary permissions={getValue()} />,
+      // ad-platform permissions only (an Apify-only MCP has none)
+      cell: ({ row, getValue }) =>
+        row.original.platforms.length > 0 ? (
+          <PermissionSummary permissions={getValue()} />
+        ) : null,
     }),
     col.accessor("status", {
       header: c.status,
@@ -267,7 +290,10 @@ function MobileCard({
           {item.platforms.map((p) => (
             <PlatformBadge key={p} platform={p} iconOnly />
           ))}
-          <PermissionSummary permissions={item.allPermissions} />
+          <ApifyPlatformBadge on={item.apifyEnabled} />
+          {item.platforms.length > 0 && (
+            <PermissionSummary permissions={item.allPermissions} />
+          )}
           <CapsMissingBadge currencies={item.capsMissing} />
           <GmvMaxBadge on={item.tiktokGmvMaxWrite} />
         </div>
@@ -317,7 +343,12 @@ export function McpList({
       const st = filters.status ?? []
       if (st.length && !st.includes(m.status)) return false
       const pl = filters.platform ?? []
-      if (pl.length && !m.platforms.some((p) => pl.includes(p))) return false
+      if (
+        pl.length &&
+        !m.platforms.some((p) => pl.includes(p)) &&
+        !(m.apifyEnabled && pl.includes(APIFY_FILTER))
+      )
+        return false
       const ow = filters.owner ?? []
       if (ow.length && !ow.includes(m.ownerEmail)) return false
       return true
@@ -383,11 +414,18 @@ export function McpList({
             {
               id: "platform",
               label: t.list.filterPlatform,
-              options: MCP_PLATFORMS.map((p) => ({
-                value: p,
-                label: PLATFORM_LABELS[p],
-                icon: <PlatformIcon platform={p} colored />,
-              })),
+              options: [
+                ...MCP_PLATFORMS.map((p) => ({
+                  value: p,
+                  label: PLATFORM_LABELS[p],
+                  icon: <PlatformIcon platform={p} colored />,
+                })),
+                {
+                  value: APIFY_FILTER,
+                  label: t.list.apifyPlatform,
+                  icon: <BrandIcon brand="apify" />,
+                },
+              ],
             },
             ...(isAdmin
               ? [

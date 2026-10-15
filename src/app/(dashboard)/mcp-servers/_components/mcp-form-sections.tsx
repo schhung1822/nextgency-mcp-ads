@@ -527,6 +527,7 @@ export function PlatformsSection({
   connections,
   showAddLinks = true,
   layout = "stack",
+  extraCards,
 }: {
   values: McpFormValues
   update: FormUpdater
@@ -535,6 +536,8 @@ export function PlatformsSection({
   showAddLinks?: boolean
   /** "stack": one card per row (wizard, predictable when a card opens) · "grid": 2 columns from `lg` (wide editor) */
   layout?: "stack" | "grid"
+  /** platform cards after the ad platforms, shown even without any ad connection (Apify, decision A5) */
+  extraCards?: React.ReactNode
 }) {
   const s = t.platformsStep
   const available = availablePlatforms(connections)
@@ -637,6 +640,7 @@ export function PlatformsSection({
             </Card>
           )
         })}
+        {extraCards}
       </div>
       {showAddLinks && missing.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
@@ -681,16 +685,23 @@ export function PermissionsSection({
   values,
   update,
   platformExtra,
+  extraCards,
 }: {
   values: McpFormValues
   update: FormUpdater
   /** extra block at the end of a platform's card (TikTok: GMV Max switch) */
   platformExtra?: Partial<Record<Platform, React.ReactNode>>
+  /** permission cards of the non-ad platforms switched on in step 2 (Apify), after the ad platform cards */
+  extraCards?: React.ReactNode
 }) {
   const s = t.permissionsStep
   const enabled = MCP_PLATFORMS.filter((p) => values.platforms[p].enabled)
   if (enabled.length === 0)
-    return <p className="text-sm text-muted-foreground">{s.noPlatforms}</p>
+    return extraCards ? (
+      <div className="flex flex-col gap-4">{extraCards}</div>
+    ) : (
+      <p className="text-sm text-muted-foreground">{s.noPlatforms}</p>
+    )
   const applyAll = (preset: PermissionPreset) =>
     update((v) => {
       const platforms = { ...v.platforms }
@@ -829,6 +840,7 @@ export function PermissionsSection({
           </Card>
         )
       })}
+      {extraCards}
     </div>
   )
 }
