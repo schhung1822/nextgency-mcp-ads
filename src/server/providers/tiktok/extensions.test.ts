@@ -21,6 +21,8 @@ describe("khai báo extension", () => {
       "tiktok_create_adgroup",
       "tiktok_create_ads",
       "tiktok_update_targeting",
+      "tiktok_messaging_assets",
+      "tiktok_create_welcome_message",
       "tiktok_gmv_max_shops",
       "tiktok_gmv_max_campaigns",
       "tiktok_gmv_max_report",

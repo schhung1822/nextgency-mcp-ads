@@ -387,7 +387,7 @@ export const driveUi = {
       cover:
         "Tuỳ chọn. Link Drive của ảnh bìa cho video ở dòng đó (AI chỉ đọc). Chọn Không dùng mà sheet có cột tên “Ảnh bìa” thì AI vẫn tự nhận ra.",
       welcomeMessage:
-        "Tuỳ chọn. Lời chào khách thấy khi mở Messenger từ quảng cáo tin nhắn Meta, tối đa 300 ký tự (AI chỉ đọc). Chọn Không dùng mà sheet có cột tên “Lời chào tin nhắn” thì AI vẫn tự nhận ra.",
+        "Tuỳ chọn. Lời chào khách thấy khi mở tin nhắn từ quảng cáo tin nhắn Meta (Messenger, tối đa 300 ký tự) hoặc tin nhắn TikTok (tối đa 200 ký tự). AI chỉ đọc. Chọn Không dùng mà sheet có cột tên “Lời chào tin nhắn” thì AI vẫn tự nhận ra.",
       existingPost:
         "Tuỳ chọn, chỉ Meta. Mã bài viết (PAGEID_POSTID) hoặc link bài viết Facebook để tạo quảng cáo từ bài viết có sẵn, không cần Link Drive (AI chỉ đọc). Chọn Không dùng mà sheet có cột tên “Bài viết có sẵn” thì AI vẫn tự nhận ra.",
       mediaId:
@@ -466,7 +466,7 @@ export const driveUi = {
     autoColumnTitle: {
       cover: "Tự nhận theo tên cột - AI đọc cột này làm ảnh bìa video",
       welcomeMessage:
-        "Tự nhận theo tên cột - AI đọc cột này làm lời chào tin nhắn của quảng cáo Meta",
+        "Tự nhận theo tên cột - AI đọc cột này làm lời chào tin nhắn của quảng cáo Meta / TikTok",
       existingPost:
         "Tự nhận theo tên cột - AI đọc cột này làm bài viết có sẵn của quảng cáo Meta",
     } as Record<string, string>,
@@ -669,7 +669,7 @@ export const driveUi = {
           {
             title: "Sheet: ánh xạ cột",
             detail:
-              "Hệ thống gợi ý theo tên cột trong dòng tiêu đề. Bắt buộc: cột Link Drive. Nên có: Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích. Tuỳ chọn: Ảnh bìa (ảnh bìa riêng cho video của từng dòng), Lời chào tin nhắn (lời chào riêng cho quảng cáo tin nhắn Meta), Bài viết có sẵn (quảng cáo Meta từ bài viết trên Trang).",
+              "Hệ thống gợi ý theo tên cột trong dòng tiêu đề. Bắt buộc: cột Link Drive. Nên có: Tên creative, Nền tảng, TKQC, Nội dung, Tiêu đề, Link đích. Tuỳ chọn: Ảnh bìa (ảnh bìa riêng cho video của từng dòng), Lời chào tin nhắn (lời chào riêng cho quảng cáo tin nhắn Meta / TikTok), Bài viết có sẵn (quảng cáo Meta từ bài viết trên Trang).",
           },
           {
             title: "Sheet: ghi trạng thái",

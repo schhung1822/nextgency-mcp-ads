@@ -1,7 +1,8 @@
 // Builds the copy-paste material of tip "Tạo quảng cáo số lượng lớn" (/tips/bulk-ads): the recommended Google Sheet
 // header row (tab-separated → pastes into separate cells), a CSV template with example rows, and the prompt / Claude
 // skill that makes an AI create ads from the "Chờ lên" rows (or, task update_welcome - v1.1.4, add / change the
-// Messenger welcome message of the Meta ads already created from the sheet). Pure + client-safe (no server imports).
+// Messenger welcome message of the Meta ads already created from the sheet). TikTok rows can be messaging ads too
+// (v1.1.5: TikTok direct message or Zalo / Messenger / WhatsApp / LINE). Pure + client-safe (no server imports).
 // Column names must match DEFAULT_SHEET_COLUMNS (src/server/drive/types.ts - asserted in the unit test); tool names /
 // parameters must match src/server/mcp/tools/drive/{list-sources,sheet-read,sheet-update-rows}.ts,
 // common/{upload-media,get-media-upload,list-objects}.ts and the platform create tools (providers/*/extensions.ts).
@@ -173,6 +174,31 @@ export type BulkMetaAdType = (typeof BULK_META_AD_TYPES)[number]
 /** Meta limit of a Messenger welcome message (page_welcome_message text). */
 export const WELCOME_MESSAGE_MAX = 300
 
+/**
+ * Kind of TikTok ad (form level - every TikTok row of a run uses the same one, v1.1.5): `website` = the ads send
+ * people to "Link đích" (behaviour before v1.1.5 - the prompt is unchanged byte for byte); `messaging_dm` = Lead
+ * Generation ads that open a TikTok direct message (a welcome message is required); `messaging_app` = Lead Generation
+ * ads that open Zalo / Messenger / WhatsApp / LINE. Ignored for Meta / OpenAI Ads.
+ */
+export const BULK_TIKTOK_AD_TYPES = [
+  "website",
+  "messaging_dm",
+  "messaging_app",
+] as const
+export type BulkTiktokAdType = (typeof BULK_TIKTOK_AD_TYPES)[number]
+
+/** Apps of `messaging_app` = destination of tiktok_create_adgroup.messaging (providers/tiktok). */
+export const BULK_TIKTOK_MESSAGING_APPS = [
+  "ZALO",
+  "MESSENGER",
+  "WHATSAPP",
+  "LINE",
+] as const
+export type BulkTiktokMessagingApp = (typeof BULK_TIKTOK_MESSAGING_APPS)[number]
+
+/** TikTok limit of a welcome message (/creative/auto_message/create/ welcome_message.content). */
+export const TIKTOK_WELCOME_MESSAGE_MAX = 200
+
 export interface BulkAdsInput {
   /** create ads (default) or update the welcome message of existing Meta ads (v1.1.4, platform Meta / sheet only) */
   task: BulkTask
@@ -200,6 +226,12 @@ export interface BulkAdsInput {
   metaAdType: BulkMetaAdType
   /** messaging ads / update_welcome: default welcome message of every row ("" = none); the row's column overrides it */
   welcomeMessage: string
+  /** TikTok rows only: website ads (default) or messaging ads (v1.1.5) */
+  tiktokAdType: BulkTiktokAdType
+  /** tiktokAdType messaging_app only: the app the ads open */
+  tiktokMessagingApp: BulkTiktokMessagingApp
+  /** messaging_app only: Zalo / WhatsApp phone number, Facebook Page ID or LINE Business ID ("" = asked in chat) */
+  tiktokMessagingAccount: string
 }
 
 export const BULK_SKILL_NAME = "len-qc-tu-sheet"
@@ -221,6 +253,9 @@ export const DEFAULT_BULK_ADS: BulkAdsInput = {
   writeback: true,
   metaAdType: "website",
   welcomeMessage: "",
+  tiktokAdType: "website",
+  tiktokMessagingApp: "ZALO",
+  tiktokMessagingAccount: "",
 }
 
 const PLATFORM_LABEL: Record<Exclude<BulkPlatform, "sheet">, string> = {
@@ -417,6 +452,179 @@ function existingPostAdText(messaging: MessagingType | null): string {
   return ` Dòng Meta có existing_post (cột Bài viết có sẵn): tạo quảng cáo từ bài viết đó - meta_create_ad với creative {type: "existing_post", object_story_id = existing_post.post_id}${welcome}; nội dung, ảnh, video lấy từ bài viết (bỏ qua Nội dung, Tiêu đề, Link đích; Tên creative dùng để đặt tên quảng cáo). existing_post.needs_lookup = true (link chưa có mã bài viết): tìm bài bằng meta_list_page_posts của Trang (so permalink_url với existing_post.url) để lấy post_id; không có tool đó hoặc không tìm thấy thì ghi lỗi "Cần mã bài viết dạng PAGEID_POSTID ở cột Bài viết có sẵn", không đoán mã.`
 }
 
+// ---- TikTok messaging ads (v1.1.5) --------------------------------------------------------------------------------
+
+type TiktokMessagingType = Exclude<BulkTiktokAdType, "website">
+
+/** TikTok rows can be in the run: platform TikTok or "Theo cột Nền tảng". */
+function hasTiktokRows(platform: BulkPlatform): boolean {
+  return platform === "tiktok" || platform === "sheet"
+}
+
+/** TikTok messaging ads for the TikTok rows of the run, or null (website ads, or a Meta / OpenAI Ads-only form). */
+export function tiktokMessagingType(
+  input: BulkAdsInput
+): TiktokMessagingType | null {
+  if (!hasTiktokRows(input.platform)) return null
+  return input.tiktokAdType === "messaging_dm" ||
+    input.tiktokAdType === "messaging_app"
+    ? input.tiktokAdType
+    : null
+}
+
+/** The app of a messaging_app run (anything unknown → Zalo, the default). */
+export function tiktokMessagingApp(
+  input: BulkAdsInput
+): BulkTiktokMessagingApp {
+  return (BULK_TIKTOK_MESSAGING_APPS as readonly string[]).includes(
+    input.tiktokMessagingApp
+  )
+    ? input.tiktokMessagingApp
+    : "ZALO"
+}
+
+export const TIKTOK_APP_LABEL: Record<BulkTiktokMessagingApp, string> = {
+  ZALO: "Zalo",
+  MESSENGER: "Messenger",
+  WHATSAPP: "WhatsApp",
+  LINE: "LINE",
+}
+
+/**
+ * National number of a Vietnamese phone number, as TikTok wants it next to phone_region_calling_code "+84"
+ * ("0901 234 567", "+84 901 234 567", "84901234567" → "901234567"); null when it is not a VN mobile / landline number.
+ */
+export function vnPhoneNumber(raw: string): string | null {
+  let v = raw.replace(/[\s.()-]/g, "")
+  if (v.startsWith("+84")) v = v.slice(3)
+  else if (v.startsWith("0084")) v = v.slice(4)
+  else if (/^84\d{9,10}$/.test(v)) v = v.slice(2)
+  else if (v.startsWith("0")) v = v.slice(1)
+  return /^(?:[35789]\d{8}|2\d{9})$/.test(v) ? v : null
+}
+
+export type TiktokAccountCheck =
+  | { ok: true; value: string }
+  | { ok: false; error: "phone" | "page_id" | "line_id" }
+
+/**
+ * The receiving account typed for a messaging app, checked and normalised: Zalo / WhatsApp = a Vietnamese phone
+ * number (national digits), Messenger = a Facebook Page ID (digits), LINE = a LINE Business ID. "" = not given (the
+ * AI asks in chat). Only checked values ever reach the prompt.
+ */
+export function checkTiktokMessagingAccount(
+  app: BulkTiktokMessagingApp,
+  raw: string
+): TiktokAccountCheck {
+  const v = raw.trim()
+  if (!v) return { ok: true, value: "" }
+  if (app === "ZALO" || app === "WHATSAPP") {
+    const phone = vnPhoneNumber(v)
+    return phone ? { ok: true, value: phone } : { ok: false, error: "phone" }
+  }
+  if (app === "MESSENGER") {
+    const id = v.replace(/\s/g, "")
+    return /^\d{5,25}$/.test(id)
+      ? { ok: true, value: id }
+      : { ok: false, error: "page_id" }
+  }
+  return /^@?[A-Za-z0-9._-]{2,40}$/.test(v)
+    ? { ok: true, value: v }
+    : { ok: false, error: "line_id" }
+}
+
+/** tiktok_create_adgroup.messaging of a messaging_app run (the account as typed in the form, else asked). */
+function tiktokMessagingObject(input: BulkAdsInput): string {
+  const app = tiktokMessagingApp(input)
+  const label = TIKTOK_APP_LABEL[app]
+  const c = checkTiktokMessagingAccount(app, input.tiktokMessagingAccount)
+  const v = c.ok ? c.value : ""
+  const ask = "chưa rõ thì hỏi tôi MỘT lần cho cả lượt"
+  if (app === "ZALO" || app === "WHATSAPP")
+    return v
+      ? `messaging = {destination: "${app}", phone_region_code: "VN", phone_region_calling_code: "+84", phone_number: "${v}"}`
+      : `messaging = {destination: "${app}", phone_region_code: "VN", phone_region_calling_code: "+84", phone_number: số ${label} bỏ số 0 đầu, vd "901234567"} (số điện thoại ${label} của tôi; ${ask})`
+  if (app === "MESSENGER")
+    return v
+      ? `messaging = {destination: "MESSENGER", facebook_page_id: "${v}"}`
+      : `messaging = {destination: "MESSENGER", facebook_page_id: ID Trang Facebook nhận tin nhắn} (dãy số ở Trang → Giới thiệu → Minh bạch về Trang; ${ask})`
+  return v
+    ? `messaging = {destination: "LINE", line_business_id: "${v}"}`
+    : `messaging = {destination: "LINE", line_business_id: LINE Business ID của tôi} (${ask})`
+}
+
+const TIKTOK_CAMPAIGN =
+  "chiến dịch tiktok_create_campaign objective LEAD_GENERATION (chiến dịch thường, không Smart+)"
+const TIKTOK_ADGROUP_RULES =
+  "không truyền placement, optimization_event, pixel_id hay độ tuổi 13-17 - tool tự đặt vị trí chỉ TikTok"
+const TIKTOK_CONVERSATION =
+  "CONVERSATION chỉ khi tôi yêu cầu - TikTok chỉ mở mục tiêu này cho một số tài khoản"
+const TIKTOK_DEADLINE =
+  "Sau 31/12/2026 TikTok không cho tạo chiến dịch thường qua API: tool báo lỗi thì dừng và báo tôi, không đổi sang loại chiến dịch khác."
+
+/** Step c, new structure: the TikTok campaign + ad group of a messaging run. */
+function tiktokMessagingNewText(
+  type: TiktokMessagingType,
+  input: BulkAdsInput
+): string {
+  if (type === "messaging_dm")
+    return ` TikTok - quảng cáo tin nhắn TikTok (Direct Message): ${TIKTOK_CAMPAIGN}; nhóm quảng cáo tiktok_create_adgroup với messaging = {destination: "TIKTOK_DM"}, optimization_goal CLICK (${TIKTOK_CONVERSATION}); ${TIKTOK_ADGROUP_RULES}. ${TIKTOK_DEADLINE}`
+  const app = tiktokMessagingApp(input)
+  const label = TIKTOK_APP_LABEL[app]
+  const goal =
+    app === "ZALO" || app === "LINE"
+      ? `optimization_goal CLICK (${label} chỉ nhận CLICK)`
+      : `optimization_goal CLICK (${TIKTOK_CONVERSATION} và có thể cần message_event_set_id - xem tiktok_messaging_assets kind=message_event_sets)`
+  const whatsapp =
+    app === "WHATSAPP"
+      ? " Số WhatsApp phải là số WhatsApp Business API đã nối với công cụ quản lý tin nhắn."
+      : ""
+  return ` TikTok - quảng cáo tin nhắn qua ${label}: ${TIKTOK_CAMPAIGN}; nhóm quảng cáo tiktok_create_adgroup với ${tiktokMessagingObject(input)}, ${goal}; ${TIKTOK_ADGROUP_RULES}.${whatsapp} ${TIKTOK_DEADLINE}`
+}
+
+/** Step c, existing ad group: it must already be a messaging ad group of the chosen kind (ads_get_object). */
+function tiktokMessagingExistingText(
+  type: TiktokMessagingType,
+  input: BulkAdsInput
+): string {
+  if (type === "messaging_dm")
+    return ` TikTok - quảng cáo tin nhắn TikTok: trước khi tạo quảng cáo, xem nhóm quảng cáo bằng ads_get_object - promotion_type phải là LEAD_GEN_CLICK_TO_TT_DIRECT_MESSAGE (khác → ghi lỗi "Nhóm quảng cáo TikTok không phải nhóm tin nhắn TikTok", không tạo quảng cáo).`
+  const app = tiktokMessagingApp(input)
+  const label = TIKTOK_APP_LABEL[app]
+  const c = checkTiktokMessagingAccount(app, input.tiktokMessagingAccount)
+  const account =
+    c.ok && c.value
+      ? `; tài khoản nhận tin của nhóm (messaging_app_account_id hoặc phone_number) khác "${c.value}" thì báo tôi và hỏi trước khi làm tiếp`
+      : ""
+  return ` TikTok - quảng cáo tin nhắn qua ${label}: trước khi tạo quảng cáo, xem nhóm quảng cáo bằng ads_get_object - promotion_type phải là LEAD_GEN_CLICK_TO_SOCIAL_MEDIA_APP_MESSAGE và messaging_app_type phải là ${app} (khác → ghi lỗi "Nhóm quảng cáo TikTok không gửi khách tới ${label}", không tạo quảng cáo)${account}.`
+}
+
+/** Step b: TikTok messaging ads take a video only (TikTok: SINGLE_VIDEO / CAROUSEL_ADS, never a single image). */
+const TIKTOK_VIDEO_ONLY =
+  ' Quảng cáo tin nhắn TikTok chỉ dùng video: dòng TikTok không có video thì không tải file, ghi lỗi "Quảng cáo tin nhắn TikTok cần video - dòng này chỉ có ảnh" (ảnh bìa của video vẫn tải như thường).'
+
+/** Step d: the TikTok ad of a messaging run (DM: one welcome message per distinct text, created or reused). */
+function tiktokMessagingAdText(
+  type: TiktokMessagingType,
+  input: BulkAdsInput
+): string {
+  const noLink = "không truyền Link đích, page_id hay deeplink"
+  const notMixed =
+    "Mọi dòng TikTok của lượt đều là quảng cáo tin nhắn - không trộn với quảng cáo dẫn tới website."
+  if (type === "messaging_app") {
+    const label = TIKTOK_APP_LABEL[tiktokMessagingApp(input)]
+    return ` Quảng cáo TikTok là quảng cáo tin nhắn qua ${label}: tiktok_create_ads với call_to_action SEND_MESSAGE, ${noLink} (TikTok tự mở ${label} theo nhóm quảng cáo - không tự ghi link zalo.me, m.me hay wa.me), ưu tiên danh tính Spark (tài khoản TikTok). ${notMixed}`
+  }
+  const max = TIKTOK_WELCOME_MESSAGE_MAX
+  const welcome = cleanWelcome(input.welcomeMessage)
+  const fallback = !welcome
+    ? "dòng trống thì liệt kê lời chào có sẵn bằng tiktok_messaging_assets kind=welcome_messages và hỏi tôi MỘT lần cho cả lượt dùng lời chào nào (hoặc nội dung lời chào mới)"
+    : welcome.length > max
+      ? `dòng trống thì ghi lỗi "Lời chào mặc định dài hơn ${max} ký tự - ghi lời chào riêng (tối đa ${max} ký tự) ở cột Lời chào tin nhắn"`
+      : `dòng trống thì dùng lời chào "${welcome}"`
+  return ` Quảng cáo TikTok là quảng cáo tin nhắn TikTok (Direct Message), bắt buộc có lời chào: lời chào = welcome_message của dòng (cột Lời chào tin nhắn, tối đa ${max} ký tự), ${fallback}. Với mỗi tài khoản và mỗi lời chào khác nhau trong lượt: tìm lời chào cùng nội dung bằng tiktok_messaging_assets kind=welcome_messages - có thì dùng auto_message_id đó, chưa có thì tạo MỘT lần bằng tiktok_create_welcome_message {content = lời chào} rồi dùng auto_message_id trả về cho mọi quảng cáo cùng lời chào. tiktok_create_ads với auto_message_id, call_to_action SEND_MESSAGE, danh tính Spark (identity_type TT_USER hoặc BC_AUTH_TT): chọn tài khoản TikTok có can_manage_message = true bằng tiktok_messaging_assets kind=dm_identities (nhiều tài khoản thì hỏi tôi; không có thì dừng và báo tôi - tài khoản TikTok cần cho phép "Mọi người" nhắn tin và cấp quyền đọc, quản lý tin nhắn); ${noLink} - khách bấm quảng cáo sẽ mở tin nhắn TikTok. Lời chào không đổi được sau khi tạo quảng cáo. ${notMixed}`
+}
+
 function sheetLineOf(sheet: string): string {
   return sheet
     ? `1. Gọi drive_list_sources và chọn Google Sheet tên "${sheet}" (kind = sheet).`
@@ -436,6 +644,7 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
   const wb = input.writeback
   const messaging = metaMessagingType(input)
   const metaRows = hasMetaRows(input.platform)
+  const tiktokMsg = tiktokMessagingType(input)
 
   const sheetLine = sheetLineOf(sheet)
   const platformLine =
@@ -449,7 +658,7 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
   let structureLine: string
   if (input.structure === "new") {
     const name = campaign || "Lên QC theo sheet"
-    structureLine = `c. Lần đầu gặp mỗi tài khoản trong lượt: tạo MỘT chiến dịch mới tên "${name}" và MỘT nhóm quảng cáo, ngân sách/ngày ${budget} (đặt ở chiến dịch hoặc nhóm tuỳ nền tảng), bằng tool tạo của nền tảng (${newStructureTools(input.platform)}). Thiếu thông tin bắt buộc (mục tiêu, vị trí, đối tượng, Trang, danh tính…) thì hỏi tôi MỘT lần cho cả lượt. Dùng lại chiến dịch và nhóm này cho mọi dòng sau của cùng tài khoản; không tạo thêm.${messaging ? messagingNewText(messaging) : ""}`
+    structureLine = `c. Lần đầu gặp mỗi tài khoản trong lượt: tạo MỘT chiến dịch mới tên "${name}" và MỘT nhóm quảng cáo, ngân sách/ngày ${budget} (đặt ở chiến dịch hoặc nhóm tuỳ nền tảng), bằng tool tạo của nền tảng (${newStructureTools(input.platform)}). Thiếu thông tin bắt buộc (mục tiêu, vị trí, đối tượng, Trang, danh tính…) thì hỏi tôi MỘT lần cho cả lượt. Dùng lại chiến dịch và nhóm này cho mọi dòng sau của cùng tài khoản; không tạo thêm.${messaging ? messagingNewText(messaging) : ""}${tiktokMsg ? tiktokMessagingNewText(tiktokMsg, input) : ""}`
   } else if (campaign || group) {
     const target = [
       campaign ? `chiến dịch "${campaign}"` : null,
@@ -464,6 +673,8 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
   }
   if (input.structure !== "new" && messaging)
     structureLine += messagingExistingText(messaging)
+  if (input.structure !== "new" && tiktokMsg)
+    structureLine += tiktokMessagingExistingText(tiktokMsg, input)
 
   const steps: string[] = [
     `Việc cần làm: lên quảng cáo từ các dòng chờ lên của Google Sheet creative, mỗi lượt tối đa ${n} dòng.`,
@@ -478,9 +689,9 @@ export function buildBulkAdsRule(input: BulkAdsInput): string {
       : "4. Không ghi gì vào sheet (chưa bật ghi trạng thái).",
     "5. Với từng dòng còn lại, lần lượt:",
     `   a. Nền tảng: ${platformLine}. Tài khoản quảng cáo: ${accountLine}.`,
-    `   b. Tải từng file của dòng lên tài khoản đó bằng ads_upload_media với drive_file = drive_file (hoặc file_id) của file trong kết quả drive_sheet_read. File đã tải lên tài khoản này trước đây trả reused: true - dùng luôn mã cũ, không tải lại. Video lớn trả status = "queued" kèm upload_id: gọi ads_get_media_upload sau vài phút cho tới khi có media_id; vẫn chưa xong thì để dòng ở trạng thái đang xử lý với ghi chú "Video đang tải nền" và làm dòng tiếp theo.${metaRows ? EXISTING_POST_UPLOAD : ""}`,
+    `   b. Tải từng file của dòng lên tài khoản đó bằng ads_upload_media với drive_file = drive_file (hoặc file_id) của file trong kết quả drive_sheet_read. File đã tải lên tài khoản này trước đây trả reused: true - dùng luôn mã cũ, không tải lại. Video lớn trả status = "queued" kèm upload_id: gọi ads_get_media_upload sau vài phút cho tới khi có media_id; vẫn chưa xong thì để dòng ở trạng thái đang xử lý với ghi chú "Video đang tải nền" và làm dòng tiếp theo.${metaRows ? EXISTING_POST_UPLOAD : ""}${tiktokMsg ? TIKTOK_VIDEO_ONLY : ""}`,
     `   ${structureLine}`,
-    `   d. Tạo quảng cáo bằng tool tạo quảng cáo của nền tảng (${toolList(input.platform, "ad")}) với mã media vừa có và Nội dung, Tiêu đề, Link đích, Tên creative của dòng.${messaging ? messagingAdText(input) : ""}${coverText(input.platform)}${metaRows ? existingPostAdText(messaging) : ""} Nhiều ảnh trong một ô: mỗi ảnh một quảng cáo. Quảng cáo luôn ở trạng thái TẠM DỪNG - không bật.`,
+    `   d. Tạo quảng cáo bằng tool tạo quảng cáo của nền tảng (${toolList(input.platform, "ad")}) với mã media vừa có và Nội dung, Tiêu đề, Link đích, Tên creative của dòng.${messaging ? messagingAdText(input) : ""}${tiktokMsg ? tiktokMessagingAdText(tiktokMsg, input) : ""}${coverText(input.platform)}${metaRows ? existingPostAdText(messaging) : ""} Nhiều ảnh trong một ô: mỗi ảnh một quảng cáo. Quảng cáo luôn ở trạng thái TẠM DỪNG - không bật.`,
     '   e. Tool trả status = "confirmation_required": cho tôi xem bản xem trước (gom các mục của cả lượt nếu được), chờ tôi đồng ý rồi mới gọi lại với confirm_token. Không tự đồng ý thay tôi.',
     input.structure === "new"
       ? `6. Ngân sách: không đặt ngân sách/ngày khác ${budget}. Tool báo vượt trần của MCP thì ghi lỗi, không thử mức cao hơn.`

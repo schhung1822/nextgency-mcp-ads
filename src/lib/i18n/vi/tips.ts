@@ -265,6 +265,7 @@ export const tips = {
           "Video: dán link ảnh bìa vào cột **Ảnh bìa** (tuỳ chọn). Để trống thì Meta tự lấy ảnh bìa do Meta chọn; TikTok cần ảnh bìa (cột **Ảnh bìa** hoặc chung ô **Link Drive** với video).",
           "Ghi **Nền tảng**, **Tài khoản QC**, **Nội dung**, **Tiêu đề**, **Link đích**.",
           "Quảng cáo tin nhắn Meta (Messenger): cột **Lời chào tin nhắn** (tuỳ chọn, tối đa 300 ký tự) là câu khách thấy khi mở Messenger; **Link đích** có thể để trống.",
+          "Quảng cáo tin nhắn TikTok: dòng phải có **video**; tin nhắn TikTok dùng cột **Lời chào tin nhắn** (tối đa 200 ký tự); Zalo / Messenger / WhatsApp / LINE không cần lời chào; **Link đích** để trống.",
           "Quảng cáo từ bài viết có sẵn (Meta): dán mã bài viết dạng `PAGEID_POSTID` hoặc link bài viết trên Trang vào cột **Bài viết có sẵn**, để trống **Link Drive**.",
           "Cột **Trạng thái**: để trống, hoặc ghi **Chờ lên** / **Chưa tạo ads**.",
           "Để trống 6 cột hệ thống, từ **Mã media** tới **Cập nhật lúc** - AI tự điền.",
@@ -411,13 +412,13 @@ export const tips = {
           name: "Link đích",
           who: "you",
           detail:
-            "Trang đích khi khách bấm vào quảng cáo (có thể gắn UTM). Quảng cáo tin nhắn Meta mở Messenger nên có thể để trống.",
+            "Trang đích khi khách bấm vào quảng cáo (có thể gắn UTM). Quảng cáo tin nhắn Meta (mở Messenger) có thể để trống; quảng cáo tin nhắn TikTok không dùng cột này.",
         },
         {
           name: "Lời chào tin nhắn",
           who: "you",
           detail:
-            "Tuỳ chọn, chỉ cho quảng cáo tin nhắn Meta (Messenger). Câu chào khách thấy khi mở Messenger từ quảng cáo, tối đa 300 ký tự. Để trống: dùng lời chào mặc định ở form soạn câu lệnh, không có thì Meta tự dùng lời chào mặc định.",
+            "Tuỳ chọn, cho quảng cáo tin nhắn Meta (Messenger, tối đa 300 ký tự) và tin nhắn TikTok (tối đa 200 ký tự). Câu chào khách thấy khi mở tin nhắn từ quảng cáo. Để trống: dùng lời chào mặc định ở form soạn câu lệnh; không có thì Meta tự dùng lời chào mặc định, còn TikTok (bắt buộc có lời chào) thì AI hỏi bạn.",
         },
         {
           name: "Bài viết có sẵn",
@@ -526,7 +527,7 @@ export const tips = {
         create:
           "Lên quảng cáo từ các dòng chờ lên: ảnh, video trên Drive, hoặc bài viết có sẵn (cột Bài viết có sẵn, chỉ Meta).",
         update_welcome:
-          "Chỉ Meta, MCP cần quyền Sửa. AI làm các dòng đã có Mã quảng cáo: đổi lời chào Messenger, giữ nguyên nội dung, mã và trạng thái quảng cáo. Nhóm quảng cáo phải gửi khách tới Messenger; Meta sẽ duyệt lại quảng cáo.",
+          "Chỉ Meta, MCP cần quyền Sửa. AI làm các dòng đã có Mã quảng cáo: đổi lời chào Messenger, giữ nguyên nội dung, mã và trạng thái quảng cáo. Nhóm quảng cáo phải gửi khách tới Messenger; Meta sẽ duyệt lại quảng cáo. Lời chào của quảng cáo tin nhắn TikTok không đổi được sau khi tạo.",
       },
       metaTypeLabel: "Loại quảng cáo Meta",
       metaTypes: {
@@ -542,12 +543,93 @@ export const tips = {
         messaging_conversations:
           "Khách bấm quảng cáo sẽ mở Messenger của Trang; Meta tìm người dễ nhắn tin. Không cần điều kiện về lượt mua.",
       },
+      tiktokTypeLabel: "Loại quảng cáo TikTok",
+      tiktokTypes: {
+        website: "Dẫn tới website (Link đích)",
+        messaging_dm: "Tin nhắn TikTok (Direct Message)",
+        messaging_app: "Tin nhắn qua Zalo / Messenger / WhatsApp / LINE",
+      },
+      tiktokTypeHelp: {
+        website:
+          "Khách bấm quảng cáo sẽ mở Link đích của dòng. Áp dụng cho mọi dòng TikTok.",
+        messaging_dm:
+          "Chiến dịch Tìm khách tiềm năng, khách bấm quảng cáo sẽ nhắn tin cho tài khoản TikTok của bạn. Cần quảng cáo Spark (danh tính là tài khoản TikTok) và tài khoản đó cho phép “Mọi người” nhắn tin.",
+        messaging_app:
+          "Chiến dịch Tìm khách tiềm năng, khách bấm quảng cáo sẽ mở Zalo, Messenger, WhatsApp hoặc LINE để nhắn tin cho bạn.",
+      },
+      tiktokAppLabel: "Ứng dụng nhắn tin",
+      tiktokApps: {
+        ZALO: "Zalo",
+        MESSENGER: "Messenger",
+        WHATSAPP: "WhatsApp",
+        LINE: "LINE",
+      },
+      tiktokAppHelp: {
+        ZALO: "Khách mở Zalo để nhắn cho số điện thoại Zalo của bạn (không dùng ID Zalo OA). TikTok chỉ tối ưu lượt bấm.",
+        MESSENGER: "Khách mở Messenger để nhắn cho Trang Facebook của bạn.",
+        WHATSAPP:
+          "Cần số WhatsApp Business API đã nối với công cụ quản lý tin nhắn (vd Pancake), không dùng số WhatsApp cá nhân.",
+        LINE: "Khách mở LINE để nhắn cho tài khoản LINE Official của bạn. TikTok chỉ tối ưu lượt bấm.",
+      },
+      tiktokAccountLabel: {
+        ZALO: "Số điện thoại Zalo",
+        MESSENGER: "ID Trang Facebook",
+        WHATSAPP: "Số WhatsApp Business",
+        LINE: "LINE Business ID",
+      },
+      tiktokAccountPlaceholder: {
+        ZALO: "Vd: 0901 234 567",
+        MESSENGER: "Vd: 123456789012345",
+        WHATSAPP: "Vd: 0901 234 567",
+        LINE: "Vd: @shopcuaban",
+      },
+      tiktokAccountHelp: {
+        ZALO: "Số Việt Nam: 0901 234 567 hoặc +84 901 234 567 - AI gửi TikTok mã vùng +84 và số bỏ số 0 đầu. Để trống thì AI hỏi khi tạo nhóm quảng cáo.",
+        MESSENGER:
+          "Dãy số ở Trang Facebook → Giới thiệu → Minh bạch về Trang. Để trống thì AI hỏi khi tạo nhóm quảng cáo.",
+        WHATSAPP:
+          "Số Việt Nam: 0901 234 567 hoặc +84 901 234 567 - AI gửi TikTok mã vùng +84 và số bỏ số 0 đầu. Để trống thì AI hỏi khi tạo nhóm quảng cáo.",
+        LINE: "ID dạng @… trong LINE Official Account Manager. Để trống thì AI hỏi khi tạo nhóm quảng cáo.",
+      },
+      tiktokPhoneUnderstood: (n: string) => `Gửi TikTok: +84 ${n}`,
+      tiktokAccountError: {
+        phone:
+          "Số điện thoại Việt Nam chưa đúng: ghi 10 số bắt đầu bằng 0 (vd 0901 234 567) hoặc +84 rồi 9 số.",
+        page_id: "ID Trang Facebook chỉ gồm chữ số, vd 123456789012345.",
+        line_id:
+          "LINE Business ID chỉ gồm chữ không dấu, số, dấu chấm, gạch ngang, gạch dưới (vd @shopcuaban).",
+      },
+      tiktokNoteTitle: "Lưu ý quảng cáo tin nhắn TikTok",
+      tiktokNotes: {
+        messaging_dm: [
+          "Chỉ dùng video: dòng TikTok chỉ có ảnh bị bỏ qua và ghi lỗi.",
+          "Lời chào bắt buộc, tối đa 200 ký tự, không đổi được sau khi tạo quảng cáo.",
+          "Tài khoản TikTok cho phép “Mọi người” nhắn tin và cấp quyền đọc, quản lý tin nhắn cho tài khoản quảng cáo.",
+          "TikTok ngừng cho tạo chiến dịch thường qua API sau 31/12/2026.",
+        ],
+        messaging_app: [
+          "Chỉ dùng video: dòng TikTok chỉ có ảnh bị bỏ qua và ghi lỗi.",
+          "Không cần Link đích: TikTok tự mở ứng dụng nhắn tin đã chọn.",
+          "Zalo và LINE chỉ tối ưu lượt bấm; WhatsApp cần số WhatsApp Business API.",
+          "TikTok ngừng cho tạo chiến dịch thường qua API sau 31/12/2026.",
+        ],
+      },
       welcomeLabel: "Lời chào mặc định trong Messenger",
       welcomePlaceholder:
         "Vd: Chào bạn! Shop gửi bạn bảng giá và ưu đãi hôm nay nhé.",
       welcomeHelp:
         "Tuỳ chọn. Dùng cho dòng có cột Lời chào tin nhắn trống. Để trống thì Meta dùng lời chào mặc định.",
       welcomeCount: (n: number, max: number) => `${n}/${max}`,
+      welcomeLabelTiktok: "Lời chào mặc định trong tin nhắn TikTok",
+      welcomeHelpTiktok:
+        "Dùng cho dòng TikTok có cột Lời chào tin nhắn trống, tối đa 200 ký tự. TikTok bắt buộc có lời chào: để trống thì AI hỏi bạn chọn lời chào có sẵn của tài khoản.",
+      welcomeLabelBoth: "Lời chào mặc định (Messenger và tin nhắn TikTok)",
+      welcomeHelpBoth:
+        "Dùng cho dòng có cột Lời chào tin nhắn trống. Meta nhận tối đa 300 ký tự, TikTok tối đa 200: dòng TikTok chỉ dùng lời chào này khi nó không quá 200 ký tự.",
+      welcomeTooLongTiktok: (n: number, max: number) =>
+        `Lời chào dài ${n} ký tự - TikTok chỉ nhận tối đa ${max}. Rút gọn lời chào.`,
+      welcomeTooLongTiktokRows: (n: number, max: number) =>
+        `Lời chào dài ${n} ký tự: dòng TikTok không có lời chào riêng sẽ bị ghi lỗi (TikTok tối đa ${max} ký tự).`,
       welcomeLabelUpdate: "Lời chào mới trong Messenger",
       welcomeHelpUpdate:
         "Dùng cho dòng có cột Lời chào tin nhắn trống. Để trống thì AI chỉ làm các dòng có lời chào riêng.",
@@ -591,6 +673,10 @@ export const tips = {
         messaging_conversations:
           "Quảng cáo Meta mở Messenger, tối ưu lượt bắt đầu trò chuyện.",
       },
+      previewTiktokDm:
+        "Quảng cáo TikTok mở tin nhắn TikTok (video, danh tính Spark, có lời chào).",
+      previewTiktokApp: (app: string) =>
+        `Quảng cáo TikTok mở ${app} để khách nhắn tin (video).`,
       promptHelp:
         'Dán vào một cuộc trò chuyện mới. Chạy xong một lượt, nhắn "chạy lượt tiếp theo" để làm các dòng còn lại.',
       promptLabel: "Câu lệnh lên quảng cáo từ Google Sheet",
@@ -627,6 +713,7 @@ export const tips = {
       "Mã tài khoản dài (TikTok 19 chữ số) bị Google Sheet đổi thành số mũ: chọn cột Tài khoản QC → Định dạng → Số → Văn bản thuần túy trước khi gõ, hoặc ghi tên tài khoản.",
       "Quảng cáo tin nhắn Meta: chọn Loại quảng cáo Meta ở form - cả lượt dùng chung một loại. Lời chào riêng của từng dòng ghi ở cột Lời chào tin nhắn (tối đa 300 ký tự); dùng chiến dịch có sẵn thì nhóm quảng cáo phải là nhóm gửi khách tới Messenger.",
       "Thêm lời chào cho quảng cáo đã tạo: ở form chọn Việc cần làm = “Thêm / đổi lời chào cho quảng cáo đã có”. AI dùng cột Mã quảng cáo, quảng cáo giữ nguyên mã và số liệu; Meta duyệt lại quảng cáo. Muốn đổi lời chào lần nữa: xoá ghi chú “Đã cập nhật lời chào” của dòng.",
+      "Quảng cáo tin nhắn TikTok: chọn Loại quảng cáo TikTok ở form - cả lượt dùng chung một loại, chỉ dòng video. Tin nhắn TikTok cần lời chào (cột Lời chào tin nhắn, tối đa 200 ký tự, hoặc lời chào mặc định của form) và AI dùng lại lời chào cùng nội dung; Zalo dùng số điện thoại, không dùng ID Zalo OA.",
     ],
 
     faq: [
@@ -673,6 +760,18 @@ export const tips = {
       {
         q: '"existing_post_invalid" hoặc "Cần mã bài viết dạng PAGEID_POSTID"',
         a: "Cột Bài viết có sẵn cần mã bài viết dạng PAGEID_POSTID (vd 123456789012345_987654321098765) hoặc link bài viết trên Facebook. Link chia sẻ (/share/…, pfbid…) chỉ tìm được khi MCP được gán Trang Facebook đó; không thì lấy ID bài viết trong Meta Business Suite hoặc Trình quản lý quảng cáo rồi ghi dạng PAGEID_POSTID.",
+      },
+      {
+        q: "Quảng cáo tin nhắn TikTok qua Zalo, Messenger, WhatsApp, LINE cần gì?",
+        a: "Zalo: số điện thoại đăng ký Zalo (không phải ID Zalo OA). Messenger: ID Trang Facebook. WhatsApp: số WhatsApp Business API đã nối với công cụ quản lý tin nhắn (vd Pancake). LINE: LINE Business ID. Zalo và LINE chỉ tối ưu lượt bấm. Tài khoản quảng cáo TikTok cần đăng ký ở khu vực được hỗ trợ (có Việt Nam).",
+      },
+      {
+        q: "Tin nhắn TikTok: AI báo không có tài khoản TikTok nhận tin nhắn (can_manage_message)",
+        a: "Quảng cáo tin nhắn TikTok chỉ chạy bằng quảng cáo Spark. Trong ứng dụng TikTok, cho phép “Mọi người” gửi tin nhắn trực tiếp; trong Trình quản lý quảng cáo TikTok, cấp quyền “Đọc và quản lý tin nhắn” cho tài khoản TikTok đã liên kết (tài khoản qua Business Center: quản trị viên gán quyền Tin nhắn trực tiếp).",
+      },
+      {
+        q: '"welcome_message_too_long_tiktok" - lời chào của dòng TikTok quá dài',
+        a: "TikTok chỉ nhận lời chào tối đa 200 ký tự (Meta 300). Rút gọn ô Lời chào tin nhắn của dòng TikTok, hoặc xoá ô này nếu dòng không phải quảng cáo tin nhắn.",
       },
       {
         q: "Lên được trên Google Ads không?",

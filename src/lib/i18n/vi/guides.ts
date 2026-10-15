@@ -961,6 +961,7 @@ export const guides = {
       "Ảnh bìa video: cột Ảnh bìa, hoặc chung một ô Link Drive với video (mỗi link một dòng trong ô). Meta để trống thì tự lấy ảnh bìa Meta chọn.",
       "Quảng cáo tin nhắn Messenger (Meta): chọn Loại quảng cáo Meta ở form soạn câu lệnh; lời chào riêng từng dòng ghi ở cột Lời chào tin nhắn. Tối đa lượt mua qua tin nhắn cần Trang có ít nhất 5 lượt mua từ tin nhắn trong 30 ngày.",
       "Bài viết có sẵn (Meta): dán mã PAGEID_POSTID hoặc link bài viết vào cột Bài viết có sẵn để tạo quảng cáo từ bài đã đăng (giữ lượt thích, bình luận), không cần Link Drive. Thêm lời chào cho quảng cáo đã tạo: ở form chọn Việc cần làm = “Thêm / đổi lời chào cho quảng cáo đã có” (MCP cần quyền Sửa) - quảng cáo giữ nguyên mã và số liệu, Meta duyệt lại.",
+      "Quảng cáo tin nhắn TikTok: chọn Loại quảng cáo TikTok ở form (tin nhắn TikTok, hoặc Zalo / Messenger / WhatsApp / LINE), chỉ dòng video. Tin nhắn TikTok cần lời chào tối đa 200 ký tự, không đổi được sau khi tạo; Zalo dùng số điện thoại.",
       "Không sắp xếp, chèn, xoá dòng khi AI đang chạy.",
     ],
     warnings: [

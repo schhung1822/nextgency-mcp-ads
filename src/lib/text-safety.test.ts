@@ -8,9 +8,11 @@ import {
 } from "@/server/mcp/tools/telegram/list-channels"
 
 import {
+  cutText,
   hasForbiddenNameChars,
   MULTILINE_FORBIDDEN_CHARS,
   sanitizeExternalLabel,
+  UNSAFE_TEXT_CHARS,
 } from "./text-safety"
 
 const ch = (code: number) => String.fromCharCode(code)
@@ -89,5 +91,20 @@ describe("sanitizeExternalLabel - invisible characters used to hide text (securi
     expect(sanitizeExternalLabel(`p${cp(0xfff9)}q${cp(0xfffa)}r${cp(0xfffb)}s`)).toBe("pqrs")
     // ZWJ / ZWNJ and ordinary Vietnamese text stay
     expect(sanitizeExternalLabel(`Cửa hàng ${cp(0x200d)}A`)).toBe(`Cửa hàng ${cp(0x200d)}A`)
+  })
+})
+
+describe("UNSAFE_TEXT_CHARS / cutText", () => {
+  it("bỏ tag character, variation selector, bidi, zero-width; giữ tab / xuống dòng", () => {
+    const raw = `a${String.fromCodePoint(0xe0041)}b${String.fromCharCode(0xfe0f)}c${String.fromCodePoint(0xe0100)}d${String.fromCharCode(0x202e)}e${String.fromCharCode(0x200b)}f\tg\nh`
+    expect(raw.replace(UNSAFE_TEXT_CHARS, "")).toBe("abcdef\tg\nh")
+  })
+
+  it("cutText không cắt giữa cặp surrogate; chuỗi ngắn giữ nguyên", () => {
+    const emoji = String.fromCodePoint(0x1f600)
+    expect(cutText("abc", 3)).toBe("abc")
+    expect(cutText(`ab${emoji}cd`, 4)).toBe("ab…")
+    expect(cutText(`abc${emoji}`, 4)).toBe("abc…")
+    expect(cutText("abcdef", 4)).toBe("abc…")
   })
 })

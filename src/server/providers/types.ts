@@ -723,6 +723,11 @@ export interface ProviderExtension<C = unknown, I = any, O = unknown> {
    */
   createsActive?: true
   /**
+   * false: a create tool whose result is not an ad object with a status (TikTok welcome message): the generic
+   * "always created paused" preview note is not shown. Omitted = ad object (default behaviour).
+   */
+  createsAdObject?: false
+  /**
    * Optional: Google Drive image reference carried by the input (meta_create_ad creative.image_drive_file - file id,
    * Drive link or drf_ ref). mcp-core resolves it in the MCP's Drive scope on both steps, uploads it to the ad account
    * on execution (reused per file version) and hands it over as MutationOptions.driveImage; the confirmation is bound

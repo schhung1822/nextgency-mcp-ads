@@ -26,6 +26,7 @@ import type { TikTokCredentials } from "./credentials"
 import { routeGmvMaxCopy } from "./gmv-max-write"
 import { campaignNotFound, fetchAdsForAdGroups, fetchByIds, fetchOne, objectId } from "./objects"
 import { applyStatus } from "./mutate"
+import { messagingGroupOf } from "./messaging"
 
 /** Poll timing for the async copy task (overridable in tests). */
 export const COPY_POLL = { initialDelayMs: 10_000, intervalMs: 10_000, timeoutMs: 120_000 }
@@ -346,8 +347,20 @@ export function adgroupCreateBody(
   return body
 }
 
-export function adCreativeFromSource(src: Raw, name?: string): Raw {
+/** Link fields TikTok fills itself for ads of instant-messaging-app ad groups (providers/tiktok.md §9) - never resent */
+const IM_APP_FILLED_FIELDS = ["landing_page_url", "deeplink", "deeplink_type", "deeplink_format_type", "deeplink_utm_params", "fallback_type"]
+
+/**
+ * Creative of a copied ad. `group` = the ad group the copy is created in (or its source): Messenger / WhatsApp / Zalo /
+ * LINE messaging groups get no landing_page_url / deeplink* (TikTok fills them from the ad group); every other group
+ * keeps the creative unchanged.
+ */
+export function adCreativeFromSource(src: Raw, name?: string, group: Raw | null = null): Raw {
   const creative = pick(src, AD_CREATE_CREATIVE_FIELDS)
+  const mg = group ? messagingGroupOf(group) : null
+  if (mg && !mg.dm && mg.appType !== null && mg.appType !== "IM_URL") {
+    for (const k of IM_APP_FILLED_FIELDS) delete creative[k]
+  }
   if (name !== undefined) creative.ad_name = name
   creative.operation_status = "DISABLE"
   return creative
@@ -474,12 +487,17 @@ export async function copyTikTokObject(
 
   // ad
   const targetAdGroupId = r.targetParentId ?? String(src.adgroup_id)
+  let targetGroup: Raw | null = null
   if (targetAdGroupId !== String(src.adgroup_id)) {
-    const target = await fetchOne(tt, "ad_group", targetAdGroupId)
-    assertCopyable("ad_group", target)
+    targetGroup = await fetchOne(tt, "ad_group", targetAdGroupId)
+    assertCopyable("ad_group", targetGroup)
+  } else if (IM_APP_FILLED_FIELDS.some((k) => src[k] !== undefined && src[k] !== null && src[k] !== "")) {
+    // same ad group: read it only when the ad carries link fields (a messaging-app group must not get them back);
+    // unreadable → copy unchanged as before
+    targetGroup = await fetchOne(tt, "ad_group", targetAdGroupId).catch(() => null)
   }
   const mappings: CopyMapping[] = []
-  await diyCreateAds(tt, targetAdGroupId, [{ src, name }], mappings, opts, warnings)
+  await diyCreateAds(tt, targetAdGroupId, [{ src, name }], mappings, opts, warnings, targetGroup)
   return {
     preview: !!opts.dryRun,
     mode: "emulated",
@@ -855,7 +873,7 @@ async function diyCopyAdGroups(
     const ads = deep ? (adsByGroup.get(sid) ?? []) : []
     if (opts.dryRun) {
       mappings.push({ level: "ad_group", sourceId: sid, newId: null })
-      await diyCreateAds(tt, "(mới)", ads.map((a) => ({ src: a })), mappings, opts, warnings)
+      await diyCreateAds(tt, "(mới)", ads.map((a) => ({ src: a })), mappings, opts, warnings, g)
       continue
     }
     let newGroupId: string | null = null
@@ -873,7 +891,7 @@ async function diyCopyAdGroups(
       continue
     }
     if (newGroupId && ads.length) {
-      await diyCreateAds(tt, newGroupId, ads.map((a) => ({ src: a })), mappings, opts, warnings)
+      await diyCreateAds(tt, newGroupId, ads.map((a) => ({ src: a })), mappings, opts, warnings, g)
     }
   }
   return {
@@ -892,7 +910,9 @@ async function diyCreateAds(
   items: { src: Raw; name?: string }[],
   mappings: CopyMapping[],
   opts: MutationOptions,
-  warnings: string[]
+  warnings: string[],
+  /** ad group the ads are created in (or the copied source group) - messaging link rules */
+  group: Raw | null = null
 ): Promise<void> {
   const eligible: { src: Raw; name?: string }[] = []
   for (const it of items) {
@@ -908,7 +928,7 @@ async function diyCreateAds(
       for (const it of batch) mappings.push({ level: "ad", sourceId: objectId("ad", it.src), newId: null })
       continue
     }
-    const creatives = batch.map((it) => adCreativeFromSource(it.src, it.name))
+    const creatives = batch.map((it) => adCreativeFromSource(it.src, it.name, group))
     try {
       // never retried (no request_id); an uncertain failure is followed by a lookup by ad name
       const ids = await createAdsChecked(tt, adgroupId, creatives, warnings)

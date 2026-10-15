@@ -43,3 +43,18 @@ export function sanitizeExternalLabel(
   if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1)
   return `${cut.trimEnd()}…`
 }
+
+// control characters except tab / newline, C1, bidi marks / embeddings / overrides / isolates, zero-width space,
+// word joiner + invisible operators (U+2060-2064), BOM, soft hyphen, variation selectors, interlinear annotation marks,
+// Unicode tag characters (U+E0000-E007F) - written as escapes: no invisible character in this file. Global: use with
+// String.replace only (shared by the Apify item cleaner and the TikTok messaging texts).
+export const UNSAFE_TEXT_CHARS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00AD\u2060-\u2064\uFE00-\uFE0F\uFFF9-\uFFFB\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu
+
+/** At most `max` UTF-16 units: cut to `max - 1` + "…", never inside a surrogate pair. Shorter text unchanged. */
+export function cutText(s: string, max: number): string {
+  if (s.length <= max) return s
+  let cut = s.slice(0, Math.max(0, max - 1))
+  const last = cut.charCodeAt(cut.length - 1)
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1)
+  return `${cut}…`
+}

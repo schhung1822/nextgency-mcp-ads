@@ -39,6 +39,25 @@ export async function tiktokLookup(
   }
 }
 
+/**
+ * Raw /identity/get/ list (all identity types, ≤5 pages of 100). Shared by ads_lookup kind=identities and
+ * tiktok_messaging_assets kind=dm_identities (messaging.ts).
+ */
+export async function fetchIdentityList(tt: TT, maxPages = 5): Promise<Raw[]> {
+  const out: Raw[] = []
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await ttGet<{ identity_list?: Raw[]; page_info?: { total_page?: number } }>(tt, "identity/get", {
+      advertiser_id: tt.advertiserId,
+      page,
+      page_size: 100,
+    })
+    const list = res.data.identity_list ?? []
+    out.push(...list)
+    if (!list.length || page >= Number(res.data.page_info?.total_page ?? 1)) break
+  }
+  return out
+}
+
 async function identities(tt: TT, q: string | undefined, limit: number) {
   const items: LookupItem[] = []
   for (let page = 1; page <= 5 && items.length < limit; page++) {
@@ -60,6 +79,8 @@ async function identities(tt: TT, q: string | undefined, limit: number) {
           available_status: str(i.available_status),
           can_push_video: i.can_push_video ?? null,
           can_pull_video: i.can_pull_video ?? null,
+          // TT_USER / BC_AUTH_TT: may be used for TikTok direct message ads (doc 1740218420781057)
+          can_manage_message: typeof i.can_manage_message === "boolean" ? i.can_manage_message : null,
         },
       })
     }

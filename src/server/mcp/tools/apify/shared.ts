@@ -6,7 +6,7 @@
 // No imports from "next/*".
 import { z } from "zod"
 
-import { sanitizeExternalLabel } from "@/lib/text-safety"
+import { cutText, sanitizeExternalLabel, UNSAFE_TEXT_CHARS as UNSAFE_TEXT } from "@/lib/text-safety"
 import { containsSecretValue } from "@/server/audit/redact"
 import {
   abortRun,
@@ -446,22 +446,13 @@ export async function assertDailyRoom(
 // Untrusted data
 // ---------------------------------------------------------------------------------------------------------------
 
-// control characters except tab / newline, C1, bidi marks / embeddings / overrides / isolates, zero-width space,
-// word joiner + invisible operators (U+2060-2064), BOM, soft hyphen, variation selectors, interlinear annotation marks,
-// Unicode tag characters (U+E0000-E007F) - written as escapes: no invisible character in this file
-const UNSAFE_TEXT = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00AD\u2060-\u2064\uFE00-\uFE0F\uFFF9-\uFFFB\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu
-
 /** Untrusted multi-line text: NFC, CRLF → LF, unsafe characters removed, at most `max` characters ("…" when cut). */
 export function cleanText(raw: string, max = ITEM_STRING_MAX): string {
   const s = raw
     .normalize("NFC")
     .replace(/\r\n?/g, "\n")
     .replace(UNSAFE_TEXT, "")
-  if (s.length <= max) return s
-  let cut = s.slice(0, Math.max(0, max - 1))
-  const last = cut.charCodeAt(cut.length - 1)
-  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1)
-  return `${cut}…`
+  return cutText(s, max)
 }
 
 /** one-line label (titles, names) */

@@ -296,8 +296,8 @@ Tên cột dưới đây là tên hệ thống tự nhận ra. Đặt tên khác
 | `Tài khoản QC`     |                       | Bạn            | **ID** (khuyên dùng) hoặc **tên** TKQC đúng như trong Ads MCP. TKQC phải nằm trong MCP. Tên trùng nhiều TKQC → ghi ID                                                                              |
 | `Nội dung`         |                       | Bạn            | Nội dung quảng cáo (primary text) gợi ý cho AI                                                                                                                                                     |
 | `Tiêu đề`          |                       | Bạn            | Tiêu đề gợi ý                                                                                                                                                                                      |
-| `Link đích`        |                       | Bạn            | Trang đích (landing page). Quảng cáo tin nhắn Messenger (Meta) mở Messenger nên có thể để trống                                                                                                    |
-| `Lời chào tin nhắn` |                      | Bạn            | **Tuỳ chọn, chỉ cho quảng cáo tin nhắn Messenger của Meta.** Câu chào khách thấy khi mở Messenger từ quảng cáo, tối đa **300 ký tự** (dài hơn → dòng báo `welcome_message_too_long`). AI chỉ đọc, không ghi. Để trống: dùng lời chào mặc định của form soạn câu lệnh (nếu có), không thì Meta dùng lời chào mặc định |
+| `Link đích`        |                       | Bạn            | Trang đích (landing page). Quảng cáo tin nhắn Messenger (Meta) mở Messenger nên có thể để trống; quảng cáo tin nhắn TikTok không dùng cột này                                                      |
+| `Lời chào tin nhắn` |                      | Bạn            | **Tuỳ chọn, cho quảng cáo tin nhắn Messenger của Meta và tin nhắn TikTok.** Câu chào khách thấy khi mở tin nhắn từ quảng cáo. Meta tối đa **300 ký tự** (dài hơn → dòng báo `welcome_message_too_long`); dòng TikTok tối đa **200 ký tự** (dài hơn → `welcome_message_too_long_tiktok`). AI chỉ đọc, không ghi. Để trống: dùng lời chào mặc định của form soạn câu lệnh (nếu có); không có thì Meta dùng lời chào mặc định, còn TikTok (bắt buộc có lời chào) thì AI hỏi bạn chọn lời chào có sẵn |
 | `Bài viết có sẵn`  |                       | Bạn            | **Tuỳ chọn, chỉ Meta.** Mã bài viết dạng `PAGEID_POSTID` hoặc link bài viết trên Trang Facebook — AI tạo quảng cáo **từ chính bài viết đó** (giữ lượt thích, bình luận), không tải file, không cần `Link Drive`. AI chỉ đọc, không ghi. Xem đoạn bên dưới |
 | `Trạng thái`       | ✔ nếu muốn AI ghi lại | Bạn + hệ thống | Để trống hoặc `Chờ lên` (hoặc `Chưa tạo ads`, `Chưa tạo`, `Chưa lên`) = cần lên. Hệ thống ghi `Đang xử lý`, `Đã lên`, `Lỗi` — xem 4.4                                                              |
 | `Mã media`         |                       | **Hệ thống**   | Mã ảnh/video trên nền tảng                                                                                                                                                                         |
@@ -521,6 +521,34 @@ Hoặc tự nói với AI:
 
 Quảng cáo trong nhóm **không** gửi khách tới Messenger, quảng cáo đã lưu trữ / xoá, hoặc quảng cáo dùng creative động / danh mục sản phẩm không đổi được lời chào — AI ghi lý do vào **Ghi chú hệ thống**.
 
+### 6.3e Ví dụ B5 — Quảng cáo tin nhắn TikTok (tin nhắn TikTok hoặc Zalo / Messenger / WhatsApp / LINE) theo Google Sheet
+
+Cách dễ nhất: form **Soạn câu lệnh** → **Nền tảng** = _TikTok_ (hoặc _Theo cột Nền tảng_) → **Loại quảng cáo TikTok**:
+
+- _Tin nhắn TikTok (Direct Message)_: khách bấm quảng cáo sẽ nhắn tin cho tài khoản TikTok của bạn. Điền **Lời chào mặc định trong tin nhắn TikTok** (tối đa **200 ký tự**) hoặc ghi lời chào riêng từng dòng ở cột **Lời chào tin nhắn**.
+- _Tin nhắn qua Zalo / Messenger / WhatsApp / LINE_: chọn **Ứng dụng nhắn tin** rồi điền tài khoản nhận tin — **Zalo / WhatsApp**: số điện thoại Việt Nam (vd `0901 234 567` hoặc `+84 901 234 567`; AI gửi TikTok mã vùng `+84` và số bỏ số 0 đầu, vd `901234567`), **Messenger**: ID Trang Facebook (dãy số ở Trang → Giới thiệu → Minh bạch về Trang), **LINE**: LINE Business ID (dạng `@…`). Để trống thì AI hỏi khi tạo nhóm quảng cáo.
+
+Cả lượt dùng chung một loại cho mọi dòng TikTok; không trộn với quảng cáo dẫn tới website. Hoặc tự nói với AI:
+
+> "Đọc các dòng **Chờ lên** trong sheet **Kế hoạch creative T10**, chỉ các dòng TikTok. Tạo **một chiến dịch Tìm khách tiềm năng** (tạm dừng) và **một nhóm quảng cáo tin nhắn TikTok**, ngân sách 300.000đ/ngày. Mỗi dòng video một quảng cáo Spark nút **Gửi tin nhắn**, lời chào lấy ở cột **Lời chào tin nhắn** (trống thì dùng: _Chào bạn! Shop gửi bạn bảng giá nhé_). Ghi trạng thái vào sheet."
+
+AI làm như sau:
+
+1. **Chiến dịch** `LEAD_GENERATION` (chiến dịch thường, không Smart+) → **nhóm quảng cáo** `tiktok_create_adgroup` với `messaging` (`TIKTOK_DM`, hoặc `ZALO` / `MESSENGER` / `WHATSAPP` / `LINE` kèm tài khoản), tối ưu **lượt bấm** (`CLICK`). Tool tự đặt vị trí chỉ TikTok. Zalo và LINE chỉ có tối ưu lượt bấm; tối ưu cuộc trò chuyện (`CONVERSATION`) chỉ khi bạn yêu cầu và TikTok đã mở cho tài khoản.
+2. **Tin nhắn TikTok**: mỗi lời chào khác nhau được tạo **một lần** cho mỗi TKQC bằng `tiktok_create_welcome_message` (hoặc dùng lại lời chào cùng nội dung đã có — `tiktok_messaging_assets kind=welcome_messages`), rồi mọi quảng cáo cùng lời chào dùng chung `auto_message_id`.
+3. **Quảng cáo** `tiktok_create_ads`: nút `SEND_MESSAGE`, không có **Link đích** (TikTok tự mở tin nhắn / ứng dụng — không dán link `zalo.me`, `m.me`, `wa.me`). Tin nhắn TikTok bắt buộc là **quảng cáo Spark** bằng tài khoản TikTok nhắn tin được (`can_manage_message`, kiểm tra bằng `tiktok_messaging_assets kind=dm_identities`).
+4. **Chỉ video**: dòng TikTok chỉ có ảnh → AI không tải, ghi `Lỗi` với ghi chú _Quảng cáo tin nhắn TikTok cần video - dòng này chỉ có ảnh_.
+5. **Dùng chiến dịch có sẵn**: AI xem nhóm quảng cáo bằng `ads_get_object` — phải là nhóm tin nhắn đúng loại (`promotion_type` tin nhắn TikTok, hoặc ứng dụng đã chọn); khác thì ghi lỗi, không tạo quảng cáo.
+
+**Cần chuẩn bị:**
+
+- **Tin nhắn TikTok**: tài khoản TikTok cho phép **“Mọi người”** gửi tin nhắn trực tiếp, và đã cấp quyền **đọc và quản lý tin nhắn** cho tài khoản quảng cáo (tài khoản qua Business Center: quản trị viên gán quyền Tin nhắn trực tiếp).
+- **Zalo**: dùng **số điện thoại** đăng ký Zalo, không dùng ID Zalo OA.
+- **WhatsApp**: số **WhatsApp Business API** đã nối với công cụ quản lý tin nhắn (vd Pancake), không dùng số WhatsApp cá nhân.
+- TKQC TikTok đăng ký ở khu vực được hỗ trợ (có Việt Nam).
+
+**Lưu ý:** lời chào tin nhắn TikTok và tài khoản nhận tin **không đổi được sau khi tạo** (việc _Thêm / đổi lời chào_ ở 6.3d chỉ dành cho Meta). TikTok **ngừng cho tạo chiến dịch thường qua API sau 31/12/2026** — sau ngày đó AI báo lỗi khi tạo chiến dịch mới; dùng chiến dịch có sẵn hoặc tạo trong TikTok Ads Manager.
+
 ### 6.4 Ví dụ C — Dán link Drive công khai vào chat
 
 > "Dùng ảnh này https://drive.google.com/file/d/1DeFgHiJkLmNoPqRsTuVwXyZ345678/view?usp=sharing làm ảnh cho quảng cáo Meta tạm dừng trong nhóm **Retarget 30 ngày** của TKQC **act_1234567890**, tiêu đề _Freeship toàn quốc_."
@@ -701,6 +729,8 @@ AI thường đọc mã lỗi (dạng `drive_…`) kèm thông báo; bạn chỉ
 | `existing_post_meta_only` (vấn đề của dòng)  | Bài viết có sẵn chỉ dùng cho quảng cáo Meta - dòng này là ….                                | Đổi **Nền tảng** thành Meta, hoặc xoá ô **Bài viết có sẵn** của dòng TikTok / OpenAI Ads.                                                                              |
 | `not_drive_link` (vấn đề của dòng)           | Link Facebook không phải Google Drive - … ghi link bài viết vào cột Bài viết có sẵn.        | Chuyển link bài viết Facebook từ **Link Drive** sang cột **Bài viết có sẵn** (thêm cột nếu chưa có).                                                                  |
 | `welcome_message_too_long` (vấn đề của dòng) | Lời chào tin nhắn dài … ký tự - Meta chỉ nhận tối đa 300 ký tự.                              | Rút gọn ô **Lời chào tin nhắn** (≤ 300 ký tự).                                                                                                                         |
+| `welcome_message_too_long_tiktok` (vấn đề của dòng) | Lời chào tin nhắn dài … ký tự - TikTok chỉ nhận tối đa 200 ký tự (…).                  | Rút gọn ô **Lời chào tin nhắn** của dòng TikTok (≤ 200 ký tự), hoặc xoá ô nếu dòng không phải quảng cáo tin nhắn.                                                     |
+| Ghi chú _Quảng cáo tin nhắn TikTok cần video…_ | Dòng TikTok chỉ có ảnh trong lượt quảng cáo tin nhắn TikTok.                              | Thay bằng video (ảnh bìa để ở cột **Ảnh bìa**), hoặc chạy dòng đó trong lượt **Dẫn tới website**.                                                                     |
 | `cover_…` (vấn đề của dòng)                  | Ảnh bìa: … / Ảnh bìa phải là file ảnh (JPG, PNG…), không phải video.                       | Sửa link ở cột **Ảnh bìa** (chia sẻ / chuyển ảnh vào thư mục đã gán), hoặc xoá trống ô — Meta sẽ tự lấy ảnh bìa.                                                      |
 | `drive_sheet_tab_not_found`                  | Không tìm thấy trang tính (tab) đã khai báo…                                                | Khai báo lại bằng link của đúng tab.                                                                                                                                   |
 | `drive_writeback_disabled`                   | Sheet này không bật ghi trạng thái.                                                         | Bật **Cho phép AI ghi trạng thái vào sheet** ở trang sheet **và** **Cho phép ghi trạng thái vào Google Sheet** trong MCP.                                              |

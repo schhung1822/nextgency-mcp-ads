@@ -265,6 +265,18 @@ export function isGmvMaxPath(path: string): boolean {
 const SCOPE_HINT =
   "Bật thêm scope cho developer app (Ad Account Mgmt, Ads Mgmt, Reporting, Creative, Pixel) rồi cho advertiser cấp quyền lại."
 
+/** Messaging-ad endpoints: the permission node named in the official API reference (doc 1735713875563521). */
+const MESSAGING_SCOPE_HINTS: Record<string, string> = {
+  "/ctm/message_event_set/get/":
+    "Developer app cần quyền \"CTX Events Management\" (Create/Manage CTM event sets) - bật trong My Apps rồi cho advertiser cấp quyền lại. Không có quyền này vẫn tạo được nhóm nhắn tin tối ưu CLICK.",
+  "/creative/auto_message/get/":
+    "Developer app cần quyền Creative Management > TikTok Message Management - bật trong My Apps rồi cho advertiser cấp quyền lại.",
+  "/creative/auto_message/create/":
+    "Developer app cần quyền Creative Management > TikTok Message Management - bật trong My Apps rồi cho advertiser cấp quyền lại.",
+  "/page/get/":
+    "Developer app cần quyền Creative Management > Instant Page Management - bật trong My Apps rồi cho advertiser cấp quyền lại.",
+}
+
 function codeInfo(code: number, message: string): CodeInfo {
   switch (code) {
     case 40000:
@@ -401,6 +413,9 @@ export function mapTikTokError(
   const info = codeInfo(code, message)
   // GMV Max endpoints: the scope node named in the official "Scope of permission" column of that endpoint
   if ((code === 40001 || code === 40125) && path && isGmvMaxPath(path)) info.hint = gmvMaxScopeHint(normalizePath(path))
+  if ((code === 40001 || code === 40125) && path && MESSAGING_SCOPE_HINTS[normalizePath(path)]) {
+    info.hint = MESSAGING_SCOPE_HINTS[normalizePath(path)]
+  }
   let retryAfterMs: number | undefined
   if (code === 40100 || code === 40016) {
     retryAfterMs = info.code === "quota_exceeded" ? msUntilNextUtcMidnight() : THROTTLE_COOLDOWN_MS

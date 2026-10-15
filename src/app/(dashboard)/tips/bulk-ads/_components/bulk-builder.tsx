@@ -7,6 +7,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
@@ -25,19 +26,27 @@ import {
   BULK_META_AD_TYPES,
   BULK_PLATFORMS,
   BULK_TASKS,
+  BULK_TIKTOK_AD_TYPES,
+  BULK_TIKTOK_MESSAGING_APPS,
   buildBulkAdsPrompt,
   buildBulkAdsSkillMd,
   buildBulkAdsSkillPrompt,
   bulkSkillName,
   bulkTask,
+  checkTiktokMessagingAccount,
+  cleanWelcome,
   DEFAULT_BULK_ADS,
   metaMessagingType,
+  TIKTOK_WELCOME_MESSAGE_MAX,
+  tiktokMessagingType,
   WELCOME_MESSAGE_MAX,
   type BulkAdsInput,
   type BulkMetaAdType,
   type BulkPlatform,
   type BulkStructure,
   type BulkTask,
+  type BulkTiktokAdType,
+  type BulkTiktokMessagingApp,
 } from "@/lib/bulk-ads-prompt"
 import { formatMoney } from "@/lib/format"
 import { tips as t } from "@/lib/i18n/vi/tips"
@@ -50,6 +59,7 @@ import {
   useViNumber,
 } from "../../_components/form-bits"
 import { PromptOutputs } from "../../_components/prompt-outputs"
+import { TipAlert } from "../../_components/tip-blocks"
 
 const b = t.bulk.builder
 const s = t.shared
@@ -57,9 +67,15 @@ const STRUCTURES: BulkStructure[] = ["existing", "new"]
 const BATCH_RULE = { min: 1, max: 20, integer: true } as const
 const BUDGET_RULE = { min: 0, minExclusive: true } as const
 
+/** Zalo / WhatsApp take a phone number; Messenger / LINE an id (switching between the two clears the field). */
+const isPhoneApp = (app: BulkTiktokMessagingApp) =>
+  app === "ZALO" || app === "WHATSAPP"
+
 /**
  * Form → live prompt / SKILL.md for creating ads from the "Chờ lên" rows of a Google Sheet, or (task update_welcome,
  * Meta only - v1.1.4) for adding / changing the Messenger welcome message of the ads already created from the sheet.
+ * TikTok rows can be messaging ads (v1.1.5): TikTok direct message (welcome message ≤ 200) or Zalo / Messenger /
+ * WhatsApp / LINE (app + receiving account).
  */
 export function BulkBuilder() {
   const id = React.useId()
@@ -85,6 +101,15 @@ export function BulkBuilder() {
     DEFAULT_BULK_ADS.metaAdType
   )
   const [welcome, setWelcome] = React.useState(DEFAULT_BULK_ADS.welcomeMessage)
+  const [tiktokAdType, setTiktokAdType] = React.useState<BulkTiktokAdType>(
+    DEFAULT_BULK_ADS.tiktokAdType
+  )
+  const [tiktokApp, setTiktokApp] = React.useState<BulkTiktokMessagingApp>(
+    DEFAULT_BULK_ADS.tiktokMessagingApp
+  )
+  const [tiktokAccount, setTiktokAccount] = React.useState(
+    DEFAULT_BULK_ADS.tiktokMessagingAccount
+  )
 
   const batchN = useViNumber(batch, BATCH_RULE)
   const budgetN = useViNumber(budget, BUDGET_RULE)
@@ -107,16 +132,65 @@ export function BulkBuilder() {
     writeback,
     metaAdType,
     welcomeMessage: welcome,
+    tiktokAdType,
+    tiktokMessagingApp: tiktokApp,
+    tiktokMessagingAccount: tiktokAccount,
   }
   // the task + Meta ad type only matter when Meta rows can be in the run (platform Meta or "Theo cột Nền tảng")
   const showMetaType = platform === "meta" || platform === "sheet"
   // update_welcome: no structure / campaign / budget / ad type - only the welcome message (bulkTask: Meta only)
   const isUpdate = bulkTask(input) === "update_welcome"
   const messaging = isUpdate ? null : metaMessagingType(input)
-  const showWelcome = isUpdate || messaging !== null
+  // the TikTok ad type only matters when TikTok rows can be in the run (platform TikTok or "Theo cột Nền tảng")
+  const showTiktokType = !isUpdate && (platform === "tiktok" || platform === "sheet")
+  const tiktokMsg = isUpdate ? null : tiktokMessagingType(input)
+  const tiktokDm = tiktokMsg === "messaging_dm"
+  const accountCheck = checkTiktokMessagingAccount(tiktokApp, tiktokAccount)
+  const accountError =
+    tiktokMsg === "messaging_app" && !accountCheck.ok
+      ? b.tiktokAccountError[accountCheck.error]
+      : null
+  const phoneUnderstood =
+    tiktokMsg === "messaging_app" &&
+    isPhoneApp(tiktokApp) &&
+    accountCheck.ok &&
+    accountCheck.value
+      ? b.tiktokPhoneUnderstood(accountCheck.value)
+      : null
+  // welcome message: Meta (Messenger, ≤ 300) and / or TikTok DM (≤ 200); both in "Theo cột Nền tảng" mode → 300, and
+  // a text over 200 only warns (TikTok rows without their own welcome message get an error note)
+  const metaWelcome = isUpdate || messaging !== null
+  const showWelcome = metaWelcome || tiktokDm
+  const welcomeMax = metaWelcome ? WELCOME_MESSAGE_MAX : TIKTOK_WELCOME_MESSAGE_MAX
+  const welcomeLen = cleanWelcome(welcome).length
+  const tiktokWelcomeLong = tiktokDm && welcomeLen > TIKTOK_WELCOME_MESSAGE_MAX
+  const welcomeError =
+    tiktokWelcomeLong && !metaWelcome
+      ? b.welcomeTooLongTiktok(welcomeLen, TIKTOK_WELCOME_MESSAGE_MAX)
+      : null
+  const welcomeWarning =
+    tiktokWelcomeLong && metaWelcome
+      ? b.welcomeTooLongTiktokRows(welcomeLen, TIKTOK_WELCOME_MESSAGE_MAX)
+      : null
+  const welcomeLabel = isUpdate
+    ? b.welcomeLabelUpdate
+    : messaging && tiktokDm
+      ? b.welcomeLabelBoth
+      : tiktokDm
+        ? b.welcomeLabelTiktok
+        : b.welcomeLabel
+  const welcomeHelp = isUpdate
+    ? b.welcomeHelpUpdate
+    : messaging && tiktokDm
+      ? b.welcomeHelpBoth
+      : tiktokDm
+        ? b.welcomeHelpTiktok
+        : b.welcomeHelp
   // budget / currency only matter when a new campaign is created
   const hasErrors =
     !!batchN.error ||
+    !!accountError ||
+    !!welcomeError ||
     (!isUpdate && isNew && (!!budgetN.error || !currencyOk))
   const blockedReason = hasErrors ? s.copyBlocked : null
 
@@ -237,34 +311,156 @@ export function BulkBuilder() {
               </FieldDescription>
             </Field>
           )}
+          {showTiktokType && (
+            <Field className="gap-1.5">
+              <FieldLabel htmlFor={`${id}-tiktok-type`}>
+                {b.tiktokTypeLabel}
+              </FieldLabel>
+              <Select
+                value={tiktokAdType}
+                onValueChange={(v) => setTiktokAdType(v as BulkTiktokAdType)}
+              >
+                <SelectTrigger
+                  id={`${id}-tiktok-type`}
+                  className="w-full"
+                  aria-describedby={`${id}-tiktok-type-help`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BULK_TIKTOK_AD_TYPES.map((tt) => (
+                    <SelectItem key={tt} value={tt}>
+                      {b.tiktokTypes[tt]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription id={`${id}-tiktok-type-help`}>
+                {b.tiktokTypeHelp[tiktokAdType]}
+              </FieldDescription>
+            </Field>
+          )}
+          {tiktokMsg === "messaging_app" && (
+            <>
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor={`${id}-tiktok-app`}>
+                  {b.tiktokAppLabel}
+                </FieldLabel>
+                <Select
+                  value={tiktokApp}
+                  onValueChange={(v) => {
+                    const next = v as BulkTiktokMessagingApp
+                    if (isPhoneApp(next) !== isPhoneApp(tiktokApp))
+                      setTiktokAccount("")
+                    setTiktokApp(next)
+                  }}
+                >
+                  <SelectTrigger
+                    id={`${id}-tiktok-app`}
+                    className="w-full"
+                    aria-describedby={`${id}-tiktok-app-help`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BULK_TIKTOK_MESSAGING_APPS.map((app) => (
+                      <SelectItem key={app} value={app}>
+                        {b.tiktokApps[app]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription id={`${id}-tiktok-app-help`}>
+                  {b.tiktokAppHelp[tiktokApp]}
+                </FieldDescription>
+              </Field>
+              <Field
+                data-invalid={accountError ? true : undefined}
+                className="gap-1.5"
+              >
+                <FieldLabel htmlFor={`${id}-tiktok-account`}>
+                  {b.tiktokAccountLabel[tiktokApp]}
+                </FieldLabel>
+                <Input
+                  id={`${id}-tiktok-account`}
+                  autoComplete="off"
+                  maxLength={60}
+                  inputMode={
+                    isPhoneApp(tiktokApp)
+                      ? "tel"
+                      : tiktokApp === "MESSENGER"
+                        ? "numeric"
+                        : "text"
+                  }
+                  placeholder={b.tiktokAccountPlaceholder[tiktokApp]}
+                  value={tiktokAccount}
+                  onChange={(e) => setTiktokAccount(e.target.value)}
+                  aria-invalid={accountError ? true : undefined}
+                  aria-describedby={`${id}-tiktok-account-msg ${id}-tiktok-account-help`}
+                  className="tabular-nums"
+                />
+                <div id={`${id}-tiktok-account-msg`} aria-live="polite">
+                  {accountError ? (
+                    <FieldError>{accountError}</FieldError>
+                  ) : phoneUnderstood ? (
+                    <p className="text-[13px] font-medium text-foreground tabular-nums">
+                      {phoneUnderstood}
+                    </p>
+                  ) : null}
+                </div>
+                <FieldDescription id={`${id}-tiktok-account-help`}>
+                  {b.tiktokAccountHelp[tiktokApp]}
+                </FieldDescription>
+              </Field>
+            </>
+          )}
         </div>
 
         {showWelcome && (
-          <Field className="gap-1.5">
-            <FieldLabel htmlFor={`${id}-welcome`}>
-              {isUpdate ? b.welcomeLabelUpdate : b.welcomeLabel}
-            </FieldLabel>
+          <Field
+            data-invalid={welcomeError ? true : undefined}
+            className="gap-1.5"
+          >
+            <FieldLabel htmlFor={`${id}-welcome`}>{welcomeLabel}</FieldLabel>
             <Textarea
               id={`${id}-welcome`}
               rows={2}
-              maxLength={WELCOME_MESSAGE_MAX}
+              maxLength={welcomeMax}
               placeholder={b.welcomePlaceholder}
               value={welcome}
               onChange={(e) => setWelcome(e.target.value)}
-              aria-describedby={`${id}-welcome-help ${id}-welcome-count`}
+              aria-invalid={welcomeError ? true : undefined}
+              aria-describedby={`${id}-welcome-help ${id}-welcome-count ${id}-welcome-msg`}
             />
             <div className="flex items-start justify-between gap-3">
               <FieldDescription id={`${id}-welcome-help`}>
-                {isUpdate ? b.welcomeHelpUpdate : b.welcomeHelp}
+                {welcomeHelp}
               </FieldDescription>
               <span
                 id={`${id}-welcome-count`}
                 className="shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums"
               >
-                {b.welcomeCount(welcome.length, WELCOME_MESSAGE_MAX)}
+                {b.welcomeCount(welcome.length, welcomeMax)}
               </span>
             </div>
+            <div id={`${id}-welcome-msg`} aria-live="polite">
+              {welcomeError ? (
+                <FieldError>{welcomeError}</FieldError>
+              ) : welcomeWarning ? (
+                <p className="text-[13px] font-medium text-pretty text-warning-strong">
+                  {welcomeWarning}
+                </p>
+              ) : null}
+            </div>
           </Field>
+        )}
+
+        {tiktokMsg && (
+          <TipAlert
+            tone="warning"
+            title={b.tiktokNoteTitle}
+            items={b.tiktokNotes[tiktokMsg]}
+          />
         )}
 
         {!isUpdate && (
@@ -393,6 +589,14 @@ export function BulkBuilder() {
                     : b.previewExisting
                 )}
           {!hasErrors && messaging && <> {b.previewMessaging[messaging]}</>}
+          {!hasErrors && tiktokMsg && (
+            <>
+              {" "}
+              {tiktokDm
+                ? b.previewTiktokDm
+                : b.previewTiktokApp(b.tiktokApps[tiktokApp])}
+            </>
+          )}
         </p>
       </FieldGroup>
 

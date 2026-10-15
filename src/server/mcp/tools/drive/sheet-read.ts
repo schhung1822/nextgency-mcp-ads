@@ -1,7 +1,8 @@
 // drive_sheet_read (15-google-drive-media.md §9.2): rows of a granted Google Sheet tab, filtered by status (default
 // pending = "Chờ lên" or an alias - SHEET_STATUS_ALIASES - or empty), mapped columns, links parsed and resolved
 // (≤ 100 files per call), the "Ảnh bìa" cover cell resolved the same way (v1.1.2, read only), the "Lời chào tin
-// nhắn" welcome message in values (v1.1.3, read only, > 300 characters = row problem for Meta), the "Bài viết có sẵn"
+// nhắn" welcome message in values (v1.1.3, read only, > 300 characters = row problem for Meta; v1.1.5: > 200 characters
+// = row problem welcome_message_too_long_tiktok for TikTok rows), the "Bài viết có sẵn"
 // existing Facebook post parsed into existing_post (v1.1.4, read only, Meta only - the post wins over Link Drive),
 // platform / account normalised, problems per row. Cell texts are UNTRUSTED data (sanitised, ≤ 2000 characters).
 import { z } from "zod"
@@ -59,6 +60,8 @@ const ROWS_PER_READ = 200
 const MAX_READS = 3
 /** Meta's limit of a Messenger welcome message (page_welcome_message text) */
 export const WELCOME_MESSAGE_MAX = 300
+/** TikTok's limit of a direct-message welcome message (/creative/auto_message/create/ content) - v1.1.5 */
+export const TIKTOK_WELCOME_MESSAGE_MAX = 200
 /** links resolved against Drive per call */
 const MAX_RESOLVE = 100
 const RESOLVE_CONCURRENCY = 4
@@ -326,6 +329,17 @@ export function register(
             problems.push({
               code: "welcome_message_too_long",
               message: `Lời chào tin nhắn dài ${welcome.length} ký tự - Meta chỉ nhận tối đa ${WELCOME_MESSAGE_MAX} ký tự.`,
+            })
+          // TikTok direct-message welcome message (v1.1.5): TikTok refuses more than 200 characters - a row problem for
+          // TikTok rows only (the Meta rule above is unchanged), never truncated silently
+          if (
+            welcome &&
+            platform === "tiktok" &&
+            welcome.length > TIKTOK_WELCOME_MESSAGE_MAX
+          )
+            problems.push({
+              code: "welcome_message_too_long_tiktok",
+              message: `Lời chào tin nhắn dài ${welcome.length} ký tự - TikTok chỉ nhận tối đa ${TIKTOK_WELCOME_MESSAGE_MAX} ký tự (rút gọn, hoặc xoá nếu dòng không phải quảng cáo tin nhắn).`,
             })
           let account: Record<string, unknown> | null = null
           if (values.account) {

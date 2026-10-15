@@ -249,7 +249,10 @@ function registerOne(server: Parameters<typeof registerToolSpec>[0], tctx: ToolC
 
       // GMV Max switch / strict worst-case daily-spend guard / change history (both steps)
       const wopts = writeOptions(env.grant, account)
-      const pausedNote = ext.permission === "create" && !ext.createsActive ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."] : []
+      const pausedNote =
+        ext.permission === "create" && !ext.createsActive && ext.createsAdObject !== false
+          ? ["Đối tượng mới luôn được tạo ở trạng thái tạm dừng."]
+          : []
       // media sub-steps (Drive cover, Meta automatic cover) are bounded from the call's arrival (C-M3)
       const deadline = Date.now() + MEDIA_CALL_BUDGET_MS
       const usesMedia = !!ext.driveImageRef || ext.fetchesPlatformImages === true

@@ -29,6 +29,16 @@ import { fullAdgroupUpdate } from "./mutate"
 import { gmvMaxExtensions } from "./gmv-max"
 import { gmvMaxWriteExtensions } from "./gmv-max-write"
 import { assertNotGmvMaxCampaign } from "./gmv-max-detect"
+import {
+  checkMessagingCreative,
+  deeplinkSchema,
+  MESSAGING_DEADLINE_NOTE,
+  messagingExtensions,
+  messagingGroupOf,
+  messagingInput,
+  resolveAdGroupMessaging,
+  type MessagingGroup,
+} from "./messaging"
 
 export type CreateResult = MutationResult & { payload?: Raw }
 
@@ -192,7 +202,7 @@ export const createAdGroupInput = z.object({
   promotion_type: z
     .string()
     .optional()
-    .describe("Vị trí tối ưu: WEBSITE, APP_ANDROID, APP_IOS, INSTANT_FORM, LEAD_GEN_CLICK_TO_TT_DIRECT_MESSAGE…; bắt buộc trừ REACH/VIDEO_VIEWS/ENGAGEMENT"),
+    .describe("Vị trí tối ưu: WEBSITE, APP_ANDROID, APP_IOS, INSTANT_FORM…; bắt buộc trừ REACH/VIDEO_VIEWS/ENGAGEMENT; quảng cáo nhắn tin dùng messaging thay cho trường này"),
   placement_type: z.enum(["automatic", "manual"]).default("automatic"),
   placements: z.array(z.enum(PLACEMENTS)).min(1).optional().describe("Bắt buộc khi placement_type = manual; không đổi được sau khi tạo"),
   location_ids: z.array(numericId).min(1).max(3000).describe("Id số của địa điểm (VN = 1562822) - tra bằng ads_lookup kind=locations"),
@@ -218,6 +228,7 @@ export const createAdGroupInput = z.object({
   pixel_id: numericId.optional(),
   optimization_event: z.string().optional().describe("Sự kiện chuyển đổi (vd SHOPPING, ON_WEB_ORDER, FORM) - bắt buộc với CONVERT/VALUE"),
   app_id: z.string().optional(),
+  messaging: messagingInput.optional(),
   advanced: z.record(z.string(), z.unknown()).optional().describe("Trường /adgroup/create/ khác (nâng cao)"),
 })
 export type CreateAdGroupInput = z.infer<typeof createAdGroupInput>
@@ -234,6 +245,9 @@ export function buildAdGroupCreateBody(
   const objective = String(campaign.objective_type ?? "")
   const campaignMode = String(campaign.budget_mode ?? "")
   const billing = GOAL_BILLING[input.optimization_goal]!
+  // messaging ad group (`messaging`, or a raw promotion_type LEAD_GEN_CLICK_TO_*MESSAGE): official rules + body fields
+  const msg = resolveAdGroupMessaging(input, objective, warnings)
+  const promotionType = msg ? String(msg.fields.promotion_type) : input.promotion_type
   if (!cbo && campaignMode === "BUDGET_MODE_DAY" && ["REACH", "VIDEO_VIEWS", "ENGAGEMENT"].includes(objective)) {
     throw invalid(
       `Chiến dịch ${objective} không CBO đang dùng ngân sách hằng ngày cấp chiến dịch - TikTok không còn hỗ trợ cấu hình này nên không tạo thêm nhóm quảng cáo được.`,
@@ -249,7 +263,7 @@ export function buildAdGroupCreateBody(
   if (input.billing_event && input.billing_event !== billing) {
     throw invalid(`optimization_goal ${input.optimization_goal} phải đi với billing_event ${billing}, không phải ${input.billing_event}.`)
   }
-  if (!["REACH", "VIDEO_VIEWS", "ENGAGEMENT"].includes(objective) && !input.promotion_type) {
+  if (!["REACH", "VIDEO_VIEWS", "ENGAGEMENT"].includes(objective) && !promotionType) {
     throw invalid(`Chiến dịch mục tiêu ${objective} cần promotion_type (vd WEBSITE).`)
   }
   if (input.optimization_goal === "CONVERT" && (!input.pixel_id || !input.optimization_event)) {
@@ -261,7 +275,7 @@ export function buildAdGroupCreateBody(
   if (input.pixel_id && !["CONVERT", "VALUE"].includes(input.optimization_goal)) {
     throw invalid("pixel_id chỉ dùng với optimization_goal CONVERT hoặc VALUE.")
   }
-  if (input.placement_type === "manual" && !input.placements?.length) throw invalid("placement_type manual cần placements.")
+  if (!msg && input.placement_type === "manual" && !input.placements?.length) throw invalid("placement_type manual cần placements.")
   if (input.bid_type === "BID_TYPE_CUSTOM" && input.bid_amount === undefined) throw invalid("BID_TYPE_CUSTOM cần bid_amount.")
   if (input.bid_type === "BID_TYPE_NO_BID" && input.bid_amount !== undefined) {
     warnings.push("bid_amount bị bỏ qua vì bid_type = BID_TYPE_NO_BID.")
@@ -330,7 +344,8 @@ export function buildAdGroupCreateBody(
       "Thêm schedule_end_time."
     )
   }
-  mergeAdvanced(body, input.advanced as Raw | undefined, warnings)
+  if (msg) Object.assign(body, msg.fields)
+  mergeAdvanced(body, msg ? msg.advanced : (input.advanced as Raw | undefined), warnings)
   return body
 }
 
@@ -373,10 +388,19 @@ const creativeInput = z.object({
   tiktok_item_id: z.string().optional().describe("Id bài đăng TikTok (Spark Ads pull)"),
   image_ids: z.array(z.string()).max(35).optional().describe("Ảnh; với video non-Spark/push là ảnh bìa (1 ảnh)"),
   ad_text: z.string().max(100).optional(),
-  call_to_action: z.string().optional().describe("LEARN_MORE, SHOP_NOW, SIGN_UP, ORDER_NOW, CONTACT_US…"),
+  call_to_action: z.string().optional().describe("LEARN_MORE, SHOP_NOW, SIGN_UP, ORDER_NOW, CONTACT_US, SEND_MESSAGE…"),
   landing_page_url: z.url().optional(),
   display_name: z.string().max(40).optional(),
   avatar_icon_web_uri: z.string().optional(),
+  // general /ad/create/ fields (doc 1739953377508354); messaging ad groups add their own rules (checkMessagingCreative).
+  // Ids stay digit strings.
+  page_id: numericId.optional().describe("Id trang (Instant Form / TikTok Instant Page) - tra bằng tiktok_messaging_assets kind=instant_pages"),
+  deeplink: deeplinkSchema.optional().describe("Link mở ứng dụng (scheme://…); nhóm IM_URL cần kèm fallback_type WEBSITE + landing_page_url"),
+  deeplink_type: z.enum(["NORMAL", "DEFERRED_DEEPLINK"]).optional(),
+  fallback_type: z.enum(["APP_INSTALL", "WEBSITE", "UNSET"]).optional(),
+  // messaging ad groups only
+  auto_message_id: numericId.optional().describe("Nhóm tin nhắn TikTok: id lời chào (bắt buộc)"),
+  tracking_message_event_set_id: numericId.optional().describe("Tuỳ chọn: đo cuộc trò chuyện (CLICK + Messenger/WhatsApp, không page_id)"),
 })
 
 export const createAdsInput = z.object({
@@ -385,8 +409,15 @@ export const createAdsInput = z.object({
 })
 export type CreateAdsInput = z.infer<typeof createAdsInput>
 
-export function validateCreative(c: z.infer<typeof creativeInput>, idx: number, warnings: string[]): Raw {
+export function validateCreative(
+  c: z.infer<typeof creativeInput>,
+  idx: number,
+  warnings: string[],
+  group: MessagingGroup | null = null
+): Raw {
   const where = `creatives[${idx}] (${c.ad_name})`
+  // messaging ad groups: format / CTA / identity / destination rules; other ad groups refuse the messaging-only fields
+  const messagingPatch = checkMessagingCreative(c, where, group, warnings)
   if (c.identity_type === "BC_AUTH_TT" && !c.identity_authorized_bc_id) {
     throw invalid(`${where}: BC_AUTH_TT cần identity_authorized_bc_id.`)
   }
@@ -399,7 +430,8 @@ export function validateCreative(c: z.infer<typeof creativeInput>, idx: number, 
     if (c.video_id && (!c.image_ids || c.image_ids.length !== 1)) {
       throw invalid(`${where}: video tải lên (video_id) cần đúng 1 ảnh bìa trong image_ids.`, "Tải ảnh bìa bằng ads_upload_media.")
     }
-  } else if (!c.image_ids?.length) {
+  } else if (!c.image_ids?.length && !(c.ad_format === "CAROUSEL_ADS" && c.tiktok_item_id)) {
+    // Spark photo post (CAROUSEL_ADS + tiktok_item_id) brings its own images
     throw invalid(`${where}: ${c.ad_format} cần image_ids.`)
   }
   if (c.ad_format === "SINGLE_IMAGE" && c.image_ids && c.image_ids.length !== 1) {
@@ -412,7 +444,7 @@ export function validateCreative(c: z.infer<typeof creativeInput>, idx: number, 
     if (!c.display_name) warnings.push(`${where}: nên có display_name cho quảng cáo không dùng Spark.`)
   }
   if (!c.tiktok_item_id && !c.ad_text) throw invalid(`${where}: cần ad_text.`)
-  const creative: Raw = { ...c, operation_status: "DISABLE" }
+  const creative: Raw = { ...c, ...messagingPatch, operation_status: "DISABLE" }
   for (const k of Object.keys(creative)) if (creative[k] === undefined) delete creative[k]
   return creative
 }
@@ -434,7 +466,8 @@ async function runCreateAds(
     throw invalid("Nhóm ACO (Automated Creative Optimization) không tạo quảng cáo thường được.")
   }
   const warnings = ["Quảng cáo được tạo ở trạng thái TẮT (DISABLE) và sẽ qua kiểm duyệt của TikTok."]
-  const creatives = input.creatives.map((c, i) => validateCreative(c, i, warnings))
+  const messaging = messagingGroupOf(group)
+  const creatives = input.creatives.map((c, i) => validateCreative(c, i, warnings, messaging))
   const existing = await ttGet<{ page_info?: { total_number?: number } }>(tt, "ad/get", {
     advertiser_id: tt.advertiserId,
     filtering: { adgroup_ids: [input.adgroup_id], primary_status: "STATUS_NOT_DELETE" },
@@ -551,7 +584,7 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     permission: "create",
     title: "Tạo nhóm quảng cáo TikTok",
     description:
-      "Dùng khi cần tạo nhóm quảng cáo trong một chiến dịch TikTok thủ công. Gọi ads_list_objects (level=campaign) để lấy campaign_id và ads_lookup (locations, pixels, interests, custom_audiences) để lấy id. location_ids là id số (Việt Nam = 1562822). Lịch dạng \"YYYY-MM-DD HH:MM:SS\" theo UTC; budget_type daily | dynamic_daily | lifetime (lifetime cần schedule_end_time; không có ngày kết thúc thì phải dùng ngân sách ngày; chiến dịch đặt ngân sách ngày không nhận nhóm lifetime); chiến dịch CBO thì bỏ trống ngân sách nhóm. billing_event tự suy ra từ optimization_goal (CLICK/PAGE_VISIT→CPC, SHOW/REACH→CPM, ENGAGED_VIEW→CPV, còn lại→OCPM). CONVERT/VALUE cần pixel_id + optimization_event. Vị trí (placements) không đổi được sau khi tạo. Nhóm luôn được tạo ở trạng thái TẮT. Bước tiếp theo: tiktok_create_ads.",
+      `Dùng khi cần tạo nhóm quảng cáo trong một chiến dịch TikTok thủ công. Gọi ads_list_objects (level=campaign) để lấy campaign_id và ads_lookup (locations, pixels, interests, custom_audiences) để lấy id. location_ids là id số (Việt Nam = 1562822). Lịch dạng \"YYYY-MM-DD HH:MM:SS\" theo UTC; budget_type daily | dynamic_daily | lifetime (lifetime cần schedule_end_time; không có ngày kết thúc thì phải dùng ngân sách ngày; chiến dịch đặt ngân sách ngày không nhận nhóm lifetime); chiến dịch CBO thì bỏ trống ngân sách nhóm. billing_event tự suy ra từ optimization_goal (CLICK/PAGE_VISIT→CPC, SHOW/REACH→CPM, ENGAGED_VIEW→CPV, còn lại→OCPM). CONVERT/VALUE cần pixel_id + optimization_event. Vị trí (placements) không đổi được sau khi tạo. Quảng cáo nhắn tin (chiến dịch LEAD_GENERATION): truyền messaging {destination: TIKTOK_DM | MESSENGER + facebook_page_id | WHATSAPP / ZALO + phone_number (số trong nước bỏ số 0; mã vùng mặc định VN +84) | LINE + line_business_id | IM_URL}; công cụ tự đặt promotion_type và vị trí chỉ TikTok; optimization_goal CLICK (CONVERSATION cần allowlist, không cho Zalo/LINE/IM_URL); không nhắm 13-17; trường nhắn tin không sửa được sau khi tạo; xem trước tài sản bằng tiktok_messaging_assets. Nhóm luôn được tạo ở trạng thái TẮT. Bước tiếp theo: tiktok_create_ads. ${MESSAGING_DEADLINE_NOTE}`,
     input: createAdGroupInput,
     write: true,
     moneyOf: (raw) => adGroupMoney(raw as CreateAdGroupInput),
@@ -562,7 +595,7 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     permission: "create",
     title: "Tạo quảng cáo TikTok",
     description:
-      "Dùng khi cần tạo 1–20 quảng cáo trong một nhóm quảng cáo TikTok thủ công. Cần ads_lookup kind=identities để lấy identity (ưu tiên Spark Ads: TT_USER, BC_AUTH_TT, AUTH_CODE - Custom Identity CUSTOMIZED_USER không còn tạo được trên vị trí TikTok cho nhiều tài khoản) và ads_upload_media để có video_id/image_id. Video tải lên (video_id) cần đúng 1 ảnh bìa trong image_ids; Spark Ads từ bài đăng dùng tiktok_item_id. Tối đa 50 quảng cáo mỗi nhóm. Quảng cáo luôn được tạo ở trạng thái TẮT và qua kiểm duyệt; không tự thử lại khi lỗi mạng để tránh tạo trùng.",
+      "Dùng khi cần tạo 1–20 quảng cáo trong một nhóm quảng cáo TikTok thủ công. Cần ads_lookup kind=identities để lấy identity (ưu tiên Spark Ads: TT_USER, BC_AUTH_TT, AUTH_CODE - Custom Identity CUSTOMIZED_USER không còn tạo được trên vị trí TikTok cho nhiều tài khoản) và ads_upload_media để có video_id/image_id. Video tải lên (video_id) cần đúng 1 ảnh bìa trong image_ids; Spark Ads từ bài đăng dùng tiktok_item_id. Tối đa 50 quảng cáo mỗi nhóm. Nhóm nhắn tin: chỉ SINGLE_VIDEO / CAROUSEL_ADS, call_to_action SEND_MESSAGE (tự đặt nếu bỏ trống); tin nhắn TikTok cần auto_message_id (tiktok_messaging_assets kind=welcome_messages hoặc tiktok_create_welcome_message) và identity TT_USER / BC_AUTH_TT có can_manage_message; Messenger / WhatsApp / Zalo / LINE không gửi landing_page_url (TikTok tự tạo link), có thể dùng page_id (Instant Page, CLICK); IM_URL cần landing_page_url https hoặc page_id. Quảng cáo luôn được tạo ở trạng thái TẮT và qua kiểm duyệt; không tự thử lại khi lỗi mạng để tránh tạo trùng.",
     input: createAdsInput,
     write: true,
     run: (ctx, input, opts) => runCreateAds(ctx, input as CreateAdsInput, opts),
@@ -577,6 +610,8 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     write: true,
     run: (ctx, input, opts) => runUpdateTargeting(ctx, input as UpdateTargetingInput, opts),
   },
+  // messaging ads: prerequisites (read) + welcome messages (create) - messaging.ts
+  ...messagingExtensions,
   // GMV Max (TikTok Shop): analysis tools (gmv-max.ts) + reads / writes behind the admin-only MCP switch (gmv-max-write.ts)
   ...gmvMaxExtensions,
   ...gmvMaxWriteExtensions,

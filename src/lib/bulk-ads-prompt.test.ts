@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -13,6 +14,8 @@ import {
   BULK_SYSTEM_COLUMNS,
   BULK_TASKS,
   BULK_TEMPLATE_ROWS,
+  BULK_TIKTOK_AD_TYPES,
+  BULK_TIKTOK_MESSAGING_APPS,
   BULK_WELCOME_SKILL_DESCRIPTION,
   BULK_WELCOME_SKILL_NAME,
   buildBulkAdsPrompt,
@@ -23,13 +26,18 @@ import {
   buildSheetTemplateCsv,
   bulkSkillName,
   bulkTask,
+  checkTiktokMessagingAccount,
   clampBatch,
   cleanName,
   cleanWelcome,
   connectorLabel,
   DEFAULT_BULK_ADS,
   metaMessagingType,
+  TIKTOK_WELCOME_MESSAGE_MAX,
+  tiktokMessagingType,
+  vnPhoneNumber,
   WELCOME_MESSAGE_MAX,
+  type BulkAdsInput,
 } from "./bulk-ads-prompt"
 
 describe("bulk ads sheet template", () => {
@@ -547,5 +555,414 @@ describe("bulk ads prompt - update welcome messages (v1.1.4, task update_welcome
     )
     // the create task keeps its skill
     expect(bulkSkillName(DEFAULT_BULK_ADS)).toBe(BULK_SKILL_NAME)
+  })
+})
+
+describe("bulk ads prompt - TikTok website prompts unchanged (v1.1.5)", () => {
+  // sha256 of every prompt / skill / skill call / skill name of the combinations below, computed with the v1.1.4
+  // builder (git HEAD e68870d, before the TikTok ad type existed): the TikTok type `website` (default) must keep every
+  // prompt byte-identical - for TikTok, OpenAI Ads, Meta and "Theo cột Nền tảng", both tasks
+  const V114: Record<string, string> = {
+    "create/sheet":
+      "35898c7b7e18d2959f82fbbfed20e925cce009739cf4d4cc2bb4914251835382",
+    "create/meta":
+      "905bb4f4169aa556497a733cf214bfe37b53d473cc7752d604a509fc222e1fc0",
+    "create/tiktok":
+      "1185f1337f3732f56534c6853bf61ee364a7ef15492c0f83fd18de10db3c3c16",
+    "create/openai_ads":
+      "365f7745fb2ce5cbfa6f5f13a91cd4c35f6d9393261a6ac90125aa16bcb5eed8",
+    "update_welcome/sheet":
+      "1a1d8104746c0b86d6c1fbea4d1c4dbe037194975657af1cf1b033fbc1e3c936",
+    "update_welcome/meta":
+      "2e12cef59eba23767ab25e86f3ef3436b26995edb1f0e804b2f62fc884d39891",
+    "update_welcome/tiktok":
+      "1185f1337f3732f56534c6853bf61ee364a7ef15492c0f83fd18de10db3c3c16",
+    "update_welcome/openai_ads":
+      "365f7745fb2ce5cbfa6f5f13a91cd4c35f6d9393261a6ac90125aa16bcb5eed8",
+  }
+
+  function combos(
+    task: BulkAdsInput["task"],
+    platform: BulkAdsInput["platform"],
+    extra: Partial<BulkAdsInput>
+  ): BulkAdsInput[] {
+    const out: BulkAdsInput[] = []
+    for (const structure of ["existing", "new"] as const)
+      for (const writeback of [true, false])
+        for (const metaAdType of [
+          "website",
+          "messaging_purchase",
+          "messaging_conversations",
+        ] as const)
+          for (const welcomeMessage of ["", "Chào bạn! Shop gửi bảng giá nhé"])
+            for (const named of [false, true])
+              out.push({
+                ...DEFAULT_BULK_ADS,
+                task,
+                platform,
+                structure,
+                writeback,
+                metaAdType,
+                welcomeMessage,
+                ...(named
+                  ? {
+                      connectorName: "Lên QC",
+                      sheetName: "Kế hoạch T10",
+                      account: "act_123",
+                      campaignName: "Ra mắt serum",
+                      adGroupName: "Nữ 25-34",
+                      batchSize: 8,
+                      dailyBudget: 350000.5,
+                      currency: "USD",
+                    }
+                  : {}),
+                ...extra,
+              })
+    return out
+  }
+
+  function digest(
+    task: BulkAdsInput["task"],
+    platform: BulkAdsInput["platform"],
+    extra: Partial<BulkAdsInput> = {}
+  ): string {
+    const h = createHash("sha256")
+    for (const input of combos(task, platform, extra))
+      h.update(
+        [
+          buildBulkAdsPrompt(input),
+          buildBulkAdsSkillMd(input),
+          buildBulkAdsSkillPrompt(input),
+          bulkSkillName(input),
+        ].join("\n\u0000\n") + "\n\u0001\n"
+      )
+    return h.digest("hex")
+  }
+
+  it("TikTok type website (default): every prompt equals the v1.1.4 output, whatever the app / account typed", () => {
+    expect(DEFAULT_BULK_ADS.tiktokAdType).toBe("website")
+    for (const task of BULK_TASKS)
+      for (const platform of ["sheet", "meta", "tiktok", "openai_ads"] as const) {
+        const want = V114[`${task}/${platform}`]
+        expect(digest(task, platform), `${task}/${platform}`).toBe(want)
+        expect(
+          digest(task, platform, {
+            tiktokAdType: "website",
+            tiktokMessagingApp: "MESSENGER",
+            tiktokMessagingAccount: "123456789012345",
+          }),
+          `${task}/${platform} website + account`
+        ).toBe(want)
+      }
+  })
+
+  it("Meta / OpenAI Ads forms and the update_welcome task ignore the TikTok ad type", () => {
+    for (const tiktokAdType of BULK_TIKTOK_AD_TYPES) {
+      const extra = {
+        tiktokAdType,
+        tiktokMessagingApp: "ZALO" as const,
+        tiktokMessagingAccount: "0901234567",
+        welcomeMessage: "Chào bạn",
+      }
+      for (const platform of ["meta", "openai_ads"] as const) {
+        for (const input of combos("create", platform, extra))
+          expect(tiktokMessagingType(input)).toBeNull()
+        expect(
+          digest("create", platform, { tiktokAdType }),
+          `${platform} ${tiktokAdType}`
+        ).toBe(V114[`create/${platform}`])
+      }
+      // update_welcome (Meta / "Theo cột Nền tảng") never mentions TikTok; a TikTok form builds the create task
+      for (const platform of ["sheet", "meta", "openai_ads"] as const)
+        expect(
+          digest("update_welcome", platform, { tiktokAdType }),
+          `update_welcome/${platform} ${tiktokAdType}`
+        ).toBe(V114[`update_welcome/${platform}`])
+    }
+  })
+})
+
+describe("bulk ads prompt - TikTok messaging ads (v1.1.5)", () => {
+  const tiktok = { ...DEFAULT_BULK_ADS, platform: "tiktok" as const }
+  const line = (rule: string, step: string) =>
+    rule.split("\n").find((l) => l.startsWith(`   ${step}. `)) ?? ""
+  const STRUCTURES = [
+    { name: "new", input: { structure: "new" as const } },
+    {
+      name: "existing named",
+      input: { structure: "existing" as const, campaignName: "Ra mắt serum" },
+    },
+    { name: "existing asked", input: { structure: "existing" as const } },
+  ]
+
+  it("applies to TikTok / sheet-chosen forms only, never to the website type", () => {
+    expect(BULK_TIKTOK_AD_TYPES).toEqual([
+      "website",
+      "messaging_dm",
+      "messaging_app",
+    ])
+    expect(BULK_TIKTOK_MESSAGING_APPS).toEqual([
+      "ZALO",
+      "MESSENGER",
+      "WHATSAPP",
+      "LINE",
+    ])
+    expect(TIKTOK_WELCOME_MESSAGE_MAX).toBe(200)
+    for (const platform of ["tiktok", "sheet"] as const) {
+      expect(tiktokMessagingType({ ...tiktok, platform })).toBeNull()
+      for (const tiktokAdType of ["messaging_dm", "messaging_app"] as const)
+        expect(tiktokMessagingType({ ...tiktok, platform, tiktokAdType })).toBe(
+          tiktokAdType
+        )
+    }
+  })
+
+  it("every TikTok type × structure × platform mode: video only, SEND_MESSAGE, no Link đích, paused", () => {
+    for (const platform of ["tiktok", "sheet"] as const)
+      for (const tiktokAdType of ["messaging_dm", "messaging_app"] as const)
+        for (const st of STRUCTURES) {
+          const label = `${platform} ${tiktokAdType} ${st.name}`
+          const rule = buildBulkAdsRule({
+            ...tiktok,
+            platform,
+            tiktokAdType,
+            ...st.input,
+          })
+          const b = line(rule, "b")
+          const c = line(rule, "c")
+          const d = line(rule, "d")
+          expect(b, label).toContain(
+            'dòng TikTok không có video thì không tải file, ghi lỗi "Quảng cáo tin nhắn TikTok cần video - dòng này chỉ có ảnh"'
+          )
+          expect(d, label).toContain("call_to_action SEND_MESSAGE")
+          expect(d, label).toContain("không truyền Link đích, page_id hay deeplink")
+          expect(d, label).toContain(
+            "Mọi dòng TikTok của lượt đều là quảng cáo tin nhắn - không trộn với quảng cáo dẫn tới website."
+          )
+          expect(d, label).toContain("TẠM DỪNG")
+          if (st.input.structure === "new") {
+            expect(c, label).toContain(
+              "tiktok_create_campaign objective LEAD_GENERATION (chiến dịch thường, không Smart+)"
+            )
+            expect(c, label).toContain("optimization_goal CLICK")
+            expect(c, label).toContain(
+              "không truyền placement, optimization_event, pixel_id hay độ tuổi 13-17 - tool tự đặt vị trí chỉ TikTok"
+            )
+            expect(c, label).toContain("Sau 31/12/2026 TikTok không cho tạo chiến dịch thường qua API")
+            expect(c, label).not.toContain("ads_get_object")
+          } else {
+            expect(c, label).toContain(
+              "trước khi tạo quảng cáo, xem nhóm quảng cáo bằng ads_get_object - promotion_type phải là"
+            )
+            expect(c, label).not.toContain("objective LEAD_GENERATION")
+            expect(c, label).not.toContain("tiktok_create_adgroup")
+          }
+          // Meta-only sentences stay out of a TikTok form; the sheet-chosen form keeps them for Meta rows
+          if (platform === "tiktok") {
+            expect(rule).not.toContain("existing_post")
+            expect(rule).not.toContain("MESSAGE_PAGE")
+          } else expect(rule).toContain("existing_post")
+        }
+  })
+
+  it("TikTok DM: one welcome message per distinct text, created or reused, Spark identity that can manage messages", () => {
+    for (const st of STRUCTURES) {
+      const rule = buildBulkAdsRule({
+        ...tiktok,
+        tiktokAdType: "messaging_dm",
+        welcomeMessage: "Chào bạn! Shop gửi bảng giá nhé",
+        ...st.input,
+      })
+      const d = line(rule, "d")
+      for (const s of [
+        "quảng cáo tin nhắn TikTok (Direct Message), bắt buộc có lời chào",
+        "welcome_message của dòng (cột Lời chào tin nhắn, tối đa 200 ký tự)",
+        'dòng trống thì dùng lời chào "Chào bạn! Shop gửi bảng giá nhé"',
+        "Với mỗi tài khoản và mỗi lời chào khác nhau trong lượt",
+        "tiktok_messaging_assets kind=welcome_messages",
+        "tạo MỘT lần bằng tiktok_create_welcome_message {content = lời chào}",
+        "auto_message_id",
+        "danh tính Spark (identity_type TT_USER hoặc BC_AUTH_TT)",
+        "can_manage_message = true",
+        "tiktok_messaging_assets kind=dm_identities",
+        '"Mọi người" nhắn tin',
+        "Lời chào không đổi được sau khi tạo quảng cáo.",
+      ])
+        expect(d, `${st.name}: ${s}`).toContain(s)
+      if (st.input.structure === "new")
+        expect(line(rule, "c")).toContain(
+          'tiktok_create_adgroup với messaging = {destination: "TIKTOK_DM"}'
+        )
+      else
+        expect(line(rule, "c")).toContain(
+          'promotion_type phải là LEAD_GEN_CLICK_TO_TT_DIRECT_MESSAGE (khác → ghi lỗi "Nhóm quảng cáo TikTok không phải nhóm tin nhắn TikTok", không tạo quảng cáo)'
+        )
+    }
+  })
+
+  it("TikTok DM default welcome message: cleaned; none → ask once from the account's list; over 200 → error note", () => {
+    const dm = { ...tiktok, tiktokAdType: "messaging_dm" as const }
+    expect(
+      buildBulkAdsRule({
+        ...dm,
+        welcomeMessage: '  Chào "bạn"!\nShop gửi \u202ebảng giá nhé ',
+      })
+    ).toContain('dòng trống thì dùng lời chào "Chào bạn ! Shop gửi bảng giá nhé"')
+    const none = buildBulkAdsRule(dm)
+    expect(none).toContain(
+      "dòng trống thì liệt kê lời chào có sẵn bằng tiktok_messaging_assets kind=welcome_messages và hỏi tôi MỘT lần cho cả lượt"
+    )
+    const at200 = buildBulkAdsRule({ ...dm, welcomeMessage: "a".repeat(200) })
+    expect(at200).toContain(`dòng trống thì dùng lời chào "${"a".repeat(200)}"`)
+    // "Theo cột Nền tảng" + Meta messaging: the form allows 300 - TikTok rows without their own text get an error note
+    const long = buildBulkAdsRule({
+      ...dm,
+      platform: "sheet",
+      metaAdType: "messaging_conversations",
+      welcomeMessage: "b".repeat(250),
+    })
+    expect(long).toContain(
+      'dòng trống thì ghi lỗi "Lời chào mặc định dài hơn 200 ký tự - ghi lời chào riêng (tối đa 200 ký tự) ở cột Lời chào tin nhắn"'
+    )
+    // the Meta rows still use the 300-character text
+    expect(long).toContain(`dòng trống thì dùng lời chào "${"b".repeat(250)}"`)
+  })
+
+  it("messaging apps: the ad group messaging object per app, with the typed account or asked once", () => {
+    const app = { ...tiktok, tiktokAdType: "messaging_app" as const, structure: "new" as const }
+    const c = (extra: Partial<BulkAdsInput>) => line(buildBulkAdsRule({ ...app, ...extra }), "c")
+    expect(c({ tiktokMessagingAccount: "0901 234 567" })).toContain(
+      'messaging = {destination: "ZALO", phone_region_code: "VN", phone_region_calling_code: "+84", phone_number: "901234567"}'
+    )
+    expect(c({})).toContain("TikTok - quảng cáo tin nhắn qua Zalo")
+    expect(c({})).toContain("optimization_goal CLICK (Zalo chỉ nhận CLICK)")
+    expect(c({})).toContain(
+      'phone_number: số Zalo bỏ số 0 đầu, vd "901234567"} (số điện thoại Zalo của tôi; chưa rõ thì hỏi tôi MỘT lần cho cả lượt)'
+    )
+    const wa = c({ tiktokMessagingApp: "WHATSAPP", tiktokMessagingAccount: "+84 912 345 678" })
+    expect(wa).toContain(
+      'messaging = {destination: "WHATSAPP", phone_region_code: "VN", phone_region_calling_code: "+84", phone_number: "912345678"}'
+    )
+    expect(wa).toContain("số WhatsApp Business API đã nối với công cụ quản lý tin nhắn")
+    expect(wa).toContain("kind=message_event_sets")
+    const fb = c({ tiktokMessagingApp: "MESSENGER", tiktokMessagingAccount: "1234 5678 9012 345" })
+    expect(fb).toContain('messaging = {destination: "MESSENGER", facebook_page_id: "123456789012345"}')
+    expect(fb).toContain("CONVERSATION chỉ khi tôi yêu cầu")
+    expect(fb).not.toContain("ads_lookup kind=pages")
+    const ln = c({ tiktokMessagingApp: "LINE", tiktokMessagingAccount: "@shopcuaban" })
+    expect(ln).toContain('messaging = {destination: "LINE", line_business_id: "@shopcuaban"}')
+    expect(ln).toContain("optimization_goal CLICK (LINE chỉ nhận CLICK)")
+    expect(ln).not.toContain("message_event_sets")
+    // an invalid account never reaches the prompt (the form blocks copying; the builder asks instead)
+    for (const [tiktokMessagingApp, bad] of [
+      ["ZALO", "abc"],
+      ["WHATSAPP", "12-34"],
+      ["MESSENGER", "trang-cua-toi"],
+      ["LINE", '@a"b c'],
+    ] as const) {
+      const text = c({ tiktokMessagingApp, tiktokMessagingAccount: bad })
+      expect(text).not.toContain(bad)
+      expect(text).toContain("chưa rõ thì hỏi tôi MỘT lần cho cả lượt")
+    }
+    // the ad: TikTok opens the app itself - no wa.me / m.me / zalo.me link
+    const d = line(buildBulkAdsRule({ ...app, tiktokMessagingApp: "MESSENGER" }), "d")
+    expect(d).toContain("Quảng cáo TikTok là quảng cáo tin nhắn qua Messenger")
+    expect(d).toContain("không tự ghi link zalo.me, m.me hay wa.me")
+    expect(d).not.toContain("auto_message_id")
+    expect(d).not.toContain("tiktok_create_welcome_message")
+  })
+
+  it("existing ad group: promotion_type + messaging_app_type checked with ads_get_object, the typed account compared", () => {
+    const c = line(
+      buildBulkAdsRule({
+        ...tiktok,
+        tiktokAdType: "messaging_app",
+        tiktokMessagingApp: "ZALO",
+        tiktokMessagingAccount: "0901234567",
+        campaignName: "Ra mắt serum",
+      }),
+      "c"
+    )
+    expect(c).toContain(
+      'promotion_type phải là LEAD_GEN_CLICK_TO_SOCIAL_MEDIA_APP_MESSAGE và messaging_app_type phải là ZALO (khác → ghi lỗi "Nhóm quảng cáo TikTok không gửi khách tới Zalo", không tạo quảng cáo)'
+    )
+    expect(c).toContain('khác "901234567" thì báo tôi và hỏi trước khi làm tiếp')
+    const noAccount = line(
+      buildBulkAdsRule({ ...tiktok, tiktokAdType: "messaging_app", tiktokMessagingApp: "LINE" }),
+      "c"
+    )
+    expect(noAccount).toContain("messaging_app_type phải là LINE")
+    expect(noAccount).not.toContain("thì báo tôi và hỏi trước khi làm tiếp")
+  })
+
+  it("sheet-chosen platform: Meta messaging and TikTok messaging sentences side by side, other steps unchanged", () => {
+    const website = buildBulkAdsRule({
+      ...DEFAULT_BULK_ADS,
+      platform: "sheet",
+      metaAdType: "messaging_purchase",
+      structure: "new",
+    })
+    const both = buildBulkAdsRule({
+      ...DEFAULT_BULK_ADS,
+      platform: "sheet",
+      metaAdType: "messaging_purchase",
+      structure: "new",
+      tiktokAdType: "messaging_dm",
+    })
+    expect(both).toContain("Quảng cáo Meta là quảng cáo tin nhắn Messenger")
+    expect(both).toContain("Quảng cáo TikTok là quảng cáo tin nhắn TikTok (Direct Message)")
+    expect(both).toContain("Meta: meta_create_campaign → meta_create_adset; TikTok:")
+    const wl = website.split("\n")
+    const bl = both.split("\n")
+    expect(bl).toHaveLength(wl.length)
+    for (let i = 0; i < wl.length; i++) {
+      if (/^ {3}[bcd]\. /.test(wl[i]!)) {
+        // the TikTok sentences are only appended inside steps b, c and d: the Meta text is kept as is
+        expect(bl[i]!.length).toBeGreaterThan(wl[i]!.length)
+        const [head] = wl[i]!.split(" Ảnh bìa của video:")
+        expect(bl[i]!.startsWith(head!)).toBe(true)
+      } else expect(bl[i]).toBe(wl[i])
+    }
+  })
+
+  it("checks and normalises the receiving account per app", () => {
+    for (const [raw, want] of [
+      ["0901234567", "901234567"],
+      ["0901 234 567", "901234567"],
+      ["090.123.4567", "901234567"],
+      ["+84 901 234 567", "901234567"],
+      ["84901234567", "901234567"],
+      ["0084901234567", "901234567"],
+      ["901234567", "901234567"],
+      ["0281234567 8", "2812345678"],
+    ] as const)
+      expect(vnPhoneNumber(raw), raw).toBe(want)
+    for (const bad of ["", "abc", "12345", "0101234567", "+1 415 555 0100", "09012345678"])
+      expect(vnPhoneNumber(bad), bad).toBeNull()
+    expect(checkTiktokMessagingAccount("ZALO", "  ")).toEqual({ ok: true, value: "" })
+    expect(checkTiktokMessagingAccount("WHATSAPP", "0912 345 678")).toEqual({
+      ok: true,
+      value: "912345678",
+    })
+    expect(checkTiktokMessagingAccount("ZALO", "zalo.me/abc")).toEqual({
+      ok: false,
+      error: "phone",
+    })
+    expect(checkTiktokMessagingAccount("MESSENGER", "123 456 789 012 345")).toEqual({
+      ok: true,
+      value: "123456789012345",
+    })
+    expect(checkTiktokMessagingAccount("MESSENGER", "fb.com/shop")).toEqual({
+      ok: false,
+      error: "page_id",
+    })
+    expect(checkTiktokMessagingAccount("LINE", " @shop.cua_ban ")).toEqual({
+      ok: true,
+      value: "@shop.cua_ban",
+    })
+    expect(checkTiktokMessagingAccount("LINE", "shop của bạn")).toEqual({
+      ok: false,
+      error: "line_id",
+    })
   })
 })

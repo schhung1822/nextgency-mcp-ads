@@ -1965,6 +1965,55 @@ describe.skipIf(!hasDb)(
       }
     })
 
+    it("sheet welcome message column on TikTok rows (v1.1.5): > 200 characters is welcome_message_too_long_tiktok, the Meta 300 rule is unchanged", async () => {
+      __resetSheetsLimiter()
+      const m = await mcpWith("staff", { platforms: createAll() }, [src.sheet])
+      const at = HEADER.length
+      g.grid = g.grid.map((r, i) => [...r, i === 0 ? "Lời chào tin nhắn" : ""])
+      // row 2 (Facebook) 250 and row 5 (Meta) 300: fine for Meta; row 3 (TikTok) 201: over TikTok's 200;
+      // row 4 (unknown platform "MySpace") 250: the TikTok rule needs a TikTok row
+      g.grid[1]![at] = "a".repeat(250)
+      g.grid[2]![at] = "t".repeat(201)
+      g.grid[3]![at] = "u".repeat(250)
+      g.grid[4]![at] = "m".repeat(300)
+      const read = async () => {
+        __clearSheetsCache()
+        const r = await w.call(m.key, "drive_sheet_read", {
+          source_id: src.sheet,
+          resolve_files: false,
+        })
+        expect(r.isError, r.text).toBe(false)
+        return r.sc.rows as Record<string, any>[]
+      }
+      const codes = (row: Record<string, any>) =>
+        row.problems.map((p: { code: string }) => p.code) as string[]
+      const [logo, pub, secret, nolink] = await read()
+      expect(pub!.platform).toBe("tiktok")
+      expect(pub!.problems).toEqual(
+        expect.arrayContaining([
+          {
+            code: "welcome_message_too_long_tiktok",
+            message: expect.stringContaining(
+              "dài 201 ký tự - TikTok chỉ nhận tối đa 200 ký tự"
+            ),
+          },
+        ])
+      )
+      expect(codes(pub!)).not.toContain("welcome_message_too_long")
+      for (const row of [logo!, secret!, nolink!]) {
+        expect(codes(row)).not.toContain("welcome_message_too_long_tiktok")
+        expect(codes(row)).not.toContain("welcome_message_too_long")
+      }
+      // exactly 200 characters on the TikTok row: no problem; 301 on the Meta row: the Meta problem only
+      g.grid[2]![at] = "t".repeat(200)
+      g.grid[4]![at] = "m".repeat(301)
+      const [, pub2, , nolink2] = await read()
+      expect(pub2!.values.welcome_message).toHaveLength(200)
+      expect(codes(pub2!)).not.toContain("welcome_message_too_long_tiktok")
+      expect(codes(nolink2!)).toContain("welcome_message_too_long")
+      expect(codes(nolink2!)).not.toContain("welcome_message_too_long_tiktok")
+    })
+
     it("sheet existing post column (v1.1.4): parsed into existing_post, the post wins over Link Drive, Meta only, rows without a Drive link are written back by their post, legacy config detects it by name", async () => {
       __resetSheetsLimiter()
       const m = await mcpWith("staff", { platforms: createAll() }, [

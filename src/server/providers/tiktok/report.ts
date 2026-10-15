@@ -58,6 +58,7 @@ export const CONVERSION_METRICS = [
   "form",
   "onsite_form",
   "messaging_total_conversation_tiktok_direct_message",
+  "messaging_total_conversation_instant_messaging_app",
 ]
 export const VIDEO_METRICS = [
   "video_play_actions",
@@ -89,6 +90,11 @@ export const EXTRA_METRICS = [
   "total_landing_page_view",
   "onsite_total_purchase",
   "total_onsite_shopping_value",
+  // messaging ads per destination (doc 1751443967255553 "Messaging metrics")
+  "messaging_cost_per_conversation_tiktok_direct_message",
+  "messaging_conversation_rate_tiktok_direct_message",
+  "messaging_cost_per_conversation_instant_messaging_app",
+  "messaging_conversation_rate_instant_messaging_app",
 ]
 
 /**
@@ -124,6 +130,9 @@ export function metricsForPreset(preset: MetricPreset): string[] {
   }
 }
 
+const DM_CONVERSATIONS = "messaging_total_conversation_tiktok_direct_message"
+const IM_CONVERSATIONS = "messaging_total_conversation_instant_messaging_app"
+
 function sumOrNull(...vals: (number | null)[]): number | null {
   const present = vals.filter((v): v is number => v !== null)
   return present.length ? present.reduce((a, b) => a + b, 0) : null
@@ -148,7 +157,10 @@ export function normalizeTikTokMetrics(m: Raw, requested: Set<string>): Normaliz
   out.roas = get("complete_payment_roas")
   out.purchases = get("complete_payment")
   out.leads = requested.has("form") || requested.has("onsite_form") ? sumOrNull(get("form"), get("onsite_form")) : null
-  out.messages = get("messaging_total_conversation_tiktok_direct_message")
+  // conversations = TikTok direct messages + instant messaging apps (counts; a missing side counts as 0 only when the
+  // other one is present)
+  out.messages =
+    requested.has(DM_CONVERSATIONS) || requested.has(IM_CONVERSATIONS) ? sumOrNull(get(DM_CONVERSATIONS), get(IM_CONVERSATIONS)) : null
   out.video_views = get("video_play_actions")
   return out
 }

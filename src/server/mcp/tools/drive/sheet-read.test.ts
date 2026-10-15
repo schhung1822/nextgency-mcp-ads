@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest"
 
-import { SHEET_READ_DESCRIPTION } from "./sheet-read"
+import * as bulk from "@/lib/bulk-ads-prompt"
+
+import {
+  SHEET_READ_DESCRIPTION,
+  TIKTOK_WELCOME_MESSAGE_MAX,
+  WELCOME_MESSAGE_MAX,
+} from "./sheet-read"
+
+describe("drive_sheet_read welcome message limits", () => {
+  it("Meta 300, TikTok 200 (v1.1.5) - the same limits as the bulk ads form / prompt", () => {
+    expect(WELCOME_MESSAGE_MAX).toBe(300)
+    expect(TIKTOK_WELCOME_MESSAGE_MAX).toBe(200)
+    expect(bulk.WELCOME_MESSAGE_MAX).toBe(WELCOME_MESSAGE_MAX)
+    expect(bulk.TIKTOK_WELCOME_MESSAGE_MAX).toBe(TIKTOK_WELCOME_MESSAGE_MAX)
+  })
+})
 
 describe("drive_sheet_read description", () => {
   it("starts with Dùng khi, ≤ 1500 characters, explains the cover, welcome message and existing post columns and how to use them per platform", () => {
