@@ -16,16 +16,17 @@ import {
   type PreviewInfo,
   type StoredOutcome,
 } from "./confirm"
-import { noteAuthFailure } from "./connection-health"
+import { noteConnectionFailure, noteWriteSucceeded } from "./connection-health"
 import { providerContextFactory, type ProviderContextFactory } from "./context"
 import { McpToolError, mapToolError, type CallLogStatus, type ToolErrorPayload } from "./errors"
 import { platformLabel } from "./grant"
 import { CallLog } from "./logging"
 import { notifyWriteExecuted } from "./notify"
-import { consumeWriteRate } from "./rate-limit"
+import { consumeWriteRate, refundWriteRate } from "./rate-limit"
 import type { RequestState } from "./request-state"
 import { isUnlimited, type GrantAccount, type McpGrant } from "./types"
 import { acquireWritePacing } from "./write-pacing"
+import { isDefiniteNoChange, UpstreamWriteTracker } from "./write-refund"
 
 // ---------------------------------------------------------------------------
 // Annotations (04-mcp-design.md §3)
@@ -75,6 +76,11 @@ export interface ToolEnv {
    * summary of an executed write. Never awaited; a failure is only logged.
    */
   afterSuccess: (() => void)[]
+  /**
+   * Upstream requests of this call (set by runTool): runWrite uses it to give the write-limit slot back when the
+   * platform refused the write before anything changed (write-refund.ts). Absent → never refunded.
+   */
+  upstream?: UpstreamWriteTracker
 }
 
 export interface ToolOutcome {
@@ -118,6 +124,8 @@ export function okResult(structured: Record<string, unknown>, summary: string): 
 export function errorResult(payload: ToolErrorPayload): CallToolResult {
   const lines = [`Lỗi: ${payload.message}`]
   if (payload.hint) lines.push(`Gợi ý: ${payload.hint}`)
+  // clients that only read the text still see the wait (B2)
+  if (payload.retry_after_seconds) lines.push(`Thử lại sau ${payload.retry_after_seconds} giây.`)
   lines.push(JSON.stringify(payload))
   return { content: [{ type: "text", text: lines.join("\n") }], structuredContent: payload, isError: true }
 }
@@ -163,6 +171,7 @@ async function runTool<S extends z.ZodObject<any>>(
     request: spec.logArgs ? spec.logArgs(args) : args,
   })
   const signal = AbortSignal.any([ctx.mcpReq.signal, AbortSignal.timeout(TOOL_TIMEOUT_MS)])
+  const upstream = new UpstreamWriteTracker()
   const env: ToolEnv = {
     grant,
     req,
@@ -171,11 +180,15 @@ async function runTool<S extends z.ZodObject<any>>(
     toolName: spec.name,
     storedArgs: spec.logArgs ? spec.logArgs(args) : undefined,
     afterSuccess: [],
+    upstream,
     providerCtx: providerContextFactory({
       ownerId: grant.ownerId,
       ownerIsAdmin: grant.ownerRole === "admin",
       signal,
-      onUpstream: (e) => log.addUpstreamRequestId(e.requestId ?? null),
+      onUpstream: (e) => {
+        upstream.observe(e)
+        log.addUpstreamRequestId(e.requestId ?? null)
+      },
     }),
   }
   // write rows are inserted synchronously (durable before the answer leaves); reads go to the batch writer
@@ -198,9 +211,21 @@ async function runTool<S extends z.ZodObject<any>>(
       }
     }
     return okResult(structured, out.summary)
-  } catch (e) {
-    // a revoked/expired token: flag the connection so the UI shows it (only when the call used one)
-    if (env.providerCtx.touched.size === 1) await noteAuthFailure(e, [...env.providerCtx.touched][0])
+  } catch (err) {
+    // connection health (only when the call used exactly one connection): a revoked/expired token flags it invalid;
+    // action_required (Meta code 31…) flags it "cần xác thực" and names the connection + ad account in the message
+    let e: unknown = err
+    const touched = env.providerCtx.touched
+    try {
+      e = await noteConnectionFailure(err, {
+        connectionId: touched.size === 1 ? ([...touched][0] ?? null) : null,
+        grant,
+        accountExternalId: log.adAccountId,
+      })
+    } catch (hookErr) {
+      console.warn(`[mcp] connection health hook of ${spec.name} failed`, safeErrorForLog(hookErr))
+      e = err
+    }
     const mapped = mapToolError(e)
     log.addUpstreamRequestId(mapped.upstreamRequestId)
     // a failed write with an uncertain outcome (e.g. GMV Max create timeout + not found): the row keeps its changes and
@@ -260,22 +285,41 @@ export function writeIdempotencyKey(
   return `mcpw-${createHash("sha256").update(material).digest("hex").slice(0, 40)}`
 }
 
+/** The write-limit slot spent by admitWrite. refund() gives it back (at most once; no-op without a limit). */
+export interface WriteTicket {
+  refund(): void
+}
+
+const NO_TICKET: WriteTicket = { refund: () => {} }
+
 /**
  * Spend one unit of the MCP write limit (settings.writeRateLimitPer10Min executed writes per 10 minutes) or throw
- * write_rate_limited. runWrite calls it for each real execution; writes without the confirm flow (e.g.
- * drive_sheet_update_rows) call it right before they write.
+ * write_rate_limited (+ retry_after_seconds). runWrite calls it for each real execution (and refunds the slot when the
+ * platform refused the write before anything changed - write-refund.ts); writes without the confirm flow (e.g.
+ * drive_sheet_update_rows, Apify runs) call it right before they write and never refund.
  */
-export function admitWrite(grant: McpGrant, o: { confirmable?: boolean } = {}): void {
+export function admitWrite(grant: McpGrant, o: { confirmable?: boolean } = {}): WriteTicket {
   const limit = grant.settings.writeRateLimitPer10Min
   // basic protection mode: no write limit (UNLIMITED never reaches the sliding window)
-  if (isUnlimited(limit)) return
+  if (isUnlimited(limit)) return NO_TICKET
   const d = consumeWriteRate(grant.mcpId, limit)
-  if (d.ok) return
+  if (d.ok) {
+    const at = d.at
+    let refunded = false
+    return {
+      refund: () => {
+        if (refunded || at === undefined) return
+        refunded = true
+        refundWriteRate(grant.mcpId, at)
+      },
+    }
+  }
   throw new McpToolError({
     code: "write_rate_limited",
     messageVi: `MCP này đã thực hiện ${limit} thao tác ghi trong 10 phút qua - vượt giới hạn.`,
     hint: `Thử lại sau khoảng ${Math.ceil(d.retryAfterSec / 60)} phút${o.confirmable ? " (confirm_token vẫn dùng được nếu chưa hết hạn)" : ""}, hoặc nhờ chủ MCP nâng giới hạn.`,
     logStatus: "rate_limited",
+    retryAfterSec: d.retryAfterSec,
   })
 }
 
@@ -318,6 +362,8 @@ export async function runWrite(
         })
       : null
   let attempted = false
+  // the write-limit slot of this execution (null: no limit spent yet)
+  let ticket: WriteTicket | null = null
   let flow: Awaited<ReturnType<typeof runConfirmFlow>>
   try {
     flow = await runConfirmFlow({
@@ -328,12 +374,24 @@ export async function runWrite(
       alwaysConfirm: o.alwaysConfirm,
       preview: o.preview,
       // the write quota is spent by real executions only (not by previews, replays of a consumed token or invalid tokens)
-      admit: () => admitWrite(env.grant, { confirmable: true }),
+      admit: () => {
+        ticket = admitWrite(env.grant, { confirmable: true })
+      },
       execute: async (pendingActionId): Promise<StoredOutcome> => {
         attempted = true
-        const r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }, arrivedAt), {
-          confirmed: pendingActionId !== null,
-        })
+        const mark = env.upstream?.mark() ?? null
+        let r: WriteExecution
+        try {
+          r = await o.execute(writeIdempotencyKey({ mcpId: env.grant.mcpId, toolName: env.toolName, args: o.args, pendingActionId }, arrivedAt), {
+            confirmed: pendingActionId !== null,
+          })
+        } catch (e) {
+          // D5: the platform refused this single-step write before anything changed → the write-limit slot is given
+          // back (a consumed confirm_token stays consumed: the AI previews again)
+          const t = ticket as WriteTicket | null
+          if (t && mark && env.upstream && isDefiniteNoChange(e, env.toolName, env.upstream.since(mark))) t.refund()
+          throw e
+        }
         // the logs UI ("Trước → Sau") reads only the changes column: never leave it empty for an executed write
         executed = r.changes?.length ? r.changes : [{ objectId: "-", field: env.toolName, before: null, after: r.structured.result ?? r.summary }]
         env.log.setChanges(executed)
@@ -357,6 +415,12 @@ export async function runWrite(
   }
   env.log.pendingActionId = flow.pendingActionId
   if (!flow.outcome.ok) return { structured: {}, summary: "", error: flow.outcome.error }
+  // D6: a write that went through on a connection flagged "cần xác thực" clears the flag (no query when not flagged)
+  if (flow.kind === "executed" && env.providerCtx.actionRequired?.has(o.account.connectionId)) {
+    await noteWriteSucceeded({ connectionId: o.account.connectionId, accountExternalId: o.account.externalId, flagged: true }).catch(
+      (err: unknown) => console.warn(`[mcp] clearing the action-required flag after ${env.toolName} failed`, safeErrorForLog(err))
+    )
+  }
   // Telegram summary of THIS execution (not of a replay), after the call log is written (runTool)
   const changes = executed as FieldChange[] | null
   if (flow.kind === "executed" && changes) {

@@ -22,6 +22,7 @@ export function objectSummaryOut(o: AdObjectSummary): Record<string, unknown> {
     status: o.status,
     status_raw: o.statusRaw,
   }
+  if (o.statusDetail) out.status_detail = o.statusDetail
   if (o.campaignId) out.campaign_id = o.campaignId
   if (o.parentId) out.parent_id = o.parentId
   if (o.budget) out.budget = budgetOut(o.budget)

@@ -322,6 +322,11 @@ export function resolveAdGroupMessaging(
   }
   if (goal === "CONVERSATION") {
     warnings.push("optimization_goal CONVERSATION cần TikTok mở allowlist cho tài khoản - nếu bị từ chối, dùng CLICK.")
+    if (dest === "TIKTOK_DM") {
+      warnings.push(
+        "Tin nhắn TikTok tối ưu CONVERSATION: quảng cáo chỉ dùng identity TT_USER có can_manage_message = true; tài khoản ủy quyền qua Business Center (BC_AUTH_TT) cần nhóm tối ưu CLICK."
+      )
+    }
   }
   warnings.push(
     `Nhóm nhắn tin (${DEST_VI[dest]}): ứng dụng, tài khoản / số điện thoại và message_event_set_id không sửa được sau khi tạo. Chỉ nhắm được các thị trường TikTok hỗ trợ (có Việt Nam).`
@@ -430,7 +435,12 @@ export function checkMessagingCreative(
       )
     }
     if (group.goal === "CONVERSATION" && c.identity_type !== "TT_USER") {
-      throw invalid(`${where}: nhóm tin nhắn TikTok tối ưu CONVERSATION chỉ dùng identity TT_USER.`)
+      // Rule of the /ad/create/ doc (TT_USER only for CONVERSATION); BC_AUTH_TT works with CLICK. The ad group's messaging
+      // fields (optimization_goal included) cannot be edited after creation → switching to CLICK means a new ad group.
+      throw invalid(
+        `${where}: nhóm tin nhắn TikTok tối ưu CONVERSATION chỉ dùng identity TT_USER. Có 2 cách: (1) dùng identity TT_USER có can_manage_message = true; (2) muốn dùng tài khoản ủy quyền qua Business Center (BC_AUTH_TT) thì tạo nhóm tin nhắn mới tối ưu CLICK (trường nhắn tin / mục tiêu tối ưu của nhóm không sửa được sau khi tạo).`,
+        "Tra identity bằng tiktok_messaging_assets kind=dm_identities; tạo nhóm mới bằng tiktok_create_adgroup với messaging {destination: TIKTOK_DM} và optimization_goal CLICK."
+      )
     }
     return out
   }

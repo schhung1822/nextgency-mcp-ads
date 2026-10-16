@@ -26,7 +26,7 @@ import { ensureMetaVideoInAccount, metaVideoCoverUri, readMetaVideo, uploadMetaC
 import { validateOnly } from "./mutate"
 import { isGraphFieldError, readNode, type RawNode } from "./objects"
 import { assertSameAccount, callCtx, fmtMoney, hasBudget, invalid } from "./shared"
-import { buildTargeting, euCountriesIn, hasGeo, targetingInput, targetingProblems } from "./targeting"
+import { buildTargeting, euCountriesIn, hasGeo, placementProblems, targetingInput, targetingProblems } from "./targeting"
 
 export interface MetaWriteResult extends MutationResult {
   /** what was (or would be) sent to Meta - money shown in MAJOR units next to the minor value */
@@ -432,7 +432,11 @@ export const createAdsetInput = z
       .describe("Bắt buộc khi chiến dịch dùng ABO; bỏ trống khi chiến dịch dùng CBO."),
     bid_strategy: z.enum(["LOWEST_COST_WITHOUT_CAP", "LOWEST_COST_WITH_BID_CAP", "COST_CAP"]).optional(),
     bid_amount: money.optional().describe("Giá thầu/chi phí mục tiêu (đơn vị chính) - cần khi BID_CAP hoặc COST_CAP."),
-    start_time: isoDateTime.optional(),
+    start_time: isoDateTime
+      .optional()
+      .describe(
+        "ISO-8601 có múi giờ, vd 2026-10-20T00:00:00+07:00. Bỏ trống = bắt đầu ngay khi bật. Muốn chạy từ 00:00 một ngày thì đặt ngay lúc tạo: khi đã tới giờ bắt đầu, không đổi start_time được nữa (chỉ đổi end_time)."
+      ),
     end_time: isoDateTime.optional(),
     destination_type: z.enum(DESTINATION_TYPES).optional(),
     promoted_object: z
@@ -593,6 +597,9 @@ export function buildAdsetPayload(
   if (special.length) warnings.push(`Chiến dịch thuộc danh mục đặc biệt (${special.join(", ")}) - Meta giới hạn nhắm mục tiêu.`)
 
   const targeting = buildTargeting(input.targeting)
+  const placements = placementProblems(targeting)
+  if (placements.errors.length) throw invalid(placements.errors.join(" "))
+  warnings.push(...placements.warnings)
   const payload: Record<string, unknown> = {
     name: input.name,
     campaign_id: input.campaign_id,
@@ -704,7 +711,9 @@ const createAdset: ProviderExtension<MetaCredentials, CreateAdsetInput, MetaWrit
 async function assertAdvertisablePages(ctx: ProviderContext<MetaCredentials>, ids: (string | undefined)[]): Promise<void> {
   const wanted = [...new Set(ids.filter((id): id is string => !!id))]
   if (wanted.length === 0) return
-  const allowed = new Set((await advertisablePages(ctx)).map((p) => p.id)) // one lookup per run
+  // cached list first (D4); a Page missing from it is re-read from Meta ONCE before refusing (just assigned Page)
+  let allowed = new Set((await advertisablePages(ctx)).map((p) => p.id))
+  if (wanted.some((id) => !allowed.has(id))) allowed = new Set((await advertisablePages(ctx, { fresh: true })).map((p) => p.id))
   for (const id of wanted) {
     if (!allowed.has(id)) {
       throw invalid(
@@ -1253,8 +1262,11 @@ const updateTargeting: ProviderExtension<MetaCredentials, UpdateTargetingInput, 
     const current = (adset.targeting ?? {}) as Record<string, unknown>
     const next = buildTargeting(input.targeting, input.merge ? current : undefined)
     if (!input.merge && next.age_min === undefined) next.age_min = 18
+    // placement rules on the MERGED targeting: the ad set's current placements count too (B5)
+    const placements = placementProblems(next)
+    if (placements.errors.length) throw invalid(placements.errors.join(" "))
 
-    const warnings: string[] = []
+    const warnings: string[] = [...placements.warnings]
     const geo = (next.geo_locations ?? {}) as { countries?: string[] }
     const eu = euCountriesIn(geo)
     if (eu.length && (!adset.dsa_beneficiary || !adset.dsa_payor)) {

@@ -729,6 +729,7 @@ describe.skipIf(!hasDb)("MCP endpoint /mcp/<key> (integration)", { timeout: 120_
       const third = await tool(m.key, "ads_set_status", { ...args("c3"), confirm_token: previews[2]!.sc.confirm_token })
       expect(third.isError).toBe(true)
       expect(third.sc.code).toBe("write_rate_limited")
+      expect(third.sc.retry_after_seconds).toBeGreaterThan(0)
     })
 
     it("M7: write rows are committed before the answer (no flush needed); reads stay batched", async () => {

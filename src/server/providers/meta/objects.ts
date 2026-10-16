@@ -21,6 +21,7 @@ import {
   effectiveStatusesFor,
   noMatchingStatus,
   fromMetaLevel,
+  invalid,
   invalidCursor,
   mapEffectiveStatus,
   parseBase64UrlJson,
@@ -220,6 +221,17 @@ export async function listMetaObjects(ctx: ProviderContext<MetaCredentials>, q: 
   const level = toMetaLevel(q.level)
   const call = callCtx(ctx)
   const warnings: string[] = []
+  // B3: Meta errors on an edge query whose effective_status filter contains DELETED ("Manage Your Ad Object's
+  // Status" [H]); deleted objects are readable by id only. Report filters still accept DELETED (report.ts).
+  const wantsDeleted = q.statuses?.some((s) => s === "deleted" || s === "removed") ?? false
+  const statuses = q.statuses?.filter((s) => s !== "deleted" && s !== "removed")
+  if (wantsDeleted && !statuses?.length) {
+    throw invalid(
+      "Meta không cho liệt kê đối tượng đã xoá (DELETED) - đối tượng đã xoá chỉ đọc được theo id.",
+      "Dùng ads_get_object với id cụ thể, hoặc ads_get_report (bật include_deleted) để xem chi tiêu của đối tượng đã xoá; cần đối tượng đã lưu trữ thì lọc statuses: [\"archived\"]."
+    )
+  }
+  if (wantsDeleted) warnings.push("Meta không liệt kê đối tượng đã xoá - đã bỏ deleted/removed khỏi bộ lọc trạng thái.")
   const fp = listFingerprint(ctx, q)
   let after: string | null = null
   if (q.cursor) {
@@ -258,8 +270,8 @@ export async function listMetaObjects(ctx: ProviderContext<MetaCredentials>, q: 
     fields: SUMMARY_FIELDS[level].join(","),
     limit: Math.min(Math.max(Math.trunc(q.limit) || 50, 1), 200),
   }
-  if (q.statuses?.length) {
-    const raw = effectiveStatusesFor(q.statuses, level)
+  if (statuses?.length) {
+    const raw = effectiveStatusesFor(statuses, level)
     if (!raw.length) throw noMatchingStatus(level)
     params.effective_status = raw
   }

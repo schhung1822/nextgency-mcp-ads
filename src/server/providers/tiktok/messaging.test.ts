@@ -685,7 +685,8 @@ describe("tiktok_create_ads: quảng cáo nhắn tin", () => {
         identity_authorized_bc_id: "7000000000000000009",
         auto_message_id: "1",
       },
-      /chỉ dùng identity TT_USER/
+      // C1 (v1.1.6): the error names both ways out - TT_USER with can_manage_message, or a new CLICK ad group for BC_AUTH_TT
+      /chỉ dùng identity TT_USER[\s\S]*can_manage_message[\s\S]*BC_AUTH_TT[\s\S]*CLICK/
     )
   })
 

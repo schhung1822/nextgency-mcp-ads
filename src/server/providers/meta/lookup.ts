@@ -1,4 +1,6 @@
 // ads_lookup for Meta: secondary assets needed to create ads/targeting.
+import { createHash } from "node:crypto"
+import { LRUCache } from "lru-cache"
 import { isProviderError, ProviderError } from "../errors"
 import type { LookupItem, LookupKind, ProviderContext } from "../types"
 import { actId, graphAll, graphPage, type MetaCredentials } from "./client"
@@ -22,15 +24,108 @@ export interface AdvertisablePage {
   source: "promote_pages" | "me_accounts"
 }
 
+// ---------------------------------------------------------------------------
+// advertisablePages cache (D4): 2 GETs per call, run by every create / creative change (preview AND execute)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a successful advertisablePages answer is reused. The cache only widens the "allowed" side for at most this
+ * long after a Page is taken away - Meta still refuses the real create - and a missing Page is always re-read once.
+ */
+export const ADVERTISABLE_PAGES_TTL_MS = 5 * 60_000
+
+interface AdvPagesEntry {
+  pages: readonly AdvertisablePage[]
+  /** fetch order: a slow older fetch never overwrites a newer answer */
+  seq: number
+}
+
+const advState = ((globalThis as unknown as { __adsMcpMetaAdvPages?: AdvPagesState }).__adsMcpMetaAdvPages ??= {
+  cache: new LRUCache<string, AdvPagesEntry>({ max: 1_000, ttl: ADVERTISABLE_PAGES_TTL_MS }),
+  inflight: new Map(),
+  keysByConnection: new Map(),
+  seq: 0,
+})
+
+interface AdvPagesState {
+  cache: LRUCache<string, AdvPagesEntry>
+  /** key → the running fetch, so parallel previews share one pair of GETs */
+  inflight: Map<string, { seq: number; promise: Promise<readonly AdvertisablePage[]> }>
+  /** connection id → cache keys (forgetAdvertisablePages) */
+  keysByConnection: Map<string, Set<string>>
+  seq: number
+}
+
+/**
+ * Keyed by a hash of (token, ad account): the raw token is never kept as a key, and a replaced token misses the cache
+ * on its own. The answer holds Page ids / names only (no secret).
+ */
+function advPagesKey(ctx: ProviderContext<MetaCredentials>, account: string): string {
+  const key = createHash("sha256").update(`${ctx.credentials.accessToken}\u0000${account}`).digest("hex")
+  if (ctx.connectionId) {
+    const keys = advState.keysByConnection.get(ctx.connectionId) ?? new Set<string>()
+    keys.add(key)
+    advState.keysByConnection.set(ctx.connectionId, keys)
+    if (advState.keysByConnection.size > 10_000) advState.keysByConnection.clear()
+  }
+  return key
+}
+
+/** Drop the cached Page lists of a connection (disabled, deleted or new credentials) - called by forgetPageTokens. */
+export function forgetAdvertisablePages(connectionId: string) {
+  for (const key of advState.keysByConnection.get(connectionId) ?? []) {
+    advState.cache.delete(key)
+    advState.inflight.delete(key)
+  }
+  advState.keysByConnection.delete(connectionId)
+}
+
+export function __clearAdvertisablePagesCache() {
+  advState.cache.clear()
+  advState.inflight.clear()
+  advState.keysByConnection.clear()
+}
+
 /**
  * Pages this ad account may run ads for: every Page of `act_x/promote_pages`, plus the Pages of `me/accounts` on
  * which the token's user has the ADVERTISE task (Pages it only moderates / analyses are left out). De-duplicated,
  * promote_pages first. A token that cannot read me/accounts (System User, missing pages_show_list) gets
  * promote_pages only. NOT related to the MCP Page scope (mcp_page_scopes), which only gates the read-only Pages tools.
+ *
+ * Cached ADVERTISABLE_PAGES_TTL_MS per (token, ad account); concurrent calls share one fetch; failures are never
+ * cached. `fresh: true` always reads Meta again (and refreshes the cache): ads_lookup, and the one retry of
+ * assertAdvertisablePages when a Page is missing from the cached list.
  */
-export async function advertisablePages(ctx: ProviderContext<MetaCredentials>): Promise<AdvertisablePage[]> {
-  const call = callCtx(ctx)
+export async function advertisablePages(
+  ctx: ProviderContext<MetaCredentials>,
+  opts: { fresh?: boolean } = {}
+): Promise<AdvertisablePage[]> {
   const account = actId(ctx.account.externalId)
+  const key = advPagesKey(ctx, account)
+  if (!opts.fresh) {
+    const hit = advState.cache.get(key)
+    if (hit) return [...hit.pages]
+    const running = advState.inflight.get(key)
+    if (running) return [...(await running.promise)]
+  }
+  const seq = ++advState.seq
+  const promise = fetchAdvertisablePages(ctx, account).then((pages) => {
+    const frozen = Object.freeze(pages.map((p) => Object.freeze(p)))
+    const cur = advState.cache.get(key)
+    if (!cur || cur.seq < seq) advState.cache.set(key, { pages: frozen, seq })
+    return frozen
+  })
+  advState.inflight.set(key, { seq, promise })
+  try {
+    return [...(await promise)]
+  } finally {
+    // errors are not cached: the next call reads Meta again
+    if (advState.inflight.get(key)?.seq === seq) advState.inflight.delete(key)
+  }
+}
+
+async function fetchAdvertisablePages(ctx: ProviderContext<MetaCredentials>, account: string): Promise<AdvertisablePage[]> {
+  const call = callCtx(ctx)
   const out: AdvertisablePage[] = []
   const seen = new Set<string>()
   const push = (p: Raw, source: AdvertisablePage["source"]) => {
@@ -69,8 +164,9 @@ export async function metaLookup(
 
   switch (kind) {
     case "pages": {
-      // Pages promotable by this ad account + Pages the token's user (via) may advertise for (task ADVERTISE)
-      const items = (await advertisablePages(ctx)).map((p) => ({
+      // Pages promotable by this ad account + Pages the token's user (via) may advertise for (task ADVERTISE).
+      // Always read fresh: a Page assigned a moment ago must show up (the answer also refreshes the cache).
+      const items = (await advertisablePages(ctx, { fresh: true })).map((p) => ({
         id: p.id,
         name: p.name,
         extra: { category: p.category, isPublished: p.isPublished, source: p.source },
@@ -173,11 +269,12 @@ export async function metaLookup(
       return { items: res.data.map((l) => ({ id: s(l.key), name: s(l.name) })), warnings }
     }
     case "identities":
+    case "tiktok_posts":
       throw new ProviderError({
         platform: "meta",
         code: "unsupported",
-        message: "meta: identities lookup is TikTok-only",
-        userMessageVi: "Meta không có “identities” - dùng pages hoặc instagram_accounts.",
+        message: `meta: ${kind} lookup is TikTok-only`,
+        userMessageVi: `Meta không có “${kind}” (chỉ TikTok) - dùng pages hoặc instagram_accounts.`,
       })
   }
 }

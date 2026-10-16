@@ -185,6 +185,14 @@ export async function updateBudget(ctx: Ctx, u: BudgetUpdate, opts: MutationOpti
 export async function updateObject(ctx: Ctx, u: ObjectUpdate, opts: MutationOptions = {}): Promise<MutationResult> {
   const level = assertOaLevel(u.level)
   const c = u.changes ?? {}
+  if (c.creative !== undefined) {
+    // ad content edits (ObjectUpdate.changes.creative) are TikTok-only
+    throw unsupportedHere(
+      "creative update is not supported on OpenAI Ads",
+      "OpenAI Ads không sửa nội dung quảng cáo qua ads_update_object (tiktok_creative chỉ dùng cho TikTok).",
+      "Tạo quảng cáo mới bằng openai_ads_create_ad rồi tạm dừng quảng cáo cũ."
+    )
+  }
   const keys = (Object.keys(c) as (keyof typeof c)[]).filter((k) => c[k] !== undefined)
   if (keys.length === 0) throw invalid("No changes", "Không có thay đổi nào.")
   const raw = await fetchRaw<RawObject>(ctx, level, u.id)

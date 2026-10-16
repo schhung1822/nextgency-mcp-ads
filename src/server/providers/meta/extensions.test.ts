@@ -122,6 +122,21 @@ const adsetInput = {
 }
 
 describe("meta_create_adset", () => {
+  it("HEF campaign (special ad category) + detailed targeting: advantage_audience is always sent explicitly (v26, F)", async () => {
+    for (const cat of ["HOUSING", "EMPLOYMENT", "FINANCIAL_PRODUCTS_SERVICES"]) {
+      const m = mockGraph([
+        ["GET", "3001", () => json({ ...aboCampaign, special_ad_categories: [cat] })],
+        ["POST", "act_1001/adsets", () => json({ id: "2001" })],
+      ])
+      for (const advantage_audience of [undefined, true]) {
+        const before = m.mutatingPosts().length
+        await run("meta_create_adset", { ...adsetInput, targeting: { ...adsetInput.targeting, advantage_audience } })
+        const t = JSON.parse(m.mutatingPosts()[before].params.targeting)
+        expect(t.targeting_automation).toEqual({ advantage_audience: advantage_audience ? 1 : 0 })
+      }
+    }
+  })
+
   it("ABO ad set: PAUSED, budget in minor units, explicit advantage_audience=0", async () => {
     const m = mockGraph([
       ["GET", "3001", () => json(aboCampaign)],
@@ -303,6 +318,28 @@ describe("meta_create_ad", () => {
     }
   })
 
+  it("advertisable Pages are cached between preview and execute; a Page missing from the cache is re-read once (D4)", async () => {
+    let assigned = false
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ["GET", "act_1001/promote_pages", () => json({ data: [{ id: "888", name: "Shop VN" }, ...(assigned ? [{ id: "889", name: "Mới gán" }] : [])] })],
+      ["GET", "me/accounts", () => json({ data: [] })],
+      ["POST", "act_1001/ads", (c) => json(c.params.execution_options ? { success: true } : { id: "15" })],
+    ])
+    const link = (page_id: string) => ({ adset_id: "2001", name: "Ad", page_id, creative: { type: "link", link: "https://shop.vn" } })
+    const pageReads = () => m.calls.filter((c) => c.path === "act_1001/promote_pages").length
+    await run("meta_create_ad", link("888"), { dryRun: true })
+    await run("meta_create_ad", link("888"))
+    expect(pageReads()).toBe(1) // preview + execute: one pair of GETs
+    // the Page was assigned after the list was cached: one fresh read, then accepted
+    assigned = true
+    await run("meta_create_ad", link("889"), { dryRun: true })
+    expect(pageReads()).toBe(2)
+    // a Page that really is not advertisable: one fresh read, then refused
+    await expect(run("meta_create_ad", link("999"), { dryRun: true })).rejects.toThrow(/Trang 999/)
+    expect(pageReads()).toBe(3)
+  })
+
   it("existing_post: the Page prefix of object_story_id is checked; a me/accounts Page with ADVERTISE passes", async () => {
     const m = mockGraph([["GET", "2001", () => json(adset)], ...advertisable, ["POST", "act_1001/ads", () => json({ id: "14" })]])
     const post = (id: string) => ({ adset_id: "2001", name: "Post", creative: { type: "existing_post", object_story_id: id } })
@@ -366,11 +403,113 @@ describe("meta_update_targeting", () => {
     expect(t).toEqual({ geo_locations: { countries: ["VN"] }, targeting_automation: { advantage_audience: 0 }, age_min: 18 })
   })
 
-  it("rejects removed placements", async () => {
-    mockGraph([["GET", "2001", () => json(current)]])
-    await expect(
-      run("meta_update_targeting", { adset_id: "2001", targeting: { publisher_platforms: ["instagram"], instagram_positions: ["explore"] } })
-    ).rejects.toThrow(/Explore/)
+  it("removed placements (video_feeds, explore, explore_home) are not in the position enums (B5)", () => {
+    const parse = (targeting: unknown) => ext("meta_update_targeting").input.safeParse({ adset_id: "2001", targeting }).success
+    expect(parse({ publisher_platforms: ["instagram"], instagram_positions: ["explore"] })).toBe(false)
+    expect(parse({ publisher_platforms: ["instagram"], instagram_positions: ["explore_home"] })).toBe(false)
+    expect(parse({ publisher_platforms: ["facebook"], facebook_positions: ["video_feeds"] })).toBe(false)
+    expect(parse({ publisher_platforms: ["facebook"], facebook_positions: ["anything_else"] })).toBe(false)
+    expect(parse({ publisher_platforms: ["facebook"], facebook_positions: ["feed", "story", "facebook_reels"] })).toBe(true)
+    expect(parse({ publisher_platforms: ["instagram"], instagram_positions: ["stream", "ig_search", "profile_reels"] })).toBe(true)
+  })
+
+  it("placement rules on the input: story alone, marketplace without feed, ig_search without stream, positions without their platform (B5)", async () => {
+    const m = mockGraph([["GET", "2001", () => json(current)]])
+    const bad: [unknown, RegExp][] = [
+      [{ publisher_platforms: ["facebook"], facebook_positions: ["story"] }, /story.*không chọn riêng/],
+      [{ publisher_platforms: ["facebook"], facebook_positions: ["feed", "story"], device_platforms: ["desktop"] }, /mobile/],
+      [{ publisher_platforms: ["facebook"], facebook_positions: ["marketplace", "search"] }, /marketplace, search phải chọn kèm feed/],
+      [{ publisher_platforms: ["facebook"], facebook_positions: ["notification"] }, /notification phải chọn kèm feed/],
+      [{ publisher_platforms: ["instagram"], instagram_positions: ["ig_search"] }, /ig_search.*stream/],
+      [{ publisher_platforms: ["instagram"], facebook_positions: ["feed"] }, /facebook_positions chỉ dùng được khi publisher_platforms có "facebook"/],
+      [{ publisher_platforms: ["audience_network"] }, /Audience Network/],
+    ]
+    for (const [targeting, msg] of bad) {
+      for (const opts of [{}, { dryRun: true }]) {
+        await expect(run("meta_update_targeting", { adset_id: "2001", targeting }, opts)).rejects.toThrow(msg)
+      }
+    }
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+  })
+
+  it("story + feed (or + instagram story) is fine; instream_video without feed only warns (B5)", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(current)],
+      ["POST", "2001", () => json({ success: true })],
+    ])
+    await run("meta_update_targeting", { adset_id: "2001", targeting: { facebook_positions: ["feed", "story"], device_platforms: ["mobile"] } })
+    await run("meta_update_targeting", {
+      adset_id: "2001",
+      targeting: { facebook_positions: ["story"], instagram_positions: ["story"], device_platforms: ["mobile"] },
+    })
+    const res = await run("meta_update_targeting", { adset_id: "2001", targeting: { facebook_positions: ["instream_video"] } })
+    expect(res.warnings.join(" ")).toMatch(/instream_video/)
+    expect(m.mutatingPosts()).toHaveLength(3)
+  })
+
+  it("Facebook story needs device_platforms mobile-only: missing or with desktop → refused (never set silently); current mobile-only targeting passes (C5)", async () => {
+    let m = mockGraph([["GET", "2001", () => json(current)]])
+    for (const targeting of [
+      { facebook_positions: ["feed", "story"] },
+      { facebook_positions: ["feed", "story"], device_platforms: ["mobile", "desktop"] },
+    ]) {
+      await expect(run("meta_update_targeting", { adset_id: "2001", targeting }, { dryRun: true })).rejects.toThrow(/device_platforms: \["mobile"\]/)
+    }
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    m = mockGraph([
+      ["GET", "2001", () => json({ ...current, targeting: { ...current.targeting, device_platforms: ["mobile"] } })],
+      ["POST", "2001", () => json({ success: true })],
+    ])
+    await run("meta_update_targeting", { adset_id: "2001", targeting: { facebook_positions: ["feed", "story"] } })
+    expect(JSON.parse(m.mutatingPosts()[0].params.targeting).device_platforms).toEqual(["mobile"])
+  })
+
+  it("merge: the ad set's current placements count; removed ones are dropped with a warning; dropping a platform drops its positions (B5)", async () => {
+    const withPlacements = (t: Record<string, unknown>) => ({ ...current, targeting: { ...current.targeting, ...t } })
+    // current story + feed, the AI removes feed → story alone → refused
+    let m = mockGraph([["GET", "2001", () => json(withPlacements({ facebook_positions: ["feed", "story"] }))]])
+    await expect(run("meta_update_targeting", { adset_id: "2001", targeting: { facebook_positions: ["story"] } })).rejects.toThrow(/story/)
+    // current story only (older ad set) + an unrelated age change → the merged targeting is checked too
+    m = mockGraph([["GET", "2001", () => json(withPlacements({ facebook_positions: ["story"] }))]])
+    await expect(run("meta_update_targeting", { adset_id: "2001", targeting: { age_min: 30 } })).rejects.toThrow(/story/)
+    expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    // current placements Meta removed: dropped (warning), the rest kept
+    m = mockGraph([
+      [
+        "GET",
+        "2001",
+        () =>
+          json(
+            withPlacements({
+              facebook_positions: ["feed", "video_feeds"],
+              instagram_positions: ["stream", "explore", "explore_home"],
+              messenger_positions: ["story"],
+              publisher_platforms: ["facebook", "instagram", "messenger"],
+            })
+          ),
+      ],
+      ["POST", "2001", () => json({ success: true })],
+    ])
+    const res = await run("meta_update_targeting", { adset_id: "2001", targeting: { age_min: 30 } })
+    const t = JSON.parse(m.mutatingPosts()[0].params.targeting)
+    expect(t.facebook_positions).toEqual(["feed"])
+    expect(t.instagram_positions).toEqual(["stream"])
+    expect(t.messenger_positions).toBeUndefined()
+    expect(res.warnings.join(" ")).toMatch(/Facebook Video Feeds/)
+    expect(res.warnings.join(" ")).toMatch(/Instagram Explore/)
+    // only removed placements left → refused (Meta would fail; the AI must choose new positions)
+    m = mockGraph([["GET", "2001", () => json(withPlacements({ facebook_positions: ["video_feeds"], publisher_platforms: ["facebook"] }))]])
+    await expect(run("meta_update_targeting", { adset_id: "2001", targeting: { age_min: 30 } })).rejects.toThrow(/facebook_positions mới/)
+    // publisher_platforms without facebook: the current facebook_positions go with it
+    m = mockGraph([
+      ["GET", "2001", () => json(withPlacements({ facebook_positions: ["feed"], instagram_positions: ["stream"] }))],
+      ["POST", "2001", () => json({ success: true })],
+    ])
+    await run("meta_update_targeting", { adset_id: "2001", targeting: { publisher_platforms: ["instagram"] } })
+    const t2 = JSON.parse(m.mutatingPosts()[0].params.targeting)
+    expect(t2.publisher_platforms).toEqual(["instagram"])
+    expect(t2.facebook_positions).toBeUndefined()
+    expect(t2.instagram_positions).toEqual(["stream"])
   })
 
   it("dryRun on targeting update sends zero POSTs (preview from reads only)", async () => {

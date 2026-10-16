@@ -190,6 +190,8 @@ describe("basic mode: limiters never see Infinity", () => {
     const e = thrown(() => admitWrite(grant(advanced())))
     expect(e).toBeInstanceOf(McpToolError)
     expect(e).toMatchObject({ code: "write_rate_limited" })
+    // B2: seconds until the window has room (also returned to the AI as retry_after_seconds)
+    expect((e as McpToolError).retryAfterSec).toBeGreaterThan(0)
     __resetRateLimits()
   })
 })

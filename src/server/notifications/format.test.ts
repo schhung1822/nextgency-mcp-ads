@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildAiCaption,
   buildAiMessage,
+  buildConnectionActionRequiredMessage,
   buildConnectionHealthMessage,
   buildMcpWriteMessage,
   buildTestMessage,
@@ -306,5 +307,27 @@ describe("fitMessage / previewOf", () => {
     expect(
       previewOf("token 123456789:AAEhBP0av28dfjdk3rn4kbhfh2-8sdjfskdjfh")
     ).not.toContain("AAEhBP0av28")
+  })
+})
+
+describe("buildConnectionActionRequiredMessage (D6)", () => {
+  it("cảnh báo cần xác thực: escape tên kết nối / TKQC / lời nhắn Meta, có cách xử lý, không thẻ lạ", () => {
+    const html = buildConnectionActionRequiredMessage({
+      connectionName: "Meta <chính>",
+      platform: "meta",
+      ownerEmail: "a@b.vn",
+      accountName: "TK & <b>x</b>",
+      accountExternalId: "act_123",
+      message: "Xác thực <ngay> tại https://x.example/?token=abc",
+    })
+    expect(html).toContain("⚠️ <b>Meta yêu cầu xác thực tài khoản</b>")
+    expect(html).toContain("<code>Meta &lt;chính&gt;</code> · Meta")
+    expect(html).toContain("Tài khoản QC: <code>TK &amp; &lt;b&gt;x&lt;/b&gt;</code> (act_123)")
+    expect(html).toContain("Xác thực &lt;ngay&gt;")
+    expect(html).toContain("Không cần thay token")
+    expect(foreignTags(html)).toEqual([])
+    // no ad account: no account line
+    const bare = buildConnectionActionRequiredMessage({ connectionName: "K", platform: "meta" })
+    expect(bare).not.toContain("Tài khoản QC")
   })
 })

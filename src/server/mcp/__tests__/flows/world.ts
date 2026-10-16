@@ -46,6 +46,7 @@ import {
 
 import { loadTestEnv, mcpRequest, modernMeta, readRpc, TEST_HOST } from "../helpers"
 import { createFlowsProvider, newFlowsState, type FlowsState, type TokenSpec } from "./fake-platforms"
+import { failNext, type FailNextOptions, type FakeMethod } from "../fake-provider"
 
 export { loadTestEnv, TEST_HOST }
 // the endpoint validates Host against APP_DOMAIN
@@ -173,6 +174,15 @@ export class World {
     this.state.reportCalls.length = 0
     this.state.credentialsSeen.length = 0
     this.state.failingAccounts.clear()
+    this.state.failures.length = 0
+  }
+
+  /**
+   * Queue a failure: the next matching call of `method` on the fake `platform` throws `error` (see failNext in
+   * ../fake-provider.ts - default `when: "execute"` = only real writes, previews pass). Cleared by reset().
+   */
+  failNext(platform: Platform, method: FakeMethod, error: unknown, opts?: FailNextOptions) {
+    failNext(this.state, platform, method, error, opts)
   }
 
   // -------------------------------------------------------------------------

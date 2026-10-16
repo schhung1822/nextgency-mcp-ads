@@ -340,7 +340,7 @@ describe("ad update", () => {
   })
 
   it("đổi URL đích → gửi đủ creative (không patch)", async () => {
-    const m = mockTikTok({ "GET /ad/get/": { body: adFixture }, "POST /ad/update/": ok({}) })
+    const m = mockTikTok({ "GET /ad/get/": { body: adFixture }, "GET /adgroup/get/": { body: adgroupFixture }, "POST /ad/update/": ok({}) })
     await updateTikTokObject(makeCtx(), { level: "ad", id: "1810000000000001001", changes: { finalUrl: "https://shop.example.vn/new" } })
     const body = m.callsTo("POST /ad/update/")[0]!.body!
     expect(body.patch_update).toBeUndefined()
@@ -368,5 +368,192 @@ describe("ad update", () => {
     await expect(
       updateTikTokObject(makeCtx(), { level: "campaign", id: "1", changes: { startTime: "2026-10-05T00:00:00+07:00" } })
     ).rejects.toMatchObject({ code: "invalid_request" })
+  })
+})
+
+describe("ad update: nội dung (changes.creative - D1)", () => {
+  const AD_ID = "1810000000000001001"
+  const BASE_AD = adFixture.data.list[0] as Record<string, unknown>
+  /** /ad/get/ answering one ad = the fixture's first ad (Spark Push video, TT_USER) merged with `extra` */
+  const adBody = (extra: Record<string, unknown> = {}) => ({
+    ...adFixture,
+    data: { ...adFixture.data, list: [{ ...BASE_AD, ...extra }] },
+  })
+  const groupBody = (extra: Record<string, unknown> = {}) => ({
+    ...adgroupFixture,
+    data: { ...adgroupFixture.data, list: [{ ...ADGROUP, ...extra }] },
+  })
+  const DM_GROUP = { promotion_type: "LEAD_GEN_CLICK_TO_TT_DIRECT_MESSAGE", optimization_goal: "CONVERSATION" }
+  const IM_GROUP = { promotion_type: "LEAD_GEN_CLICK_TO_SOCIAL_MEDIA_APP_MESSAGE", messaging_app_type: "ZALO", optimization_goal: "CLICK" }
+  const run = (creative: Record<string, unknown>, ad: Record<string, unknown> = {}, group: Record<string, unknown> = {}, dryRun = false) => {
+    const m = mockTikTok({ "GET /ad/get/": { body: adBody(ad) }, "GET /adgroup/get/": { body: groupBody(group) }, "POST /ad/update/": ok({}) })
+    const p = updateTikTokObject(makeCtx(), { level: "ad", id: AD_ID, changes: { creative } }, { dryRun })
+    return { m, p }
+  }
+
+  it("ad_text → patch_update chỉ gửi ad_text (làm sạch ký tự ẩn), cảnh báo duyệt lại", async () => {
+    const { m, p } = run({ adText: "  Giảm 30%\u200b hôm nay\nthôi  " })
+    const r = await p
+    expect(m.callsTo("POST /ad/update/")[0]!.body).toEqual({
+      advertiser_id: "7100000000000000001",
+      adgroup_id: "1810000000000000101",
+      patch_update: true,
+      creatives: [{ ad_id: AD_ID, ad_text: "Giảm 30% hôm nay thôi" }],
+    })
+    expect(m.callsTo("GET /adgroup/get/")).toHaveLength(0)
+    expect(r.changes).toEqual([expect.objectContaining({ field: "ad_text", before: "Giam 50% hom nay", after: "Giảm 30% hôm nay thôi" })])
+    expect(r.warnings.join(" ")).toContain("duyệt lại")
+  })
+
+  it("ad_text có emoji / quá 100 ký tự → invalid, không POST", async () => {
+    for (const adText of ["Sale 🔥 hôm nay", "x".repeat(101)]) {
+      const { m, p } = run({ adText })
+      await expect(p).rejects.toMatchObject({ code: "invalid_request" })
+      expect(m.posts()).toHaveLength(0)
+    }
+  })
+
+  it("ad_text khi quảng cáo có ad_texts (Search) → từ chối", async () => {
+    const { p } = run({ adText: "Mới" }, { ad_texts: ["a", "b"] })
+    await expect(p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("ad_texts") })
+  })
+
+  it("call_to_action → full update, bỏ call_to_action_id (CTA động), giữ các trường khác", async () => {
+    const { m, p } = run({ callToAction: "LEARN_MORE" }, { call_to_action_id: "7300000000000000001" })
+    const r = await p
+    const body = m.callsTo("POST /ad/update/")[0]!.body!
+    expect(body.patch_update).toBeUndefined()
+    const cr = (body.creatives as Record<string, unknown>[])[0]!
+    expect(cr).toMatchObject({ ad_id: AD_ID, call_to_action: "LEARN_MORE", video_id: BASE_AD.video_id, ad_text: BASE_AD.ad_text, landing_page_url: BASE_AD.landing_page_url })
+    expect(cr).not.toHaveProperty("call_to_action_id")
+    expect(r.warnings.join(" ")).toContain("CTA động")
+    expect(r.warnings.join(" ")).toContain("gửi lại toàn bộ creative")
+  })
+
+  it("CTA trùng giá trị hiện tại → không POST", async () => {
+    const { m, p } = run({ callToAction: "SHOP_NOW" })
+    const r = await p
+    expect(r.changes).toEqual([])
+    expect(m.posts()).toHaveLength(0)
+  })
+
+  it("CTA sai định dạng → invalid", async () => {
+    const { p } = run({ callToAction: "learn more" })
+    await expect(p).rejects.toMatchObject({ code: "invalid_request" })
+  })
+
+  it("full update khi quảng cáo có auto_message_id / số điện thoại → từ chối (có thể mất trường không gửi lại được)", async () => {
+    for (const extra of [{ auto_message_id: "7400000000000000001" }, { phone_number: "0900000000" }]) {
+      const { m, p } = run({ callToAction: "LEARN_MORE" }, extra)
+      await expect(p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("gửi lại toàn bộ creative") })
+      expect(m.posts()).toHaveLength(0)
+    }
+  })
+
+  it("quảng cáo nhắn tin: patch (ad_text) vẫn được, giữ nguyên auto_message_id", async () => {
+    const { m, p } = run({ adText: "Nhắn tin ngay" }, { auto_message_id: "7400000000000000001", call_to_action: "SEND_MESSAGE" }, DM_GROUP)
+    await p
+    const cr = (m.callsTo("POST /ad/update/")[0]!.body!.creatives as Record<string, unknown>[])[0]!
+    expect(cr).toEqual({ ad_id: AD_ID, ad_text: "Nhắn tin ngay" })
+  })
+
+  it("nhóm tin nhắn TikTok: đổi CTA → từ chối (lời chào không gửi lại được)", async () => {
+    const { m, p } = run({ callToAction: "LEARN_MORE" }, { call_to_action: "SEND_MESSAGE", landing_page_url: null }, DM_GROUP)
+    await expect(p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("tin nhắn TikTok") })
+    expect(m.posts()).toHaveLength(0)
+  })
+
+  it("nhóm nhắn tin qua ứng dụng: CALL_NOW bị từ chối; CTA khác SEND_MESSAGE được nhưng có cảnh báo", async () => {
+    const bad = run({ callToAction: "CALL_NOW" }, { call_to_action: "SEND_MESSAGE" }, IM_GROUP)
+    await expect(bad.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("CALL_NOW") })
+    const ok2 = run({ callToAction: "CONTACT_US" }, { call_to_action: "SEND_MESSAGE" }, IM_GROUP)
+    const r = await ok2.p
+    expect(r.warnings.join(" ")).toContain("SEND_MESSAGE")
+    expect(ok2.m.callsTo("POST /ad/update/")).toHaveLength(1)
+  })
+
+  it("nhóm Zalo: đổi URL đích → từ chối (TikTok tự tạo link)", async () => {
+    const m = mockTikTok({ "GET /ad/get/": { body: adBody() }, "GET /adgroup/get/": { body: groupBody(IM_GROUP) }, "POST /ad/update/": ok({}) })
+    await expect(
+      updateTikTokObject(makeCtx(), { level: "ad", id: AD_ID, changes: { finalUrl: "https://zalo.me/123" } })
+    ).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("ZALO") })
+    expect(m.posts()).toHaveLength(0)
+  })
+
+  it("video_id + 1 ảnh bìa → patch; thiếu ảnh bìa → invalid", async () => {
+    const { m, p } = run({ videoId: "v10033g50000bbbbbbbbbbbbbbb", imageIds: ["ad-site-i18n-sg/cover2"] })
+    await p
+    expect((m.callsTo("POST /ad/update/")[0]!.body!.creatives as unknown[])[0]).toEqual({
+      ad_id: AD_ID,
+      video_id: "v10033g50000bbbbbbbbbbbbbbb",
+      image_ids: ["ad-site-i18n-sg/cover2"],
+    })
+    const missing = run({ videoId: "v10033g50000bbbbbbbbbbbbbbb" })
+    await expect(missing.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("ảnh bìa") })
+  })
+
+  it("đổi video giữ nguyên ảnh bìa cũ → body vẫn gửi image_ids cùng video_id", async () => {
+    const { m, p } = run({ videoId: "v10033g50000bbbbbbbbbbbbbbb", imageIds: [String((BASE_AD.image_ids as string[])[0])] })
+    const r = await p
+    expect((m.callsTo("POST /ad/update/")[0]!.body!.creatives as unknown[])[0]).toEqual({
+      ad_id: AD_ID,
+      video_id: "v10033g50000bbbbbbbbbbbbbbb",
+      image_ids: BASE_AD.image_ids,
+    })
+    expect(m.callsTo("POST /ad/update/")[0]!.body!.patch_update).toBe(true)
+    expect(r.changes.map((c) => c.field)).toEqual(["video_id"])
+  })
+
+  it("không đổi loại: video ↔ bài đăng TikTok", async () => {
+    const toPost = run({ tiktokItemId: "7350000000000000001" })
+    await expect(toPost.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("không đổi loại") })
+    const spark = { tiktok_item_id: "7350000000000000001", video_id: null, image_ids: null }
+    const toVideo = run({ videoId: "v10033g50000bbbbbbbbbbbbbbb", imageIds: ["c"] }, spark)
+    await expect(toVideo.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("không đổi loại") })
+    const images = run({ imageIds: ["c"] }, spark)
+    await expect(images.p).rejects.toMatchObject({ code: "invalid_request" })
+    const text = run({ adText: "Mới" }, spark)
+    await expect(text.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("chú thích") })
+  })
+
+  it("Spark Ads từ bài đăng: đổi tiktok_item_id → patch", async () => {
+    const { m, p } = run({ tiktokItemId: "7350000000000000002" }, { tiktok_item_id: "7350000000000000001", video_id: null, image_ids: null })
+    const r = await p
+    expect((m.callsTo("POST /ad/update/")[0]!.body!.creatives as unknown[])[0]).toEqual({ ad_id: AD_ID, tiktok_item_id: "7350000000000000002" })
+    expect(m.callsTo("POST /ad/update/")[0]!.body!.patch_update).toBe(true)
+    expect(r.changes[0]).toMatchObject({ field: "tiktok_item_id", before: "7350000000000000001", after: "7350000000000000002" })
+  })
+
+  it("ảnh: ảnh đơn đúng 1 ảnh; carousel 1–35 ảnh (cảnh báo thay toàn bộ)", async () => {
+    const single = run({ imageIds: ["a", "b"] }, { ad_format: "SINGLE_IMAGE", video_id: null })
+    await expect(single.p).rejects.toMatchObject({ code: "invalid_request" })
+    const carousel = run({ imageIds: ["a", "b", "c"] }, { ad_format: "CAROUSEL_ADS", video_id: null })
+    const r = await carousel.p
+    expect(r.warnings.join(" ")).toContain("THAY TOÀN BỘ")
+  })
+
+  it("dryRun: preview, không POST", async () => {
+    const { m, p } = run({ adText: "Xem trước" }, {}, {}, true)
+    const r = await p
+    expect(r.preview).toBe(true)
+    expect(r.changes).toHaveLength(1)
+    expect(m.posts()).toHaveLength(0)
+  })
+
+  it("Upgraded Smart+ / ACO → từ chối", async () => {
+    const sp = run({ adText: "x" }, { campaign_automation_type: "UPGRADED_SMART_PLUS", smart_plus_ad_id: "1" })
+    await expect(sp.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("Smart+") })
+    const aco = run({ adText: "x" }, { is_aco: true })
+    await expect(aco.p).rejects.toMatchObject({ code: "invalid_request", userMessageVi: expect.stringContaining("ACO") })
+    expect(sp.m.posts()).toHaveLength(0)
+  })
+
+  it("creative ở cấp chiến dịch / nhóm → từ chối", async () => {
+    mockTikTok({})
+    for (const level of ["campaign", "ad_group"] as const) {
+      await expect(updateTikTokObject(makeCtx(), { level, id: "1", changes: { creative: { adText: "x" } } })).rejects.toMatchObject({
+        code: "invalid_request",
+      })
+    }
   })
 })

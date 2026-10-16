@@ -156,6 +156,35 @@ export function buildConnectionHealthMessage(args: {
   return lines.join("\n")
 }
 
+/**
+ * D6 "cần xác thực tài khoản" (Meta code 31): the token is still valid, creating / editing ads is blocked until the
+ * owner verifies on the platform. Sent with eventType connection_invalid (no new event type), 1 per connection / day.
+ */
+export function buildConnectionActionRequiredMessage(args: {
+  connectionName: string
+  platform: string
+  ownerEmail?: string | null
+  accountName?: string | null
+  accountExternalId?: string | null
+  message?: string | null
+}): string {
+  const t = m.messages.connection
+  const lines = [
+    `⚠️ <b>${escapeHtml(t.actionRequired(platformLabel(args.platform)))}</b>`,
+    `${escapeHtml(t.connection)}: <code>${esc(args.connectionName, 200)}</code> · ${esc(platformLabel(args.platform), 40)}`,
+  ]
+  if (args.accountExternalId) {
+    const name = args.accountName ? `<code>${esc(args.accountName, 200)}</code> ` : ""
+    lines.push(`${escapeHtml(t.adAccount)}: ${name}(${esc(args.accountExternalId, 64)})`)
+  }
+  if (args.ownerEmail)
+    lines.push(`${escapeHtml(t.owner)}: ${esc(args.ownerEmail, 200)}`)
+  if (args.message)
+    lines.push(`<blockquote>${esc(redactString(args.message), 600)}</blockquote>`)
+  lines.push(`<i>${escapeHtml(t.fixActionRequired)}</i>`)
+  return lines.join("\n")
+}
+
 // ---------------------------------------------------------------------------
 // System update
 // ---------------------------------------------------------------------------

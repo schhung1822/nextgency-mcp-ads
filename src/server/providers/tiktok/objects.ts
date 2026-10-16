@@ -14,8 +14,10 @@ import {
   automationType,
   chunk,
   invalid,
+  deliveryBlockedReason,
   normalizeStatus,
   notFound,
+  statusDetail,
   statusRaw,
   str,
   tiktokTimeToIso,
@@ -32,6 +34,7 @@ import { fetchGmvMaxTypes, peekGmvMaxPresence } from "./gmv-max"
 import { isGmvMaxCandidate } from "./gmv-max-detect"
 import { gmvMaxObjectDetail } from "./gmv-max-write"
 import { GMV_MAX_LIST_HIDDEN_NOTE, GMV_MAX_LIST_NOTE, GMV_MAX_NOT_FOUND_HINT } from "./gmv-max-text"
+import { fetchTikTokReview } from "./review"
 
 const EXCLUDE_NULL = ["NULL_FIELD"]
 const MAX_PAGE_SIZE = 1000
@@ -78,9 +81,14 @@ export function toSummary(level: ObjectLevel, o: Raw, currency: string): AdObjec
     statusRaw: statusRaw(o),
     createdTime: tiktokTimeToIso(o.create_time),
   }
+  const detail = statusDetail(o.secondary_status)
+  if (detail) base.statusDetail = detail
   const extra: Raw = { campaign_automation_type: automationType(o) }
   const configured = configuredStatus(o.operation_status)
   if (configured) extra.configuredStatus = configured
+  // switched on but not delivering (budget / balance / schedule / no ads…): status stays "active", the reason is explicit
+  const blocked = base.status === "active" ? deliveryBlockedReason(o.secondary_status) : null
+  if (blocked) extra.delivery_blocked_reason = blocked
   if (level === "campaign") {
     base.budget = toBudget(o, "campaign", currency)
     base.objective = str(o.objective_type)
@@ -315,7 +323,8 @@ export async function getTikTokObject(
   ctx: ProviderContext<TikTokCredentials>,
   level: ObjectLevel,
   id: string,
-  opts: { includeChildren?: boolean; forWrite?: boolean } = {}
+  /** review: ads_get_object only - attach extra.review (ad / ad group review info, review.ts; never fails the read) */
+  opts: { includeChildren?: boolean; forWrite?: boolean; review?: boolean } = {}
 ): Promise<AdObjectDetail> {
   const tt = ttFromCtx(ctx)
   toTikTokLevel(level)
@@ -334,6 +343,15 @@ export async function getTikTokObject(
   }
   const smartPlus = automationType(o) === "UPGRADED_SMART_PLUS" ? await fetchSmartPlus(tt, level, id).catch(() => null) : null
   const detail = toDetail(level, o, tt.currency, smartPlus)
+  if (opts.review && !opts.forWrite && (level === "ad" || level === "ad_group")) {
+    const { review, error } = await fetchTikTokReview(tt, level, o, detail.id)
+    if (review || error) {
+      const extra: Raw = { ...(detail.extra ?? {}) }
+      if (review) extra.review = review
+      if (error) extra.review_error = error
+      detail.extra = extra
+    }
+  }
   if (!opts.includeChildren || level === "ad") return detail
 
   if (level === "campaign") {

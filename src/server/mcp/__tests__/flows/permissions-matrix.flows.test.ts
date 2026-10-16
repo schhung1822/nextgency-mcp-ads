@@ -181,6 +181,38 @@ describe.skipIf(!hasDb)("permission matrix (services → endpoint)", { timeout: 
   })
 
   // ---------------------------------------------------------------------------------------------
+  it("ads_set_status status archived (Meta): needs Bật/Tắt AND Xoá; never reaches the adapter otherwise", async () => {
+    const acc = accountsOf("meta")[0]!
+    const call = (key: string) =>
+      w.call(key, "ads_set_status", { platform: "meta", account_id: acc, level: "campaign", ids: ["c2"], status: "archived" })
+    // status without delete → refused before any platform call
+    const statusOnly = await w.mcp(w.users.staff, {
+      settings: { twoStepConfirm: false },
+      platforms: { meta: { permissions: ["read", "status"], connections: [{ conn: conns.meta }] } },
+    })
+    const r1 = await call(statusOnly.key)
+    expect(r1.isError).toBe(true)
+    expect(r1.sc.code).toBe("permission_denied")
+    expect(w.state.executions).toHaveLength(0)
+    // delete without status → ads_set_status is not even listed
+    const deleteOnly = await w.mcp(w.users.staff, {
+      settings: { twoStepConfirm: false },
+      platforms: { meta: { permissions: ["read", "delete"], connections: [{ conn: conns.meta }] } },
+    })
+    const r2 = await call(deleteOnly.key)
+    expect(r2.isError).toBe(true)
+    expect(r2.rpcError).toBeDefined()
+    // both → served (always two-step: a preview, nothing executed yet)
+    const both = await w.mcp(w.users.staff, {
+      settings: { twoStepConfirm: false },
+      platforms: { meta: { permissions: ["read", "status", "delete"], connections: [{ conn: conns.meta }] } },
+    })
+    const r3 = await call(both.key)
+    expect(r3.isError, r3.text).toBe(false)
+    expect(r3.sc.status).toBe("confirmation_required")
+    expect(w.state.executions).toHaveLength(0)
+  })
+
   it("mixed MCP: each platform keeps its OWN permissions (a tool visible through platform A is refused on platform B)", async () => {
     const grants: Partial<Record<Platform, Permission[]>> = {
       meta: ["read", "status", "update"],

@@ -15,6 +15,7 @@ import {
   activationSpendWarnings,
   alwaysConfirmReasons,
   assertActivationWithinCaps,
+  passThroughCheckError,
 } from "../tools/common/set-status"
 import type { ToolEnv } from "../tool"
 import { DEFAULT_MCP_SETTINGS, type GrantAccount } from "../types"
@@ -209,14 +210,21 @@ describe("ads_set_status → active: provider.activationSpend (TikTok GMV Max wo
     ).rejects.toMatchObject({ code: "budget_cap_exceeded", messageVi: expect.stringContaining("Mức chi tối đa có thể mỗi ngày") })
   })
 
-  it("unverifiable → budget_unverifiable (fail closed); invalid token keeps its own error", async () => {
+  it("unverifiable → budget_unverifiable (fail closed); transient / invalid token errors keep their own code", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {})
     const failing = providerWith(async () => {
-      throw new ProviderError({ platform: "tiktok", code: "upstream_error", message: "x", userMessageVi: "Không đọc được ngân sách." })
+      throw new ProviderError({ platform: "tiktok", code: "invalid_request", message: "x", userMessageVi: "Không đọc được ngân sách." })
     })
     await expect(
       assertActivationWithinCaps(capEnv({ VND: 1_000_000 }), account, failing.provider, "campaign", ["1"])
     ).rejects.toMatchObject({ code: "budget_unverifiable" })
+    // B1: a transient platform error reaches the AI unchanged (still refused: nothing was switched on)
+    const transient = providerWith(async () => {
+      throw new ProviderError({ platform: "tiktok", code: "upstream_error", message: "x", userMessageVi: "TikTok đang lỗi.", retryable: true })
+    })
+    await expect(
+      assertActivationWithinCaps(capEnv({ VND: 1_000_000 }), account, transient.provider, "campaign", ["1"])
+    ).rejects.toMatchObject({ code: "upstream_error" })
     const auth = providerWith(async () => {
       throw new ProviderError({ platform: "tiktok", code: "auth_invalid", message: "x", userMessageVi: "Token hỏng." })
     })
@@ -254,3 +262,199 @@ describe("ads_set_status → active: provider.activationSpend (TikTok GMV Max wo
     expect(await activationPreviewWarnings(env, account, none, "campaign", ["1"], undefined)).toEqual([])
   })
 })
+describe("B1: failed budget reads of the activation check (passThroughCheckError)", () => {
+  const metaAccount = {
+    platform: "meta",
+    externalId: "act_1",
+    currency: "VND",
+    timezone: "Asia/Ho_Chi_Minh",
+  } as unknown as GrantAccount;
+  const capEnv = () =>
+    ({
+      grant: {
+        mcpId: "mcp-b1",
+        settings: {
+          ...DEFAULT_MCP_SETTINGS,
+          maxDailyBudget: { VND: 1_000_000 },
+        },
+      },
+      providerCtx: async () => ({ account: { externalId: "act_1" } }),
+    }) as unknown as ToolEnv;
+  const err = (
+    code: ProviderError["code"],
+    extra: Partial<{ retryable: boolean; retryAfterMs: number }> = {},
+  ) =>
+    new ProviderError({
+      platform: "meta",
+      code,
+      message: code,
+      userMessageVi: `Lỗi ${code}.`,
+      ...extra,
+    });
+  /** ad "ad1" in ad set "as1" of campaign "c1"; `fail` decides which read throws */
+  const providerFailing = (
+    fail: { level: "ad_group" | "campaign" | "children"; error: unknown },
+    campaignBudget = true,
+  ) =>
+    ({
+      platform: "meta",
+      getObject: async (_c: unknown, level: string, id: string) => {
+        if (level === fail.level) throw fail.error;
+        const base = {
+          id,
+          level,
+          name: id,
+          status: "paused",
+          statusRaw: "PAUSED",
+        };
+        if (level === "ad")
+          return {
+            ...base,
+            parentId: "as1",
+            campaignId: "c1",
+          } as unknown as AdObjectDetail;
+        if (level === "ad_group")
+          return {
+            ...base,
+            parentId: "c1",
+            campaignId: "c1",
+          } as unknown as AdObjectDetail;
+        return {
+          ...base,
+          budget: campaignBudget
+            ? {
+                type: "daily",
+                amount: 100_000,
+                currency: "VND",
+                level: "campaign",
+              }
+            : null,
+        } as unknown as AdObjectDetail;
+      },
+      listObjects: async () => {
+        if (fail.level === "children") throw fail.error;
+        return { items: [], nextCursor: null, warnings: [] };
+      },
+    }) as unknown as AdsProvider;
+
+  it("predicate: transient / token / checkpoint / aborted pass through; the rest does not", () => {
+    for (const code of [
+      "rate_limited",
+      "quota_exceeded",
+      "timeout",
+      "upstream_error",
+      "auth_invalid",
+      "action_required",
+    ] as const) {
+      expect(passThroughCheckError(err(code)), code).toBe(true);
+    }
+    expect(passThroughCheckError(err("unknown", { retryable: true }))).toBe(
+      true,
+    );
+    for (const code of [
+      "not_found",
+      "invalid_request",
+      "permission_denied",
+      "unknown",
+      "unsupported",
+    ] as const) {
+      expect(passThroughCheckError(err(code)), code).toBe(false);
+    }
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    expect(passThroughCheckError(abort)).toBe(true);
+    expect(passThroughCheckError(new Error("boom"))).toBe(false);
+    expect(passThroughCheckError("x")).toBe(false);
+  });
+
+  it("rate_limited on the parent campaign → the SAME ProviderError (retry info kept), not budget_unverifiable", async () => {
+    const e = err("rate_limited", { retryable: true, retryAfterMs: 60_000 });
+    const p = assertActivationWithinCaps(
+      capEnv(),
+      metaAccount,
+      providerFailing({ level: "campaign", error: e }),
+      "ad",
+      ["ad1"],
+    );
+    await expect(p).rejects.toBe(e);
+  });
+
+  it("auth_invalid / action_required on the parent ad set reach mcp-core unchanged (F1: connection flagged)", async () => {
+    for (const code of ["auth_invalid", "action_required"] as const) {
+      const e = err(code);
+      await expect(
+        assertActivationWithinCaps(
+          capEnv(),
+          metaAccount,
+          providerFailing({ level: "ad_group", error: e }),
+          "ad",
+          ["ad1"],
+        ),
+      ).rejects.toBe(e);
+    }
+  });
+
+  it("aborted request → rethrown", async () => {
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    await expect(
+      assertActivationWithinCaps(
+        capEnv(),
+        metaAccount,
+        providerFailing({ level: "campaign", error: abort }),
+        "ad",
+        ["ad1"],
+      ),
+    ).rejects.toBe(abort);
+  });
+
+  it("not_found on the parent → budget_unverifiable worded for the parent, with the platform reason", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(
+      assertActivationWithinCaps(
+        capEnv(),
+        metaAccount,
+        providerFailing({ level: "campaign", error: err("not_found") }),
+        "ad",
+        ["ad1"],
+      ),
+    ).rejects.toMatchObject({
+      code: "budget_unverifiable",
+      messageVi: expect.stringMatching(/cấp trên của ad1.*Lỗi not_found\./),
+    });
+  });
+
+  it("ABO campaign: listing its ad sets fails with invalid_request → budget_unverifiable about the ad group list", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(
+      assertActivationWithinCaps(
+        capEnv(),
+        metaAccount,
+        providerFailing(
+          { level: "children", error: err("invalid_request") },
+          false,
+        ),
+        "campaign",
+        ["c1"],
+      ),
+    ).rejects.toMatchObject({
+      code: "budget_unverifiable",
+      messageVi: expect.stringContaining(
+        "danh sách nhóm quảng cáo của chiến dịch c1",
+      ),
+    });
+  });
+
+  it("ABO campaign: listing its ad sets is rate limited → rate_limited passes through", async () => {
+    const e = err("rate_limited", { retryable: true });
+    await expect(
+      assertActivationWithinCaps(
+        capEnv(),
+        metaAccount,
+        providerFailing({ level: "children", error: e }, false),
+        "campaign",
+        ["c1"],
+      ),
+    ).rejects.toBe(e);
+  });
+});

@@ -1,14 +1,16 @@
 // Reports and writes seen by an AI client of an MCP created through the real services:
 // multi-account / multi-currency fan-out, per-account time-zone dates, signed cursors, guardrails per currency,
 // the two-step confirmation lifecycle and write idempotency - on all four platforms.
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("server-only", () => ({}))
 
 import { db } from "@/server/db/client"
 import { __resetRateLimits } from "@/server/mcp/rate-limit"
-import { mcpPendingActions } from "@/server/db/schema"
+import { mcpCallLogs, mcpPendingActions } from "@/server/db/schema"
+import { ProviderError, type ProviderErrorCode } from "@/server/providers/errors"
+import { getProvider } from "@/server/providers/registry"
 import { PLATFORMS, type Platform } from "@/server/providers/types"
 import { demoAccounts, loadTestEnv, World, type ConnInfo, type McpInfo } from "./world"
 
@@ -329,6 +331,10 @@ describe.skipIf(!hasDb)("reports and writes on all platforms (services → endpo
       expect(third.sc.status).toBe("confirmation_required") // previews stay free
       const refused = await w.call(mcp.key, "ads_set_status", { ...args("c3"), confirm_token: third.sc.confirm_token })
       expect(refused.sc.code).toBe("write_rate_limited")
+      // B2: the wait is returned in seconds (+ in the text) and the refusal is retryable
+      expect(refused.sc.retry_after_seconds).toBeGreaterThan(0)
+      expect(refused.sc.retryable).toBe(true)
+      expect(refused.text).toMatch(/Thử lại sau \d+ giây\./)
       // … and the refused token was NOT consumed: it works once the window has room again
       __resetRateLimits()
       const later = await w.call(mcp.key, "ads_set_status", { ...args("c3"), confirm_token: third.sc.confirm_token })
@@ -353,8 +359,119 @@ describe.skipIf(!hasDb)("reports and writes on all platforms (services → endpo
       const limited = await upd("c")
       expect(limited.isError).toBe(true)
       expect(limited.sc.code).toBe("write_rate_limited")
+      expect(limited.sc.retry_after_seconds).toBeGreaterThan(0)
       // reads are never limited by it
       expect((await w.call(mcp.key, "ads_list_objects", { platform, account_id: acc().externalId, level: "campaign" })).isError).toBe(false)
+    })
+
+    const platformError = (code: ProviderErrorCode, retryAfterMs?: number) => () =>
+      new ProviderError({ platform, code, message: `fake ${code}`, userMessageVi: `Nền tảng từ chối (${code}).`, retryable: true, retryAfterMs })
+
+    it("D5: a write the platform refused before changing anything gives its write slot back; an uncertain failure does not", async () => {
+      __resetRateLimits()
+      const mcp = await w.mcp(w.users.staff, {
+        settings: { twoStepConfirm: false, writeRateLimitPer10Min: 1 },
+        platforms: { [platform]: { permissions: ["read", "update"], connections: [{ conn: conns[platform] }] } },
+      })
+      const upd = (n: string) => w.call(mcp.key, "ads_update_object", { platform, account_id: acc().externalId, level: "campaign", id: "c1", name: n })
+      // rate limited by the platform (B2: its Retry-After reaches the AI in seconds) → slot refunded
+      w.failNext(platform, "updateObject", platformError("rate_limited", 30_000))
+      const throttled = await upd("D5 a")
+      expect(throttled.sc.code).toBe("rate_limited")
+      expect(throttled.sc.retry_after_seconds).toBe(30)
+      expect(throttled.text).toContain("Thử lại sau 30 giây.")
+      // F2: logged as rate_limited (not error)
+      const [row] = await db
+        .select({ status: mcpCallLogs.status })
+        .from(mcpCallLogs)
+        .where(and(eq(mcpCallLogs.mcpId, mcp.id), eq(mcpCallLogs.errorCode, "rate_limited")))
+      expect(row?.status).toBe("rate_limited")
+      // permission refused by the platform → refunded too
+      w.failNext(platform, "updateObject", platformError("permission_denied"))
+      expect((await upd("D5 b")).sc.code).toBe("permission_denied")
+      // the limit is 1: both refusals gave their slot back, so this write still runs …
+      const ok = await upd("D5 c")
+      expect(ok.isError, ok.text).toBe(false)
+      // … and spends the only slot
+      expect((await upd("D5 d")).sc.code).toBe("write_rate_limited")
+
+      // an uncertain failure (5xx / timeout: the platform may have applied it) keeps the slot spent
+      __resetRateLimits()
+      w.failNext(platform, "updateObject", platformError("upstream_error"))
+      expect((await upd("D5 e")).sc.code).toBe("upstream_error")
+      expect((await upd("D5 f")).sc.code).toBe("write_rate_limited")
+      // an adapter-side validation (no platform answer: the AI's input) is not refunded either
+      __resetRateLimits()
+      w.failNext(platform, "updateObject", platformError("invalid_request"))
+      expect((await upd("D5 g")).sc.code).toBe("invalid_request")
+      expect((await upd("D5 h")).sc.code).toBe("write_rate_limited")
+      __resetRateLimits()
+    })
+
+    it("D5 reads what the call sent upstream: a refusal after a write that went through (2xx) keeps the slot spent", async () => {
+      __resetRateLimits()
+      const mcp = await w.mcp(w.users.staff, {
+        settings: { twoStepConfirm: false, writeRateLimitPer10Min: 1 },
+        platforms: { [platform]: { permissions: ["read", "update"], connections: [{ conn: conns[platform] }] } },
+      })
+      const upd = (n: string) => w.call(mcp.key, "ads_update_object", { platform, account_id: acc().externalId, level: "campaign", id: "c1", name: n })
+      // the fake adapter reports one upstream write request (as http.ts does) before its queued failure is thrown
+      const provider = getProvider(platform)
+      const original = provider.updateObject
+      const withUpstream = (status: number) => {
+        provider.updateObject = (ctx, u, opts) => {
+          if (!opts?.dryRun) ctx.onUpstream?.({ platform, method: "POST", url: "https://platform.test/v1/objects/c1", status, durationMs: 1 })
+          return original.call(provider, ctx, u, opts)
+        }
+      }
+      try {
+        // the write itself was refused (HTTP 429) → refunded
+        withUpstream(429)
+        w.failNext(platform, "updateObject", () => new ProviderError({ platform, code: "rate_limited", message: "429", userMessageVi: "Bị giới hạn.", upstream: { httpStatus: 429 } }))
+        expect((await upd("D5 up a")).sc.code).toBe("rate_limited")
+        // a write answered 2xx, then a rate limit (e.g. on a follow-up step) → something may have changed → not refunded
+        withUpstream(200)
+        w.failNext(platform, "updateObject", platformError("rate_limited"))
+        expect((await upd("D5 up b")).sc.code).toBe("rate_limited")
+        expect((await upd("D5 up c")).sc.code).toBe("write_rate_limited")
+      } finally {
+        provider.updateObject = original
+        __resetRateLimits()
+      }
+    })
+
+    it("D5 with two-step on: the refused confirm_token stays consumed (its replay carries no stale retry_after_seconds); money caps unchanged", async () => {
+      __resetRateLimits()
+      const cur = acc().currency
+      w.state.objects.get(acc().externalId)!.find((o) => o.id === "g1")!.budget = { type: "daily", amount: 100, level: "ad_group" }
+      const mcp = await w.mcp(w.users.staff, {
+        settings: { twoStepConfirm: true, writeRateLimitPer10Min: 1, budgetChangeMaxPct: 500, maxDailyBudget: { [cur]: 120 } },
+        platforms: { [platform]: { permissions: ["read", "update"], connections: [{ conn: conns[platform] }] } },
+      })
+      const confirmed = async (amount: number) => {
+        const p = await w.call(mcp.key, "ads_update_budget", budgetArgs(amount))
+        expect(p.sc.status, p.text).toBe("confirmation_required")
+        return { token: p.sc.confirm_token as string, r: await w.call(mcp.key, "ads_update_budget", { ...budgetArgs(amount), confirm_token: p.sc.confirm_token }) }
+      }
+      w.failNext(platform, "updateBudget", platformError("rate_limited", 45_000))
+      const first = await confirmed(110)
+      expect(first.r.sc.code).toBe("rate_limited")
+      expect(first.r.sc.retry_after_seconds).toBe(45)
+      // the token is spent: its replay returns the stored failure, without the (now stale) wait
+      const replay = await w.call(mcp.key, "ads_update_budget", { ...budgetArgs(110), confirm_token: first.token })
+      expect(replay.isError).toBe(true)
+      expect(replay.sc.code).toBe("rate_limited")
+      expect(replay.sc).not.toHaveProperty("retry_after_seconds")
+      // the cap still applies after a refund (it never depended on the write counter)
+      expect((await w.call(mcp.key, "ads_update_budget", budgetArgs(130))).sc.code).toBe("budget_cap_exceeded")
+      // a new preview + confirmation runs within the limit of 1 (the refused execution gave its slot back)
+      const second = await confirmed(115)
+      expect(second.r.isError, second.r.text).toBe(false)
+      expect(w.state.objects.get(acc().externalId)!.find((o) => o.id === "g1")!.budget!.amount).toBe(115)
+      // and the slot is now spent
+      const third = await confirmed(118)
+      expect(third.r.sc.code).toBe("write_rate_limited")
+      __resetRateLimits()
     })
   })
 })

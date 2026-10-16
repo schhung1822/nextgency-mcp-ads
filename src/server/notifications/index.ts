@@ -41,6 +41,7 @@ export {
   type SendNowResult,
 } from "./deliver"
 export {
+  notifyConnectionActionRequired,
   notifyConnectionHealth,
   notifyMcpWrite,
   notifyUpdateAvailable,

@@ -38,6 +38,30 @@ function topRename(r: CopyRequest): RenameOpts | undefined {
 
 const NO_RENAME: RenameOpts = { rename_strategy: "NO_RENAME" }
 
+/** Special ad categories Meta calls HEF (housing, employment, financial products / services; CREDIT = old name). */
+const HEF_CATEGORIES = new Set(["HOUSING", "EMPLOYMENT", "FINANCIAL_PRODUCTS_SERVICES", "CREDIT"])
+
+/**
+ * [H] changelog v26 (all versions from 2026-10-27): ad sets of HEF campaigns with constrained targeting (custom
+ * audiences, detailed targeting) must set `advantage_audience` explicitly on `POST act/adsets` AND
+ * `POST /{adset}/copies`, else Meta errors. [?] The copies edge takes no targeting parameter (reference read
+ * 2026-10-16), so the copy can only inherit the source's targeting: a source without the explicit flag gets a warning
+ * (preview and execute) telling the AI to set it with meta_update_targeting first. Never changes the source by itself.
+ */
+export function hefAdvantageAudienceProblem(adset: RawNode, specialAdCategories: unknown): string | null {
+  const cats = Array.isArray(specialAdCategories) ? specialAdCategories.map(String) : []
+  if (!cats.some((c) => HEF_CATEGORIES.has(c))) return null
+  const t = (adset.targeting && typeof adset.targeting === "object" ? adset.targeting : {}) as Record<string, unknown>
+  const auto = (t.targeting_automation && typeof t.targeting_automation === "object" ? t.targeting_automation : {}) as Record<string, unknown>
+  if (auto.advantage_audience !== undefined && auto.advantage_audience !== null) return null
+  const constrained = ["custom_audiences", "flexible_spec", "interests", "behaviors"].some((k) => Array.isArray(t[k]) && (t[k] as unknown[]).length > 0)
+  if (!constrained) return null
+  return (
+    `Nhóm ${typeof adset.name === "string" ? adset.name : adset.id} (${adset.id}) thuộc chiến dịch danh mục đặc biệt (nhà ở / việc làm / tài chính), có đối tượng tuỳ chỉnh / nhắm chi tiết nhưng chưa đặt rõ advantage_audience - từ 27/10/2026 Meta từ chối sao chép nhóm như vậy. ` +
+    `Đặt rõ trước bằng meta_update_targeting (adset_id=${adset.id}, targeting.advantage_audience true/false) rồi sao chép lại.`
+  )
+}
+
 function errMsg(e: unknown): string {
   // only curated Vietnamese messages reach the AI (a raw Error message may carry internals)
   return isProviderError(e) ? e.userMessageVi : "lỗi không xác định"
@@ -165,13 +189,21 @@ export async function copyMetaObject(
 
   if (level === "campaign") {
     if (r.targetParentId) warnings.push("Chiến dịch không có cấp cha - bỏ qua target_parent_id.")
-    const campaign = await readNode(ctx, "campaign", r.id, ["id", "name", "objective", "daily_budget", "lifetime_budget", "smart_promotion_type"])
+    const campaign = await readNode(ctx, "campaign", r.id, [
+      "id",
+      "name",
+      "objective",
+      "daily_budget",
+      "lifetime_budget",
+      "smart_promotion_type",
+      "special_ad_categories",
+    ])
     if (campaign.smart_promotion_type === "AUTOMATED_SHOPPING_ADS" || campaign.smart_promotion_type === "SMART_APP_PROMOTION") {
       throw invalid("Meta không còn cho sao chép chiến dịch Advantage+ Shopping/App kiểu cũ (ASC/AAC).")
     }
     let plans: AdsetPlan[] = []
     if (r.deep) {
-      const adsets = await graphAll<RawNode>(callCtx(ctx), `${r.id}/adsets`, { fields: "id,name,end_time,status", limit: 200 }, 1000)
+      const adsets = await graphAll<RawNode>(callCtx(ctx), `${r.id}/adsets`, { fields: "id,name,end_time,status,targeting", limit: 200 }, 1000)
       const ads = await listAdsOf(ctx, r.id)
       const total = ads.length
       if (total > MAX_ADS_PER_COPY) {
@@ -185,6 +217,8 @@ export async function copyMetaObject(
         if (typeof p.adset.end_time === "string" && Date.parse(p.adset.end_time) < Date.now()) {
           warnings.push(`Nhóm ${p.adset.name ?? p.adset.id} đã hết lịch chạy - bản sao giữ lịch cũ, cần sửa end_time trước khi bật.`)
         }
+        const hef = hefAdvantageAudienceProblem(p.adset, campaign.special_ad_categories)
+        if (hef) warnings.push(hef)
       }
     }
     if (opts.dryRun) {
@@ -214,10 +248,20 @@ export async function copyMetaObject(
   }
 
   if (level === "adset") {
-    const adset = await readNode(ctx, "adset", r.id, ["id", "name", "daily_budget", "lifetime_budget", "end_time"])
+    const adset = await readNode(ctx, "adset", r.id, [
+      "id",
+      "name",
+      "daily_budget",
+      "lifetime_budget",
+      "end_time",
+      "targeting",
+      "campaign{special_ad_categories}",
+    ])
     const targetCampaignId = r.targetParentId ?? String(adset.campaign_id)
+    let categories = (adset.campaign as { special_ad_categories?: unknown } | undefined)?.special_ad_categories
     if (r.targetParentId && r.targetParentId !== String(adset.campaign_id)) {
-      const target = await readNode(ctx, "campaign", r.targetParentId, ["id", "name", "daily_budget", "lifetime_budget", "objective"])
+      const target = await readNode(ctx, "campaign", r.targetParentId, ["id", "name", "daily_budget", "lifetime_budget", "objective", "special_ad_categories"])
+      categories = target.special_ad_categories
       if (hasBudget(target) && hasBudget(adset)) {
         warnings.push("Chiến dịch đích dùng ngân sách chiến dịch (CBO) nhưng nhóm nguồn có ngân sách riêng - Meta có thể từ chối.")
       }
@@ -225,6 +269,10 @@ export async function copyMetaObject(
         warnings.push("Chiến dịch đích dùng ngân sách nhóm (ABO) nhưng nhóm nguồn không có ngân sách - Meta có thể từ chối.")
       }
     }
+    // HEF + constrained targeting without the explicit flag: Meta refuses the copy from 2026-10-27 (only the source can
+    // carry the flag). Warned, not refused: whether a read-back targeting shows an implicit flag is unverified [?]
+    const hef = hefAdvantageAudienceProblem(adset, categories)
+    if (hef) warnings.push(hef)
     const ads = r.deep ? await listAdsOf(ctx, adset.id) : []
     if (ads.length > MAX_ADS_PER_COPY) {
       throw invalid(`Nhóm quảng cáo có ${ads.length} quảng cáo - vượt giới hạn ${MAX_ADS_PER_COPY} mỗi lần sao chép.`)

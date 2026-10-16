@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { McpToolError } from "./errors"
+import { mapToolError, McpToolError } from "./errors"
 import {
   __resetWritePacing,
   acquireWritePacing,
@@ -98,6 +98,9 @@ describe("write pacing (settings.writeDelaySeconds)", () => {
     expect(e).toBeInstanceOf(McpToolError)
     expect(e).toMatchObject({ code: "write_cooldown", logStatus: "rate_limited" })
     expect((e as McpToolError).messageVi).toMatch(/CHƯA được thực hiện/)
+    // B2: the wait reaches the AI as retry_after_seconds (retryable: nothing ran)
+    expect((e as McpToolError).retryAfterSec).toBeGreaterThan(0)
+    expect(mapToolError(e).payload).toMatchObject({ retryable: true, retry_after_seconds: (e as McpToolError).retryAfterSec })
     // no confirmation flow → no confirm_token wording in the hint
     expect((e as McpToolError).hint).not.toMatch(/confirm_token/)
     holder.release(true)

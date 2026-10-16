@@ -28,6 +28,7 @@ import { fetchOne } from "./objects"
 import { fullAdgroupUpdate } from "./mutate"
 import { gmvMaxExtensions } from "./gmv-max"
 import { gmvMaxWriteExtensions } from "./gmv-max-write"
+import { smartPlusExtension } from "./smart-plus"
 import { assertNotGmvMaxCampaign } from "./gmv-max-detect"
 import {
   checkMessagingCreative,
@@ -584,7 +585,7 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     permission: "create",
     title: "Tạo nhóm quảng cáo TikTok",
     description:
-      `Dùng khi cần tạo nhóm quảng cáo trong một chiến dịch TikTok thủ công. Gọi ads_list_objects (level=campaign) để lấy campaign_id và ads_lookup (locations, pixels, interests, custom_audiences) để lấy id. location_ids là id số (Việt Nam = 1562822). Lịch dạng \"YYYY-MM-DD HH:MM:SS\" theo UTC; budget_type daily | dynamic_daily | lifetime (lifetime cần schedule_end_time; không có ngày kết thúc thì phải dùng ngân sách ngày; chiến dịch đặt ngân sách ngày không nhận nhóm lifetime); chiến dịch CBO thì bỏ trống ngân sách nhóm. billing_event tự suy ra từ optimization_goal (CLICK/PAGE_VISIT→CPC, SHOW/REACH→CPM, ENGAGED_VIEW→CPV, còn lại→OCPM). CONVERT/VALUE cần pixel_id + optimization_event. Vị trí (placements) không đổi được sau khi tạo. Quảng cáo nhắn tin (chiến dịch LEAD_GENERATION): truyền messaging {destination: TIKTOK_DM | MESSENGER + facebook_page_id | WHATSAPP / ZALO + phone_number (số trong nước bỏ số 0; mã vùng mặc định VN +84) | LINE + line_business_id | IM_URL}; công cụ tự đặt promotion_type và vị trí chỉ TikTok; optimization_goal CLICK (CONVERSATION cần allowlist, không cho Zalo/LINE/IM_URL); không nhắm 13-17; trường nhắn tin không sửa được sau khi tạo; xem trước tài sản bằng tiktok_messaging_assets. Nhóm luôn được tạo ở trạng thái TẮT. Bước tiếp theo: tiktok_create_ads. ${MESSAGING_DEADLINE_NOTE}`,
+      `Dùng khi cần tạo nhóm quảng cáo trong một chiến dịch TikTok thủ công. Gọi ads_list_objects (level=campaign) để lấy campaign_id và ads_lookup (locations, pixels, interests, custom_audiences) để lấy id. location_ids là id số (Việt Nam = 1562822). Lịch dạng \"YYYY-MM-DD HH:MM:SS\" theo UTC; budget_type daily | dynamic_daily | lifetime (lifetime cần schedule_end_time; không có ngày kết thúc thì phải dùng ngân sách ngày; chiến dịch đặt ngân sách ngày không nhận nhóm lifetime); chiến dịch CBO thì bỏ trống ngân sách nhóm. billing_event tự suy ra từ optimization_goal (CLICK/PAGE_VISIT→CPC, SHOW/REACH→CPM, ENGAGED_VIEW→CPV, còn lại→OCPM). CONVERT/VALUE cần pixel_id + optimization_event. Vị trí (placements) không đổi được sau khi tạo. Quảng cáo nhắn tin (chiến dịch LEAD_GENERATION): truyền messaging {destination: TIKTOK_DM | MESSENGER + facebook_page_id | WHATSAPP / ZALO + phone_number (số trong nước bỏ số 0; mã vùng mặc định VN +84) | LINE + line_business_id | IM_URL}; công cụ tự đặt promotion_type và vị trí chỉ TikTok; optimization_goal CLICK (CONVERSATION cần allowlist, không cho Zalo/LINE/IM_URL; tin nhắn TikTok tối ưu CONVERSATION chỉ nhận identity TT_USER - muốn dùng BC_AUTH_TT thì tạo nhóm tối ưu CLICK); không nhắm 13-17; trường nhắn tin không sửa được sau khi tạo; xem trước tài sản bằng tiktok_messaging_assets. Nhóm luôn được tạo ở trạng thái TẮT. Bước tiếp theo: tiktok_create_ads. ${MESSAGING_DEADLINE_NOTE}`,
     input: createAdGroupInput,
     write: true,
     moneyOf: (raw) => adGroupMoney(raw as CreateAdGroupInput),
@@ -595,7 +596,7 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     permission: "create",
     title: "Tạo quảng cáo TikTok",
     description:
-      "Dùng khi cần tạo 1–20 quảng cáo trong một nhóm quảng cáo TikTok thủ công. Cần ads_lookup kind=identities để lấy identity (ưu tiên Spark Ads: TT_USER, BC_AUTH_TT, AUTH_CODE - Custom Identity CUSTOMIZED_USER không còn tạo được trên vị trí TikTok cho nhiều tài khoản) và ads_upload_media để có video_id/image_id. Video tải lên (video_id) cần đúng 1 ảnh bìa trong image_ids; Spark Ads từ bài đăng dùng tiktok_item_id. Tối đa 50 quảng cáo mỗi nhóm. Nhóm nhắn tin: chỉ SINGLE_VIDEO / CAROUSEL_ADS, call_to_action SEND_MESSAGE (tự đặt nếu bỏ trống); tin nhắn TikTok cần auto_message_id (tiktok_messaging_assets kind=welcome_messages hoặc tiktok_create_welcome_message) và identity TT_USER / BC_AUTH_TT có can_manage_message; Messenger / WhatsApp / Zalo / LINE không gửi landing_page_url (TikTok tự tạo link), có thể dùng page_id (Instant Page, CLICK); IM_URL cần landing_page_url https hoặc page_id. Quảng cáo luôn được tạo ở trạng thái TẮT và qua kiểm duyệt; không tự thử lại khi lỗi mạng để tránh tạo trùng.",
+      "Dùng khi cần tạo 1–20 quảng cáo trong một nhóm quảng cáo TikTok thủ công. Cần ads_lookup kind=identities để lấy identity (ưu tiên Spark Ads: TT_USER, BC_AUTH_TT, AUTH_CODE - Custom Identity CUSTOMIZED_USER không còn tạo được trên vị trí TikTok cho nhiều tài khoản) và ads_upload_media để có video_id/image_id. Video tải lên (video_id) cần đúng 1 ảnh bìa trong image_ids; Spark Ads từ bài đăng dùng tiktok_item_id. Tối đa 50 quảng cáo mỗi nhóm. Nhóm nhắn tin: chỉ SINGLE_VIDEO / CAROUSEL_ADS, call_to_action SEND_MESSAGE (tự đặt nếu bỏ trống); tin nhắn TikTok cần auto_message_id (tiktok_messaging_assets kind=welcome_messages hoặc tiktok_create_welcome_message) và identity TT_USER / BC_AUTH_TT có can_manage_message (nhóm tối ưu CONVERSATION: chỉ TT_USER); Messenger / WhatsApp / Zalo / LINE không gửi landing_page_url (TikTok tự tạo link), có thể dùng page_id (Instant Page, CLICK); IM_URL cần landing_page_url https hoặc page_id. Quảng cáo luôn được tạo ở trạng thái TẮT và qua kiểm duyệt; không tự thử lại khi lỗi mạng để tránh tạo trùng.",
     input: createAdsInput,
     write: true,
     run: (ctx, input, opts) => runCreateAds(ctx, input as CreateAdsInput, opts),
@@ -610,6 +611,8 @@ export const tiktokExtensions: ProviderExtension<TikTokCredentials>[] = [
     write: true,
     run: (ctx, input, opts) => runUpdateTargeting(ctx, input as UpdateTargetingInput, opts),
   },
+  // Upgraded Smart+ create (campaign → ad group → ad, all DISABLE; allowlist-only) - smart-plus.ts
+  smartPlusExtension,
   // messaging ads: prerequisites (read) + welcome messages (create) - messaging.ts
   ...messagingExtensions,
   // GMV Max (TikTok Shop): analysis tools (gmv-max.ts) + reads / writes behind the admin-only MCP switch (gmv-max-write.ts)

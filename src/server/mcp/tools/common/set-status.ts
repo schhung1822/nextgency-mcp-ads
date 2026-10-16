@@ -4,7 +4,7 @@ import { isProviderError } from "../../../providers/errors"
 import type { ActivationSpend, AdObjectDetail, AdObjectSummary, AdsProvider, AlwaysConfirmOp, ObjectLevel } from "../../../providers/types"
 import { adGroupFlightsMatter, campaignFlightOrDeny, isConfiguredOn, listChildAdGroups } from "../../budget-flight"
 import { denied, invalid } from "../../errors"
-import { assertGrant } from "../../grant"
+import { assertGrant, platformLabel } from "../../grant"
 import { checkDailyCap, checkLifetimeCap, fmtMoney, LEVEL_VI, legacyCapWarning, requireMoneyCaps, type Flight } from "../../guardrails"
 import { accountIdSchema, objectIdSchema, objectLevelSchema, platformEnum, writeFields, writeOutputSchema } from "../../schemas"
 import { providerFor, registerToolSpec, runWrite, UPDATE_ANNOTATIONS, type ToolContext, type ToolEnv } from "../../tool"
@@ -59,7 +59,7 @@ export async function assertActivationWithinCaps(
       p = listChildAdGroups(provider, ctx, campaignId)
       kids.set(campaignId, p)
     }
-    return p.catch((e: unknown) => unverifiable(e, campaignId))
+    return p.catch((e: unknown) => unverifiable(e, campaignId, "children"))
   }
   const activating = level === "ad_group" ? ids : []
   const check = async (o: AdObjectSummary) => {
@@ -97,11 +97,11 @@ export async function assertActivationWithinCaps(
     const adGroupId: string | null = level === "ad" || level === "keyword" ? (o.parentId ?? null) : null
     let campaignId: string | null = level === "campaign" ? null : (o.campaignId ?? (level === "ad_group" ? o.parentId : null) ?? null)
     if (adGroupId) {
-      const g = await get("ad_group", adGroupId).catch((e: unknown) => unverifiable(e, id))
+      const g = await get("ad_group", adGroupId).catch((e: unknown) => unverifiable(e, id, "parent"))
       await check(g)
       campaignId ??= g.campaignId ?? g.parentId ?? null
     }
-    if (campaignId) await check(await get("campaign", campaignId).catch((e: unknown) => unverifiable(e, id)))
+    if (campaignId) await check(await get("campaign", campaignId).catch((e: unknown) => unverifiable(e, id, "parent")))
   }
   const queue = [...ids]
   await Promise.all(
@@ -115,7 +115,8 @@ export async function assertActivationWithinCaps(
   try {
     spend = await provider.activationSpend(ctx, level, ids)
   } catch (e) {
-    if (isProviderError(e) && e.code === "auth_invalid") throw e
+    // transient / token / account-checkpoint errors reach the AI unchanged (still a refusal: nothing was switched on)
+    if (passThroughCheckError(e)) throw e
     console.warn("[mcp] activation spend check failed", safeErrorForLog(e))
     throw denied(
       "budget_unverifiable",
@@ -171,11 +172,47 @@ export async function activationPreviewWarnings(
   }
 }
 
-function unverifiable(e: unknown, id: string): never {
+/** Provider error codes of a failed budget read that reach the AI unchanged (see passThroughCheckError). */
+const PASS_THROUGH_CODES: ReadonlySet<string> = new Set([
+  "rate_limited",
+  "quota_exceeded",
+  "timeout",
+  "upstream_error",
+  "auth_invalid",
+  "action_required",
+])
+
+/**
+ * A budget read of the activation check failed: must the ORIGINAL error reach the AI (instead of budget_unverifiable)?
+ * True for transient errors (rate limit / quota / timeout / 5xx / retryable, aborted request) - the AI gets the real
+ * cause and retry_after - and for token / account-checkpoint errors (auth_invalid, action_required), which the MCP core
+ * must see unchanged to flag the connection. Rethrowing still refuses the activation (fail closed).
+ */
+export function passThroughCheckError(e: unknown): boolean {
+  if (e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError")) return true
+  if (!isProviderError(e)) return false
+  return e.retryable || PASS_THROUGH_CODES.has(e.code)
+}
+
+/**
+ * A budget read of the activation check failed. Transient / token errors are rethrown unchanged
+ * (passThroughCheckError); anything else (not found, invalid request, permission…) → budget_unverifiable, worded for
+ * what was read: "parent" = the ad group / campaign above `id`, "children" = the ad groups of ABO campaign `id`.
+ */
+function unverifiable(e: unknown, id: string, what: "parent" | "children"): never {
+  if (passThroughCheckError(e)) throw e
   console.warn("[mcp] activation budget check failed", safeErrorForLog(e))
+  const reason = isProviderError(e) && e.userMessageVi ? ` ${e.userMessageVi}` : ""
+  if (what === "children") {
+    throw denied(
+      "budget_unverifiable",
+      `Không đọc được danh sách nhóm quảng cáo của chiến dịch ${id} (chiến dịch dùng ngân sách nhóm - các nhóm đang bật sẽ chạy cùng chiến dịch) để kiểm tra trần ngân sách nên chưa bật chạy.${reason}`,
+      "Thử lại sau, hoặc bật từng nhóm quảng cáo (level ad_group); MCP có trần ngân sách nên không bật khi chưa kiểm tra được."
+    )
+  }
   throw denied(
     "budget_unverifiable",
-    `Không đọc được ngân sách cấp trên của ${id} để kiểm tra trần ngân sách nên chưa bật chạy.`,
+    `Không đọc được ngân sách của nhóm quảng cáo / chiến dịch cấp trên của ${id} để kiểm tra trần ngân sách nên chưa bật chạy.${reason}`,
     "Thử lại sau, hoặc kiểm tra bằng ads_get_object; MCP có trần ngân sách nên không bật khi chưa kiểm tra được."
   )
 }
@@ -230,14 +267,64 @@ export async function alwaysConfirmFor(
   return { alwaysConfirm: reasons.length > 0, reasons }
 }
 
+/** Preview line of every archive (status archived). */
+export const ARCHIVE_PREVIEW_WARNING =
+  "Lưu trữ gần như KHÔNG hoàn tác: Meta không cho bật chạy lại đối tượng đã lưu trữ (chỉ còn đổi tên hoặc xoá), đối tượng con cũng ngừng phân phối. Muốn ngừng tạm thời thì dùng paused."
+
+/**
+ * status "archived" (Meta only - AdsProvider.archiveObjects): effectively irreversible, so it needs the "delete"
+ * permission on top of "status", ALWAYS goes through two-step confirmation (also in the basic mode / with two-step
+ * confirmation off) and never touches money (no caps, no preflight).
+ */
+function archiveWrite(
+  env: ToolEnv,
+  args: { status: string; level: string } & Record<string, unknown>,
+  account: GrantAccount,
+  provider: AdsProvider,
+  level: ObjectLevel,
+  ids: string[]
+) {
+  const archive = provider.archiveObjects?.bind(provider)
+  if (!archive) {
+    throw invalid(
+      "unsupported",
+      `${platformLabel(account.platform)} không có trạng thái lưu trữ (archived) - chỉ Meta có.`,
+      "Muốn ngừng chạy tạm thời dùng status paused; muốn bỏ hẳn dùng ads_delete_object (không hoàn tác)."
+    )
+  }
+  // irreversible on the platform: same permission as deleting
+  assertGrant(env.grant, { platform: account.platform, accountId: account.externalId, permission: "delete" })
+  const wopts = writeOptions(env.grant, account)
+  return runWrite(env, {
+    args,
+    account,
+    alwaysConfirm: true,
+    preview: async () => {
+      const ctx = await env.providerCtx(account)
+      const r = await archive(ctx, level, ids, { ...wopts, dryRun: true })
+      return previewFromMutation(r, [ARCHIVE_PREVIEW_WARNING])
+    },
+    execute: async (idempotencyKey, meta) => {
+      const ctx = await env.providerCtx(account)
+      const r = await archive(ctx, level, ids, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
+      const done = r.changes.length
+      return {
+        structured: mutationOut(r),
+        summary: `Đã lưu trữ ${done} ${args.level}${done < ids.length ? ` (bỏ qua ${ids.length - done} đối tượng đã lưu trữ / đã xoá)` : ""}.`,
+        changes: r.changes,
+      }
+    },
+  })
+}
+
 export function register(server: Parameters<typeof registerToolSpec>[0], tctx: ToolContext) {
   const platforms = grantPlatformsWith(tctx.grant, "status")
   if (platforms.length === 0) return
   registerToolSpec(server, tctx, {
     name: NAME,
-    title: "Bật / tạm dừng quảng cáo",
+    title: "Bật / tạm dừng / lưu trữ quảng cáo",
     description:
-      "Dùng khi cần bật chạy (active) hoặc tạm dừng (paused) 1–50 chiến dịch, nhóm quảng cáo, quảng cáo hoặc keyword (Google) cùng cấp trong một tài khoản. Chiến dịch Video (YouTube) của Google chỉ xem được, không bật/tắt qua API. Gọi ads_list_accounts và ads_list_objects (hoặc ads_get_report) trước để có account_id và id đúng. Khi MCP bật xác nhận 2 bước, lần gọi đầu trả confirmation_required kèm preview và confirm_token; chỉ gọi lại với cùng tham số + confirm_token sau khi người dùng đồng ý. Chiến dịch GMV Max (TikTok) chỉ bật/tắt được khi quản trị viên đã cho phép MCP thay đổi GMV Max, luôn cần xác nhận 2 bước và nên hạn chế bật/tắt. Bật chạy sẽ bắt đầu tiêu tiền.",
+      "Dùng khi cần bật chạy (active) hoặc tạm dừng (paused) 1–50 chiến dịch, nhóm quảng cáo, quảng cáo hoặc keyword (Google) cùng cấp trong một tài khoản. Chiến dịch Video (YouTube) của Google chỉ xem được, không bật/tắt qua API. Gọi ads_list_accounts và ads_list_objects (hoặc ads_get_report) trước để có account_id và id đúng. Khi MCP bật xác nhận 2 bước, lần gọi đầu trả confirmation_required kèm preview và confirm_token; chỉ gọi lại với cùng tham số + confirm_token sau khi người dùng đồng ý. Chiến dịch GMV Max (TikTok) chỉ bật/tắt được khi quản trị viên đã cho phép MCP thay đổi GMV Max, luôn cần xác nhận 2 bước và nên hạn chế bật/tắt. Bật chạy sẽ bắt đầu tiêu tiền. status archived (lưu trữ) chỉ có ở Meta, chỉ dùng khi người dùng yêu cầu rõ: gần như không hoàn tác (Meta không cho bật lại, chỉ còn đổi tên hoặc xoá), cần MCP có cả quyền Xoá và luôn xác nhận 2 bước.",
     kind: "write",
     annotations: UPDATE_ANNOTATIONS,
     input: z.object({
@@ -245,7 +332,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       account_id: accountIdSchema,
       level: objectLevelSchema,
       ids: z.array(objectIdSchema).min(1).max(MAX_STATUS_IDS),
-      status: z.enum(["active", "paused"]),
+      status: z.enum(["active", "paused", "archived"]),
       ...writeFields,
     }),
     output: writeOutputSchema,
@@ -257,23 +344,25 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       env.log.setTarget({ platform: account.platform, accountId: account.externalId, objectIds: ids })
       const provider = providerFor(account.platform, "set_status")
       const level = args.level as ObjectLevel
+      if (args.status === "archived") return archiveWrite(env, args, account, provider, level, ids)
+      const status = args.status
       // GMV Max switch / strict daily-spend guard / change history / cumulative started spend (both steps)
       const wopts = writeOptions(env.grant, account)
       // refusals that do not depend on money (TikTok: GMV Max locked) come before the cap checks
       if (provider.preflightWrite) {
-        await provider.preflightWrite(await env.providerCtx(account), level, ids, args.status, wopts)
+        await provider.preflightWrite(await env.providerCtx(account), level, ids, status, wopts)
       }
       // activation starts spending: the budgets that govern these objects must respect the caps
       // (objects created/copied paused with a large budget must not be switched on past the guardrails)
       let spend: ActivationSpend[] | undefined
-      if (args.status === "active") {
+      if (status === "active") {
         requireMoneyCaps(env.grant.settings, account.currency, "bật chạy quảng cáo")
         spend = await assertActivationWithinCaps(env, account, provider, level, ids)
       }
       // e.g. TikTok GMV Max: always two-step confirmation, even when the MCP disabled it. On a platform with this hook
       // a call carrying confirm_token always goes through the confirmation flow (the token issued at step 1 is
       // consumed and audited whatever the hook would answer now) - the hook is not asked again.
-      const confirm = await alwaysConfirmFor(env, account, provider, level, ids, args.status, args)
+      const confirm = await alwaysConfirmFor(env, account, provider, level, ids, status, args)
       const confirmReasons = confirm.reasons
       return runWrite(env, {
         args,
@@ -281,9 +370,9 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         alwaysConfirm: confirm.alwaysConfirm,
         preview: async () => {
           const ctx = await env.providerCtx(account)
-          const r = await provider.setStatus(ctx, level, ids, args.status, { ...wopts, dryRun: true })
+          const r = await provider.setStatus(ctx, level, ids, status, { ...wopts, dryRun: true })
           const warn =
-            args.status === "active"
+            status === "active"
               ? [
                   ...legacyCapWarning(env.grant.settings, account.currency),
                   "Bật chạy sẽ bắt đầu tiêu ngân sách.",
@@ -294,10 +383,10 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
         },
         execute: async (idempotencyKey, meta) => {
           const ctx = await env.providerCtx(account)
-          const r = await provider.setStatus(ctx, level, ids, args.status, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
+          const r = await provider.setStatus(ctx, level, ids, status, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           return {
             structured: mutationOut(r),
-            summary: `Đã ${args.status === "active" ? "bật" : "tạm dừng"} ${ids.length} ${args.level}.`,
+            summary: `Đã ${status === "active" ? "bật" : "tạm dừng"} ${ids.length} ${args.level}.`,
             changes: r.changes,
           }
         },

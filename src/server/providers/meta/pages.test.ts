@@ -755,3 +755,114 @@ describe("Page Insights", () => {
     })
   })
 })
+
+describe("Page permission errors name the Page permissions, not ads_management (B7)", () => {
+  const POST = `${PAGE}_111`
+  const notAds = (e: unknown) => {
+    const err = e as { userMessageVi: string; hint: string }
+    expect(err.userMessageVi).not.toMatch(/ads_management/)
+    expect(err.hint).toMatch(/không liên quan quyền ads_management/)
+    return err
+  }
+
+  it("#10 on Page Insights → read_insights + ANALYZE", async () => {
+    mockGraph([
+      tokenRoute(),
+      [
+        "GET",
+        `${PAGE}/insights`,
+        () =>
+          graphError(10, undefined, {
+            message: "(#10) Requires read_insights permission",
+          }),
+      ],
+    ])
+    const e = await getMetaPageInsights(
+      ctx(),
+      PAGE,
+      {
+        since: "2026-09-01",
+        until: "2026-09-02",
+        period: "day",
+        metrics: ["page_media_view"],
+      },
+      new Date("2026-10-03T12:00:00Z")
+    ).catch((x: unknown) => x)
+    expect(e).toMatchObject({
+      code: "permission_denied",
+      upstream: { code: 10 },
+    })
+    const err = notAds(e)
+    expect(err.userMessageVi).toMatch(/read_insights/)
+    expect(err.userMessageVi).toMatch(/ANALYZE/)
+    expect(err.userMessageVi).toMatch(/Meta báo: \(#10\) Requires read_insights/)
+  })
+
+  it("#200 on posts / post detail → pages_read_engagement + content roles", async () => {
+    mockGraph([
+      tokenRoute(),
+      ["GET", `${PAGE}/feed`, () => graphError(200)],
+      ["GET", POST, () => graphError(10)],
+    ])
+    for (const p of [
+      listMetaPagePosts(ctx(), PAGE, {
+        source: "feed",
+        limit: 5,
+        includeCounts: false,
+      }),
+      getMetaPagePost(ctx(), PAGE, POST),
+    ]) {
+      const e = await p.catch((x: unknown) => x)
+      expect(e).toMatchObject({ code: "permission_denied" })
+      expect(notAds(e).userMessageVi).toMatch(/pages_read_engagement/)
+    }
+  })
+
+  it("#10 while fetching the Page token → names the Page token permissions", async () => {
+    mockGraph([["GET", PAGE, () => graphError(10)]])
+    const e = await listMetaPagePosts(ctx(), PAGE, {
+      source: "published",
+      limit: 5,
+      includeCounts: false,
+    }).catch((x: unknown) => x)
+    expect(e).toMatchObject({ code: "permission_denied" })
+    expect(notAds(e).userMessageVi).toMatch(/pages_show_list/)
+  })
+
+  it("post insights: a per-post #10 in the batch is reported with the insights permissions", async () => {
+    mockGraph([
+      tokenRoute(),
+      [
+        "POST",
+        "",
+        () =>
+          json([
+            {
+              code: 403,
+              body: JSON.stringify({
+                error: { message: "(#10) denied", code: 10 },
+              }),
+            },
+          ]),
+      ],
+    ])
+    const [r] = await getMetaPostInsights(ctx(), PAGE, [POST], ["post_clicks"])
+    expect(r.error).toMatch(/read_insights/)
+    expect(r.error).not.toMatch(/ads_management/)
+  })
+
+  it("the Page role errors raised by the adapter itself keep their own text", async () => {
+    mockGraph([["GET", PAGE, () => json({ id: PAGE })]])
+    await expect(
+      listMetaPagePosts(ctx(), PAGE, {
+        source: "published",
+        limit: 5,
+        includeCounts: false,
+      })
+    ).rejects.toMatchObject({
+      code: "permission_denied",
+      userMessageVi:
+        "Via của kết nối không có vai trò trên Trang này nên không đọc được bài viết/chỉ số.",
+    })
+  })
+})

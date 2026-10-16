@@ -4,7 +4,7 @@ import { ProviderError } from "../../providers/errors"
 import { emptyMetrics } from "../../providers/types"
 import { argsHash } from "../confirm"
 import { decodeCursor, encodeCursor, queryHash } from "../cursor"
-import { mapToolError, McpToolError } from "../errors"
+import { MAX_RETRY_AFTER_SECONDS, mapToolError, McpToolError } from "../errors"
 import { collectFanout, positionAfter } from "../fanout"
 import { accountIdCandidates, assertChannelGrant, assertGrant, assertPageGrant, dedupePages } from "../grant"
 import {
@@ -14,12 +14,22 @@ import {
 } from "../instructions"
 import { MAX_LOG_ARGS_DEPTH, stripMediaUrlQueries, stripUrlQueries } from "../log-args"
 import { buildIpMatcher, clientIpFromHeaders, ipAllowed, normalizeIp } from "../net"
-import { __resetRateLimits, consumeMcpRate, NOT_FOUND_LIMIT, notFoundBlocked, recordNotFound } from "../rate-limit"
+import {
+  __resetRateLimits,
+  consumeMcpRate,
+  consumeWriteRate,
+  NOT_FOUND_LIMIT,
+  notFoundBlocked,
+  recordNotFound,
+  refundWriteRate,
+  WRITE_REFUND_LIMIT,
+} from "../rate-limit"
 import { clientFromUserAgent, peekMessages } from "../request-state"
 import { parseMcpSettings } from "../settings"
 import { assertSafeUrl, isBlockedAddress } from "../ssrf"
 import { resolveMetrics, totalsByCurrency } from "../tools/common/report-math"
 import { checkBudgetGuardrails } from "../tools/common/update-budget"
+import { errorResult } from "../tool"
 import { DEFAULT_MCP_SETTINGS, type McpGrant } from "../types"
 
 describe("net", () => {
@@ -90,7 +100,7 @@ describe("settings", () => {
     expect(s).toEqual({ ...DEFAULT_MCP_SETTINGS, twoStepConfirm: false, maxDailyBudget: { VND: 5_000_000 }, allowedIps: ["1.2.3.4"] })
   })
   it("falls back to safe defaults for garbage, field by field", () => {
-    expect(parseMcpSettings({ twoStepConfirm: "no", rateLimitPerMin: -5 })).toEqual(DEFAULT_MCP_SETTINGS)
+    expect(parseMcpSettings({ twoStepConfirm: "no", rateLimitPerMin: "5" })).toEqual(DEFAULT_MCP_SETTINGS)
     expect(parseMcpSettings(null)).toEqual(DEFAULT_MCP_SETTINGS)
     expect(parseMcpSettings({ rate_limit_per_min: 3, two_step_confirm: "x" })).toMatchObject({ rateLimitPerMin: 3, twoStepConfirm: true })
   })
@@ -305,6 +315,46 @@ describe("rate limits", () => {
     expect(d.retryAfterSec).toBeGreaterThan(0)
     expect(consumeMcpRate("m1", 2, t + 31_000).ok).toBe(true)
   })
+  it("write window: refundWriteRate gives back exactly the one refunded write (D5)", () => {
+    __resetRateLimits()
+    const t = 2_000_000
+    const a = consumeWriteRate("w1", 2, t)
+    const b = consumeWriteRate("w1", 2, t + 1)
+    expect([a.ok, a.at, b.ok, b.at]).toEqual([true, t, true, t + 1])
+    const full = consumeWriteRate("w1", 2, t + 2)
+    expect(full.ok).toBe(false)
+    expect(full.at).toBeUndefined()
+    expect(full.retryAfterSec).toBeGreaterThan(0)
+    refundWriteRate("w1", t + 1)
+    // one slot free again, then full again
+    expect(consumeWriteRate("w1", 2, t + 3).ok).toBe(true)
+    expect(consumeWriteRate("w1", 2, t + 4).ok).toBe(false)
+    // unknown timestamp / MCP / a second refund of the same slot: nothing else is given back
+    expect(refundWriteRate("w1", 12345)).toBe(false)
+    expect(refundWriteRate("nope", t)).toBe(false)
+    expect(consumeWriteRate("w1", 2, t + 5).ok).toBe(false)
+  })
+  it("write window: at most WRITE_REFUND_LIMIT refunds per MCP per 10 minutes - a refusal loop still gets limited", () => {
+    __resetRateLimits()
+    const t = 3_000_000
+    expect(WRITE_REFUND_LIMIT).toBe(5)
+    for (let i = 0; i < WRITE_REFUND_LIMIT; i++) {
+      const d = consumeWriteRate("w2", 1, t + i)
+      expect(d.ok).toBe(true)
+      expect(refundWriteRate("w2", d.at!, t + i)).toBe(true)
+    }
+    // the 6th refused write in the window keeps its slot → the next write is limited
+    const sixth = consumeWriteRate("w2", 1, t + 10)
+    expect(refundWriteRate("w2", sixth.at!, t + 10)).toBe(false)
+    expect(consumeWriteRate("w2", 1, t + 11).ok).toBe(false)
+    // other MCPs have their own budget; the cap frees up once the old refunds leave the window
+    const other = consumeWriteRate("w3", 1, t + 12)
+    expect(refundWriteRate("w3", other.at!, t + 12)).toBe(true)
+    const later = t + 10 * 60_000 + 20
+    const d = consumeWriteRate("w2", 1, later)
+    expect(d.ok).toBe(true)
+    expect(refundWriteRate("w2", d.at!, later)).toBe(true)
+  })
   it("blocks IPs guessing keys", () => {
     __resetRateLimits()
     for (let i = 0; i < NOT_FOUND_LIMIT; i++) recordNotFound("198.51.100.1")
@@ -372,6 +422,39 @@ describe("tool error mapping (text returned to the AI)", () => {
     expect(m.payload.message).not.toContain("SECRETVALUE123")
     expect(m.payload.hint).not.toMatch(/EAAa{20}/)
     expect(mapToolError(new McpToolError({ code: "x", messageVi: "Không có gợi ý" })).payload.hint).toBeNull()
+  })
+
+  it("retry_after_seconds (B2): platform Retry-After rounded up, capped at one day, absent when unknown", () => {
+    const pe = (retryAfterMs?: number, code: "rate_limited" | "quota_exceeded" | "upstream_error" = "rate_limited") =>
+      new ProviderError({ platform: "tiktok", code, message: "m", userMessageVi: "Bị giới hạn", retryable: true, retryAfterMs })
+    expect(pe(1500).toJSON().retry_after_seconds).toBe(2)
+    expect(pe().toJSON().retry_after_seconds).toBeNull()
+    expect(mapToolError(pe(1500)).payload.retry_after_seconds).toBe(2)
+    expect(mapToolError(pe(3 * 86_400_000, "quota_exceeded")).payload.retry_after_seconds).toBe(MAX_RETRY_AFTER_SECONDS)
+    for (const none of [undefined, 0, -5, Number.NaN]) expect(mapToolError(pe(none)).payload).not.toHaveProperty("retry_after_seconds")
+    // the text block repeats it for clients that only read text
+    const text = errorResult(mapToolError(pe(60_000)).payload).content[0]
+    expect(text && "text" in text ? text.text : "").toContain("Thử lại sau 60 giây.")
+    expect(JSON.stringify(errorResult(mapToolError(pe()).payload).content)).not.toContain("Thử lại sau")
+  })
+
+  it("retry_after_seconds on MCP refusals: write limits are retryable after the wait, other errors unchanged", () => {
+    const limited = mapToolError(new McpToolError({ code: "write_rate_limited", messageVi: "x", logStatus: "rate_limited", retryAfterSec: 125.2 }))
+    expect(limited.payload).toMatchObject({ code: "write_rate_limited", retryable: true, retry_after_seconds: 126 })
+    const plain = mapToolError(new McpToolError({ code: "x", messageVi: "y" }))
+    expect(plain.payload.retryable).toBe(false)
+    expect(plain.payload).not.toHaveProperty("retry_after_seconds")
+  })
+
+  it("log status (F2): a platform rate limit / daily quota is logged as rate_limited", () => {
+    const status = (code: "rate_limited" | "quota_exceeded" | "upstream_error" | "permission_denied" | "action_required" | "invalid_request") =>
+      mapToolError(new ProviderError({ platform: "meta", code, message: "m", userMessageVi: "v" })).logStatus
+    expect(status("rate_limited")).toBe("rate_limited")
+    expect(status("quota_exceeded")).toBe("rate_limited")
+    expect(status("upstream_error")).toBe("error")
+    expect(status("permission_denied")).toBe("denied")
+    expect(status("action_required")).toBe("denied")
+    expect(status("invalid_request")).toBe("invalid_request")
   })
 
   it("internal errors: generic text for the AI, a params-free one-liner for the log", () => {

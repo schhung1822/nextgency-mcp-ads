@@ -123,6 +123,11 @@ export const notifications = {
         "Cách xử lý: mở Ads MCP → Kết nối → chọn kết nối → Thay token trước khi hết hạn.",
       fixInvalid:
         "Cách xử lý: mở Ads MCP → Kết nối → chọn kết nối → Kiểm tra lại hoặc Thay token. MCP dùng kết nối này đang không gọi được nền tảng.",
+      /** D6: Meta code 31 - token still valid, creating / editing ads blocked until the owner verifies */
+      actionRequired: (platform: string) => `${platform} yêu cầu xác thực tài khoản`,
+      adAccount: "Tài khoản QC",
+      fixActionRequired:
+        "Cách xử lý: người sở hữu token đăng nhập Trình quản lý quảng cáo và làm theo yêu cầu xác thực của Meta. Không cần thay token. Trong lúc chờ, MCP vẫn đọc được số liệu nhưng không tạo/sửa được quảng cáo.",
     },
     update: {
       available: "Có bản cập nhật mới",

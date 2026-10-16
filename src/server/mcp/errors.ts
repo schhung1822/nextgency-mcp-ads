@@ -20,6 +20,8 @@ export class McpToolError extends Error {
   readonly hint?: string
   readonly logStatus: CallLogStatus
   readonly details?: Record<string, unknown>
+  /** seconds the caller should wait before retrying (write_rate_limited / write_cooldown) - returned as retry_after_seconds */
+  readonly retryAfterSec?: number
 
   constructor(args: {
     code: string
@@ -27,6 +29,7 @@ export class McpToolError extends Error {
     hint?: string
     logStatus?: CallLogStatus
     details?: Record<string, unknown>
+    retryAfterSec?: number
   }) {
     super(args.messageVi)
     this.name = "McpToolError"
@@ -35,6 +38,7 @@ export class McpToolError extends Error {
     this.hint = args.hint
     this.logStatus = args.logStatus ?? "error"
     this.details = args.details
+    this.retryAfterSec = retryAfterSeconds(args.retryAfterSec) ?? undefined
   }
 }
 
@@ -62,6 +66,17 @@ export interface ToolErrorPayload {
   platform_error: PlatformErrorInfo | null
   hint: string | null
   retryable: boolean
+  /** whole seconds to wait before retrying - only present when known (platform Retry-After, MCP write limits) */
+  retry_after_seconds?: number
+}
+
+/** Longest retry_after_seconds returned (a TikTok daily quota waits until the next UTC midnight). */
+export const MAX_RETRY_AFTER_SECONDS = 86_400
+
+/** A positive whole number of seconds (rounded up, capped at MAX_RETRY_AFTER_SECONDS) or null. */
+export function retryAfterSeconds(v: number | null | undefined): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return null
+  return Math.min(Math.ceil(v), MAX_RETRY_AFTER_SECONDS)
 }
 
 export interface MappedError {
@@ -82,6 +97,14 @@ const PROVIDER_HINTS: Partial<Record<string, string>> = {
   unsupported: "Thao tác này không có trên nền tảng/tài khoản này.",
 }
 
+/** mcp_call_logs status of a platform error (a platform rate limit / quota is "rate_limited", like the MCP limits). */
+function providerLogStatus(code: string): CallLogStatus {
+  if (code === "permission_denied" || code === "action_required") return "denied"
+  if (code === "invalid_request") return "invalid_request"
+  if (code === "rate_limited" || code === "quota_exceeded") return "rate_limited"
+  return "error"
+}
+
 /**
  * Map anything thrown by a tool handler to a tool error payload. Never leaks internals: every text that reaches
  * the AI is redacted (provider messages can echo tokens / signed URLs).
@@ -95,7 +118,9 @@ export function mapToolError(e: unknown): MappedError {
         platform: null,
         platform_error: null,
         hint: e.hint ? redactString(e.hint) : null,
-        retryable: false,
+        // write_rate_limited / write_cooldown: nothing ran, the same call can be retried after the wait
+        retryable: e.retryAfterSec !== undefined,
+        ...(e.retryAfterSec !== undefined ? { retry_after_seconds: e.retryAfterSec } : {}),
         ...(e.details ? { details: e.details } : {}),
       },
       logStatus: e.logStatus,
@@ -106,6 +131,7 @@ export function mapToolError(e: unknown): MappedError {
   if (isProviderError(e)) {
     const j = e.toJSON()
     const up = j.upstream
+    const retryAfter = retryAfterSeconds(j.retry_after_seconds)
     const platformError: PlatformErrorInfo | null = up
       ? {
           code: up.code ?? null,
@@ -124,8 +150,9 @@ export function mapToolError(e: unknown): MappedError {
         platform_error: platformError,
         hint: redactString(j.hint ?? PROVIDER_HINTS[e.code] ?? "").slice(0, 500) || null,
         retryable: j.retryable,
+        ...(retryAfter !== null ? { retry_after_seconds: retryAfter } : {}),
       },
-      logStatus: e.code === "permission_denied" || e.code === "action_required" ? "denied" : e.code === "invalid_request" ? "invalid_request" : "error",
+      logStatus: providerLogStatus(e.code),
       logMessage: redactString(`${e.message}${up?.message ? ` | ${up.message}` : ""}`).slice(0, 2000),
       upstreamRequestId: up?.requestId ?? null,
     }

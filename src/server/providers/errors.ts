@@ -86,6 +86,9 @@ export class ProviderError extends Error {
       hint: this.hint,
       retryable: this.retryable,
       upstream: this.upstream,
+      /** whole seconds to wait before retrying (rounded up), null when the platform did not say */
+      retry_after_seconds:
+        this.retryAfterMs != null && Number.isFinite(this.retryAfterMs) && this.retryAfterMs > 0 ? Math.ceil(this.retryAfterMs / 1000) : null,
     }
   }
 }
@@ -109,6 +112,26 @@ export function withErrorAudit(e: unknown, platform: Platform, audit: ProviderEr
     cause: pe?.cause ?? e,
     audit,
     toolCode: pe?.toolCode,
+  })
+}
+
+/**
+ * The same provider error (every field kept, incl. audit / retry-after / cause) with a Vietnamese suffix appended to
+ * the user message, e.g. the connection + ad account names (B6). The suffix is shown to the AI: callers sanitise it.
+ */
+export function withUserMessage(e: ProviderError, suffixVi: string): ProviderError {
+  return new ProviderError({
+    platform: e.platform,
+    code: e.code,
+    message: e.message,
+    userMessageVi: `${e.userMessageVi}${suffixVi}`,
+    retryable: e.retryable,
+    hint: e.hint,
+    upstream: e.upstream,
+    retryAfterMs: e.retryAfterMs,
+    cause: e.cause,
+    audit: e.audit,
+    toolCode: e.toolCode,
   })
 }
 

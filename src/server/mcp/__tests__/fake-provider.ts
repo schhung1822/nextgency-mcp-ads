@@ -8,7 +8,9 @@ import {
   type Capability,
   type CapabilityMode,
   type MediaRef,
+  type MutationOptions,
   type MutationResult,
+  type ObjectLevel,
   type Platform,
   type ProviderContext,
   type ReportRow,
@@ -18,7 +20,8 @@ export interface FakeObject {
   id: string
   level: "campaign" | "ad_group" | "ad"
   name: string
-  status: "active" | "paused"
+  /** "archived" only through archiveObjects (Meta fake) */
+  status: "active" | "paused" | "archived"
   parentId: string | null
   budget?: { type: "daily" | "lifetime"; amount: number; level: "campaign" | "ad_group" } | null
   /** ISO flight (campaign: start/stop time, ad group: start/end time) */
@@ -41,7 +44,67 @@ export interface FakeState {
   failingAccounts: Set<string>
   /** merged into the uploadMedia result (e.g. { processing: true }) */
   uploadOverride?: Partial<MediaRef>
+  /** queued one-shot failures (failNext) - consumed in order by the matching fake method */
+  failures: FakeFailure[]
 }
+
+/** Fake provider methods a queued failure can target ("extension" = the run() of any fake extension tool). */
+export type FakeMethod =
+  | "getReport"
+  | "listObjects"
+  | "getObject"
+  | "setStatus"
+  | "archiveObjects"
+  | "updateBudget"
+  | "updateObject"
+  | "copyObject"
+  | "deleteObject"
+  | "uploadMedia"
+  | "lookup"
+  | "extension"
+
+export interface FailNextOptions {
+  /**
+   * Which calls fail: "execute" (default) = only real writes (opts.dryRun not set - the platform POST), "dryRun" = only
+   * previews, "any" = every call. Read methods (getReport, listObjects, getObject, lookup, uploadMedia) have no dryRun:
+   * they always match unless "dryRun" is given.
+   */
+  when?: "execute" | "dryRun" | "any"
+  /** how many matching calls fail (default 1) */
+  times?: number
+  /** only calls on this ad account (external id); default any account */
+  account?: string
+}
+
+export interface FakeFailure {
+  platform: Platform
+  method: FakeMethod
+  /** thrown as is; a function is called on every failure (fresh error instance per call) */
+  error: unknown
+  when: "execute" | "dryRun" | "any"
+  remaining: number
+  account?: string
+}
+
+/**
+ * Queue a failure: the next matching call of `method` on the `platform` fake throws `error` (before recording an
+ * execution or changing state), e.g.
+ *
+ *   failNext(state, "tiktok", "setStatus", new ProviderError({ platform: "tiktok", code: "rate_limited", ... }))
+ *
+ * World exposes the same as `w.failNext(platform, method, error, opts)`; World.reset() clears the queue.
+ */
+export function failNext(
+  state: FakeState,
+  platform: Platform,
+  method: FakeMethod,
+  error: unknown,
+  opts: FailNextOptions = {}
+): void {
+  state.failures.push({ platform, method, error, when: opts.when ?? "execute", remaining: opts.times ?? 1, account: opts.account })
+}
+
+const NO_DRY_RUN_METHODS: ReadonlySet<FakeMethod> = new Set(["getReport", "listObjects", "getObject", "lookup", "uploadMedia"])
 
 const CAPS: Record<Capability, CapabilityMode> = {
   report: "native",
@@ -86,6 +149,21 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
     }
     return o
   }
+  /** throw the first queued failure matching this call (see failNext) */
+  const maybeFail = (method: FakeMethod, ctx: ProviderContext, dryRun?: boolean) => {
+    const noDryRun = NO_DRY_RUN_METHODS.has(method)
+    const i = state.failures.findIndex(
+      (f) =>
+        f.platform === platform &&
+        f.method === method &&
+        (!f.account || f.account === ctx.account.externalId) &&
+        (f.when === "any" || (f.when === "dryRun" ? !noDryRun && Boolean(dryRun) : noDryRun || !dryRun))
+    )
+    if (i < 0) return
+    const f = state.failures[i]!
+    if (--f.remaining <= 0) state.failures.splice(i, 1)
+    throw typeof f.error === "function" ? (f.error as () => unknown)() : f.error
+  }
   const record = (op: string, ctx: ProviderContext, args: unknown, idem?: string) => {
     state.executions.push({ op, account: ctx.account.externalId, args, idem })
     state.credentialsSeen.push(ctx.credentials)
@@ -106,6 +184,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
         input: z.object({ topic: z.string().max(50) }),
         write: false,
         async run(ctx, input) {
+          maybeFail("extension", ctx)
           return { topic: input.topic, account: ctx.account.externalId }
         },
       },
@@ -117,6 +196,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
         input: z.object({ name: z.string().max(100) }),
         write: true,
         async run(ctx, input, opts): Promise<MutationResult> {
+          maybeFail("extension", ctx, opts.dryRun)
           if (!opts.dryRun) record("ext_create", ctx, input, opts.idempotencyKey)
           return {
             preview: Boolean(opts.dryRun),
@@ -145,6 +225,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
           ...(input.bid ? [{ kind: "bid" as const, amount: input.bid, field: "bid" }] : []),
         ],
         async run(ctx, input: { name: string }, opts): Promise<MutationResult> {
+          maybeFail("extension", ctx, opts.dryRun)
           if (!opts.dryRun) record("ext_create_adgroup", ctx, input, opts.idempotencyKey)
           return {
             preview: Boolean(opts.dryRun),
@@ -162,6 +243,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
         input: z.object({ name: z.string().max(100), budget: z.number().optional() }),
         write: true,
         async run(ctx, input, opts): Promise<MutationResult> {
+          maybeFail("extension", ctx, opts.dryRun)
           if (!opts.dryRun) record("ext_undeclared", ctx, input, opts.idempotencyKey)
           return { preview: Boolean(opts.dryRun), changes: [], warnings: [] }
         },
@@ -177,6 +259,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
     },
     async getReport(ctx, q) {
       state.credentialsSeen.push(ctx.credentials)
+      maybeFail("getReport", ctx)
       if (state.failingAccounts.has(ctx.account.externalId)) {
         throw new ProviderError({
           platform,
@@ -209,6 +292,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       return { rows: page, nextCursor: next, currency: ctx.account.currency, timezone: ctx.account.timezone, warnings: [] }
     },
     async listObjects(ctx, q) {
+      maybeFail("listObjects", ctx)
       const items = objectsOf(ctx)
         .filter((o) => o.level === q.level && (!q.parentId || o.parentId === q.parentId))
         .map((o) => summaryOf(o, ctx.account.currency))
@@ -220,6 +304,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       }
     },
     async getObject(ctx, _level, id, opts) {
+      maybeFail("getObject", ctx)
       if (id === "auth_fail") {
         throw new ProviderError({
           platform,
@@ -238,6 +323,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       return toDetail(o)
     },
     async setStatus(ctx, level, ids, status, opts) {
+      maybeFail("setStatus", ctx, opts?.dryRun)
       const changes = ids.map((id) => {
         const o = find(ctx, id)
         return { objectId: id, objectName: o.name, level, field: "status", before: o.status, after: status }
@@ -252,7 +338,28 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       }
       return { preview: Boolean(opts?.dryRun), changes, warnings: [] }
     },
+    // Meta is the only platform with an archive state (AdsProvider.archiveObjects absent elsewhere)
+    ...(platform === "meta"
+      ? {
+          async archiveObjects(ctx: ProviderContext, level: ObjectLevel, ids: string[], opts?: MutationOptions): Promise<MutationResult> {
+            maybeFail("archiveObjects", ctx, opts?.dryRun)
+            const targets = ids.map((id) => find(ctx, id))
+            const todo = targets.filter((o) => o.status !== "archived")
+            const warnings = targets.filter((o) => o.status === "archived").map((o) => `${o.id} đã được lưu trữ từ trước - bỏ qua.`)
+            const changes = todo.map((o) => ({ objectId: o.id, objectName: o.name, level, field: "status", before: o.status.toUpperCase(), after: "ARCHIVED" }))
+            if (!opts?.dryRun && todo.length) {
+              record("archive", ctx, { ids: todo.map((o) => o.id) }, opts?.idempotencyKey)
+              for (const o of todo) {
+                o.status = "archived"
+                o.configuredStatus = "ARCHIVED"
+              }
+            }
+            return { preview: Boolean(opts?.dryRun), changes, warnings }
+          },
+        }
+      : {}),
     async updateBudget(ctx, u, opts) {
+      maybeFail("updateBudget", ctx, opts?.dryRun)
       const o = find(ctx, u.id)
       const before = o.budget?.amount ?? null
       if (!opts?.dryRun) {
@@ -267,6 +374,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       }
     },
     async updateObject(ctx, u, opts) {
+      maybeFail("updateObject", ctx, opts?.dryRun)
       const o = find(ctx, u.id)
       if (!opts?.dryRun) {
         record("update_object", ctx, u, opts?.idempotencyKey)
@@ -281,6 +389,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       }
     },
     async copyObject(ctx, r, opts) {
+      maybeFail("copyObject", ctx, opts?.dryRun)
       find(ctx, r.id)
       if (!opts?.dryRun) record("copy", ctx, r, opts?.idempotencyKey)
       return {
@@ -292,6 +401,7 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       }
     },
     async deleteObject(ctx, level, id, opts) {
+      maybeFail("deleteObject", ctx, opts?.dryRun)
       const o = find(ctx, id)
       if (!opts?.dryRun) {
         record("delete", ctx, { level, id }, opts?.idempotencyKey)
@@ -303,15 +413,17 @@ export function createFakeProvider(platform: Platform, state: FakeState): AdsPro
       return { preview: Boolean(opts?.dryRun), changes: [{ objectId: id, objectName: o.name, level, field: "status", before: o.status, after: "deleted" }], warnings: [] }
     },
     async uploadMedia(ctx, r) {
+      maybeFail("uploadMedia", ctx)
       record("upload", ctx, r)
       return { type: r.type, id: "img_1", url: null, ...state.uploadOverride }
     },
-    async lookup() {
+    async lookup(ctx) {
+      maybeFail("lookup", ctx)
       return { items: [{ id: "p1", name: "Page 1" }], warnings: [] }
     },
   }
 }
 
 export function newFakeState(): FakeState {
-  return { objects: new Map(), spend: new Map(), executions: [], credentialsSeen: [], failingAccounts: new Set() }
+  return { objects: new Map(), spend: new Map(), executions: [], credentialsSeen: [], failingAccounts: new Set(), failures: [] }
 }

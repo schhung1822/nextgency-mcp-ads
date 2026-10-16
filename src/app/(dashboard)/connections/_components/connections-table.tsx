@@ -137,8 +137,20 @@ function buildColumns(isAdmin: boolean) {
     col.accessor("status", {
       header: m.list.colStatus,
       cell: ({ row }) => (
-        <span title={statusTooltip(row.original)}>
-          <StatusBadge kind="connection" status={row.original.status} />
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <span title={statusTooltip(row.original)}>
+            <StatusBadge kind="connection" status={row.original.status} />
+          </span>
+          {row.original.actionRequired && (
+            // D6: the platform asks the token owner to verify (Meta code 31) - reads still work
+            <span title={m.actionRequired.tooltip}>
+              <StatusBadge
+                kind="connection"
+                status="expiring"
+                label={m.actionRequired.badge}
+              />
+            </span>
+          )}
         </span>
       ),
     }),
@@ -524,11 +536,19 @@ export function ConnectionsTable({
                             {r.name}
                           </span>
                         </span>
-                        <StatusBadge
-                          kind="connection"
-                          status={r.status}
-                          className="shrink-0"
-                        />
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <StatusBadge kind="connection" status={r.status} />
+                          {r.actionRequired && (
+                            // D6: Meta asks the token owner to verify (reads still work)
+                            <span title={m.actionRequired.tooltip}>
+                              <StatusBadge
+                                kind="connection"
+                                status="expiring"
+                                label={m.actionRequired.badge}
+                              />
+                            </span>
+                          )}
+                        </span>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
                         <span>

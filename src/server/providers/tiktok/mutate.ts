@@ -15,11 +15,14 @@ import type {
   MutationOptions,
   MutationResult,
   ObjectLevel,
+  CreativeUpdate,
   ObjectUpdate,
   ProviderContext,
   StartedSpendReservation,
   TargetStatus,
 } from "../types"
+import { UNSAFE_TEXT_CHARS } from "../../../lib/text-safety"
+import { messagingGroupOf } from "./messaging"
 import {
   apiMoney,
   automationType,
@@ -803,6 +806,8 @@ export function buildAdUpdateBody(advertiserId: string, current: Raw, changes: R
     Object.assign(creative, changes)
   } else {
     for (const k of AD_UPDATE_CREATIVE_FIELDS) {
+      // a new fixed CTA: TikTok ignores call_to_action when call_to_action_id (dynamic CTA portfolio) is also sent
+      if (k === "call_to_action_id" && "call_to_action" in changes) continue
       const v = k in changes ? changes[k] : current[k]
       if (v === undefined || v === null) continue
       creative[k] = v
@@ -831,6 +836,154 @@ export function smartPlusLandingPages(current: unknown, url: string): { list: Ra
   }
 }
 
+// ---------------------------------------------------------------------------
+// Ad content (ads_update_object tiktok_creative → ObjectUpdate.changes.creative), /ad/update/ doc 1739953405142018
+// ---------------------------------------------------------------------------
+
+/**
+ * Creative fields /ad/update/ cannot set (absent from its request: messaging welcome message / event set, call ads'
+ * phone number). A FULL update (fields outside patch_update) may reset them, so it is refused when the ad has one.
+ */
+export const AD_UPDATE_UNSAFE_FIELDS = [
+  "auto_message_id",
+  "tracking_message_event_set_id",
+  "phone_region_code",
+  "phone_region_calling_code",
+  "phone_number",
+] as const
+
+export const AD_REVIEW_WARNING = "TikTok sẽ duyệt lại quảng cáo sau khi đổi nội dung; trong lúc duyệt quảng cáo có thể ngừng phân phối."
+
+const EMOJI = /\p{Extended_Pictographic}/u
+const hasValue = (v: unknown) => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0)
+
+/** ad_text sent to TikTok: unsafe characters removed, one line, 1–100 characters, no emoji (TikTok refuses emoji). */
+export function cleanAdText(raw: string): string {
+  const s = raw.normalize("NFC").replace(UNSAFE_TEXT_CHARS, "").replace(/\s+/g, " ").trim()
+  if (!s) throw invalid("ad_text trống (sau khi bỏ ký tự điều khiển).")
+  if ([...s].length > 100) throw invalid("ad_text tối đa 100 ký tự.")
+  if (EMOJI.test(s)) throw invalid("ad_text không được chứa emoji (TikTok từ chối).")
+  return s
+}
+
+/**
+ * New ad content → /ad/update/ fields, checked against the CURRENT ad (Manual ad, not ACO / Smart+). The ad type never
+ * changes: a TikTok-post ad (Spark Ads, tiktok_item_id) only swaps its post; a video ad swaps video + cover; image /
+ * carousel ads swap images. Throws ProviderError invalid_request (Vietnamese) when a field does not fit the ad.
+ */
+export function planAdCreativeChange(current: Raw, cr: CreativeUpdate): { ch: Raw; warnings: string[] } {
+  const ch: Raw = {}
+  const warnings: string[] = []
+  const format = typeof current.ad_format === "string" ? current.ad_format : null
+  const sparkPost = hasValue(current.tiktok_item_id)
+  if (cr.tiktokItemId !== undefined) {
+    if (!sparkPost) {
+      throw invalid(
+        "Quảng cáo này không dùng bài đăng TikTok (Spark Ads từ bài đăng) - không đổi sang tiktok_item_id được (không đổi loại quảng cáo).",
+        "Đổi video bằng video_id, hoặc tạo quảng cáo Spark mới bằng tiktok_create_ads rồi tạm dừng quảng cáo cũ."
+      )
+    }
+    if (!/^\d{1,30}$/.test(cr.tiktokItemId)) throw invalid("tiktok_item_id phải là chuỗi số (id bài đăng TikTok).")
+    ch.tiktok_item_id = cr.tiktokItemId
+    warnings.push("Bài đăng mới phải thuộc cùng tài khoản TikTok (identity) của quảng cáo và còn được ủy quyền quảng cáo.")
+  }
+  if (cr.videoId !== undefined) {
+    if (sparkPost) {
+      throw invalid(
+        "Quảng cáo này dùng bài đăng TikTok (tiktok_item_id) - không đổi sang video tải lên được (không đổi loại quảng cáo).",
+        "Đổi bài bằng tiktok_item_id, hoặc tạo quảng cáo mới bằng tiktok_create_ads."
+      )
+    }
+    if (format !== "SINGLE_VIDEO" || !hasValue(current.video_id)) {
+      throw invalid(`Quảng cáo định dạng ${format ?? "không rõ"} không có video để thay.`, "Tạo quảng cáo video mới bằng tiktok_create_ads.")
+    }
+    if (!cr.imageIds || cr.imageIds.length !== 1) {
+      throw invalid("Đổi video cần kèm đúng 1 ảnh bìa mới trong image_ids (cùng tỉ lệ với video mới).", "Tải ảnh bìa bằng ads_upload_media.")
+    }
+    ch.video_id = cr.videoId
+  }
+  if (cr.imageIds !== undefined) {
+    const n = cr.imageIds.length
+    if (sparkPost) {
+      throw invalid("Quảng cáo dùng bài đăng TikTok lấy hình ảnh từ bài - không gửi image_ids được.", "Đổi bài bằng tiktok_item_id.")
+    }
+    if (format === "SINGLE_VIDEO") {
+      if (n !== 1) throw invalid("Quảng cáo video nhận đúng 1 ảnh bìa trong image_ids.")
+    } else if (format === "SINGLE_IMAGE") {
+      if (n !== 1) throw invalid("Quảng cáo ảnh đơn nhận đúng 1 ảnh trong image_ids.")
+    } else if (format === "CAROUSEL_ADS") {
+      if (n < 1 || n > 35) throw invalid("Quảng cáo carousel nhận 1–35 ảnh trong image_ids.")
+      warnings.push("Carousel: danh sách ảnh mới THAY TOÀN BỘ ảnh cũ (theo thứ tự image_ids).")
+    } else {
+      throw invalid(`Không đổi ảnh được cho quảng cáo định dạng ${format ?? "không rõ"}.`)
+    }
+    ch.image_ids = [...cr.imageIds]
+  }
+  if (cr.adText !== undefined) {
+    if (sparkPost) {
+      throw invalid(
+        "Quảng cáo dùng bài đăng TikTok (Spark Ads từ bài đăng) lấy chữ từ chú thích của bài - không đổi ad_text được.",
+        "Đổi bài bằng tiktok_item_id, hoặc sửa chú thích bài trên TikTok."
+      )
+    }
+    if (Array.isArray(current.ad_texts) && current.ad_texts.length > 0) {
+      throw invalid(
+        "Quảng cáo này dùng nhiều dòng chữ (ad_texts - Search Ads): TikTok bỏ qua ad_text khi có ad_texts.",
+        "Sửa chữ quảng cáo trong TikTok Ads Manager."
+      )
+    }
+    ch.ad_text = cleanAdText(cr.adText)
+  }
+  if (cr.callToAction !== undefined) {
+    if (!/^[A-Z][A-Z_]{1,39}$/.test(cr.callToAction)) {
+      throw invalid("call_to_action phải là mã CTA của TikTok, vd LEARN_MORE, SHOP_NOW, SIGN_UP, CONTACT_US, SEND_MESSAGE.")
+    }
+    ch.call_to_action = cr.callToAction
+    if (hasValue(current.call_to_action_id)) {
+      warnings.push("Quảng cáo đang dùng CTA động (call_to_action_id) - đổi sang 1 nút CTA cố định sẽ bỏ CTA động.")
+    }
+  }
+  if (!Object.keys(ch).length) throw invalid("tiktok_creative không có trường nào cần sửa.")
+  return { ch, warnings }
+}
+
+/**
+ * A FULL /ad/update/ (CTA / URL change) re-sends the whole creative. Refused when the ad holds fields the request
+ * cannot carry (AD_UPDATE_UNSAFE_FIELDS - they could be reset) and on TikTok direct-message ads (the welcome message
+ * cannot be re-sent). Instant-messaging-app ads keep the messaging rules of /ad/create/ (no CALL_NOW, TikTok builds the
+ * app link except IM_URL). Reads the ad group (messaging kind).
+ */
+async function assertFullAdUpdateSafe(tt: TT, current: Raw, ch: Raw, warnings: string[]): Promise<void> {
+  const what = Object.keys(ch).filter((k) => !AD_PATCH_FIELDS.has(k)).join(", ")
+  const unsafe = AD_UPDATE_UNSAFE_FIELDS.filter((k) => hasValue(current[k]))
+  if (unsafe.length) {
+    throw invalid(
+      `Đổi ${what} phải gửi lại toàn bộ creative, nhưng quảng cáo có ${unsafe.join(", ")} (quảng cáo nhắn tin / gọi điện) mà TikTok không cho gửi lại qua API - có thể bị mất. Để an toàn, MCP không sửa quảng cáo này.`,
+      "Chỉnh trong TikTok Ads Manager, hoặc tạo quảng cáo mới bằng tiktok_create_ads rồi tạm dừng quảng cáo cũ. Chữ / video / ảnh / bài đăng vẫn sửa được (cập nhật một phần)."
+    )
+  }
+  const group = messagingGroupOf(await fetchOne(tt, "ad_group", String(current.adgroup_id)))
+  if (!group) return
+  if (group.dm) {
+    throw invalid(
+      `Quảng cáo tin nhắn TikTok: đổi ${what} phải gửi lại toàn bộ creative và có thể làm mất lời chào (auto_message_id - TikTok không cho sửa qua API). Quảng cáo tin nhắn luôn dùng nút SEND_MESSAGE và không có URL đích.`,
+      "Chữ / video / ảnh / bài đăng vẫn sửa được. Muốn đổi khác: tạo quảng cáo mới bằng tiktok_create_ads rồi tạm dừng quảng cáo cũ."
+    )
+  }
+  if ("landing_page_url" in ch) {
+    if (group.appType !== "IM_URL") {
+      throw invalid(
+        `Nhóm nhắn tin qua ${group.appType ?? "ứng dụng"}: TikTok tự tạo đường dẫn tới ứng dụng từ cấu hình nhóm - không đổi URL đích của quảng cáo.`
+      )
+    }
+    if (!/^https:\/\//i.test(String(ch.landing_page_url))) throw invalid("Nhóm IM_URL: URL đích phải là link https.")
+  }
+  const cta = typeof ch.call_to_action === "string" ? ch.call_to_action : null
+  if (cta === "CALL_NOW") throw invalid("Quảng cáo nhắn tin qua ứng dụng không dùng call_to_action CALL_NOW (nên dùng SEND_MESSAGE).")
+  if (cta && cta !== "SEND_MESSAGE") warnings.push("Quảng cáo nhắn tin: nên dùng call_to_action SEND_MESSAGE (Gửi tin nhắn).")
+  if (group.appType === null) warnings.push("Không đọc được messaging_app_type của nhóm - chỉ kiểm tra các quy tắc chung của quảng cáo nhắn tin.")
+}
+
 function toScheduleTime(iso: string, field: string): string {
   try {
     return isoToTikTokTime(iso)
@@ -855,7 +1008,7 @@ export async function updateTikTokObject(
   }
 
   if (u.level === "campaign") {
-    reject(["startTime", "bidAmount", "finalUrl"])
+    reject(["startTime", "bidAmount", "finalUrl", "creative"])
     // GMV Max (C3): needs the admin switch; name / end time via /campaign/gmv_max/update/
     const found = (await fetchByIds(tt, "campaign", [u.id])).get(String(u.id)) ?? null
     const routed = await routeGmvMaxObjectUpdate(tt, u, found, opts)
@@ -875,7 +1028,7 @@ export async function updateTikTokObject(
   }
 
   if (u.level === "ad_group") {
-    reject(["finalUrl"])
+    reject(["finalUrl", "creative"])
     const current = await fetchOne(tt, "ad_group", u.id)
     assertNotLegacySmartPlus("ad_group", current, "sửa")
     const ch: Raw = {}
@@ -948,6 +1101,13 @@ export async function updateTikTokObject(
     }
     const name = objectName("ad", current)
     if (isUpgradedSmartPlus(current)) {
+      if (c.creative !== undefined) {
+        // creative_list / ad_text_list of /smart_plus/ad/update/ are replaced as a whole: risk of losing creatives
+        throw invalid(
+          "Quảng cáo Upgraded Smart+: MCP chưa sửa nội dung (chữ / CTA / video / ảnh / bài đăng) - TikTok thay toàn bộ danh sách creative khi sửa.",
+          "Chỉnh nội dung trong TikTok Ads Manager; tên và URL đích vẫn sửa được bằng ads_update_object."
+        )
+      }
       const spId = String(current.smart_plus_ad_id ?? current.ad_id_v2 ?? current.ad_id)
       const body: Raw = { advertiser_id: tt.advertiserId, smart_plus_ad_id: spId }
       const spWarnings: string[] = []
@@ -967,12 +1127,28 @@ export async function updateTikTokObject(
     if (current.is_aco === true) {
       throw invalid("Quảng cáo ACO/Smart Creative không sửa được qua /ad/update/.", "Chỉnh trong TikTok Ads Manager.")
     }
-    const { body, patch } = buildAdUpdateBody(tt.advertiserId, current, ch)
-    const warnings = patch
-      ? []
-      : ["Đổi URL đích cần gửi lại toàn bộ creative (TikTok không hỗ trợ cập nhật một phần cho trường này); quảng cáo sẽ được duyệt lại."]
+    const warnings: string[] = []
+    if (c.creative !== undefined) {
+      const plan = planAdCreativeChange(current, c.creative)
+      Object.assign(ch, plan.ch)
+      warnings.push(...plan.warnings)
+    }
     const changes = diffChanges(u.id, name, "ad", current, ch, Object.keys(ch))
-    if (!changes.length) return { preview: !!opts.dryRun, changes, warnings: ["Không có thay đổi nào so với hiện tại."] }
+    if (!changes.length) return { preview: !!opts.dryRun, changes, warnings: [...warnings, "Không có thay đổi nào so với hiện tại."] }
+    // send only what really changes: an unchanged CTA / URL must not force a full update
+    const changed = new Set(changes.map((x) => x.field))
+    // a new video always travels with its cover (TikTok requires image_ids with video_id), even an unchanged one
+    if (changed.has("video_id") && ch.image_ids !== undefined) changed.add("image_ids")
+    for (const k of Object.keys(ch)) if (!changed.has(k)) delete ch[k]
+    const { body, patch } = buildAdUpdateBody(tt.advertiserId, current, ch)
+    if (!patch) {
+      await assertFullAdUpdateSafe(tt, current, ch, warnings)
+      const full = Object.keys(ch).filter((k) => !AD_PATCH_FIELDS.has(k))
+      warnings.push(`Đổi ${full.join(", ")} cần gửi lại toàn bộ creative (TikTok không hỗ trợ cập nhật một phần cho trường này); quảng cáo sẽ được duyệt lại.`)
+    }
+    if (Object.keys(ch).some((k) => k !== "ad_name")) {
+      if (!warnings.some((w) => w.includes("duyệt lại"))) warnings.push(AD_REVIEW_WARNING)
+    }
     if (opts.dryRun) return { preview: true, changes, warnings }
     await ttPost(tt, "ad/update", body, { retries: IDEMPOTENT_RETRIES })
     return { preview: false, changes, warnings }

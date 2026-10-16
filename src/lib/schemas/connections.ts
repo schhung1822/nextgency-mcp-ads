@@ -132,6 +132,8 @@ export interface ConnectionListItem {
   accountCount: number
   enabledAccountCount: number
   owner: { id: string; email: string; name: string }
+  /** "Cần xác thực" (D6): the platform asks the account owner to act (Meta code 31); null = no live flag */
+  actionRequired: ActionRequiredDto | null
 }
 
 export interface AdAccountDto {
@@ -184,6 +186,74 @@ export interface McpUsage {
   /** null when the MCP belongs to someone else and the viewer is staff */
   name: string | null
   ownedByViewer: boolean
+}
+
+// ---------------------------------------------------------------------------
+// "Cần xác thực" flag (D6) - connections.meta.actionRequired. The token is still valid (reads work, status unchanged)
+// but the platform refuses creating / editing ads until the owner completes a verification on the platform.
+// Cleared by a successful MCP write on the connection, a token replacement, "Bỏ cảnh báo", or 7 days without a new
+// failure. Pure helpers: shared by the MCP layer, the services and the UI.
+// ---------------------------------------------------------------------------
+
+/** Key inside connections.meta (non-secret). */
+export const META_ACTION_REQUIRED_KEY = "actionRequired"
+/** A flag whose last failure is older than this is ignored (and removed on the next change). */
+export const ACTION_REQUIRED_TTL_MS = 7 * 24 * 60 * 60 * 1000
+/** At most this many ad accounts are remembered in one flag. */
+export const ACTION_REQUIRED_MAX_ACCOUNTS = 20
+
+/** Stored shape of connections.meta.actionRequired. */
+export interface ActionRequiredFlag {
+  /** ISO - first failure of this episode */
+  since: string
+  /** ISO - latest failure */
+  lastAt: string
+  platform: string
+  /** external ad account id of the latest failure (null: no account, e.g. a Facebook Page call) */
+  accountExternalId: string | null
+  /** external ad account ids that failed (latest first, <= ACTION_REQUIRED_MAX_ACCOUNTS) */
+  accounts: string[]
+  /** the platform's Vietnamese / user message (redacted, <= 300 characters) */
+  message?: string
+}
+
+export interface ActionRequiredDto {
+  since: string
+  lastAt: string
+  accounts: string[]
+  message: string | null
+}
+
+function isoOrNull(v: unknown): string | null {
+  return typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null
+}
+
+/** Parses a stored flag (meta[META_ACTION_REQUIRED_KEY]); null when absent, malformed or expired (> 7 days). */
+export function readActionRequired(raw: unknown, now: number = Date.now()): ActionRequiredFlag | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const v = raw as Record<string, unknown>
+  const lastAt = isoOrNull(v.lastAt) ?? isoOrNull(v.since)
+  const since = isoOrNull(v.since) ?? lastAt
+  if (!lastAt || !since) return null
+  if (now - Date.parse(lastAt) > ACTION_REQUIRED_TTL_MS) return null
+  const accounts = Array.isArray(v.accounts)
+    ? v.accounts.filter((x): x is string => typeof x === "string" && x.length > 0).slice(0, ACTION_REQUIRED_MAX_ACCOUNTS)
+    : []
+  return {
+    since,
+    lastAt,
+    platform: typeof v.platform === "string" ? v.platform : "",
+    accountExternalId: typeof v.accountExternalId === "string" ? v.accountExternalId : null,
+    accounts,
+    ...(typeof v.message === "string" && v.message ? { message: v.message } : {}),
+  }
+}
+
+/** DTO for pages / client components (no internal fields). */
+export function actionRequiredDtoOf(meta: unknown, now: number = Date.now()): ActionRequiredDto | null {
+  const raw = meta && typeof meta === "object" ? (meta as Record<string, unknown>)[META_ACTION_REQUIRED_KEY] : null
+  const f = readActionRequired(raw, now)
+  return f ? { since: f.since, lastAt: f.lastAt, accounts: f.accounts, message: f.message ?? null } : null
 }
 
 export interface ConnectionDetail extends ConnectionListItem {

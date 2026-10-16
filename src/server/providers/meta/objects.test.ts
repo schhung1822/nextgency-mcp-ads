@@ -150,3 +150,24 @@ describe("getMetaObject - #100 field fallback (v1.1.4 E4 guard)", () => {
     expect(m.calls).toHaveLength(2)
   })
 })
+
+describe("listMetaObjects: deleted / removed (B3)", () => {
+  it("only deleted/removed → clear invalid_request with a hint, zero calls to Meta", async () => {
+    const m = mockGraph([])
+    for (const statuses of [["deleted"], ["removed"], ["deleted", "removed"]] as const) {
+      await expect(listMetaObjects(providerCtx(), { level: "campaign", statuses: [...statuses], limit: 20 })).rejects.toMatchObject({
+        code: "invalid_request",
+        userMessageVi: expect.stringMatching(/không cho liệt kê đối tượng đã xoá/),
+        hint: expect.stringMatching(/ads_get_object.*ads_get_report/),
+      })
+    }
+    expect(m.calls).toHaveLength(0)
+  })
+
+  it("deleted mixed with other statuses → DELETED left out of effective_status, with a warning", async () => {
+    const m = mockGraph([["GET", "act_1001/ads", () => json({ data: [] })]])
+    const page = await listMetaObjects(providerCtx(), { level: "ad", statuses: ["active", "deleted", "archived"], limit: 20 })
+    expect(JSON.parse(m.calls[0].params.effective_status)).toEqual(["ACTIVE", "ARCHIVED"])
+    expect(page.warnings.join(" ")).toMatch(/đã bỏ deleted\/removed/)
+  })
+})

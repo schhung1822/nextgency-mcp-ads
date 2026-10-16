@@ -6,6 +6,7 @@ import { and, eq, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm"
 import { safeErrorForLog } from "@/server/audit/safe-error"
 import { db } from "@/server/db/client"
 import {
+  adAccounts,
   connections,
   mcpNotificationScopes,
   notificationChannels,
@@ -15,6 +16,7 @@ import {
 
 import { enqueueNotification } from "./enqueue"
 import {
+  buildConnectionActionRequiredMessage,
   buildConnectionHealthMessage,
   buildMcpWriteMessage,
   buildUpdateAvailableMessage,
@@ -149,6 +151,73 @@ export async function notifyConnectionHealth(args: {
   } catch (e) {
     console.error(
       `[notifications] connection health ${args.connectionId}: ${safeErrorForLog(e)}`
+    )
+  }
+}
+
+/**
+ * D6: the platform asks the account owner to verify (Meta code 31) - flag set by the MCP layer. Same recipients as
+ * connection health; stored as eventType connection_invalid (no new event type / migration) with its own dedupe key
+ * `conn:<id>:action_required:<YYYY-MM-DD>` → at most 1 message per connection per Vietnamese day.
+ */
+export async function notifyConnectionActionRequired(args: {
+  connectionId: string
+  accountExternalId?: string | null
+  message?: string | null
+  now?: Date
+}): Promise<void> {
+  try {
+    const [conn] = await db
+      .select({
+        id: connections.id,
+        name: connections.name,
+        platform: connections.platform,
+        ownerId: connections.ownerId,
+        ownerEmail: userTable.email,
+      })
+      .from(connections)
+      .innerJoin(userTable, eq(userTable.id, connections.ownerId))
+      .where(
+        and(
+          eq(connections.id, args.connectionId),
+          isNull(connections.deletedAt)
+        )
+      )
+      .limit(1)
+    if (!conn) return
+    const channelIds = await connectionHealthChannelIds(conn.ownerId)
+    if (channelIds.length === 0) return
+    let accountName: string | null = null
+    if (args.accountExternalId) {
+      const [acc] = await db
+        .select({ name: adAccounts.name })
+        .from(adAccounts)
+        .where(
+          and(
+            eq(adAccounts.connectionId, conn.id),
+            eq(adAccounts.externalId, args.accountExternalId)
+          )
+        )
+        .limit(1)
+      accountName = acc?.name ?? null
+    }
+    await enqueueNotification({
+      channelIds,
+      source: "system",
+      eventType: "connection_invalid",
+      dedupeKey: `conn:${conn.id}:action_required:${vnDay(args.now ?? new Date())}`,
+      text: buildConnectionActionRequiredMessage({
+        connectionName: conn.name,
+        platform: conn.platform,
+        ownerEmail: conn.ownerEmail,
+        accountName,
+        accountExternalId: args.accountExternalId ?? null,
+        message: args.message,
+      }),
+    })
+  } catch (e) {
+    console.error(
+      `[notifications] connection action required ${args.connectionId}: ${safeErrorForLog(e)}`
     )
   }
 }

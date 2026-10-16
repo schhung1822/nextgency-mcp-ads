@@ -49,6 +49,7 @@ import {
 } from "@/lib/schemas/connections"
 import {
   deleteConnectionAction,
+  dismissActionRequiredAction,
   syncConnectionAccountsAction,
   testConnectionAction,
   toggleAdAccountsAction,
@@ -141,6 +142,13 @@ export function ConnectionDetailView({
           <>
             <PlatformBadge platform={detail.platform} />
             <StatusBadge kind="connection" status={detail.status} />
+            {detail.actionRequired && (
+              <StatusBadge
+                kind="connection"
+                status="expiring"
+                label={m.actionRequired.badge}
+              />
+            )}
           </>
         }
         backHref="/connections"
@@ -200,6 +208,8 @@ export function ConnectionDetailView({
             </AlertDescription>
           </Alert>
         )}
+
+        {detail.actionRequired && <ActionRequiredAlert detail={detail} />}
 
         <div className="grid items-start gap-5 xl:grid-cols-3">
           <AccountsCard
@@ -346,6 +356,77 @@ function OverviewCard({ detail }: { detail: ConnectionDetail }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** D6 "Cần xác thực": what Meta asked, which ad accounts, how to fix it + "Bỏ cảnh báo" (owner / admin). */
+function ActionRequiredAlert({ detail }: { detail: ConnectionDetail }) {
+  const router = useRouter()
+  const [pending, setPending] = React.useState(false)
+  const flag = detail.actionRequired
+  if (!flag) return null
+  const names = new Map(detail.accounts.map((a) => [a.externalId, a.name]))
+
+  const dismiss = async () => {
+    setPending(true)
+    const res = await dismissActionRequiredAction({ connectionId: detail.id })
+    setPending(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(res.message ?? m.actionRequired.dismissed)
+    router.refresh()
+  }
+
+  return (
+    <Alert className="border-warning/40">
+      <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} aria-hidden />
+      <AlertTitle>{m.actionRequired.title}</AlertTitle>
+      <AlertDescription className="flex flex-col gap-2">
+        <p>{m.actionRequired.body}</p>
+        {flag.message && (
+          <p className="border-l-2 pl-3 break-words">
+            <span className="font-medium text-foreground">
+              {m.actionRequired.platformMessage}:
+            </span>{" "}
+            {flag.message}
+          </p>
+        )}
+        {flag.accounts.length > 0 && (
+          <div>
+            <span className="font-medium text-foreground">
+              {m.actionRequired.accounts}
+            </span>
+            <ul className="mt-1 ml-4 list-disc space-y-0.5">
+              {flag.accounts.map((id) => (
+                <li key={id} className="break-words">
+                  {names.get(id) ?? id}{" "}
+                  <span className="font-mono text-xs">({id})</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="tabular-nums">
+          {m.actionRequired.since(formatDateTime(flag.since))}
+          {flag.lastAt !== flag.since &&
+            ` · ${m.actionRequired.lastAt(formatDateTime(flag.lastAt))}`}
+        </p>
+        <p>{m.actionRequired.howTo}</p>
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void dismiss()}
+            disabled={pending}
+          >
+            {pending && <Spinner aria-hidden />}
+            {m.actionRequired.dismiss}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
   )
 }
 

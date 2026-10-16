@@ -167,6 +167,11 @@ const CREATIVE_ERRORS: Record<number, { vi: string; hint: string }> = {
     hint: "Gia hạn end_time của nhóm quảng cáo ra tương lai bằng ads_update_object (level=ad_group, end_time ISO-8601 có múi giờ) rồi thử lại.",
   },
   1487056: ENDED,
+  // [H] error reference: "This Ad Account has already too many archived adgroups."
+  1487990: {
+    vi: "Tài khoản quảng cáo đã có quá nhiều đối tượng được lưu trữ - Meta không cho lưu trữ thêm.",
+    hint: "Xoá bớt đối tượng đã lưu trữ cũ (ads_delete_object) hoặc dùng paused thay cho lưu trữ.",
+  },
   1487566: ENDED,
   1885998: {
     vi: "Creative không khớp kiểu nhóm quảng cáo (nhóm dùng Dynamic Creative cần creative nhiều phương án và ngược lại).",

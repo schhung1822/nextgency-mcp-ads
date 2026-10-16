@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest"
 import { connectionStatus as cs } from "@/lib/i18n/vi/connection-status"
 
 import {
+  ACTION_REQUIRED_TTL_MS,
+  actionRequiredDtoOf,
+  readActionRequired,
   CONNECTION_PLATFORMS,
   createConnectionSchema,
   defaultOffSummary,
@@ -214,5 +217,35 @@ describe("statusTooltip", () => {
     )
     expect(statusTooltip({ statusMessage: null, statusHint: "Thay token." })).toBe("Thay token.")
     expect(statusTooltip({ statusMessage: null, statusHint: null })).toBeUndefined()
+  })
+})
+
+describe("readActionRequired / actionRequiredDtoOf (D6)", () => {
+  const now = Date.parse("2026-10-16T10:00:00Z")
+  const flag = {
+    since: "2026-10-15T10:00:00.000Z",
+    lastAt: "2026-10-16T09:00:00.000Z",
+    platform: "meta",
+    accountExternalId: "act_1",
+    accounts: ["act_1", 2, "", "act_2"],
+    message: "Hãy xác thực",
+  }
+  it("parses a stored flag (drops non-string accounts)", () => {
+    expect(readActionRequired(flag, now)).toEqual({ ...flag, accounts: ["act_1", "act_2"] })
+    expect(actionRequiredDtoOf({ actionRequired: flag, other: 1 }, now)).toEqual({
+      since: flag.since,
+      lastAt: flag.lastAt,
+      accounts: ["act_1", "act_2"],
+      message: "Hãy xác thực",
+    })
+  })
+  it("absent, malformed or older than 7 days (from the last failure) → null", () => {
+    expect(actionRequiredDtoOf({}, now)).toBeNull()
+    expect(actionRequiredDtoOf(null, now)).toBeNull()
+    expect(readActionRequired("yes", now)).toBeNull()
+    expect(readActionRequired([flag], now)).toBeNull()
+    expect(readActionRequired({ since: "not a date" }, now)).toBeNull()
+    expect(readActionRequired(flag, Date.parse(flag.lastAt) + ACTION_REQUIRED_TTL_MS + 1)).toBeNull()
+    expect(readActionRequired(flag, Date.parse(flag.lastAt) + ACTION_REQUIRED_TTL_MS)).not.toBeNull()
   })
 })

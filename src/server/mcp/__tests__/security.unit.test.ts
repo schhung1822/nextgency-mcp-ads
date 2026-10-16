@@ -104,7 +104,9 @@ describe("H1 money guardrails", () => {
   it("settings parse the new optional fields (snake_case) with safe defaults", () => {
     const p = parseMcpSettings({ max_bid: { vnd: 10_000 }, max_lifetime_budget: { USD: 500 }, write_rate_limit_per_10min: 5 })
     expect(p).toMatchObject({ maxBid: { VND: 10_000 }, maxLifetimeBudget: { USD: 500 }, writeRateLimitPer10Min: 5 })
-    expect(parseMcpSettings({ write_rate_limit_per_10min: 0 }).writeRateLimitPer10Min).toBe(20)
+    // out of range → clamped to the form bounds (v1.1.6 B8), not a value looser than what the form allows
+    expect(parseMcpSettings({ write_rate_limit_per_10min: 0 }).writeRateLimitPer10Min).toBe(1)
+    expect(parseMcpSettings({ write_rate_limit_per_10min: "5" }).writeRateLimitPer10Min).toBe(20)
   })
 })
 

@@ -79,6 +79,34 @@ const httpUrl = z
     }
   }, "URL http(s) hợp lệ")
 
+/** ads_update_object input `tiktok_creative` (TikTok ads only) → ObjectUpdate.changes.creative */
+export const tiktokCreativeSchema = z
+  .object({
+    ad_text: z.string().trim().min(1).max(100).optional().describe("Chữ quảng cáo mới (≤ 100 ký tự, không emoji)"),
+    call_to_action: z
+      .string()
+      .regex(/^[A-Z][A-Z_]{1,39}$/, "Mã CTA TikTok, vd LEARN_MORE")
+      .optional()
+      .describe("Nút CTA mới: LEARN_MORE, SHOP_NOW, SIGN_UP, ORDER_NOW, CONTACT_US, SEND_MESSAGE…"),
+    tiktok_item_id: z
+      .string()
+      .regex(/^\d{1,30}$/, "Id bài đăng TikTok (chuỗi số)")
+      .optional()
+      .describe("Bài đăng TikTok mới - chỉ cho quảng cáo đang dùng bài đăng (Spark Ads)"),
+    video_id: z
+      .string()
+      .regex(/^[A-Za-z0-9_.-]{1,64}$/, "video_id không hợp lệ")
+      .optional()
+      .describe("Video mới (ads_upload_media) - chỉ cho quảng cáo video; bắt buộc kèm 1 ảnh bìa trong image_ids"),
+    image_ids: z
+      .array(z.string().regex(/^[A-Za-z0-9_./-]{1,128}$/, "image_id không hợp lệ"))
+      .min(1)
+      .max(35)
+      .optional()
+      .describe("Ảnh mới: video = đúng 1 ảnh bìa; ảnh đơn = 1 ảnh; carousel = 1–35 ảnh (thay toàn bộ)"),
+  })
+  .strict()
+
 export function register(server: Parameters<typeof registerToolSpec>[0], tctx: ToolContext) {
   const platforms = grantPlatformsWith(tctx.grant, "update")
   if (platforms.length === 0) return
@@ -86,7 +114,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Sửa thông tin đối tượng",
     description:
-      "Dùng khi cần đổi tên, lịch chạy (start_time/end_time, ISO 8601 có múi giờ), giá thầu (bid_amount, đơn vị chính của tiền tệ tài khoản) hoặc URL đích (final_url) của một chiến dịch, nhóm quảng cáo, quảng cáo hoặc keyword. Gọi ads_list_accounts và ads_get_object trước để xem giá trị hiện tại. Đổi ngân sách dùng ads_update_budget; bật/tắt dùng ads_set_status. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.",
+      "Dùng khi cần đổi tên, lịch chạy (start_time/end_time, ISO 8601 có múi giờ), giá thầu (bid_amount, đơn vị chính của tiền tệ tài khoản) hoặc URL đích (final_url) của một chiến dịch, nhóm quảng cáo, quảng cáo hoặc keyword. Quảng cáo TikTok (level=ad) còn sửa được nội dung qua tiktok_creative: ad_text, call_to_action, tiktok_item_id (đổi bài đăng của quảng cáo Spark), video_id (kèm 1 ảnh bìa trong image_ids), image_ids - không đổi loại quảng cáo (bài đăng ↔ video), TikTok sẽ duyệt lại quảng cáo; quảng cáo tin nhắn TikTok giữ nút SEND_MESSAGE, không đổi được lời chào; quảng cáo Smart+ / ACO sửa nội dung trong TikTok Ads Manager. Meta sửa nội dung bằng meta_update_ad_creative. Gọi ads_list_accounts và ads_get_object trước để xem giá trị hiện tại. Đổi ngân sách dùng ads_update_budget; bật/tắt dùng ads_set_status. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.",
     kind: "write",
     annotations: UPDATE_ANNOTATIONS,
     input: z.object({
@@ -99,6 +127,9 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       end_time: isoDateTime.nullable().optional().describe("null = bỏ ngày kết thúc"),
       bid_amount: z.number().positive().max(1e12).nullable().optional().describe("null = bỏ giá thầu thủ công"),
       final_url: httpUrl.optional(),
+      tiktok_creative: tiktokCreativeSchema
+        .optional()
+        .describe("Chỉ TikTok, level=ad: nội dung mới của quảng cáo (chỉ truyền trường cần đổi). TikTok sẽ duyệt lại quảng cáo."),
       ...writeFields,
     }),
     output: writeOutputSchema,
@@ -112,8 +143,35 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       if (args.end_time !== undefined) changes.endTime = args.end_time
       if (args.bid_amount !== undefined) changes.bidAmount = args.bid_amount
       if (args.final_url !== undefined) changes.finalUrl = args.final_url
+      if (args.tiktok_creative !== undefined) {
+        if (account.platform !== "tiktok" || args.level !== "ad") {
+          throw invalid(
+            "unsupported_field",
+            "tiktok_creative chỉ dùng cho quảng cáo TikTok (level=ad).",
+            account.platform === "meta"
+              ? "Meta: sửa nội dung quảng cáo bằng meta_update_ad_creative."
+              : account.platform === "google_ads"
+                ? "Google Ads: tạo quảng cáo RSA mới bằng google_ads_create_rsa rồi tạm dừng quảng cáo cũ."
+                : account.platform === "openai_ads"
+                  ? "OpenAI Ads: tạo quảng cáo mới bằng openai_ads_create_ad rồi tạm dừng quảng cáo cũ."
+                  : "Dùng level=ad với id quảng cáo TikTok."
+          )
+        }
+        const t = args.tiktok_creative
+        const creative: NonNullable<ObjectUpdate["changes"]["creative"]> = {}
+        if (t.ad_text !== undefined) creative.adText = t.ad_text
+        if (t.call_to_action !== undefined) creative.callToAction = t.call_to_action
+        if (t.tiktok_item_id !== undefined) creative.tiktokItemId = t.tiktok_item_id
+        if (t.video_id !== undefined) creative.videoId = t.video_id
+        if (t.image_ids !== undefined) creative.imageIds = [...t.image_ids]
+        if (Object.keys(creative).length) changes.creative = creative
+      }
       if (Object.keys(changes).length === 0) {
-        throw invalid("nothing_to_update", "Không có trường nào cần sửa.", "Truyền ít nhất một trong: name, start_time, end_time, bid_amount, final_url.")
+        throw invalid(
+          "nothing_to_update",
+          "Không có trường nào cần sửa.",
+          "Truyền ít nhất một trong: name, start_time, end_time, bid_amount, final_url, tiktok_creative (TikTok)."
+        )
       }
       if (changes.startTime && changes.endTime && Date.parse(changes.startTime) >= Date.parse(changes.endTime)) {
         throw invalid("invalid_schedule", "start_time phải trước end_time.")
@@ -149,7 +207,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
           const r = await provider.updateObject(ctx, update, { ...wopts, idempotencyKey, confirmed: meta.confirmed })
           return {
             structured: mutationOut(r),
-            summary: `Đã cập nhật ${Object.keys(changes).length} trường của ${args.level} ${args.id}.`,
+            summary: `Đã cập nhật ${Object.keys(changes).length - (changes.creative ? 1 : 0) + Object.keys(changes.creative ?? {}).length} trường của ${args.level} ${args.id}.`,
             changes: r.changes,
           }
         },

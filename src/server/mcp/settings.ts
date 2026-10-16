@@ -4,9 +4,11 @@
 //    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback,
 //    tiktok_gmv_max_write, protection_mode, apify_enabled, apify_run_max_usd, apify_daily_max_usd, apify_store_actors })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
-// its safe default without discarding the other (valid) fields.
+// its safe default without discarding the other (valid) fields; the two request limits are clamped to the bounds of
+// the MCP form (MCP_LIMITS) instead.
 import { z } from "zod"
 import { APIFY_LIMITS } from "@/lib/schemas/apify"
+import { MCP_LIMITS } from "@/lib/schemas/mcp-servers"
 import {
   DEFAULT_MCP_SETTINGS,
   PROTECTION_MODES,
@@ -19,8 +21,6 @@ import {
 const fields = {
   twoStepConfirm: z.boolean(),
   budgetChangeMaxPct: z.number().min(0).max(10_000),
-  rateLimitPerMin: z.number().int().min(1).max(10_000),
-  writeRateLimitPer10Min: z.number().int().min(1).max(10_000),
   writeDelaySeconds: z.number().int().min(WRITE_DELAY_SECONDS.min).max(WRITE_DELAY_SECONDS.max),
   allowedIps: z.array(z.string().max(64)).max(200),
   telegramMessagesPerHour: z.number().int().min(TELEGRAM_MESSAGES_PER_HOUR.min).max(TELEGRAM_MESSAGES_PER_HOUR.max),
@@ -51,6 +51,16 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   apify_run_max_usd: "apifyRunMaxUsd",
   apify_daily_max_usd: "apifyDailyMaxUsd",
   apify_store_actors: "apifyStoreActors",
+}
+
+/**
+ * A request limit within the bounds the MCP form allows (MCP_LIMITS, one source of truth): a number outside them is
+ * clamped to the nearest bound (v1.1.6 B8 - e.g. a hand-edited 5000 → 1000), a fraction is rounded down; anything
+ * that is not a finite number falls back to the default.
+ */
+function clampLimit(value: unknown, bounds: { min: number; max: number }, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback
+  return Math.min(bounds.max, Math.max(bounds.min, Math.floor(value)))
 }
 
 function pick<T>(schema: z.ZodType<T>, value: unknown, fallback: T): T {
@@ -89,8 +99,8 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     maxDailyBudget: parseCaps(n.maxDailyBudget),
     maxLifetimeBudget: parseCaps(n.maxLifetimeBudget),
     maxBid: parseCaps(n.maxBid),
-    rateLimitPerMin: pick(fields.rateLimitPerMin, n.rateLimitPerMin, d.rateLimitPerMin),
-    writeRateLimitPer10Min: pick(fields.writeRateLimitPer10Min, n.writeRateLimitPer10Min, d.writeRateLimitPer10Min),
+    rateLimitPerMin: clampLimit(n.rateLimitPerMin, MCP_LIMITS.rateLimitPerMin, d.rateLimitPerMin),
+    writeRateLimitPer10Min: clampLimit(n.writeRateLimitPer10Min, MCP_LIMITS.writeRateLimitPer10Min, d.writeRateLimitPer10Min),
     // missing (rows saved before the setting existed) or invalid → 0 = no pacing (the behaviour before it existed)
     writeDelaySeconds: pick(fields.writeDelaySeconds, n.writeDelaySeconds, d.writeDelaySeconds),
     // fail closed: a present but corrupt allowlist matches nothing (never "any IP")

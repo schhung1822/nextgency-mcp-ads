@@ -3,12 +3,15 @@
 import { isReleasedPlatform, RELEASED_PLATFORMS } from "@/lib/platforms"
 import "server-only"
 import { randomUUID } from "node:crypto"
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 
 import { connectionStatus as cs } from "@/lib/i18n/vi/connection-status"
 import { connections as m } from "@/lib/i18n/vi/connections"
 import {
+  actionRequiredDtoOf,
   isDefaultEnabled,
+  META_ACTION_REQUIRED_KEY,
+  readActionRequired,
   statusHintFor,
   type AdAccountDto,
   type ConnectionCheckResult,
@@ -43,6 +46,7 @@ import {
   type VerifyOutcome,
 } from "@/server/jobs/lib/connection-ops"
 import { appBaseUrl } from "@/server/env"
+import { rememberActionRequired } from "@/server/mcp/connection-health"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import { notifyConnectionHealth } from "@/server/notifications/events"
 import { allProviders, ensureProvidersRegistered, getProvider } from "@/server/providers"
@@ -179,6 +183,7 @@ export async function listConnections(actor: Actor, opts: { platform?: Platform 
       ownerId: connections.ownerId,
       ownerEmail: userTable.email,
       ownerName: userTable.name,
+      actionRequired: sql<unknown>`${connections.meta} -> ${META_ACTION_REQUIRED_KEY}::text`,
     })
     .from(connections)
     .innerJoin(userTable, eq(userTable.id, connections.ownerId))
@@ -207,6 +212,7 @@ export async function listConnections(actor: Actor, opts: { platform?: Platform 
     accountCount: counts.get(r.id)?.total ?? 0,
     enabledAccountCount: counts.get(r.id)?.enabled ?? 0,
     owner: { id: r.ownerId, email: r.ownerEmail, name: r.ownerName },
+    actionRequired: actionRequiredDtoOf({ [META_ACTION_REQUIRED_KEY]: r.actionRequired }),
   }))
 }
 
@@ -306,6 +312,7 @@ export async function getConnection(actor: Actor, connectionId: string): Promise
     accountCount: accounts.length,
     enabledAccountCount: accounts.filter((a) => a.isEnabled).length,
     owner: owner ?? { id: row.ownerId, email: "", name: "" },
+    actionRequired: actionRequiredDtoOf(row.meta),
     scopes: row.scopes ?? null,
     warnings: warningsOf(row.meta),
     accounts: accounts.map(toAdAccountDto),
@@ -502,6 +509,9 @@ async function applyNewCredentials(
 ): Promise<ConnectionCheckResult> {
   const provider = getProvider(row.platform)
   const now = new Date()
+  // a new token ends a "cần xác thực" episode (D6): the flag never survives "Thay token"
+  const { [META_ACTION_REQUIRED_KEY]: _droppedFlag, ...newMeta } = out.meta
+  const hadActionRequired = readActionRequired((row.meta as Record<string, unknown> | null)?.[META_ACTION_REQUIRED_KEY]) !== null
   const summary = await db.transaction(async (tx) => {
     await tx
       .update(connections)
@@ -512,7 +522,7 @@ async function applyNewCredentials(
         statusMessage: out.health.statusMessage,
         tokenExpiresAt: out.check.tokenExpiresAt,
         scopes: out.check.scopes,
-        meta: out.meta,
+        meta: newMeta,
         lastCheckedAt: now,
       })
       .where(eq(connections.id, row.id))
@@ -530,12 +540,14 @@ async function applyNewCredentials(
           after: { status: out.health.status, credentialHint: provider.credentialHint(creds) },
           accounts: s,
           ...(pages ? { pages } : {}),
+          ...(hadActionRequired ? { actionRequiredCleared: true } : {}),
         },
       },
       tx
     )
     return s
   })
+  rememberActionRequired(row.id, false)
   // cached Page tokens were derived from the old token
   forgetPageTokens(row.id)
   invalidateGrantCache()
@@ -569,6 +581,45 @@ export async function replaceTikTokCredentialsFromAuthCode(
   const { creds, meta } = await exchangeTikTok(input)
   const out = await verifyOrThrow("tiktok", creds, { connectionId: row.id, connectionMeta: meta })
   return applyNewCredentials(actor, row, creds, out, "auth_code")
+}
+
+/**
+ * "Bỏ cảnh báo" (D6): removes the "cần xác thực" flag (connections.meta.actionRequired) - owner or admin only
+ * (getOwnedRow), activity `connection.update` in the same transaction. Returns false when there was nothing to remove.
+ * Nothing changes on the platform: if Meta still blocks writes, the next failed write flags the connection again.
+ */
+export async function dismissActionRequired(actor: Actor, input: { connectionId: string }): Promise<boolean> {
+  const row = await getOwnedRow(actor, input.connectionId)
+  const removed = await db.transaction(async (tx) => {
+    const [cur] = await tx
+      .select({ flag: sql<unknown>`${connections.meta} -> ${META_ACTION_REQUIRED_KEY}::text` })
+      .from(connections)
+      .where(and(eq(connections.id, row.id), isNull(connections.deletedAt)))
+      .for("update")
+    if (!cur || cur.flag === null || cur.flag === undefined) return false
+    await tx
+      .update(connections)
+      .set({ meta: sql`${connections.meta} - ${META_ACTION_REQUIRED_KEY}::text` })
+      .where(eq(connections.id, row.id))
+    // now = 0: an expired flag is read too (audit only)
+    const flag = readActionRequired(cur.flag, 0)
+    await logActivity(
+      {
+        actor: actorOf(actor),
+        action: "connection.update",
+        target: { type: "connection", id: row.id, label: row.name },
+        metadata: {
+          changed: ["actionRequired"],
+          before: { actionRequired: flag ? { since: flag.since, lastAt: flag.lastAt, accounts: flag.accounts } : true },
+          after: { actionRequired: null },
+        },
+      },
+      tx
+    )
+    return true
+  })
+  rememberActionRequired(row.id, false)
+  return removed
 }
 
 // ---------------------------------------------------------------------------

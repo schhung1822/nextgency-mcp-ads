@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { __resetBuckets } from "../rate-limit"
-import { deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject, validateOnly } from "./mutate"
-import { batchRoute, graphError, json, mockGraph, providerCtx } from "./test-utils"
+import { mapGraphError } from "./client"
+import { archiveMetaObjects, deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject, validateOnly } from "./mutate"
+import { batchRoute, graphError, json, mockGraph, providerCtx, type Route } from "./test-utils"
 
 beforeEach(() => __resetBuckets())
 
@@ -276,5 +277,324 @@ describe("1487007 (ad set past its end date) on a budget edit", () => {
       userMessageVi: expect.stringMatching(/qua ngày kết thúc/),
       hint: expect.stringMatching(/Gia hạn end_time/),
     })
+  })
+})
+describe("archiveMetaObjects (D3)", () => {
+  const nodes = {
+    "3001": {
+      id: "3001",
+      name: "Camp A",
+      account_id: "1001",
+      status: "ACTIVE",
+      effective_status: "ACTIVE",
+      objective: "OUTCOME_SALES",
+    },
+    "3002": {
+      id: "3002",
+      name: "Camp B",
+      account_id: "1001",
+      status: "PAUSED",
+      effective_status: "PAUSED",
+      objective: "OUTCOME_SALES",
+    },
+    "3003": {
+      id: "3003",
+      name: "Camp lưu trữ",
+      account_id: "1001",
+      status: "ARCHIVED",
+      effective_status: "ARCHIVED",
+      objective: "OUTCOME_SALES",
+    },
+    "3004": {
+      id: "3004",
+      name: "Camp xoá",
+      account_id: "1001",
+      status: "DELETED",
+      effective_status: "DELETED",
+      objective: "OUTCOME_SALES",
+    },
+    "3005": {
+      id: "3005",
+      name: "Khác TK",
+      account_id: "9999",
+      status: "PAUSED",
+      effective_status: "PAUSED",
+      objective: "OUTCOME_SALES",
+    },
+  }
+
+  it("dryRun reads only: changes before → ARCHIVED, not-reversible + children warnings, zero writes", async () => {
+    const m = mockGraph([batchRoute(nodes)])
+    const res = await archiveMetaObjects(
+      providerCtx(),
+      "campaign",
+      ["3001", "3002"],
+      { dryRun: true }
+    )
+    expect(res.preview).toBe(true)
+    expect(
+      res.changes.map((c) => [c.objectId, c.field, c.before, c.after])
+    ).toEqual([
+      ["3001", "status", "ACTIVE", "ARCHIVED"],
+      ["3002", "status", "PAUSED", "ARCHIVED"],
+    ])
+    expect(res.warnings.join(" ")).toMatch(/chỉ cho đổi tên hoặc xoá/)
+    expect(res.warnings.join(" ")).toMatch(/đối tượng con/)
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("execute: one batch POST status=ARCHIVED; already archived / deleted objects are skipped with a warning", async () => {
+    const m = mockGraph([batchRoute(nodes)])
+    const res = await archiveMetaObjects(providerCtx(), "campaign", [
+      "3001",
+      "3003",
+      "3004",
+    ])
+    expect(res.preview).toBe(false)
+    expect(JSON.parse(m.mutatingPosts()[0].params.batch)).toEqual([
+      { method: "POST", relative_url: "3001", body: "status=ARCHIVED" },
+    ])
+    expect(res.changes.map((c) => c.objectId)).toEqual(["3001"])
+    expect(res.warnings.join(" ")).toMatch(
+      /Camp lưu trữ \(3003\) đã ở trạng thái ARCHIVED - bỏ qua/
+    )
+    expect(res.warnings.join(" ")).toMatch(
+      /Camp xoá \(3004\) đã bị xoá - bỏ qua/
+    )
+  })
+
+  it("nothing left to archive → no write, no not-reversible warning", async () => {
+    const m = mockGraph([batchRoute(nodes)])
+    const res = await archiveMetaObjects(providerCtx(), "campaign", ["3003"])
+    expect(res.changes).toEqual([])
+    expect(res.warnings.join(" ")).not.toMatch(/không hoàn tác/)
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("an object of another ad account is not found (grant boundary), nothing written", async () => {
+    const m = mockGraph([batchRoute(nodes)])
+    await expect(
+      archiveMetaObjects(providerCtx(), "campaign", ["3001", "3005"])
+    ).rejects.toMatchObject({ code: "not_found" })
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("Meta's 'too many archived objects' (1487990) is a clear Vietnamese error", () => {
+    const err = mapGraphError(
+      { message: "too many archived", code: 100, error_subcode: 1487990 },
+      400,
+      null
+    )
+    expect(err).toMatchObject({
+      code: "invalid_request",
+      userMessageVi: expect.stringMatching(/quá nhiều đối tượng được lưu trữ/),
+    })
+  })
+
+  it("active / paused on an archived object is refused before any write, preview included (C4)", async () => {
+    for (const status of ["active", "paused"] as const) {
+      for (const opts of [{}, { dryRun: true }]) {
+        const m = mockGraph([batchRoute(nodes)])
+        await expect(
+          setMetaStatus(providerCtx(), "campaign", ["3001", "3003"], status, opts)
+        ).rejects.toMatchObject({
+          code: "invalid_request",
+          userMessageVi: expect.stringMatching(/3003.*đang được lưu trữ/),
+          hint: expect.stringMatching(/ads_copy_object/),
+        })
+        expect(m.mutatingPosts()).toHaveLength(0)
+      }
+    }
+  })
+})
+
+describe("updateMetaObject - start_time (B4) and creative (D1)", () => {
+  const future = (days: number) =>
+    new Date(Date.now() + days * 86_400_000)
+      .toISOString()
+      .replace(/\.\d{3}Z$/, "+00:00")
+  const adset = (start: string) => ({
+    ...abosAdset,
+    start_time: start,
+    end_time: undefined,
+  })
+
+  it("an ad set whose start time has passed: changing start_time is refused before any write (preview too)", async () => {
+    for (const opts of [{}, { dryRun: true }]) {
+      const m = mockGraph([
+        ["GET", "2001", () => json(adset("2026-10-01T00:00:00+0700"))],
+      ])
+      await expect(
+        updateMetaObject(
+          providerCtx(),
+          { level: "ad_group", id: "2001", changes: { startTime: future(3) } },
+          opts
+        )
+      ).rejects.toMatchObject({
+        code: "invalid_request",
+        userMessageVi: expect.stringMatching(/đã tới thời gian bắt đầu/),
+        hint: expect.stringMatching(/end_time.*ads_copy_object/),
+      })
+      expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    }
+  })
+
+  it("the same start instant (other offset) is no change; end_time can still be changed on a started ad set", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset("2026-10-01T00:00:00+0700"))],
+      ["POST", "2001", () => json({ success: true })],
+    ])
+    const res = await updateMetaObject(providerCtx(), {
+      level: "ad_group",
+      id: "2001",
+      changes: { startTime: "2026-09-30T17:00:00+00:00", endTime: future(30) },
+    })
+    expect(res.changes.map((c) => c.field)).toEqual(["end_time"])
+    expect(m.mutatingPosts()[0].params.start_time).toBeUndefined()
+  })
+
+  it("an ad set that has not started yet: start_time is sent", async () => {
+    const m = mockGraph([
+      ["GET", "2001", () => json(adset(future(5)))],
+      ["POST", "2001", () => json({ success: true })],
+    ])
+    const start = future(2)
+    const res = await updateMetaObject(providerCtx(), {
+      level: "ad_group",
+      id: "2001",
+      changes: { startTime: start },
+    })
+    expect(m.mutatingPosts()[0].params.start_time).toBe(start)
+    expect(res.changes[0]).toMatchObject({ field: "start_time", after: start })
+  })
+
+  it("campaign start_time is read-only on Meta → refused before any call", async () => {
+    const m = mockGraph([])
+    await expect(
+      updateMetaObject(providerCtx(), {
+        level: "campaign",
+        id: "3001",
+        changes: { startTime: future(2) },
+      })
+    ).rejects.toMatchObject({
+      code: "invalid_request",
+      userMessageVi: expect.stringMatching(/chỉ đọc/),
+    })
+    expect(m.calls).toHaveLength(0)
+  })
+
+  it("creative changes are unsupported on Meta (meta_update_ad_creative), before any call", async () => {
+    const m = mockGraph([])
+    await expect(
+      updateMetaObject(providerCtx(), {
+        level: "ad",
+        id: "4001",
+        changes: { creative: { adText: "Mới" } },
+      })
+    ).rejects.toMatchObject({
+      code: "unsupported",
+      hint: expect.stringMatching(/meta_update_ad_creative/),
+    })
+    expect(m.calls).toHaveLength(0)
+  })
+})
+
+describe("status batch with an op of unknown outcome (security follow-up)", () => {
+  const nodes: Record<string, Record<string, unknown>> = {
+    "11": {
+      id: "11",
+      name: "Ad 1",
+      account_id: "1001",
+      status: "PAUSED",
+      effective_status: "PAUSED",
+      adset_id: "2001",
+    },
+    "12": {
+      id: "12",
+      name: "Ad 2",
+      account_id: "1001",
+      status: "PAUSED",
+      effective_status: "PAUSED",
+      adset_id: "2001",
+    },
+  }
+  const denied = {
+    code: 403,
+    body: JSON.stringify({
+      error: { message: "(#200) denied", type: "OAuthException", code: 200 },
+    }),
+  }
+  const applied = { code: 200, body: JSON.stringify({ success: true }) }
+  /** reads answer the nodes; the write batch answers `writes` */
+  const batch = (writes: unknown[]): Route => [
+    "POST",
+    "",
+    (c) => {
+      const ops = JSON.parse(c.params.batch) as {
+        method: string
+        relative_url: string
+      }[]
+      if (ops.every((o) => o.method === "GET"))
+        return json(
+          ops.map((o) => ({
+            code: 200,
+            body: JSON.stringify(nodes[o.relative_url.split("?")[0]]),
+          }))
+        )
+      return json(writes)
+    },
+  ]
+
+  it("one op refused (#200) + one op without answer → uncertain error with audit + ids, never the definite #200", async () => {
+    for (const run of [
+      () => setMetaStatus(providerCtx(), "ad", ["11", "12"], "active"),
+      () => archiveMetaObjects(providerCtx(), "ad", ["11", "12"]),
+    ]) {
+      const m = mockGraph([batch([denied, null])])
+      const e = await run().catch((x: unknown) => x)
+      expect(e).toMatchObject({
+        code: "timeout",
+        retryable: false,
+        audit: {
+          errorCode: "status_outcome_unknown",
+          changes: [expect.objectContaining({ objectId: "12" })],
+        },
+        userMessageVi: expect.stringMatching(/có thể đã thực hiện với: 12/),
+        hint: expect.stringMatching(/ads_get_object/),
+      })
+      expect(m.mutatingPosts()).toHaveLength(1)
+    }
+  })
+
+  it("every op definitely refused → the platform error itself (no audit)", async () => {
+    mockGraph([batch([denied, denied])])
+    const e = await setMetaStatus(
+      providerCtx(),
+      "ad",
+      ["11", "12"],
+      "active"
+    ).catch((x: unknown) => x)
+    expect(e).toMatchObject({
+      code: "permission_denied",
+      upstream: { code: 200 },
+    })
+    expect((e as { audit?: unknown }).audit).toBeUndefined()
+  })
+
+  it("one op applied + one 5xx → success with the applied change and a re-check warning", async () => {
+    mockGraph([
+      batch([
+        applied,
+        {
+          code: 500,
+          body: JSON.stringify({ error: { message: "x", code: 2 } }),
+        },
+      ]),
+    ])
+    const res = await setMetaStatus(providerCtx(), "ad", ["11", "12"], "active")
+    expect(res.changes.map((c) => c.objectId)).toEqual(["11"])
+    expect(res.warnings.join(" ")).toMatch(
+      /Không rõ Ad 2 \(12\).*ads_get_object/
+    )
   })
 })

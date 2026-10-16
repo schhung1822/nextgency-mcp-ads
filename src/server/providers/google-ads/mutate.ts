@@ -85,6 +85,35 @@ const LEVEL_VI: Record<ObjectLevel, string> = { campaign: "chiến dịch", ad_g
 // setStatus
 // ---------------------------------------------------------------------------
 
+/**
+ * Which operations of a partialFailure mutate were applied: "all" (no failure), "none" (every operation failed, or a
+ * preview with a failure), a Set of operation indexes, or "unknown" (a failure without operation index and no
+ * per-operation results to tell which ones succeeded). Google answers one `results` entry per operation, empty for the
+ * failed ones.
+ */
+export function partialSuccesses(
+  res: { results: unknown[]; failures: { index: number | null }[] },
+  planned: number,
+  failed: ReadonlySet<number>,
+  dryRun: boolean
+): "all" | "none" | "unknown" | Set<number> {
+  if (!res.failures.length) return "all"
+  // validateOnly: nothing is ever applied
+  if (dryRun) return failed.size < planned && !res.failures.some((f) => f.index === null) ? new Set(range(planned).filter((i) => !failed.has(i))) : "none"
+  if (!res.failures.some((f) => f.index === null)) {
+    const ok = range(planned).filter((i) => !failed.has(i))
+    return ok.length ? new Set(ok) : "none"
+  }
+  if (res.results.length !== planned) return "unknown"
+  const ok = range(planned).filter((i) => {
+    const r = res.results[i] as { resourceName?: unknown } | null | undefined
+    return !failed.has(i) && typeof r?.resourceName === "string" && r.resourceName !== ""
+  })
+  return ok.length ? new Set(ok) : "none"
+}
+
+const range = (n: number) => Array.from({ length: n }, (_, i) => i)
+
 export async function setStatus(ctx: GCtx, level: ObjectLevel, ids: string[], status: TargetStatus, opts: MutationOptions = {}): Promise<MutationResult> {
   if (!ids.length) throw invalidRequest("No ids", "Cần ít nhất 1 id.")
   if (ids.length > MAX_STATUS_IDS) throw invalidRequest("Too many ids", `Tối đa ${MAX_STATUS_IDS} đối tượng mỗi lần.`)
@@ -126,11 +155,36 @@ export async function setStatus(ctx: GCtx, level: ObjectLevel, ids: string[], st
     const p = f.index !== null ? planned[f.index] : null
     warnings.push(redactString(`Lỗi với ${p ? `${LEVEL_VI[level]} ${p.ref.key}` : "một đối tượng"}: ${f.code ?? ""} ${f.message}`.trim()))
   }
-  if (res.failures.length && (failed.size >= planned.length || res.failures.some((f) => f.index === null))) {
-    throw failuresToError(res.failures)
+  const succeeded = partialSuccesses(res, planned.length, failed, !!opts.dryRun)
+  if (res.failures.length) {
+    // nothing applied (or a preview) → the plain error: the platform changed nothing
+    if (succeeded === "none") throw failuresToError(res.failures)
+    if (succeeded === "unknown") {
+      // a failure without operation index and no per-operation results: some updates MAY be applied → the error
+      // carries audit data (logged, never treated as "nothing changed" - no write-quota refund)
+      const e = failuresToError(res.failures)
+      throw new ProviderError({
+        platform: e.platform,
+        code: e.code,
+        message: `${e.message} (partial failure, outcome unknown)`,
+        userMessageVi: `${e.userMessageVi} Google không cho biết thao tác nào đã áp dụng - kiểm tra lại trạng thái bằng ads_list_objects trước khi thử lại.`,
+        retryable: false,
+        hint: e.hint,
+        upstream: e.upstream,
+        cause: e,
+        toolCode: e.toolCode,
+        audit: {
+          errorCode: "partial_failure_unknown",
+          changes: planned.map((p) => ({ objectId: p.ref.key, objectName: p.name, level, field: "status", before: p.before, after: target })),
+        },
+      })
+    }
+    if (res.failures.some((f) => f.index === null)) {
+      warnings.push("Google không cho biết thao tác nào lỗi - chỉ ghi nhận các đối tượng Google xác nhận đã đổi.")
+    }
   }
   const changes: FieldChange[] = planned
-    .filter((_, i) => !failed.has(i))
+    .filter((_, i) => succeeded === "all" || (succeeded instanceof Set && succeeded.has(i)))
     .map((p) => ({ objectId: p.ref.key, objectName: p.name, level, field: "status", before: p.before, after: target }))
   if (status === "active" && level !== "campaign") {
     warnings.push("Lưu ý: đối tượng chỉ chạy khi chiến dịch và nhóm quảng cáo cha cũng đang bật.")
@@ -255,6 +309,16 @@ export async function updateObject(ctx: GCtx, u: ObjectUpdate, opts: MutationOpt
   const client = clientFor(ctx)
   const ch = u.changes ?? {}
   const level = u.level
+  if (ch.creative !== undefined) {
+    // ad content edits (ObjectUpdate.changes.creative) are TikTok-only
+    throw new ProviderError({
+      platform: "google_ads",
+      code: "unsupported",
+      message: "creative update is not supported on Google Ads",
+      userMessageVi: "Google Ads không sửa nội dung quảng cáo qua ads_update_object (tiktok_creative chỉ dùng cho TikTok).",
+      hint: "Nội dung RSA sửa bằng cách tạo quảng cáo mới (google_ads_create_rsa) rồi tạm dừng quảng cáo cũ.",
+    })
+  }
   const allowed: Record<ObjectLevel, (keyof ObjectUpdate["changes"])[]> = {
     campaign: ["name", "startTime", "endTime"],
     ad_group: ["name", "bidAmount"],

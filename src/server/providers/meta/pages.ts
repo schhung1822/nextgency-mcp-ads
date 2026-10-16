@@ -10,6 +10,7 @@ import {
   splitRange,
   todayInTz,
 } from "../dates"
+import { sanitizeExternalLabel } from "../../../lib/text-safety"
 import { isProviderError, ProviderError } from "../errors"
 import type {
   ConnectionContext,
@@ -24,6 +25,7 @@ import {
   type MetaCallContext,
   type MetaCredentials,
 } from "./client"
+import { forgetAdvertisablePages } from "./lookup"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -507,17 +509,63 @@ const keysByConnection: Map<string, Set<string>> = ((
   }
 ).__adsMcpMetaPageTokenKeys ??= new Map())
 
-/** Forget every cached Page token of a connection (call when it is disabled, deleted or gets new credentials). */
+/**
+ * Forget every cached Page token of a connection (call when it is disabled, deleted or gets new credentials). Also
+ * drops its cached advertisable-Page lists (lookup.ts, D4) - one call site for every Page cache of the connection.
+ */
 export function forgetPageTokens(connectionId: string) {
   for (const key of keysByConnection.get(connectionId) ?? [])
     tokenCache().delete(key)
   keysByConnection.delete(connectionId)
+  forgetAdvertisablePages(connectionId)
 }
 
 export function __clearPageTokenCache() {
   tokenCache().clear()
   keysByConnection.clear()
 }
+
+/** What a Page call was trying to read: picks the permissions named in a Graph permission error (B7). */
+export type PageAccessKind = "posts" | "insights" | "token"
+
+const PAGE_PERMISSION_TEXT: Record<PageAccessKind, string> = {
+  posts:
+    "Token / via không có quyền đọc bài viết của Trang này (cần quyền pages_read_engagement + pages_read_user_content và via có vai trò Tạo nội dung / Quản lý / Kiểm duyệt trên Trang).",
+  insights:
+    "Token / via không có quyền xem chỉ số của Trang này (cần quyền read_insights + pages_read_engagement và via có task Phân tích - ANALYZE trên Trang).",
+  token:
+    "Token / via không lấy được quyền truy cập Trang này (cần quyền pages_show_list + pages_read_engagement và via có vai trò trên Trang).",
+}
+const PAGE_PERMISSION_HINT =
+  "Thêm quyền còn thiếu vào token (Graph API Explorer → tạo token mới → “Thay token” ở trang Kết nối) hoặc gán task cho via trên Trang / trong Business Manager, rồi bấm Đồng bộ lại. Lỗi này không liên quan quyền ads_management của tài khoản quảng cáo."
+
+/**
+ * A Graph permission error (#10 / #200-299 / #294) on a Page call carries the global ads hint ("ads_management").
+ * Re-word it with the Page permissions / tasks that call really needs (B7). Other errors - including the Page role
+ * errors this module raises itself (no upstream Graph code) - pass through untouched.
+ */
+export function pagePermissionError(e: unknown, kind: PageAccessKind): unknown {
+  if (!isProviderError(e) || e.code !== "permission_denied") return e
+  // already re-worded closer to the failing call (e.g. the Page token fetch inside a posts read): keep that text
+  if (pagePermissionErrors.has(e)) return e
+  const c = Number(e.upstream?.code)
+  if (!(c === 10 || c === 294 || (c >= 200 && c <= 299))) return e
+  const metaSays = sanitizeExternalLabel(e.upstream?.message ?? "", 200)
+  const out = new ProviderError({
+    platform: "meta",
+    code: "permission_denied",
+    message: e.message,
+    userMessageVi:
+      PAGE_PERMISSION_TEXT[kind] + (metaSays ? ` Meta báo: ${metaSays}` : ""),
+    hint: PAGE_PERMISSION_HINT,
+    upstream: e.upstream,
+    retryAfterMs: e.retryAfterMs,
+    cause: e,
+  })
+  pagePermissionErrors.add(out)
+  return out
+}
+const pagePermissionErrors = new WeakSet<ProviderError>()
 
 async function pageToken(
   ctx: ConnectionContext<MetaCredentials>,
@@ -529,12 +577,17 @@ async function pageToken(
     const hit = tokenCache().get(key)
     if (hit) return hit
   }
-  const r = await graph<{ access_token?: unknown }>(callCtxOf(ctx, pageId), {
-    method: "GET",
-    path: pageId,
-    params: { fields: "access_token" },
-    idempotent: true,
-  })
+  let r: { access_token?: unknown }
+  try {
+    r = await graph<{ access_token?: unknown }>(callCtxOf(ctx, pageId), {
+      method: "GET",
+      path: pageId,
+      params: { fields: "access_token" },
+      idempotent: true,
+    })
+  } catch (e) {
+    throw pagePermissionError(e, "token")
+  }
   const token = typeof r.access_token === "string" ? r.access_token : ""
   if (!token) {
     throw new ProviderError({
@@ -558,6 +611,19 @@ async function pageToken(
  * ad tool of the connection down).
  */
 async function withPageToken<T>(
+  ctx: ConnectionContext<MetaCredentials>,
+  pageId: string,
+  fn: (token: string) => Promise<T>,
+  kind: PageAccessKind
+): Promise<T> {
+  try {
+    return await withPageTokenRaw(ctx, pageId, fn)
+  } catch (e) {
+    throw pagePermissionError(e, kind)
+  }
+}
+
+async function withPageTokenRaw<T>(
   ctx: ConnectionContext<MetaCredentials>,
   pageId: string,
   fn: (token: string) => Promise<T>
@@ -593,17 +659,22 @@ async function pageGet<T>(
   ctx: ConnectionContext<MetaCredentials>,
   pageId: string,
   path: string,
-  params: GraphParams
+  params: GraphParams,
+  kind: PageAccessKind
 ): Promise<T> {
   const call = callCtxOf(ctx, pageId)
-  return withPageToken(ctx, pageId, (token) =>
-    graph<T>(call, {
-      method: "GET",
-      path,
-      params,
-      idempotent: true,
-      pageAccessToken: token,
-    })
+  return withPageToken(
+    ctx,
+    pageId,
+    (token) =>
+      graph<T>(call, {
+        method: "GET",
+        path,
+        params,
+        idempotent: true,
+        pageAccessToken: token,
+      }),
+    kind
   )
 }
 
@@ -715,7 +786,7 @@ export async function listMetaPagePosts(
   const page = await pageGet<{
     data?: Raw[]
     paging?: { next?: string; cursors?: { after?: string } }
-  }>(ctx, pageId, `${pageId}/${POST_EDGE[q.source]}`, params)
+  }>(ctx, pageId, `${pageId}/${POST_EDGE[q.source]}`, params, "posts")
   // only posts of THIS Page (their ids are PAGEID_POSTID) ever reach the AI
   const posts = (Array.isArray(page.data) ? page.data : [])
     .filter((p) => postBelongsToPage(s(p.id), pageId))
@@ -776,9 +847,13 @@ export async function getMetaPagePost(
       "Gọi meta_list_page_posts để lấy đúng post_id."
     )
   }
-  const p = await pageGet<Raw>(ctx, pageId, postId, {
-    fields: POST_DETAIL_FIELDS,
-  })
+  const p = await pageGet<Raw>(
+    ctx,
+    pageId,
+    postId,
+    { fields: POST_DETAIL_FIELDS },
+    "posts"
+  )
   // defence in depth: whatever Meta answers, the object must be this post of this Page
   if (s(p.id) !== postId || !postBelongsToPage(s(p.id), pageId)) {
     throw new ProviderError({
@@ -905,11 +980,15 @@ export async function getMetaPostInsights(
   const call = callCtxOf(ctx, pageId)
   // every batch goes through withPageToken: a rejected cached Page token never marks the connection invalid
   const batch = (ops: { method: "GET"; relative_url: string }[]) =>
-    withPageToken(ctx, pageId, (token) =>
-      graphBatch<{ data?: InsightSeries[] }>(call, ops, {
-        idempotent: true,
-        pageAccessToken: token,
-      })
+    withPageToken(
+      ctx,
+      pageId,
+      (token) =>
+        graphBatch<{ data?: InsightSeries[] }>(call, ops, {
+          idempotent: true,
+          pageAccessToken: token,
+        }),
+      "insights"
     )
   const op = (id: string, ms: string[]) => ({
     method: "GET" as const,
@@ -933,7 +1012,8 @@ export async function getMetaPostInsights(
         postId: ids[i],
         metrics: {},
         invalidMetrics: isInvalidMetricError(r.error) ? [...wanted] : [],
-        error: r.error.userMessageVi,
+        error: (pagePermissionError(r.error, "insights") as ProviderError)
+          .userMessageVi,
       })
       continue
     }
@@ -1046,7 +1126,8 @@ export async function getMetaPageInsights(
         ctx,
         pageId,
         `${pageId}/insights`,
-        { ...params, metric: live.join(",") }
+        { ...params, metric: live.join(",") },
+        "insights"
       )
       put(r.data)
     } catch (e) {
@@ -1057,7 +1138,8 @@ export async function getMetaPageInsights(
             ctx,
             pageId,
             `${pageId}/insights`,
-            { ...params, metric: m }
+            { ...params, metric: m },
+            "insights"
           )
           put(r.data)
         } catch (e2) {

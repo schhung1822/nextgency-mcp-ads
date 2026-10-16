@@ -84,6 +84,51 @@ describe("setStatus", () => {
     expect(res.warnings.join(" ")).toContain("EU_POLITICAL_ADVERTISING_DECLARATION_REQUIRED")
   })
 
+  const unindexedFailure = {
+    code: 3,
+    message: "x",
+    details: [
+      {
+        "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+        errors: [{ errorCode: { internalError: "INTERNAL_ERROR" }, message: "something failed" }],
+      },
+    ],
+  }
+  const twoPaused = { body: { results: [{ campaign: { id: "5", status: "PAUSED" } }, { campaign: { id: "6", status: "PAUSED" } }] } }
+
+  it("failure without operation index but some results applied → partial result (no throw), only confirmed objects in changes", async () => {
+    const m = mockFetch()
+    m.on(searchMatching(/FROM campaign/), twoPaused)
+    m.on((c) => c.url.endsWith("campaigns:mutate"), {
+      body: { results: [{ resourceName: "customers/1234567890/campaigns/5" }, {}], partialFailureError: unindexedFailure },
+    })
+    const res = await setStatus(providerCtx(saCredentials()), "campaign", ["5", "6"], "active")
+    expect(res.changes.map((c) => c.objectId)).toEqual(["5"])
+    expect(res.warnings.join(" ")).toContain("Google không cho biết thao tác nào lỗi")
+  })
+
+  it("failure without operation index and no applied result → plain error (nothing changed, no audit)", async () => {
+    const m = mockFetch()
+    m.on(searchMatching(/FROM campaign/), twoPaused)
+    m.on((c) => c.url.endsWith("campaigns:mutate"), { body: { results: [{}, {}], partialFailureError: unindexedFailure } })
+    const err = await setStatus(providerCtx(saCredentials()), "campaign", ["5", "6"], "active").catch((e: unknown) => e)
+    expect(err).toMatchObject({ name: "ProviderError" })
+    expect((err as { audit?: unknown }).audit).toBeUndefined()
+  })
+
+  it("failure without operation index and no per-operation results → error WITH audit (outcome unknown, never refunded)", async () => {
+    const m = mockFetch()
+    m.on(searchMatching(/FROM campaign/), twoPaused)
+    m.on((c) => c.url.endsWith("campaigns:mutate"), { body: { partialFailureError: unindexedFailure } })
+    const err = (await setStatus(providerCtx(saCredentials()), "campaign", ["5", "6"], "active").catch((e: unknown) => e)) as {
+      audit?: { errorCode: string; changes: { objectId: string }[] }
+      retryable: boolean
+    }
+    expect(err.audit?.errorCode).toBe("partial_failure_unknown")
+    expect(err.audit?.changes.map((c) => c.objectId)).toEqual(["5", "6"])
+    expect(err.retryable).toBe(false)
+  })
+
   it("rejects more than 50 ids and non-digit ids", async () => {
     mockFetch()
     const ctx = providerCtx(saCredentials())

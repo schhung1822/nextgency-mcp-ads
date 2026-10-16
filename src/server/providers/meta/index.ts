@@ -7,7 +7,7 @@ import { metaCredentialFields, metaCredentialHint, metaGuide, parseMetaCredentia
 import { metaExtensions } from "./extensions"
 import { metaLookup } from "./lookup"
 import { getMetaMediaStatus, uploadMetaMedia, uploadMetaVideoChunked } from "./media"
-import { deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject } from "./mutate"
+import { archiveMetaObjects, deleteMetaObject, setMetaStatus, updateMetaBudget, updateMetaObject } from "./mutate"
 import { getMetaObject, listMetaObjects } from "./objects"
 import { listMetaPages } from "./pages"
 import { getMetaReport } from "./report"
@@ -49,6 +49,8 @@ export const metaProvider: AdsProvider<MetaCredentials> = {
   listObjects: listMetaObjects,
   getObject: getMetaObject,
   setStatus: setMetaStatus,
+  // ads_set_status "archived" (Meta only; status=ARCHIVED, not reversible - mutate.ts)
+  archiveObjects: archiveMetaObjects,
   updateBudget: updateMetaBudget,
   updateObject: updateMetaObject,
   copyObject: copyMetaObject,

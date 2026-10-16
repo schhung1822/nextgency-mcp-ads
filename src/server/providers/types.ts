@@ -265,6 +265,12 @@ export interface AdObjectSummary {
   name: string
   status: NormalizedStatus
   statusRaw: string
+  /**
+   * Optional refinement of `status` the normalized enum cannot express (TikTok: the review passed only for part of the
+   * placements / creatives → "partially_approved", or part was rejected → "partially_rejected"). Absent / null = none.
+   * Exposed to the AI as `status_detail`.
+   */
+  statusDetail?: "partially_approved" | "partially_rejected" | null
   campaignId?: string | null
   parentId?: string | null
   budget?: Budget | null
@@ -462,8 +468,11 @@ export interface MutationResult {
 
 export type TargetStatus = "active" | "paused"
 
-/** Write operation asked about by AdsProvider.mustAlwaysConfirm ("active" / "paused" = ads_set_status). */
-export type AlwaysConfirmOp = TargetStatus | "update" | "copy" | "delete"
+/**
+ * Write operation asked about by AdsProvider.mustAlwaysConfirm / preflightWrite ("active" / "paused" = ads_set_status,
+ * "archive" = ads_set_status status archived → AdsProvider.archiveObjects).
+ */
+export type AlwaysConfirmOp = TargetStatus | "update" | "copy" | "delete" | "archive"
 
 /**
  * Worst-case DAILY spend that switching an object on can cause beyond the budget getObject reports
@@ -501,7 +510,26 @@ export interface ObjectUpdate {
     /** MAJOR units */
     bidAmount?: number | null
     finalUrl?: string
+    /**
+     * Ad content (level "ad" only; TikTok only - every other adapter refuses it with ProviderError unsupported). Only the
+     * given fields change; the platform re-reviews the ad.
+     */
+    creative?: CreativeUpdate
   }
+}
+
+/** ObjectUpdate.changes.creative - new ad content (TikTok /ad/update/). Absent field = unchanged. */
+export interface CreativeUpdate {
+  /** ad text (TikTok ad_text, ≤ 100 chars) */
+  adText?: string
+  /** call-to-action enum value (TikTok call_to_action, e.g. LEARN_MORE, SEND_MESSAGE) */
+  callToAction?: string
+  /** Spark Ads post id (TikTok tiktok_item_id) - only for ads that already use a TikTok post */
+  tiktokItemId?: string
+  /** video id from the ad account library - only for ads that already use a video (not a TikTok post) */
+  videoId?: string
+  /** image ids (TikTok image_ids: cover of a video ad, or the images of an image / carousel ad) */
+  imageIds?: string[]
 }
 
 export interface CopyRequest {
@@ -632,6 +660,8 @@ export const LOOKUP_KINDS = [
   "languages",
   "conversion_events",
   "custom_audiences",
+  /** TikTok: posts of a TikTok identity usable for Spark Ads (tiktok_item_id) - needs LookupQuery.parentId */
+  "tiktok_posts",
 ] as const
 export type LookupKind = (typeof LOOKUP_KINDS)[number]
 
@@ -639,6 +669,28 @@ export interface LookupItem {
   id: string
   name: string
   extra?: Record<string, unknown>
+}
+
+/** Input of AdsProvider.lookup. Adapters ignore the fields a kind does not use. */
+export interface LookupQuery {
+  q?: string
+  limit?: number
+  /** parent object of the lookup (kind tiktok_posts: the TikTok identity_id) */
+  parentId?: string
+  /** kind tiktok_posts: identity type of parentId (AUTH_CODE | TT_USER | BC_AUTH_TT); absent = adapter resolves it */
+  identityType?: string
+  /** kind tiktok_posts: Business Center id when identityType is BC_AUTH_TT */
+  identityAuthorizedBcId?: string
+  /** opaque page cursor returned as LookupResult.nextCursor by the previous call */
+  cursor?: string
+}
+
+/** Result of AdsProvider.lookup. */
+export interface LookupResult {
+  items: LookupItem[]
+  warnings: string[]
+  /** next page (pass back as LookupQuery.cursor); absent / null = no more items or the kind is not paged */
+  nextCursor?: string | null
 }
 
 
@@ -775,8 +827,16 @@ export interface AdsProvider<C = unknown> {
     ctx: ProviderContext<C>,
     level: ObjectLevel,
     id: string,
-    /** forWrite: the detail feeds a write guard - platform-specific checks fail closed instead of falling back */
-    opts?: { includeChildren?: boolean; forWrite?: boolean }
+    opts?: {
+      includeChildren?: boolean
+      /** the detail feeds a write guard - platform-specific checks fail closed instead of falling back */
+      forWrite?: boolean
+      /**
+       * ads_get_object only: attach platform review / moderation info (TikTok: extra.review via /ad/review_info/ +
+       * /adgroup/review_info/); adapters without it ignore the flag
+       */
+      review?: boolean
+    }
   ): Promise<AdObjectDetail>
 
   setStatus(
@@ -786,6 +846,13 @@ export interface AdsProvider<C = unknown> {
     status: TargetStatus,
     opts?: MutationOptions
   ): Promise<MutationResult>
+  /**
+   * Optional (Meta): archive objects (status ARCHIVED - effectively irreversible). Same contract as setStatus: dryRun =
+   * preview without writing; changes `{ field: "status", before, after: <platform value> }`; objects already archived /
+   * deleted are skipped with a Vietnamese warning. Absent = the platform has no archive state (ads_set_status status
+   * archived answers unsupported).
+   */
+  archiveObjects?(ctx: ProviderContext<C>, level: ObjectLevel, ids: string[], opts?: MutationOptions): Promise<MutationResult>
   /**
    * Optional: Vietnamese reasons why this write (status change, budget / field update, copy, delete) must ALWAYS go
    * through two-step confirmation, even when the MCP disabled it (TikTok: GMV Max campaigns). Empty = no extra
@@ -829,11 +896,7 @@ export interface AdsProvider<C = unknown> {
    * records) - also check that the video is in this ad account's library (not found → ProviderError not_found).
    */
   getMediaStatus?(ctx: ProviderContext<C>, q: { type: "video"; id: string; verifyAccount?: boolean }): Promise<MediaStatus>
-  lookup(
-    ctx: ProviderContext<C>,
-    kind: LookupKind,
-    query?: { q?: string; limit?: number }
-  ): Promise<{ items: LookupItem[]; warnings: string[] }>
+  lookup(ctx: ProviderContext<C>, kind: LookupKind, query?: LookupQuery): Promise<LookupResult>
 }
 
 export function emptyMetrics(): NormalizedMetrics {

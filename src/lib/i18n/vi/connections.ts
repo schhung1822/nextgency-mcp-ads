@@ -284,6 +284,24 @@ export const connections = {
     done: "Đã thay token và đồng bộ lại tài khoản. Tài khoản mới phát hiện (nếu có) đang tắt - hãy bật nếu muốn dùng trong MCP.",
   },
 
+  /** "Cần xác thực" (D6): the platform (Meta code 31) asks the account owner to verify before creating / editing ads */
+  actionRequired: {
+    badge: "Cần xác thực",
+    tooltip:
+      "Meta yêu cầu xác thực tài khoản: MCP vẫn đọc được dữ liệu nhưng không tạo/sửa được quảng cáo cho tới khi người sở hữu token xác thực trong Trình quản lý quảng cáo.",
+    title: "Meta yêu cầu xác thực tài khoản",
+    body: "Meta đang chặn tạo / sửa quảng cáo bằng token này cho tới khi người sở hữu token hoàn tất bước xác thực. Đọc số liệu vẫn chạy bình thường.",
+    platformMessage: "Lời nhắn của Meta",
+    accounts: "Tài khoản quảng cáo bị ảnh hưởng",
+    since: (when: string) => `Phát hiện lần đầu: ${when}`,
+    lastAt: (when: string) => `Gần nhất: ${when}`,
+    howTo:
+      "Cách xử lý: người sở hữu token (tài khoản Facebook đã tạo token) đăng nhập Trình quản lý quảng cáo (adsmanager.facebook.com), làm theo yêu cầu xác thực của Meta (xác minh danh tính / bảo mật). Không cần thay token. Lệnh tạo/sửa thành công tiếp theo sẽ tự gỡ cảnh báo; cảnh báo cũng tự hết sau 7 ngày không gặp lại lỗi.",
+    dismiss: "Bỏ cảnh báo",
+    dismissed: "Đã bỏ cảnh báo cần xác thực.",
+    nothingToDismiss: "Kết nối này không còn cảnh báo cần xác thực.",
+  },
+
   remove: {
     title: "Xoá kết nối?",
     description: (name: string) =>

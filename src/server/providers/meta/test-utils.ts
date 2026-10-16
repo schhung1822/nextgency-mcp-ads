@@ -3,6 +3,7 @@ import { vi } from "vitest"
 
 import type { ProviderContext } from "../types"
 import type { MetaCredentials } from "./client"
+import { __clearAdvertisablePagesCache } from "./lookup"
 
 export interface RecordedCall {
   method: string
@@ -60,8 +61,12 @@ async function readParams(init: RequestInit | undefined): Promise<{ params: Reco
   return { params, multipart: false }
 }
 
-/** Install a fetch fake. Unmatched requests fail the test loudly. */
+/**
+ * Install a fetch fake. Unmatched requests fail the test loudly. A new fake Graph is a new world: the in-process
+ * advertisablePages cache (D4) is emptied so answers of an earlier test never leak into this one.
+ */
 export function mockGraph(routes: Route[]) {
+  __clearAdvertisablePagesCache()
   const calls: RecordedCall[] = []
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)

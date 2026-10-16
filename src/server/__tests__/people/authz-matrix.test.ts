@@ -80,6 +80,7 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     previewConnectionAction: "any",
     createConnectionAction: "any",
     renameConnectionAction: "any",
+    dismissActionRequiredAction: "any",
     replaceCredentialsAction: "any",
     createTikTokFromAuthCodeAction: "any",
     replaceTikTokFromAuthCodeAction: "any",

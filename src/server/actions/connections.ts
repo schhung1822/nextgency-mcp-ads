@@ -33,6 +33,7 @@ import {
   createConnection,
   createTikTokConnectionFromAuthCode,
   deleteConnection,
+  dismissActionRequired,
   getConnectionUsage,
   previewConnection,
   renameConnection,
@@ -155,6 +156,20 @@ export async function renameConnectionAction(input: unknown): Promise<ActionResu
     await renameConnection(session.user, parsed.data)
     revalidateConnection(parsed.data.connectionId)
     return ok(undefined, m.rename.done)
+  } catch (e) {
+    return toFail(e)
+  }
+}
+
+/** "Bỏ cảnh báo" cần xác thực (D6): owner / admin only (service), activity log in the same transaction. */
+export async function dismissActionRequiredAction(input: unknown): Promise<ActionResult> {
+  try {
+    const session = await requireUserForAction()
+    const parsed = connectionIdSchema.safeParse(input)
+    if (!parsed.success) return zodFail(parsed.error)
+    const removed = await dismissActionRequired(session.user, parsed.data)
+    revalidateConnection(parsed.data.connectionId)
+    return ok(undefined, removed ? m.actionRequired.dismissed : m.actionRequired.nothingToDismiss)
   } catch (e) {
     return toFail(e)
   }

@@ -21,6 +21,7 @@ const g = globalThis as unknown as {
   __adsMcpRate?: LRUCache<string, Bucket>
   __adsMcpMiss?: LRUCache<string, { count: number; windowStart: number }>
   __adsMcpWrites?: LRUCache<string, number[]>
+  __adsMcpWriteRefunds?: LRUCache<string, number[]>
 }
 
 function buckets() {
@@ -38,10 +39,20 @@ function writes() {
   return g.__adsMcpWrites
 }
 
+function refunds() {
+  g.__adsMcpWriteRefunds ??= new LRUCache<string, number[]>({ max: 50_000, ttl: WRITE_WINDOW_MS })
+  return g.__adsMcpWriteRefunds
+}
+
 export interface RateDecision {
   ok: boolean
   /** seconds until a request would be accepted (only when !ok) */
   retryAfterSec: number
+}
+
+export interface WriteRateDecision extends RateDecision {
+  /** timestamp recorded for this write (only when ok) - refundWriteRate(mcpId, at) gives the slot back */
+  at?: number
 }
 
 /**
@@ -79,7 +90,7 @@ export function consumeMcpRate(mcpId: string, perMin: number, now = Date.now(), 
 export const WRITE_WINDOW_MS = 10 * 60_000
 
 /** Record one executed write for this MCP, or refuse when `limit` writes already ran in the window. */
-export function consumeWriteRate(mcpId: string, limit: number, now = Date.now()): RateDecision {
+export function consumeWriteRate(mcpId: string, limit: number, now = Date.now()): WriteRateDecision {
   // no limit (basic protection mode; callers skip this already) - nothing to record
   if (limit === Number.POSITIVE_INFINITY) return { ok: true, retryAfterSec: 0 }
   const max = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : DEFAULT_MCP_SETTINGS.writeRateLimitPer10Min
@@ -91,7 +102,36 @@ export function consumeWriteRate(mcpId: string, limit: number, now = Date.now())
   }
   recent.push(now)
   map.set(mcpId, recent)
-  return { ok: true, retryAfterSec: 0 }
+  return { ok: true, retryAfterSec: 0, at: now }
+}
+
+/**
+ * Most refunds per MCP within the write window (WRITE_WINDOW_MS): a loop of writes the platform keeps refusing still
+ * runs into write_rate_limited after this many free retries.
+ */
+export const WRITE_REFUND_LIMIT = 5
+
+/**
+ * Give back ONE write recorded by consumeWriteRate (`at` = its timestamp) - the platform refused that write before
+ * anything changed (write-refund.ts). Returns false (slot stays spent) when it already left the window or when the MCP
+ * already got WRITE_REFUND_LIMIT refunds in the last WRITE_WINDOW_MS.
+ */
+export function refundWriteRate(mcpId: string, at: number, now = Date.now()): boolean {
+  const map = writes()
+  const recent = map.get(mcpId)
+  if (!recent) return false
+  const i = recent.indexOf(at)
+  if (i < 0) return false
+  const given = (refunds().get(mcpId) ?? []).filter((t) => now - t < WRITE_WINDOW_MS)
+  if (given.length >= WRITE_REFUND_LIMIT) {
+    refunds().set(mcpId, given)
+    return false
+  }
+  given.push(now)
+  refunds().set(mcpId, given)
+  recent.splice(i, 1)
+  map.set(mcpId, recent)
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -124,4 +164,5 @@ export function __resetRateLimits() {
   buckets().clear()
   misses().clear()
   writes().clear()
+  refunds().clear()
 }

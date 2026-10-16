@@ -61,6 +61,7 @@ function cooldownError(
     messageVi: `MCP này giãn cách các lệnh ghi (mỗi lệnh cách lệnh trước ít nhất ${delaySec} giây) và đang có lệnh ghi khác chạy hoặc chờ - lệnh này CHƯA được thực hiện.`,
     hint: `Đợi khoảng ${retryAfterSec} giây rồi gọi lại với cùng tham số${confirmable ? " (confirm_token vẫn dùng được nếu chưa hết hạn)" : ""}; gửi từng lệnh một thay vì gửi dồn. Chủ MCP có thể giảm giãn cách trong cấu hình MCP (Bảo vệ → Tùy chỉnh nâng cao).`,
     logStatus: "rate_limited",
+    retryAfterSec,
   })
 }
 

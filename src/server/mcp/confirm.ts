@@ -300,7 +300,9 @@ async function storeResult(id: string, outcome: StoredOutcome) {
 }
 
 function failurePayload(e: unknown): ToolErrorPayload {
-  const p = mapToolError(e).payload
+  // a replay of this stored failure comes later: a retry_after_seconds would be stale (the token is spent anyway - the
+  // AI previews again)
+  const { retry_after_seconds: _stale, ...p } = mapToolError(e).payload
   return {
     ...p,
     hint: p.hint ?? "Kiểm tra lại trạng thái object bằng ads_get_object trước khi thử lại với bản xem trước mới.",

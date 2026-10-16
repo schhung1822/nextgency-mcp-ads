@@ -7,7 +7,7 @@ import { and, eq, inArray, isNull, ne, notInArray, sql } from "drizzle-orm"
 import { connectionStatus as cs } from "@/lib/i18n/vi/connection-status"
 import { connections as m } from "@/lib/i18n/vi/connections"
 import { formatDate } from "@/lib/format"
-import { isDefaultEnabled, type ConnectionStatusValue } from "@/lib/schemas/connections"
+import { isDefaultEnabled, META_ACTION_REQUIRED_KEY, type ConnectionStatusValue } from "@/lib/schemas/connections"
 import { redactString } from "@/server/audit/redact"
 import { safeErrorForLog as safeGenericError } from "@/server/audit/safe-error"
 import { aad, decryptJson, encryptJson } from "@/server/crypto/secret-box"
@@ -23,6 +23,9 @@ export const EXPIRING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 /** Key inside connections.meta holding the Vietnamese warnings of the last check (non-secret). */
 export const META_WARNINGS_KEY = "checkWarnings"
+
+/** Key inside connections.meta: "Cần xác thực" flag (D6, set by the MCP layer; kept by checks, dropped by "Thay token"). */
+export { META_ACTION_REQUIRED_KEY }
 
 /** Key inside connections.meta: outcome of the last Facebook Pages sync (Meta only, non-secret). */
 export const PAGES_SYNC_KEY = "pagesSync"
@@ -482,7 +485,12 @@ export async function applyRefresh(
   if (plan.status && row.status !== "disabled") patch.status = plan.status
   if (plan.tokenExpiresAt !== undefined) patch.tokenExpiresAt = plan.tokenExpiresAt
   if (plan.scopes !== undefined) patch.scopes = plan.scopes
-  if (plan.meta !== undefined) patch.meta = plan.meta
+  if (plan.meta !== undefined) {
+    // the "cần xác thực" flag (D6) belongs to the MCP layer / the user, not to the check: keep the value stored NOW
+    // (set, refreshed, cleared or dismissed while the platform was being called) instead of the copy read before
+    const { [META_ACTION_REQUIRED_KEY]: _staleFlag, ...checked } = plan.meta
+    patch.meta = sql`${JSON.stringify(checked)}::jsonb || case when ${connections.meta} -> ${META_ACTION_REQUIRED_KEY}::text is null then '{}'::jsonb else jsonb_build_object(${META_ACTION_REQUIRED_KEY}::text, ${connections.meta} -> ${META_ACTION_REQUIRED_KEY}::text) end`
+  }
   await tx.update(connections).set(patch).where(eq(connections.id, row.id))
 
   const pages = plan.ok && plan.pages?.ok ? await upsertMetaPages(tx, row.id, plan.pages.pages, { now }) : undefined

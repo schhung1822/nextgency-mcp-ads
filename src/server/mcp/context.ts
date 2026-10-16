@@ -1,10 +1,12 @@
 // Build a ProviderContext for one granted ad account. Credentials are decrypted inside the request
 // scope only (per tool call cache, dropped when the call ends) - never returned, logged or cached globally.
 import { and, eq, isNull } from "drizzle-orm"
+import { META_ACTION_REQUIRED_KEY, readActionRequired } from "@/lib/schemas/connections"
 import { aad, decryptJson } from "../crypto/secret-box"
 import { db } from "../db/client"
 import { connections } from "../db/schema"
 import type { ConnectionContext, ProviderContext, UpstreamEvent } from "../providers/types"
+import { rememberActionRequired } from "./connection-health"
 import { McpToolError } from "./errors"
 import type { GrantAccount } from "./types"
 
@@ -19,6 +21,8 @@ export interface ProviderContextFactory {
   connection(connectionId: string): Promise<ConnectionContext & { connectionId: string }>
   /** connection ids a context was built for during this tool call */
   readonly touched: ReadonlySet<string>
+  /** touched connection ids whose `meta.actionRequired` flag ("cần xác thực", D6) is set */
+  readonly actionRequired: ReadonlySet<string>
 }
 
 /**
@@ -32,6 +36,8 @@ export function providerContextFactory(opts: {
   onUpstream?: (e: UpstreamEvent) => void
 }): ProviderContextFactory {
   const loaded = new Map<string, Promise<LoadedConnection>>()
+  const touched = new Set<string>()
+  const actionRequired = new Set<string>()
 
   async function load(connectionId: string): Promise<LoadedConnection> {
     const rows = await db
@@ -73,10 +79,14 @@ export function providerContextFactory(opts: {
       })
     }
     const meta = c.meta && typeof c.meta === "object" && !Array.isArray(c.meta) ? (c.meta as Record<string, unknown>) : {}
+    // "cần xác thực" (D6): lets a later successful write clear the flag without an extra query on unflagged connections
+    const flagged = readActionRequired(meta[META_ACTION_REQUIRED_KEY]) !== null
+    if (flagged) actionRequired.add(c.id)
+    else actionRequired.delete(c.id)
+    rememberActionRequired(c.id, flagged)
     return { credentials, meta }
   }
 
-  const touched = new Set<string>()
   const loadOnce = (connectionId: string): Promise<LoadedConnection> => {
     touched.add(connectionId)
     let p = loaded.get(connectionId)
@@ -109,5 +119,5 @@ export function providerContextFactory(opts: {
       onUpstream: opts.onUpstream,
     }
   }
-  return Object.assign(factory, { touched, connection })
+  return Object.assign(factory, { touched, actionRequired, connection })
 }

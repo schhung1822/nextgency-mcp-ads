@@ -131,6 +131,34 @@ describe("copyMetaObject - ad set and ad", () => {
     expect(res.mappings).toHaveLength(3)
   })
 
+  it("HEF campaign + constrained targeting without an explicit advantage_audience → warning to set it first (v26, F)", async () => {
+    const hefAdset = (targeting: Record<string, unknown>, cats: string[] = ["HOUSING"]) => ({
+      id: "2001",
+      name: "A",
+      account_id: "1001",
+      campaign_id: "3001",
+      daily_budget: "100000",
+      targeting,
+      campaign: { id: "3001", special_ad_categories: cats },
+    })
+    const warn = /advantage_audience.*meta_update_targeting \(adset_id=2001/
+    const cases: [Record<string, unknown>, string[], boolean][] = [
+      [{ custom_audiences: [{ id: "1" }] }, ["HOUSING"], true],
+      [{ flexible_spec: [{ interests: [{ id: "2" }] }] }, ["FINANCIAL_PRODUCTS_SERVICES"], true],
+      [{ custom_audiences: [{ id: "1" }], targeting_automation: { advantage_audience: 0 } }, ["HOUSING"], false],
+      [{ geo_locations: { countries: ["VN"] } }, ["HOUSING"], false],
+      [{ custom_audiences: [{ id: "1" }] }, [], false],
+    ]
+    for (const [targeting, cats, expected] of cases) {
+      const m = mockGraph([
+        ["GET", "2001", (c) => (expect(c.params.fields).toMatch(/targeting.*campaign\{special_ad_categories\}/), json(hefAdset(targeting, cats)))],
+      ])
+      const res = await copyMetaObject(providerCtx(), { level: "ad_group", id: "2001", deep: false }, { dryRun: true })
+      expect(warn.test(res.warnings.join(" "))).toBe(expected)
+      expect(m.calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    }
+  })
+
   it("ad copy into another ad set of the same account", async () => {
     const m = mockGraph([
       ["GET", "11", () => json({ id: "11", name: "ad", account_id: "1001", campaign_id: "3001", adset_id: "2001" })],

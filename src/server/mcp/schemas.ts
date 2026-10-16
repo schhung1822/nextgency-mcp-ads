@@ -43,6 +43,11 @@ export const statusFilterSchema = z.enum([
 export const metricPresetSchema = z.enum(METRIC_PRESETS)
 export const metricKeySchema = z.enum(NORMALIZED_METRICS)
 export const lookupKindSchema = z.enum(LOOKUP_KINDS)
+/** ads_lookup parent / Business Center ids (TikTok identity_id is a UUID or a digit string) */
+export const lookupParentIdSchema = z
+  .string()
+  .trim()
+  .regex(/^[\w.:-]{1,128}$/, "id chỉ gồm chữ, số, dấu gạch, chấm, hai chấm")
 
 /** Google Ads campaign types (advertising_channel_type) + alias "youtube" (= VIDEO + DEMAND_GEN). Google only. */
 export const googleChannelTypesSchema = z

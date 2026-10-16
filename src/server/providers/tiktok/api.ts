@@ -166,26 +166,94 @@ export function str(v: unknown): string | null {
 // Status
 // ---------------------------------------------------------------------------
 
-/** operation_status + secondary_status → NormalizedStatus */
+/**
+ * operation_status + secondary_status → NormalizedStatus. Checked against "Supported secondary statuses for a primary
+ * status" (doc 1757239620352002) + Enumerations (1737174886619138) + the Upgraded Smart+ ad statuses, 2026-10-16
+ * (providers/tiktok.md §3). Partial review results keep their status; statusDetail() tells them apart.
+ */
 export function normalizeStatus(operationStatus: unknown, secondaryStatus: unknown): NormalizedStatus {
   const op = typeof operationStatus === "string" ? operationStatus : ""
   const sec = typeof secondaryStatus === "string" ? secondaryStatus : ""
   if (op === "DELETE" || /(^|_)DELETE$/.test(sec)) return "deleted"
-  if (/_DENY$|AUDIT_DENY|REVIEW_DISAPPROVED|NOT_APPROVED/.test(sec)) return "rejected"
+  // PRIVACY_POLICY_REJECTED (Upgraded Smart+) and PROMOTE_AD_OFFLINE_AUDIT (RF_CLOSED "Creative not approved") are
+  // rejections although they do not end in _DENY
+  if (/_DENY$|AUDIT_DENY|REVIEW_DISAPPROVED|NOT_APPROVED|PRIVACY_POLICY_REJECTED$|PROMOTE_AD_OFFLINE_AUDIT$/.test(sec)) return "rejected"
   if (/FROZEN|ACCOUNT_PUNISH/.test(sec) || op === "FROZEN") return "disabled"
   if (op === "DISABLE") return "paused"
   // A child that is ENABLE itself but whose parent is disabled (ADGROUP_STATUS_CAMPAIGN_DISABLE,
   // AD_STATUS_ADGROUP_DISABLE, …) is not delivering → paused, checked BEFORE trusting op === "ENABLE".
-  if (/DISABLE$/.test(sec)) return "paused"
+  // Primary STATUS_DISABLE also groups AWAITING_RELEASE (SKAN) and the GMV Max authorization / "used by" pauses.
+  if (/DISABLE$|AWAITING_RELEASE$|AUTHORIZATION_CANCEL$|USED_BY_(LIVE|PRODUCT)_GMV_MAX$/.test(sec)) return "paused"
+  // An edit is in review while the previous version keeps delivering (primary DELIVERY_OK) → active, before the
+  // generic *_REAUDIT rule
+  if (/SHADOW_ADGROUP_REAUDIT$|DELIVERY_AND_REAUDIT$/.test(sec)) return op === "ENABLE" || !op ? "active" : "unknown"
   // Approved for part of the placements but not delivering yet → still in review (checked 2026-10-08)
   if (/PARTIAL_AUDIT_NO_DELIVERY$/.test(sec)) return "pending_review"
-  // Not delivering because an upstream object/account is unavailable or a contract is pending → never "active"
-  if (/_UNAVAILABLE$|CONTRACT_PENDING/.test(sec)) return "disabled"
+  // Not delivering because an upstream object/account is unavailable, a contract is pending, every keyword was
+  // refused, lead collection was switched off or a Reach & Frequency / Promote order is closed → never "active"
+  if (
+    /_UNAVAILABLE$|CONTRACT_PENDING|SEARCH_KEYWORDS_NOT_AVAILABLE$|COLLECTION_TOGGLED_OFF$|ADVERTISER_ACCOUNT_INVALID$/.test(sec) ||
+    /RF_(DEDUCTION_FAILED|NO_VALID_CREATIVE|CLOSED_OTHERS|ADGROUP_INVALID|WITHDRAW_ORDER|ADGROUP_CLOSED)$|PROMOTE_(WITHDRAW_ORDER|ADGROUP_CLOSED)$/.test(sec)
+  ) {
+    return "disabled"
+  }
   if (/_(RE)?AUDIT$|_IN_REVIEW$/.test(sec)) return "pending_review"
-  if (/TIME_DONE$|_STATUS_DONE$|RF_TIME_DONE$/.test(sec)) return "archived"
+  if (/TIME_DONE$|_STATUS_DONE$|RF_TIME_DONE$|RF_TERMINATE$/.test(sec)) return "archived"
   if (op === "ENABLE") return "active"
   if (/DELIVERY_OK$|_ENABLE$/.test(sec)) return "active"
   return "unknown"
+}
+
+/**
+ * Refinement of a partial review result (AdObjectSummary.statusDetail): "partially_approved" = delivering only where /
+ * with what was approved (primary DELIVERY_OK: *_PARTIAL_AUDIT_DELIVERY_OK, *_REVIEW_PARTIALLY_APPROVED, keywords
+ * partially approved); "partially_rejected" = *_PARTIAL_AUDIT_DENY (status rejected, part of it was approved).
+ * null otherwise. ads_get_object shows the reasons (extra.review, review.ts).
+ */
+export function statusDetail(secondaryStatus: unknown): "partially_approved" | "partially_rejected" | null {
+  const sec = typeof secondaryStatus === "string" ? secondaryStatus : ""
+  if (!sec) return null
+  if (/PARTIAL_AUDIT_DENY$/.test(sec)) return "partially_rejected"
+  if (/PARTIAL_AUDIT_DELIVERY_OK$|REVIEW_PARTIALLY_APPROVED$|SEARCH_KEYWORDS_PARTIAL_APPROVED$/.test(sec)) return "partially_approved"
+  return null
+}
+
+/**
+ * Why an object switched on (status "active") is NOT delivering: secondary statuses of the primary STATUS_NOT_DELIVERY
+ * group (doc 1757239620352002) that normalizeStatus keeps as "active" (the owner turned it on). Exposed as
+ * extra.delivery_blocked_reason {code, label}. null = nothing known blocks delivery.
+ */
+const DELIVERY_BLOCKED: readonly (readonly [RegExp, string, string])[] = [
+  [/ADGROUP_STATUS_CREATE$/, "no_ads", "nhóm chưa có quảng cáo"],
+  [/_CAMPAIGN_EXCEED$/, "campaign_budget_exceeded", "chiến dịch đã hết ngân sách"],
+  [/_BUDGET_EXCEED$/, "budget_exceeded", "đã hết ngân sách"],
+  [/_BALANCE_EXCEED$|ACCOUNT_BALANCE_INSUFFICIENT$/, "balance_insufficient", "thanh toán không thành công hoặc số dư tài khoản không đủ"],
+  [/LIVE_NOT_START$/, "live_not_started", "LIVE chưa bắt đầu"],
+  [/_NOT_START$/, "not_started", "ngoài lịch chạy (chưa tới giờ bắt đầu)"],
+  [/LIVE_OFFLINE$/, "live_offline", "LIVE đang ngoại tuyến"],
+  [/_TRANSCODING_FAIL$/, "transcoding_failed", "video lỗi chuyển mã - cần tải lại / thay video"],
+  [/ASSET_AUTHORIZATION_LOST$/, "asset_authorization_lost", "tài sản không dùng được hoặc đã bị thu hồi ủy quyền"],
+  [/PIXEL_UNBIND$/, "pixel_unauthorized", "pixel chưa được ủy quyền"],
+  [/_QUOTA_LIMIT$/, "quota_limit", "tài khoản hết hạn mức nhóm đang chạy - tạm dừng bớt nhóm khác"],
+  [/_PRE_ONLINE$/, "pre_online", "đang chuẩn bị phân phối"],
+  [/INDUSTRY_QUALIFICATION_MISSING$/, "qualification_missing", "thiếu giấy phép ngành nghề"],
+  [/INDUSTRY_QUALIFICATION_EXPIRED$/, "qualification_expired", "giấy phép ngành nghề đã hết hạn"],
+  [/MUSIC_AUTHORIZATION_MISSING$/, "music_authorization_missing", "thiếu bản quyền nhạc"],
+  [/PROCESS_AUDIO$/, "processing_audio", "đang xử lý âm thanh (kẹt lâu thì tải lại)"],
+  [/NO_AUTHORIZATION_OF_SHOWCASE$/, "showcase_unauthorized", "identity không dùng được (mất quyền showcase)"],
+  [/IDENTITY_USED_BY_GMV_MAX_AD$/, "identity_used_by_gmv_max", "identity đang được dùng cho quảng cáo GMV Max"],
+  [/RF_NO_DELIVERY_CREATIVE$/, "rf_no_creative", "không có creative hợp lệ (Reach & Frequency)"],
+  [/RF_SHORT_BALANCE$/, "rf_short_balance", "số dư thấp hơn số tiền cần trừ (Reach & Frequency)"],
+  [/RF_BOOKING$/, "rf_booked", "đã đặt chỗ, chưa phân phối (Reach & Frequency)"],
+  [/RF_SCHEDULE$/, "rf_scheduled", "đã lên lịch, chưa phân phối (Reach & Frequency)"],
+]
+
+export function deliveryBlockedReason(secondaryStatus: unknown): { code: string; label: string } | null {
+  const sec = typeof secondaryStatus === "string" ? secondaryStatus : ""
+  // Upgraded Smart+ DELIVERY_AND_TRANSCODING_FAIL still delivers
+  if (!sec || /DELIVERY_AND_/.test(sec)) return null
+  for (const [re, code, label] of DELIVERY_BLOCKED) if (re.test(sec)) return { code, label }
+  return null
 }
 
 export function statusRaw(o: Raw): string {

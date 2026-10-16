@@ -2,6 +2,8 @@
 // them off, so MCPs saved before the feature (no key in jsonb) get the owner's default without a data migration.
 import { describe, expect, it } from "vitest"
 
+import { MCP_LIMITS } from "@/lib/schemas/mcp-servers"
+
 import { effectiveMcpSettings, parseMcpSettings } from "./settings"
 import { DEFAULT_MCP_SETTINGS, isUnlimited } from "./types"
 
@@ -139,5 +141,31 @@ describe("parseMcpSettings - Apify (16-apify.md §7)", () => {
       parseMcpSettings({ protection_mode: "advanced", apify_run_max_usd: 3, apify_daily_max_usd: 5 })
     )
     expect([advanced.apifyRunMaxUsd, advanced.apifyDailyMaxUsd]).toEqual([3, 5])
+  })
+})
+
+describe("parseMcpSettings - request limits share the form bounds (v1.1.6 B8)", () => {
+  it("in range kept; out of range clamped to MCP_LIMITS min / max; not a number → default", () => {
+    const { rateLimitPerMin: perMin, writeRateLimitPer10Min: writes } = MCP_LIMITS
+    expect([perMin.min, perMin.max, writes.min, writes.max]).toEqual([1, 600, 1, 1000])
+    expect(parseMcpSettings({ write_rate_limit_per_10min: 1000, rate_limit_per_min: 600 })).toMatchObject({
+      writeRateLimitPer10Min: 1000,
+      rateLimitPerMin: 600,
+    })
+    // a hand-edited / very old row above the form maximum is clamped (was: accepted up to 10000)
+    expect(parseMcpSettings({ write_rate_limit_per_10min: 5000 }).writeRateLimitPer10Min).toBe(1000)
+    expect(parseMcpSettings({ rate_limit_per_min: 601 }).rateLimitPerMin).toBe(600)
+    expect(parseMcpSettings({ rateLimitPerMin: 10_000 }).rateLimitPerMin).toBe(600)
+    // below the minimum → the minimum (stricter), fractions rounded down
+    expect(parseMcpSettings({ write_rate_limit_per_10min: 0 }).writeRateLimitPer10Min).toBe(1)
+    expect(parseMcpSettings({ rate_limit_per_min: -5 }).rateLimitPerMin).toBe(1)
+    expect(parseMcpSettings({ rate_limit_per_min: 7.9 }).rateLimitPerMin).toBe(7)
+    for (const bad of ["5", null, true, {}, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const s = parseMcpSettings({ rate_limit_per_min: bad, write_rate_limit_per_10min: bad })
+      expect([s.rateLimitPerMin, s.writeRateLimitPer10Min]).toEqual([
+        DEFAULT_MCP_SETTINGS.rateLimitPerMin,
+        DEFAULT_MCP_SETTINGS.writeRateLimitPer10Min,
+      ])
+    }
   })
 })

@@ -64,10 +64,35 @@ export async function setMetaStatus(
   status: TargetStatus,
   opts: MutationOptions = {}
 ): Promise<MutationResult> {
+  return changeMetaStatus(ctx, objLevel, ids, status === "active" ? "ACTIVE" : "PAUSED", opts)
+}
+
+/**
+ * ads_set_status status "archived" (D3, AdsProvider.archiveObjects): `POST /{id} status=ARCHIVED`. Per the reference
+ * pages an archived object only accepts `name` and `status=DELETED` afterwards - it cannot be turned on again (the
+ * "Manage campaigns" guide says otherwise; treated as not reversible, meta.md §5 "Lưu trữ"). Children inherit the
+ * status (stop delivering). Already archived / deleted objects are skipped with a warning.
+ */
+export async function archiveMetaObjects(
+  ctx: ProviderContext<MetaCredentials>,
+  objLevel: ObjectLevel,
+  ids: string[],
+  opts: MutationOptions = {}
+): Promise<MutationResult> {
+  return changeMetaStatus(ctx, objLevel, ids, "ARCHIVED", opts)
+}
+
+async function changeMetaStatus(
+  ctx: ProviderContext<MetaCredentials>,
+  objLevel: ObjectLevel,
+  ids: string[],
+  target: "ACTIVE" | "PAUSED" | "ARCHIVED",
+  opts: MutationOptions
+): Promise<MutationResult> {
   const level = toMetaLevel(objLevel)
   const unique = [...new Set(ids.map((i) => i.trim()).filter(Boolean))]
   if (unique.length === 0) throw invalid("Cần ít nhất 1 id.")
-  if (unique.length > 50) throw invalid("Tối đa 50 đối tượng mỗi lần bật/tắt.")
+  if (unique.length > 50) throw invalid(`Tối đa 50 đối tượng mỗi lần ${target === "ARCHIVED" ? "lưu trữ" : "bật/tắt"}.`)
   if (unique.some((i) => !/^\d{1,30}$/.test(i))) throw invalid("Id Meta chỉ gồm chữ số.", "Gọi ads_list_objects để lấy đúng id.")
 
   const call = callCtx(ctx)
@@ -79,7 +104,6 @@ export async function setMetaStatus(
     unique.map((id) => ({ method: "GET" as const, relative_url: `${id}?fields=${encodeURIComponent(fields)}` })),
     { idempotent: true }
   )
-  const target = status === "active" ? "ACTIVE" : "PAUSED"
   const warnings: string[] = []
   const planned: { node: RawNode; change: FieldChange }[] = []
   for (let i = 0; i < unique.length; i++) {
@@ -107,6 +131,13 @@ export async function setMetaStatus(
       warnings.push(`${name(node)} (${id}) đã ở trạng thái ${target} - bỏ qua.`)
       continue
     }
+    // [H] status guide / ad set + ad reference: an ARCHIVED object only accepts `name` and `status=DELETED`
+    if (current === "ARCHIVED" && target !== "ARCHIVED") {
+      throw invalid(
+        `${name(node)} (${id}) đang được lưu trữ (ARCHIVED) - Meta không cho bật lại hay tạm dừng đối tượng đã lưu trữ (chỉ đổi tên hoặc xoá).`,
+        `Muốn chạy lại: sao chép ${LEVEL_VI[level]} này (ads_copy_object - bản sao ở trạng thái tạm dừng) rồi bật bản sao; bỏ id này khỏi danh sách để đổi trạng thái các đối tượng còn lại.`
+      )
+    }
     if (target === "ACTIVE" && (eff === "CAMPAIGN_PAUSED" || eff === "ADSET_PAUSED")) {
       warnings.push(`${name(node)} (${id}) sẽ chưa chạy vì cấp cha đang tạm dừng (${eff}).`)
     }
@@ -117,6 +148,12 @@ export async function setMetaStatus(
       node,
       change: { objectId: id, objectName: name(node), level: fromMetaLevel(level), field: "status", before: current, after: target },
     })
+  }
+  if (target === "ARCHIVED" && planned.length) {
+    warnings.push(
+      "Lưu trữ gần như không hoàn tác: sau khi lưu trữ, Meta chỉ cho đổi tên hoặc xoá - không bật lại / tạm dừng lại được. Muốn ngừng tạm thời hãy dùng paused."
+    )
+    if (level !== "ad") warnings.push(`Mọi đối tượng con của ${LEVEL_VI[level]} được lưu trữ cũng ngừng phân phối (kế thừa trạng thái).`)
   }
 
   if (opts.dryRun || planned.length === 0) {
@@ -130,17 +167,61 @@ export async function setMetaStatus(
   )
   const changes: FieldChange[] = []
   const errors: ProviderError[] = []
+  const unknown: { change: FieldChange; error: ProviderError }[] = []
   for (let i = 0; i < results.length; i++) {
     const r = results[i]
     const p = planned[i]
     if (r.ok) changes.push(p.change)
-    else {
+    else if (!DEFINITE_REFUSALS.has(r.error.code)) {
+      // no answer / timeout / 5xx for this op: Meta may have applied it
+      unknown.push({ change: p.change, error: r.error })
+      warnings.push(
+        `Không rõ ${name(p.node)} (${p.node.id}) đã ${target === "ARCHIVED" ? "được lưu trữ" : `chuyển sang ${target}`} chưa (${r.error.userMessageVi}) - kiểm tra lại bằng ads_get_object trước khi thử lại.`
+      )
+    } else {
       errors.push(r.error)
-      warnings.push(`Không đổi được trạng thái ${name(p.node)} (${p.node.id}): ${r.error.userMessageVi}`)
+      warnings.push(`Không ${target === "ARCHIVED" ? "lưu trữ" : "đổi trạng thái"} được ${name(p.node)} (${p.node.id}): ${r.error.userMessageVi}`)
     }
   }
+  if (changes.length === 0 && unknown.length) throw uncertainStatusWrite(unknown, target)
   if (changes.length === 0 && errors.length) throw errors[0]
   return { preview: false, changes, warnings }
+}
+
+/** Batch op errors that prove Meta refused that op (nothing changed). Anything else = outcome unknown. */
+const DEFINITE_REFUSALS: ReadonlySet<ProviderError["code"]> = new Set<ProviderError["code"]>([
+  "rate_limited",
+  "quota_exceeded",
+  "action_required",
+  "auth_invalid",
+  "permission_denied",
+  "invalid_request",
+  "not_found",
+  "unsupported",
+])
+
+/**
+ * Nothing confirmed but some ops have no definite answer: never report this as a clean refusal (a definite error
+ * thrown first would let the D5 refund give the write slot back and hide a possible change). The error carries
+ * `audit` (the possibly applied status changes go to the MCP call log) and names the ids to re-check.
+ */
+function uncertainStatusWrite(
+  unknown: { change: FieldChange; error: ProviderError }[],
+  target: "ACTIVE" | "PAUSED" | "ARCHIVED"
+): ProviderError {
+  const first = unknown[0].error
+  const ids = unknown.map((u) => u.change.objectId)
+  return new ProviderError({
+    platform: "meta",
+    code: first.code,
+    message: `meta: status ${target} outcome unknown for ${ids.join(",")}: ${first.message}`,
+    userMessageVi: `Meta không trả kết quả rõ ràng khi đổi trạng thái sang ${target} - có thể đã thực hiện với: ${ids.join(", ")}.`,
+    hint: "Kiểm tra trạng thái hiện tại bằng ads_get_object với từng id trên trước khi thử lại.",
+    retryable: false,
+    upstream: first.upstream,
+    cause: first,
+    audit: { errorCode: "status_outcome_unknown", changes: unknown.map((u) => u.change) },
+  })
 }
 
 export async function updateMetaBudget(
@@ -230,6 +311,15 @@ export async function updateMetaObject(
   const level = toMetaLevel(u.level)
   const c = u.changes
   const currency = ctx.account.currency
+  if (c.creative !== undefined) {
+    throw new ProviderError({
+      platform: "meta",
+      code: "unsupported",
+      message: "meta: creative changes are not supported by updateObject",
+      userMessageVi: "Meta không sửa nội dung quảng cáo qua ads_update_object (creative của Meta không sửa tại chỗ được).",
+      hint: "Dùng meta_update_ad_creative: tạo creative mới rồi gắn vào quảng cáo (giữ nguyên ID quảng cáo, Meta duyệt lại).",
+    })
+  }
   if (c.finalUrl !== undefined) {
     throw invalid(
       "Meta không cho sửa URL đích của quảng cáo có sẵn (URL nằm trong creative).",
@@ -241,6 +331,13 @@ export async function updateMetaObject(
   }
   if (level === "campaign" && c.bidAmount !== undefined) {
     throw invalid("Giá thầu (bid_amount) nằm ở nhóm quảng cáo, không phải chiến dịch.")
+  }
+  // [H] ad campaign reference: "At the campaign level, start_time is a read only field" (set on the ad set)
+  if (level === "campaign" && c.startTime !== undefined) {
+    throw invalid(
+      "start_time của chiến dịch Meta chỉ đọc - thời gian bắt đầu đặt ở nhóm quảng cáo.",
+      "Đổi start_time của nhóm quảng cáo chưa bắt đầu (ads_update_object level=ad_group); đổi end_time của chiến dịch vẫn được."
+    )
   }
   if (c.startTime === null || c.endTime === null) {
     throw invalid("Không hỗ trợ xoá thời gian bắt đầu/kết thúc; hãy truyền thời điểm cụ thể (ISO-8601 có múi giờ).")
@@ -271,8 +368,22 @@ export async function updateMetaObject(
     changes.push({ ...base, field: "name", before: node.name ?? null, after: params.name })
   }
   if (c.startTime !== undefined) {
-    params.start_time = c.startTime
-    changes.push({ ...base, field: "start_time", before: node.start_time ?? null, after: c.startTime })
+    const cur = typeof node.start_time === "string" ? Date.parse(node.start_time) : NaN
+    const wanted = Date.parse(c.startTime)
+    // same instant (any offset): nothing to change - never re-send the start of a running ad set
+    if (!(Number.isFinite(cur) && wanted === cur)) {
+      // B4: once the start time has passed the ad set has (or could have) started: refuse before any write, preview
+      // included. [L] Meta's reference lists start_time as updatable without restriction; Ads Manager locks it.
+      if (Number.isFinite(cur) && cur <= Date.now()) {
+        throw invalid(
+          `${LEVEL_VI[level]} đã tới thời gian bắt đầu (${String(node.start_time)}) - không đổi start_time được nữa.`,
+          "Chỉ đổi được end_time. Muốn lịch chạy mới (vd chạy từ 00:00 một ngày) hãy sao chép nhóm (ads_copy_object) rồi đặt start_time cho bản sao, hoặc tạo nhóm mới với start_time ngay khi tạo."
+        )
+      }
+      if (wanted < Date.now() - 60_000) warnings.push("start_time mới ở quá khứ - Meta sẽ bắt đầu phân phối ngay khi nhóm được bật.")
+      params.start_time = c.startTime
+      changes.push({ ...base, field: "start_time", before: node.start_time ?? null, after: c.startTime })
+    }
   }
   if (c.endTime !== undefined) {
     if (Date.parse(c.endTime) <= Date.now()) throw invalid("Thời gian kết thúc phải ở tương lai.")
