@@ -59,6 +59,7 @@ describe("real adapter extensions", () => {
         "tiktok_create_adgroup",
         "google_ads_create_search_campaign",
         "google_ads_add_keywords",
+        "google_ads_create_assets",
         "openai_ads_create_campaign",
         "openai_ads_create_ad_group",
         "openai_ads_update_ad_group",
@@ -173,7 +174,8 @@ describe("real adapter extensions", () => {
       expect(schema!.type, name).toBe("object")
       expect(Object.keys((schema!.properties as object) ?? {}), name).toContain(name.startsWith("ads_list_accounts") ? "platform" : name.startsWith("ads_get_report") ? "level" : name === "ads_get_media_upload" ? "upload_id" : "account_id")
     }
-    expect(names.length).toBeLessThanOrEqual(45)
+    // sanity cap for an all-platform grant (Google targeting + Search assets brought it to 49 in v1.1.7)
+    expect(names.length).toBeLessThanOrEqual(50)
     // default settings: the GMV Max write tools are not listed at all
     const off = buildMcpServer({ token: "m", clientId: "m", scopes: [], extra: { grant: { ...grant, settings: DEFAULT_MCP_SETTINGS }, req } })
     for (const name of ["tiktok_gmv_max_update", "tiktok_gmv_max_creatives", "tiktok_gmv_max_create"]) {

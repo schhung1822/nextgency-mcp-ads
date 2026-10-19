@@ -266,3 +266,13 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] `/mcp-servers/new` mở được khi chỉ có token Apify; trạng thái trống nêu Apify; Tổng quan: khối Apify trong "Phạm vi MCP"; danh sách MCP: icon + bộ lọc Apify; instructions riêng cho MCP không có nền tảng quảng cáo
 - [x] Test: schema, service (Postgres), flows (MCP chỉ dùng Apify chỉ có `apify_*`), unit instructions, e2e bước 2; tài liệu 01 (D9), 04, 06, 16, `docs/huong-dan-apify.md`, `docs/ket-noi-ai.md`
 - [ ] Orchestrator kiểm chứng UI (ảnh chụp bước 2 / 3 sáng-tối, 390 / 1440) + e2e đầy đủ; phát hành
+
+## Google Ads: nhắm mục tiêu chiến dịch + asset Search (2026-10-19 → 2026-10-20), v1.1.7
+Nguồn yêu cầu: góp ý khách (tool "google_ads_update_campaign_criteria": loại vị trí, bán kính, lịch chạy, gắn / gỡ asset). Chủ dự án quyết: làm cả phần nhắm mục tiêu và asset, **không** đổi mặc định sang PRESENCE (bỏ trống = mặc định Google). Thiết kế + API: `providers/google-ads.md` §5 "Nhắm mục tiêu chiến dịch & asset Search", 04 (bảng tool).
+- [x] Research doc chính thức Google Ads API v25 (2026-10-19): geo target type, ProximityInfo, AdScheduleInfo, asset sitelink / callout / call / snippet / price / promotion, CampaignAsset / CustomerAsset, GAQL
+- [x] `targeting.ts`: `google_ads_get_campaign_targeting`, `google_ads_update_campaign_targeting` (luôn xác nhận; 1 mutate nguyên khối; diff lịch chạy; chặn gỡ hết vị trí trừ `allow_no_location`); `google_ads_create_search_campaign` thêm `positive_geo_target_type` / `proximities` / `ad_schedules`
+- [x] `assets.ts`: `google_ads_list_assets`, `google_ads_create_assets` (chỉ tạo vào thư viện, dùng lại asset trùng, giá hiển thị không phải chi tiêu), `google_ads_link_assets` (quyền Sửa, luôn xác nhận)
+- [x] Sao chép chiến dịch giữ bán kính + liên kết asset cấp chiến dịch (`copy.ts`); map lỗi tiếng Việt (`errors.ts`); `SERVER_INSTRUCTIONS`; trần số tool trong test 45 → 50
+- [x] Rà soát: `ads-api-reviewer` + `security-reviewer` (0 Nghiêm trọng / Cao; M1 tạo asset không được gắn vào chiến dịch, M2 nhắm mục tiêu luôn xác nhận, L1–L3 + kết quả không chắc chắn khi mất kết nối — đã sửa kèm test)
+- [ ] Thử thật với tài khoản Google Ads (chỉ object thử nghiệm): header "Service catalog" / "Services", gắn lại link đã gỡ, price asset `languageCode=vi`, bán kính trên PMax
+- [x] Tài liệu: 01, 04, `providers/google-ads.md`, `docs/ket-noi-ai.md`, `release-notes/v1.1.7.md`

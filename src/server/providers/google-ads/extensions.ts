@@ -10,7 +10,17 @@ import { responseResourceName } from "./copy"
 import type { GoogleAdsCredentials } from "./credentials"
 import { decodeCursor, slicePage } from "./cursor"
 import { assertId, gaqlString, idList } from "./gaql"
+import { googleAdsAssetExtensions } from "./assets"
 import { createYoutubeVideoAsset } from "./media"
+import {
+  adScheduleBody,
+  adSchedulesSchema,
+  campaignTargetingExtensions,
+  geoTargetTypeSchema,
+  proximitiesSchema,
+  proximityBody,
+  proximityPoint,
+} from "./targeting"
 import { buildUpdate, failuresToError } from "./mutate"
 import { moneyToMicros, primeBillableUnit } from "./units"
 import { assertNotVideo, youtubeWatchUrl } from "./youtube"
@@ -86,8 +96,13 @@ export const createSearchCampaignInput = z
     target_cpa: money.optional().describe("CPA mục tiêu cho maximize_conversions"),
     start_date: isoDate.optional().describe("YYYY-MM-DD theo múi giờ tài khoản, mặc định hôm nay"),
     end_date: isoDate.optional(),
-    location_ids: z.array(idStr).min(1).max(1000).describe("ID geo target (lấy từ ads_lookup kind=locations), vd 2704 = Việt Nam"),
+    location_ids: z.array(idStr).min(1).max(1000).optional().describe("ID geo target (lấy từ ads_lookup kind=locations), vd 2704 = Việt Nam"),
     excluded_location_ids: z.array(idStr).max(1000).optional(),
+    proximities: proximitiesSchema.optional().describe("Bán kính quanh tọa độ (km 1–800 / dặm 0,7–500); cần location_ids hoặc proximities"),
+    positive_geo_target_type: geoTargetTypeSchema
+      .optional()
+      .describe("PRESENCE = chỉ người đang ở / thường ở khu vực; bỏ trống = mặc định Google PRESENCE_OR_INTEREST (thêm người quan tâm)"),
+    ad_schedules: adSchedulesSchema.optional().describe("Lịch quảng cáo theo múi giờ tài khoản; bỏ trống = cả ngày, mọi ngày"),
     // No language_ids: since 2026-09-30 manual language targeting on Search fails with
     // ContextError.OPERATION_NOT_PERMITTED_FOR_CONTEXT (Google infers the language).
     include_search_partners: z.boolean().default(false),
@@ -108,6 +123,9 @@ export const createSearchCampaignInput = z
       .max(20),
   })
   .superRefine((v, ctx) => {
+    if (!v.location_ids?.length && !v.proximities?.length) {
+      ctx.addIssue({ code: "custom", path: ["location_ids"], message: "Cần ít nhất 1 vị trí (location_ids) hoặc 1 bán kính (proximities)." })
+    }
     if (v.bidding_strategy === "manual_cpc") {
       v.ad_groups.forEach((g, i) => {
         if (g.cpc_bid === undefined) ctx.addIssue({ code: "custom", path: ["ad_groups", i, "cpc_bid"], message: "manual_cpc cần cpc_bid cho mỗi nhóm." })
@@ -179,16 +197,24 @@ export function buildSearchCampaignOps(cid: string, input: CreateSearchCampaignI
     startDateTime: `${start} 00:00:00`,
   }
   if (input.end_date) campaign.endDateTime = `${input.end_date} 23:59:59`
+  // omitted = Google default (PRESENCE_OR_INTEREST); sent only when the user chose
+  if (input.positive_geo_target_type) campaign.geoTargetTypeSetting = { positiveGeoTargetType: input.positive_geo_target_type }
   const campaignIndex = ops.length
   ops.push({ campaignOperation: { create: campaign } })
 
-  for (const id of input.location_ids) {
+  for (const id of input.location_ids ?? []) {
     ops.push({ campaignCriterionOperation: { create: { campaign: campaignRn, location: { geoTargetConstant: `geoTargetConstants/${assertId(id)}` } } } })
   }
   for (const id of input.excluded_location_ids ?? []) {
     ops.push({
       campaignCriterionOperation: { create: { campaign: campaignRn, negative: true, location: { geoTargetConstant: `geoTargetConstants/${assertId(id)}` } } },
     })
+  }
+  for (const p of input.proximities ?? []) {
+    ops.push({ campaignCriterionOperation: { create: { campaign: campaignRn, proximity: proximityBody(proximityPoint(p)) } } })
+  }
+  for (const s of input.ad_schedules ?? []) {
+    ops.push({ campaignCriterionOperation: { create: { campaign: campaignRn, adSchedule: adScheduleBody(s) } } })
   }
   for (const k of input.negative_keywords ?? []) {
     ops.push({ campaignCriterionOperation: { create: { campaign: campaignRn, negative: true, keyword: { text: k.text, matchType: k.match_type } } } })
@@ -232,6 +258,9 @@ async function runCreateSearchCampaign(ctx: GCtx, input: CreateSearchCampaignInp
     ...plan.warnings,
     "Chiến dịch được tạo ở trạng thái TẠM DỪNG - dùng ads_set_status để bật khi đã kiểm tra.",
     ...(input.contains_eu_political_advertising ? ["Đã khai báo chiến dịch CÓ chứa quảng cáo chính trị EU - có thể bị hạn chế phân phát tại EU."] : []),
+    ...(input.ad_schedules?.length
+      ? [`Lịch quảng cáo tính theo múi giờ tài khoản (${ctx.account.timezone}); khung qua nửa đêm phải tách thành 2 ngày.`]
+      : []),
   ]
   const summary = {
     name: input.name,
@@ -240,7 +269,10 @@ async function runCreateSearchCampaign(ctx: GCtx, input: CreateSearchCampaignInp
     bidding_strategy: input.bidding_strategy,
     start_date: input.start_date ?? today,
     end_date: input.end_date ?? null,
-    locations: input.location_ids.length,
+    locations: input.location_ids?.length ?? 0,
+    proximities: input.proximities?.length ?? 0,
+    ad_schedules: input.ad_schedules?.length ?? 0,
+    positive_geo_target_type: input.positive_geo_target_type ?? "PRESENCE_OR_INTEREST (mặc định)",
     ad_groups: input.ad_groups.map((g) => ({ name: g.name, keywords: g.keywords.length, ads: g.ads.length })),
     operations: plan.ops.length,
   }
@@ -697,6 +729,7 @@ export const googleAdsExtensions: Ext[] = [
       "Chiến dịch luôn được tạo ở trạng thái TẠM DỪNG và tự khai báo quảng cáo chính trị EU. Tiền theo đơn vị chính của tiền tệ tài khoản. " +
       "Không nhắm mục tiêu ngôn ngữ (từ 30/09/2026 Google tự xác định ngôn ngữ cho chiến dịch Tìm kiếm). " +
       "Gọi trước: ads_list_accounts (account_id, tiền tệ), ads_lookup kind=locations để lấy ID vị trí. " +
+      "Cần location_ids hoặc proximities (bán kính quanh tọa độ); tùy chọn positive_geo_target_type (PRESENCE = chỉ người ở khu vực, bỏ trống = mặc định Google PRESENCE_OR_INTEREST) và ad_schedules (≤6 khung/ngày, giờ theo múi giờ tài khoản). " +
       "RSA: 3–15 tiêu đề ≤30 ký tự, 2–4 mô tả ≤90 ký tự. Chiến lược giá thầu: manual_cpc (cần cpc_bid từng nhóm), maximize_clicks (tùy chọn trần CPC), maximize_conversions (tùy chọn target_cpa).",
     input: createSearchCampaignInput,
     write: true,
@@ -727,6 +760,8 @@ export const googleAdsExtensions: Ext[] = [
       input.keywords.flatMap((k, i): ExtensionMoneyItem[] => (k.cpc_bid !== undefined ? [{ kind: "bid", amount: k.cpc_bid, field: `keywords[${i}].cpc_bid` }] : [])),
     run: (ctx, input: z.infer<typeof addKeywordsInput>, opts) => runAddKeywords(ctx, input, opts),
   },
+  ...campaignTargetingExtensions,
+  ...googleAdsAssetExtensions,
   {
     name: "google_ads_declare_eu_political",
     permission: "update",

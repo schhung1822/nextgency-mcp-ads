@@ -144,11 +144,16 @@ Tool chỉ được đăng ký khi grant có ít nhất 1 nền tảng với quy
 | `tiktok_gmv_max_update` | update | **opt-in** (`requiresSetting: tiktok_gmv_max_write`, không liệt kê khi tắt), **luôn xác nhận 2 bước**: `/campaign/gmv_max/update/` — `roas_bid` (≤1 chữ số thập phân), `auto_budget`, `promotion_days`, `item_group_ids` (thay toàn bộ, ≤400; sản phẩm mới phải AVAILABLE + UNOCCUPIED; sản phẩm bị gỡ liệt kê trong preview). `auto_budget` / `promotion_days` luôn gửi object con đầy đủ (ghép input → hiện tại → mặc định 50 / 10 / 90); `custom_schedule` thay thế danh sách (start < end, không trước ngày bắt đầu chiến dịch). Mức chi tối đa có thể (tới ~31×) phải ≤ trần ngày khi nó **tăng** (bắt buộc có trần). Đọc lại sau khi gửi: lệch → cảnh báo đỏ; chi tối đa cao hơn mức đã duyệt → lỗi "kiểm tra / tạm dừng". Đổi ROI: cảnh báo theo lịch sử `mcp_call_logs` (Product < 3 ngày trọn vẹn, LIVE đã đổi hôm nay, tăng / giảm lần 2 → mất Bảo vệ ROI) |
 | `tiktok_gmv_max_creatives` | update | **opt-in**, luôn xác nhận: `/campaign/gmv_max/creative/update/` REMOVE / ADD ≤400 bài đăng; chiến dịch **đang phân phối** (`STATUS_DELIVERY_OK` / `CAMPAIGN_STATUS_ENABLE`); Product: AUTO_SELECTION + `spu_ids` mỗi bài |
 | `tiktok_gmv_max_create` | create | **opt-in**, luôn xác nhận, `createsActive`: `/campaign/gmv_max/create/` — **CHẠY NGAY** (TikTok không tạo GMV Max ở trạng thái tạm dừng; `start_time` hẹn giờ theo giờ tài khoản), cảnh báo đỏ; kiểm tra trước: cửa hàng sẵn sàng cho TKQC này, sản phẩm / tài khoản LIVE không bị chiếm (từ chối nêu chiến dịch đang chiếm), "tất cả sản phẩm" cần `promote_all_products_allowed`; ngân sách ngày ≤ trần ngày (bắt buộc) **và** cộng dồn với các chiến dịch GMV Max MCP này đã cho chạy trong 24 giờ ≤ trần; `request_id` từ khoá idempotency, không retry mù (tra theo tên + cửa hàng + tạo sau lúc gửi; mã lỗi nghiệp vụ = từ chối chắc chắn); đọc lại sau khi tạo |
-| `google_ads_create_search_campaign` | create | 1 `googleAds:mutate` nguyên khối, PAUSED, EU declaration; **không còn nhắm ngôn ngữ** (Google bỏ nhắm ngôn ngữ thủ công cho Search từ 2026-09-30) |
+| `google_ads_create_search_campaign` | create | 1 `googleAds:mutate` nguyên khối, PAUSED, EU declaration; **không còn nhắm ngôn ngữ** (Google bỏ nhắm ngôn ngữ thủ công cho Search từ 2026-09-30); v1.1.7: tuỳ chọn `positive_geo_target_type` (bỏ trống = mặc định Google PRESENCE_OR_INTEREST, không gửi), `proximities`, `ad_schedules`; cần ≥1 `location_ids` hoặc `proximities` |
 | `google_ads_create_rsa` | create | thêm RSA vào ad group Search (từ chối nếu thuộc chiến dịch Video) |
 | `google_ads_add_keywords` | create | thêm keyword/negative (từ chối nếu thuộc chiến dịch Video) |
 | `google_ads_declare_eu_political` | update | khai báo hàng loạt campaign còn thiếu |
 | `google_ads_run_gaql` | read | chỉ `SELECT` (chặn mọi thứ khác), giới hạn dòng |
+| `google_ads_get_campaign_targeting` | read | (v1.1.7) loại vị trí, vị trí (tên + criterion_id, loại trừ), bán kính, lịch chạy (giờ tài khoản) của 1 chiến dịch |
+| `google_ads_update_campaign_targeting` | update | (v1.1.7) **luôn xác nhận 2 bước**: đổi `positive_geo_target_type` (PRESENCE / PRESENCE_OR_INTEREST), thêm vị trí / vị trí loại trừ / bán kính, gỡ `remove_criterion_ids` (chỉ LOCATION/PROXIMITY), thay cả `ad_schedules` ([] = chạy cả ngày; khung giống hệt giữ nguyên); gỡ hết vị trí cần `allow_no_location`; 1 mutate nguyên khối; từ chối VIDEO / SMART (`providers/google-ads.md` §5) |
+| `google_ads_list_assets` | read | (v1.1.7) asset sitelink / chú thích / cuộc gọi / đoạn nội dung có cấu trúc / giá / khuyến mãi + nơi đang gắn (tài khoản / chiến dịch) + trạng thái duyệt; có `campaign_id` → cấp nào đang hiển thị cho từng loại |
+| `google_ads_create_assets` | create | (v1.1.7) tạo ≤50 asset vào thư viện tài khoản (không gắn), dùng lại asset giống hệt; giá / số tiền giảm là số hiển thị (đơn vị chính, tiền tệ tài khoản), không phải chi tiêu (`moneyOf` rỗng) |
+| `google_ads_link_assets` | update | (v1.1.7) **luôn xác nhận**: gắn / gỡ asset ở cấp chiến dịch hoặc tài khoản (bật lại link tạm dừng); không xoá asset; cảnh báo thứ bậc (asset cấp chiến dịch che asset cùng loại cấp tài khoản) |
 | `openai_ads_create_campaign` | create | bidding_type bất biến; budget micros do adapter quy đổi |
 | `openai_ads_create_ad_group` | create | `context_hints`, `bidding_config` theo bảng tổ hợp hợp lệ |
 | `openai_ads_create_ad` | create | `chat_card` (title 3–50, body ≤100), cần `file_id` |
@@ -263,7 +268,7 @@ Chỉ đăng ký khi MCP có quyền `read` cho `meta` **và** có phạm vi Tra
 | `meta_get_post` | read | chi tiết bài, attachments, số tương tác |
 | `meta_get_post_insights` | read | metric lifetime trong whitelist (`providers/meta.md` §10.5) |
 | `meta_get_page_insights` | read | theo ngày/tuần/28 ngày, tự chia khúc 90 ngày, ngày theo giờ Thái Bình Dương [L] |
-Tổng tối đa ≈ 37 tool (4 nền tảng + Trang Facebook + Telegram); thêm Drive và Apify (5, hoặc 8 khi bật Actor ngoài danh mục) khi được bật.
+Tổng tối đa ≈ 42 tool (4 nền tảng + Trang Facebook + Telegram; v1.1.7 thêm 5 tool Google Ads); thêm Drive và Apify (5, hoặc 8 khi bật Actor ngoài danh mục) khi được bật.
 
 ### Thay đổi hành vi tool v1.1.6 (theo nền tảng)
 Phần lõi (lỗi `retry_after_seconds`, hoàn lượt hạn mức ghi, kẹp giới hạn) ở §5 và §6.

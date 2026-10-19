@@ -2,9 +2,12 @@
 // re-create everything in ONE atomic googleAds:mutate using negative temp ids (parents before children).
 // Copies are always created PAUSED at the root; children keep their source status (they cannot serve while the root
 // is paused). New ads are created (v23+: ads cannot be shared between ad groups).
-// Fail closed: targeting/exclusions that cannot be re-created (audiences, proximity, IP blocks, placements…), a missing
-// EU political-ads declaration or a truncated read stop the copy with a Vietnamese error instead of silently producing
-// a campaign that targets more broadly than the source. `CopyRequest.allowIncomplete` opts in to a partial copy.
+// Fail closed: targeting/exclusions that cannot be re-created (audiences, IP blocks, placements, a proximity without
+// geo point/address…), a missing EU political-ads declaration or a truncated read stop the copy with a Vietnamese error
+// instead of silently producing a campaign that targets more broadly than the source. `CopyRequest.allowIncomplete`
+// opts in to a partial copy. Proximity (radius) targeting is re-created from its geo point (or address). Campaign-level
+// Search asset links (sitelink, callout, call, structured snippet, price, promotion) are re-linked to the same assets
+// (same account); other asset links are skipped with a warning (assets are not targeting → not "incomplete").
 import { ProviderError, isProviderError } from "../errors"
 import { addDays, todayInTz } from "../dates"
 import type { CopyMapping, CopyRequest, CopyResult, MutationOptions, ObjectLevel } from "../types"
@@ -68,7 +71,23 @@ const CRITERION_COPY_FIELDS = [
   "campaign_criterion.ad_schedule.end_hour",
   "campaign_criterion.ad_schedule.end_minute",
   "campaign_criterion.device.type",
+  // proximity (v25 field reference: all selectable; address.street_address2 is write-only → never selected)
+  "campaign_criterion.proximity.geo_point.latitude_in_micro_degrees",
+  "campaign_criterion.proximity.geo_point.longitude_in_micro_degrees",
+  "campaign_criterion.proximity.radius",
+  "campaign_criterion.proximity.radius_units",
+  "campaign_criterion.proximity.address.street_address",
+  "campaign_criterion.proximity.address.city_name",
+  "campaign_criterion.proximity.address.postal_code",
+  "campaign_criterion.proximity.address.province_code",
+  "campaign_criterion.proximity.address.province_name",
+  "campaign_criterion.proximity.address.country_code",
 ]
+
+const ASSET_LINK_COPY_FIELDS = ["campaign_asset.asset", "campaign_asset.field_type", "campaign_asset.status", "campaign_asset.source"]
+
+/** Campaign-level asset links re-linked to a Search copy (same account, link - not duplicate). */
+export const COPYABLE_ASSET_FIELD_TYPES = new Set(["SITELINK", "CALLOUT", "CALL", "STRUCTURED_SNIPPET", "PRICE", "PROMOTION"])
 
 const SHARED_SET_COPY_FIELDS = [
   "campaign_shared_set.shared_set",
@@ -348,6 +367,47 @@ export interface CampaignSource {
   ads: GoogleAdsRow[]
   /** campaign_shared_set rows (negative keyword lists…) attached to the source */
   sharedSets?: GoogleAdsRow[]
+  /** campaign_asset rows (sitelinks, callouts…) linked to the source */
+  assets?: GoogleAdsRow[]
+}
+
+/** Integer from a GAQL int32 value (number or numeric string); anything else → undefined. */
+function intOf(v: unknown): number | undefined {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN
+  return Number.isInteger(n) ? n : undefined
+}
+
+/**
+ * ProximityInfo body for a copied PROXIMITY criterion, or null when it cannot be re-created (fail closed).
+ * Geo point + radius is preferred (the address is then only an unvalidated label); without a geo point the address is
+ * sent and Google geocodes it. Neither, or no valid radius → null.
+ */
+export function proximityBody(cr: GoogleAdsRow): Record<string, unknown> | null {
+  const radiusRaw = field(cr, "campaign_criterion.proximity.radius")
+  const radius = typeof radiusRaw === "number" ? radiusRaw : typeof radiusRaw === "string" && radiusRaw.trim() !== "" ? Number(radiusRaw) : NaN
+  if (!Number.isFinite(radius) || radius <= 0) return null
+  const lat = intOf(field(cr, "campaign_criterion.proximity.geo_point.latitude_in_micro_degrees"))
+  const lng = intOf(field(cr, "campaign_criterion.proximity.geo_point.longitude_in_micro_degrees"))
+  const address = compact({
+    streetAddress: str(cr, "campaign_criterion.proximity.address.street_address") ?? undefined,
+    cityName: str(cr, "campaign_criterion.proximity.address.city_name") ?? undefined,
+    postalCode: str(cr, "campaign_criterion.proximity.address.postal_code") ?? undefined,
+    provinceCode: str(cr, "campaign_criterion.proximity.address.province_code") ?? undefined,
+    provinceName: str(cr, "campaign_criterion.proximity.address.province_name") ?? undefined,
+    countryCode: str(cr, "campaign_criterion.proximity.address.country_code") ?? undefined,
+  })
+  const hasAddress = Object.keys(address).length > 0
+  const geoPoint = lat !== undefined && lng !== undefined ? { longitudeInMicroDegrees: lng, latitudeInMicroDegrees: lat } : undefined
+  if (!geoPoint && !hasAddress) return null
+  const units = str(cr, "campaign_criterion.proximity.radius_units")
+  return {
+    proximity: compact({
+      geoPoint,
+      address: hasAddress ? address : undefined,
+      radius,
+      radiusUnits: units === "KILOMETERS" || units === "MILES" ? units : undefined,
+    }),
+  }
 }
 
 /** Fail closed when targeting/exclusions would be silently dropped, unless the caller explicitly accepted it. */
@@ -477,7 +537,7 @@ export function buildCampaignCopy(
   const camp = plan.ops[plan.ops.length - 1]!.campaignOperation as { create: Record<string, unknown> }
   if (camp.create.geoTargetTypeSetting && !Object.keys(camp.create.geoTargetTypeSetting as object).length) delete camp.create.geoTargetTypeSetting
 
-  // 3) campaign criteria: location, negative keywords, ad schedule, device bid modifiers (language: skipped)
+  // 3) campaign criteria: location, proximity, negative keywords, ad schedule, device bid modifiers (language: skipped)
   const skipped = new Map<string, number>()
   let languagesSkipped = 0
   for (const cr of src.criteria) {
@@ -487,6 +547,9 @@ export function buildCampaignCopy(
     let body: Record<string, unknown> | null = null
     if (type === "LOCATION") {
       body = { location: { geoTargetConstant: str(cr, "campaign_criterion.location.geo_target_constant") } }
+    } else if (type === "PROXIMITY" && !negative) {
+      // proximity cannot be negative; no geo point and no address (or no radius) → stays uncopyable (fail closed)
+      body = proximityBody(cr)
     } else if (type === "LANGUAGE") {
       // Search campaigns no longer accept manual language targeting (ContextError.OPERATION_NOT_PERMITTED_FOR_CONTEXT
       // since 2026-09-30): skip with a warning - Google infers the language, so this is not "incomplete targeting".
@@ -530,7 +593,8 @@ export function buildCampaignCopy(
       },
     })
   }
-  // PROXIMITY, LOCATION_GROUP, USER_LIST, IP_BLOCK, negative PLACEMENT/CONTENT_LABEL, BRAND_LIST… cannot be re-created
+  // LOCATION_GROUP, USER_LIST, IP_BLOCK, negative PLACEMENT/CONTENT_LABEL, BRAND_LIST, a PROXIMITY without geo point /
+  // address / radius… cannot be re-created
   for (const [t, n] of skipped) plan.uncopyable.push(`${n} tiêu chí chiến dịch loại ${t}`)
   if (languagesSkipped) {
     plan.warnings.push(
@@ -544,8 +608,34 @@ export function buildCampaignCopy(
     if (!rn || str(ss, "campaign_shared_set.status") !== "ENABLED" || (str(ss, "shared_set.status") ?? "ENABLED") !== "ENABLED") continue
     plan.ops.push({ campaignSharedSetOperation: { create: { campaign: campaignRn, sharedSet: rn } } })
   }
-  if (!src.criteria.some((cr) => str(cr, "campaign_criterion.type") === "LOCATION")) {
+  if (!src.criteria.some((cr) => ["LOCATION", "PROXIMITY"].includes(str(cr, "campaign_criterion.type") ?? ""))) {
     warnings.push("Chiến dịch gốc không giới hạn vị trí - bản sao cũng nhắm mọi quốc gia.")
+  }
+
+  // 3c) campaign-level asset links (sitelinks, callouts…) are linked, not duplicated - same account. Not targeting:
+  // a skipped link does not broaden delivery → warning only (never uncopyable).
+  let assetsLinked = 0
+  const assetsSkipped = new Map<string, number>()
+  for (const al of src.assets ?? []) {
+    const asset = str(al, "campaign_asset.asset")
+    const fieldType = str(al, "campaign_asset.field_type")
+    if (!asset || (str(al, "campaign_asset.status") ?? "ENABLED") !== "ENABLED") continue
+    const auto = str(al, "campaign_asset.source") === "AUTOMATICALLY_CREATED"
+    if (auto || !fieldType || !COPYABLE_ASSET_FIELD_TYPES.has(fieldType)) {
+      const key = `${fieldType ?? "?"}${auto ? " (Google tự tạo)" : ""}`
+      assetsSkipped.set(key, (assetsSkipped.get(key) ?? 0) + 1)
+      continue
+    }
+    plan.ops.push({ campaignAssetOperation: { create: { campaign: campaignRn, asset, fieldType } } })
+    assetsLinked++
+  }
+  if (assetsLinked) warnings.push(`Đã gắn lại ${assetsLinked} asset cấp chiến dịch (sitelink, chú thích…) vào bản sao.`)
+  if (assetsSkipped.size) {
+    const total = [...assetsSkipped.values()].reduce((a, b) => a + b, 0)
+    const detail = [...assetsSkipped].map(([t, n]) => `${t}: ${n}`).join(", ")
+    warnings.push(
+      `Không gắn lại ${total} asset cấp chiến dịch (${detail}) - chỉ sao chép sitelink, chú thích, cuộc gọi, đoạn nội dung có cấu trúc, giá, khuyến mãi do bạn tạo; hãy gắn lại thủ công nếu cần.`
+    )
   }
 
   // 4) ad groups + keywords + ads
@@ -724,6 +814,13 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
       1_000,
       "danh sách dùng chung"
     )
+    const assets = await readAll(
+      client,
+      cid,
+      `SELECT ${ASSET_LINK_COPY_FIELDS.join(", ")} FROM campaign_asset WHERE campaign.id = ${id} AND campaign_asset.status = 'ENABLED'`,
+      1_000,
+      "asset cấp chiến dịch"
+    )
     let adGroups: GoogleAdsRow[] = []
     let keywords: GoogleAdsRow[] = []
     let ads: GoogleAdsRow[] = []
@@ -755,7 +852,7 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
     const name = uniqueName(base, await existingNames(client, cid, "campaign", base))
     const plan = buildCampaignCopy(
       cid,
-      { campaign: c, criteria, adGroups, keywords, ads, sharedSets },
+      { campaign: c, criteria, adGroups, keywords, ads, sharedSets, assets },
       { name, today, deep: r.deep, allowIncomplete: r.allowIncomplete === true }
     )
     const goalWarning = await conversionGoalWarning(client, cid, id)

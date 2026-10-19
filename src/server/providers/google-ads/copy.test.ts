@@ -130,7 +130,7 @@ describe("buildCampaignCopy", () => {
     expect(plan.warnings.join(" ")).toMatch(/ngân sách chung/)
   })
 
-  it("fails closed on targeting it cannot copy (USER_LIST, PROXIMITY, ad-group AUDIENCE) unless allowIncomplete", () => {
+  it("fails closed on targeting it cannot copy (USER_LIST, PROXIMITY without geo point/address, ad-group AUDIENCE) unless allowIncomplete", () => {
     const s = source()
     s.criteria.push({ campaignCriterion: { criterionId: "6", type: "USER_LIST" } }, { campaignCriterion: { criterionId: "7", type: "PROXIMITY" } })
     s.keywords.push({ adGroup: { id: "21" }, adGroupCriterion: { criterionId: "103", type: "AUDIENCE" } })
@@ -148,6 +148,122 @@ describe("buildCampaignCopy", () => {
     expect(msg).toMatch(/AUDIENCE/)
     const plan = buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: true, allowIncomplete: true })
     expect(plan.warnings.join(" ")).toMatch(/allow_incomplete_targeting=true.*USER_LIST/)
+  })
+
+  it("copies PROXIMITY from its geo point (integers, radius, units, address kept as label, bid modifier)", () => {
+    const s = source()
+    s.criteria.push({
+      campaignCriterion: {
+        criterionId: "8",
+        type: "PROXIMITY",
+        bidModifier: 1.1,
+        proximity: {
+          geoPoint: { latitudeInMicroDegrees: 21028511, longitudeInMicroDegrees: 105804817 },
+          radius: 5.5,
+          radiusUnits: "KILOMETERS",
+          address: { cityName: "Hà Nội", countryCode: "VN" },
+        },
+      },
+    })
+    const plan = buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: false })
+    const prox = plan.ops.map(create).filter((c) => c.proximity)
+    expect(prox).toEqual([
+      {
+        campaign: create(plan.ops[1]!).resourceName,
+        proximity: {
+          geoPoint: { longitudeInMicroDegrees: 105804817, latitudeInMicroDegrees: 21028511 },
+          address: { cityName: "Hà Nội", countryCode: "VN" },
+          radius: 5.5,
+          radiusUnits: "KILOMETERS",
+        },
+        bidModifier: 1.1,
+      },
+    ])
+    const gp = (prox[0]!.proximity as { geoPoint: Record<string, number> }).geoPoint
+    expect(Number.isInteger(gp.latitudeInMicroDegrees) && Number.isInteger(gp.longitudeInMicroDegrees)).toBe(true)
+    expect(plan.uncopyable).toEqual([])
+    expect(plan.entries.some((e) => e.level === "campaign_criterion" && e.sourceId === "8")).toBe(true)
+  })
+
+  it("copies PROXIMITY with only an address (Google geocodes); string int32 values are normalised", () => {
+    const s = source()
+    s.criteria.push(
+      { campaignCriterion: { criterionId: "8", type: "PROXIMITY", proximity: { radius: 3, radiusUnits: "MILES", address: { streetAddress: "1 Tràng Tiền", cityName: "Hà Nội", countryCode: "VN" } } } },
+      { campaignCriterion: { criterionId: "9", type: "PROXIMITY", proximity: { geoPoint: { latitudeInMicroDegrees: "10776889", longitudeInMicroDegrees: "106700806" }, radius: 2, radiusUnits: "UNSPECIFIED" } } }
+    )
+    const prox = buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: false }).ops.map(create).filter((c) => c.proximity).map((c) => c.proximity)
+    expect(prox).toEqual([
+      { address: { streetAddress: "1 Tràng Tiền", cityName: "Hà Nội", countryCode: "VN" }, radius: 3, radiusUnits: "MILES" },
+      { geoPoint: { longitudeInMicroDegrees: 106700806, latitudeInMicroDegrees: 10776889 }, radius: 2 },
+    ])
+  })
+
+  it("keeps PROXIMITY without geo point/address (or without radius) uncopyable", () => {
+    const s = source()
+    s.criteria.push(
+      { campaignCriterion: { criterionId: "8", type: "PROXIMITY", proximity: { radius: 5, radiusUnits: "KILOMETERS" } } },
+      { campaignCriterion: { criterionId: "9", type: "PROXIMITY", proximity: { geoPoint: { latitudeInMicroDegrees: 1, longitudeInMicroDegrees: 2 } } } }
+    )
+    expect(() => buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: false })).toThrow(/2 tiêu chí chiến dịch loại PROXIMITY/)
+    const plan = buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: false, allowIncomplete: true })
+    expect(plan.ops.map(create).some((c) => c.proximity)).toBe(false)
+  })
+
+  it("warns 'không giới hạn vị trí' only when the source has neither LOCATION nor PROXIMITY", () => {
+    const noGeo = source()
+    noGeo.criteria = noGeo.criteria.filter((c) => (c.campaignCriterion as { type: string }).type !== "LOCATION")
+    const warn = (s: CampaignSource) => buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: false }).warnings.join(" ")
+    expect(warn(noGeo)).toMatch(/không giới hạn vị trí/)
+    expect(warn(source())).not.toMatch(/không giới hạn vị trí/)
+    noGeo.criteria.push({
+      campaignCriterion: { criterionId: "8", type: "PROXIMITY", proximity: { geoPoint: { latitudeInMicroDegrees: 1, longitudeInMicroDegrees: 2 }, radius: 1 } },
+    })
+    expect(warn(noGeo)).not.toMatch(/không giới hạn vị trí/)
+  })
+
+  it("re-links campaign-level Search asset links; other types / auto-created are warned, not failed", () => {
+    const s = source()
+    const a = (id: number, fieldType: string, source = "ADVERTISER", status = "ENABLED") => ({
+      campaignAsset: { asset: `customers/${CID}/assets/${id}`, fieldType, status, source },
+    })
+    s.assets = [
+      a(1, "SITELINK"),
+      a(2, "CALLOUT"),
+      a(3, "CALL"),
+      a(4, "STRUCTURED_SNIPPET"),
+      a(5, "PRICE"),
+      a(6, "PROMOTION"),
+      { campaignAsset: { asset: `customers/${CID}/assets/7`, fieldType: "SITELINK", status: "ENABLED" } }, // source missing → copied
+      a(8, "BUSINESS_NAME"),
+      a(9, "AD_IMAGE"),
+      a(10, "AD_IMAGE"),
+      a(11, "SITELINK", "AUTOMATICALLY_CREATED"),
+      a(12, "CALLOUT", "ADVERTISER", "PAUSED"),
+    ]
+    const plan = buildCampaignCopy(CID, s, { name: "x", today: "2026-10-02", deep: true })
+    const campaignRn = create(plan.ops[1]!).resourceName
+    const links = plan.ops.filter((o) => kind(o) === "campaignAssetOperation").map(create)
+    expect(links).toEqual(
+      [
+        [1, "SITELINK"],
+        [2, "CALLOUT"],
+        [3, "CALL"],
+        [4, "STRUCTURED_SNIPPET"],
+        [5, "PRICE"],
+        [6, "PROMOTION"],
+        [7, "SITELINK"],
+      ].map(([id, fieldType]) => ({ campaign: campaignRn, asset: `customers/${CID}/assets/${id}`, fieldType }))
+    )
+    // after criteria / shared sets, before ad groups
+    const kinds = plan.ops.map(kind)
+    expect(kinds.lastIndexOf("campaignCriterionOperation")).toBeLessThan(kinds.indexOf("campaignAssetOperation"))
+    expect(kinds.lastIndexOf("campaignAssetOperation")).toBeLessThan(kinds.indexOf("adGroupOperation"))
+    assertTempIdOrder(plan.ops)
+    expect(plan.uncopyable).toEqual([])
+    expect(plan.entries.map((e) => e.index).every((i) => kind(plan.ops[i]!) !== "campaignAssetOperation")).toBe(true)
+    const w = plan.warnings.join(" | ")
+    expect(w).toMatch(/Đã gắn lại 7 asset cấp chiến dịch/)
+    expect(w).toMatch(/Không gắn lại 4 asset cấp chiến dịch \(BUSINESS_NAME: 1, AD_IMAGE: 2, SITELINK \(Google tự tạo\): 1\)/)
   })
 
   it("copies DEVICE bid modifiers, including 0 (= device excluded); 1.0 / absent create nothing", () => {
@@ -262,6 +378,7 @@ describe("copyObject (campaign, deep)", () => {
     m.on(searchMatching(/FROM ad_group_criterion WHERE/), { body: { results: s.keywords } })
     m.on(searchMatching(/campaign\.name LIKE/), { body: { results: [{ campaign: { name: "Search VN (bản sao)" } }] } })
     m.on(searchMatching(/FROM campaign_shared_set/), { body: { results: [] } })
+    m.on(searchMatching(/FROM campaign_asset/), { body: { results: [] } })
     m.on(searchMatching(/FROM conversion_goal_campaign_config/), { body: { results: [{ conversionGoalCampaignConfig: { goalConfigLevel: "CAMPAIGN" } }] } })
     return m
   }
@@ -298,6 +415,33 @@ describe("copyObject (campaign, deep)", () => {
     expect(res.preview).toBe(true)
     expect(res.mode).toBe("emulated")
     expect(res.mappings.every((x) => x.newId === null)).toBe(true)
+  })
+
+  it("reads ENABLED campaign asset links and re-links them in the atomic mutate", async () => {
+    const m = mockTree()
+    m.once(searchMatching(/FROM campaign_asset/), {
+      body: { results: [{ campaignAsset: { asset: `customers/${CID}/assets/31`, fieldType: "SITELINK", status: "ENABLED", source: "ADVERTISER" } }] },
+    })
+    m.on((c) => c.url.endsWith("googleAds:mutate"), { body: {} })
+    const res = await copyObject(providerCtx(saCredentials()), { level: "campaign", id: "10", deep: false }, { dryRun: true })
+    const q = m
+      .api()
+      .map((c) => String((c.body as { query?: string } | null)?.query ?? ""))
+      .find((x) => x.includes("FROM campaign_asset"))!
+    expect(q).toBe(
+      "SELECT campaign_asset.asset, campaign_asset.field_type, campaign_asset.status, campaign_asset.source FROM campaign_asset WHERE campaign.id = 10 AND campaign_asset.status = 'ENABLED'"
+    )
+    const crit = m
+      .api()
+      .map((c) => String((c.body as { query?: string } | null)?.query ?? ""))
+      .find((x) => x.includes("FROM campaign_criterion"))!
+    expect(crit).toContain("campaign_criterion.proximity.geo_point.latitude_in_micro_degrees")
+    expect(crit).not.toContain("street_address2")
+    const ops = (m.api().find((c) => c.url.endsWith("googleAds:mutate"))!.body as { mutateOperations: Record<string, unknown>[] }).mutateOperations
+    expect(ops.filter((o) => kind(o) === "campaignAssetOperation").map(create)).toEqual([
+      { campaign: create(ops[1]!).resourceName, asset: `customers/${CID}/assets/31`, fieldType: "SITELINK" },
+    ])
+    expect(res.warnings.join(" ")).toMatch(/Đã gắn lại 1 asset cấp chiến dịch/)
   })
 
   it("maps source ids to the new ids from the response", async () => {

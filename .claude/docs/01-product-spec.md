@@ -144,6 +144,8 @@ Sau khi tạo: trang chi tiết MCP gồm Tổng quan (lượt gọi, lỗi, l�
 - "Tạo chiến dịch traffic TikTok mới…" → `tiktok_create_*` (TikTok ngừng tạo chiến dịch Manual qua API từ 2026-12-31).
 - "Báo cáo chiến dịch YouTube tuần qua: lượt xem, CPV, tỉ lệ xem hết" → `ads_get_report` (Google Ads, lọc kênh YouTube/Video, bộ chỉ số video).
 - "Thêm từ khoá 'khoá học excel' (cụm từ) vào nhóm quảng cáo Search X" → `google_ads_add_keywords`.
+- "Chiến dịch Search X chỉ hiện cho người đang ở Hà Nội, thêm bán kính 5 km quanh salon, chạy 8:00–21:00" → `google_ads_get_campaign_targeting` → `google_ads_update_campaign_targeting` (luôn xác nhận).
+- "Tạo sitelink + chú thích + nút gọi rồi gắn vào chiến dịch Search Y" → `google_ads_list_assets` → `google_ads_create_assets` → `google_ads_link_assets` (luôn xác nhận).
 - "Gửi tóm tắt chi tiêu hôm qua vào nhóm Telegram của team" → `ads_get_report` → `telegram_send_message`.
 - "Lên quảng cáo TikTok (tạm dừng) với video mới nhất trong thư mục Creative tuần 41" → `drive_list_sources` → `drive_list_files` → `ads_upload_media(drive_file)` → `tiktok_create_*`.
 - "Lên các dòng 'Chờ lên' trong sheet Kế hoạch creative rồi ghi trạng thái" → `drive_sheet_read` → `ads_upload_media` → tool tạo quảng cáo → `drive_sheet_update_rows`.

@@ -182,6 +182,66 @@ describe("google_ads_create_search_campaign", () => {
   })
 })
 
+describe("google_ads_create_search_campaign - targeting fields (v1.1.7)", () => {
+  const ops = (input: CreateSearchCampaignInput) => buildSearchCampaignOps("1234567890", input, { currency: "VND", today: "2026-10-02", budgetSuffix: "t" }).ops
+  const campaignOf = (o: Record<string, unknown>[]) => (o.find((x) => "campaignOperation" in x) as { campaignOperation: { create: Record<string, unknown> } }).campaignOperation.create
+  const criteria = (o: Record<string, unknown>[]) =>
+    o.filter((x) => "campaignCriterionOperation" in x).map((x) => (x as { campaignCriterionOperation: { create: Record<string, unknown> } }).campaignCriterionOperation.create)
+
+  it("geoTargetTypeSetting is sent only when positive_geo_target_type is set", () => {
+    expect(campaignOf(ops(validInput()))).not.toHaveProperty("geoTargetTypeSetting")
+    const withGeo = createSearchCampaignInput.parse({ ...validInput(), positive_geo_target_type: "PRESENCE" })
+    expect(campaignOf(ops(withGeo)).geoTargetTypeSetting).toEqual({ positiveGeoTargetType: "PRESENCE" })
+    expect(createSearchCampaignInput.safeParse({ ...validInput(), positive_geo_target_type: "SEARCH_INTEREST" }).success).toBe(false)
+  })
+
+  it("adds proximity and ad schedule criteria after the locations", () => {
+    const input = createSearchCampaignInput.parse({
+      ...validInput(),
+      proximities: [{ latitude: 21.0285, longitude: 105.8542, radius: 5 }],
+      ad_schedules: [{ day_of_week: "MONDAY", start_hour: 8, end_hour: 12, end_minute: 30 }],
+    })
+    expect(criteria(ops(input))).toEqual([
+      { campaign: "customers/1234567890/campaigns/-2", location: { geoTargetConstant: "geoTargetConstants/2704" } },
+      {
+        campaign: "customers/1234567890/campaigns/-2",
+        proximity: { geoPoint: { latitudeInMicroDegrees: 21_028_500, longitudeInMicroDegrees: 105_854_200 }, radius: 5, radiusUnits: "KILOMETERS" },
+      },
+      { campaign: "customers/1234567890/campaigns/-2", adSchedule: { dayOfWeek: "MONDAY", startHour: 8, startMinute: "ZERO", endHour: 12, endMinute: "THIRTY" } },
+      { campaign: "customers/1234567890/campaigns/-2", negative: true, keyword: { text: "miễn phí", matchType: "BROAD" } },
+    ])
+  })
+
+  it("requires location_ids or proximities (proximity alone is enough)", () => {
+    const { location_ids: _drop, ...rest } = validInput()
+    void _drop
+    const none = createSearchCampaignInput.safeParse(rest)
+    expect(none.success).toBe(false)
+    expect(JSON.stringify(none.error?.issues)).toMatch(/location_ids.*proximities/)
+    const prox = createSearchCampaignInput.parse({ ...rest, proximities: [{ latitude: 10.7769, longitude: 106.7009, radius: 3 }] })
+    expect(criteria(ops(prox)).some((c) => "location" in c)).toBe(false)
+    expect(createSearchCampaignInput.safeParse({ ...rest, location_ids: [] }).success).toBe(false)
+  })
+
+  it("validates ad schedules (overlap) at parse time", () => {
+    const r = createSearchCampaignInput.safeParse({
+      ...validInput(),
+      ad_schedules: [
+        { day_of_week: "FRIDAY", start_hour: 8, end_hour: 12 },
+        { day_of_week: "FRIDAY", start_hour: 11, end_hour: 13 },
+      ],
+    })
+    expect(r.success).toBe(false)
+    expect(JSON.stringify(r.error?.issues)).toMatch(/Thứ 6/)
+  })
+
+  it("registers the targeting tools after google_ads_add_keywords", () => {
+    const names = googleAdsExtensions.map((e) => e.name)
+    const i = names.indexOf("google_ads_add_keywords")
+    expect(names.slice(i + 1, i + 3)).toEqual(["google_ads_get_campaign_targeting", "google_ads_update_campaign_targeting"])
+  })
+})
+
 describe("google_ads_declare_eu_political", () => {
   it("updates only campaigns missing the declaration with an exact mask", async () => {
     const m = mockFetch()

@@ -136,6 +136,8 @@ interface Mapping {
   vi: string
   hint?: string
   retryable?: boolean
+  /** append Google's detail (field path) to the Vietnamese message */
+  withDetail?: boolean
 }
 
 const CODE_MAP: Record<string, Mapping> = {
@@ -250,6 +252,125 @@ const CODE_MAP: Record<string, Mapping> = {
     vi: "Ngân sách thấp hơn mức tối thiểu hằng ngày của Google Ads (Demand Gen: tối thiểu tương đương 5 USD/ngày từ 01/04/2026).",
     hint: "Tăng ngân sách ngày (hoặc ngân sách trọn đời chia theo số ngày) rồi thử lại.",
   },
+  // Targeting: ad schedule / proximity / geo target type
+  "criterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP": {
+    code: "invalid_request",
+    vi: "Các khung giờ trong lịch quảng cáo bị chồng lên nhau trong cùng một ngày.",
+    hint: "Sửa để các khung không chồng nhau (giờ kết thúc không tính vào khung), vd 08:00–12:00 và 12:00–18:00.",
+  },
+  "criterionError.AD_SCHEDULE_EXCEEDED_INTERVALS_PER_DAY_LIMIT": {
+    code: "invalid_request",
+    vi: "Lịch quảng cáo vượt quá 6 khung giờ trong một ngày.",
+    hint: "Gộp bớt khung giờ để mỗi ngày có tối đa 6 khung.",
+  },
+  "criterionError.AD_SCHEDULE_INVALID_TIME_INTERVAL": {
+    code: "invalid_request",
+    vi: "Khung giờ quảng cáo không hợp lệ (giờ kết thúc phải sau giờ bắt đầu; 24:00 chỉ đi với phút 0).",
+  },
+  "criterionError.AD_SCHEDULE_INTERVAL_CANNOT_SPAN_MULTIPLE_DAYS": {
+    code: "invalid_request",
+    vi: "Một khung giờ quảng cáo không được kéo qua nửa đêm.",
+    hint: "Tách thành 2 khung ở 2 ngày, vd Thứ 2 22:00–24:00 và Thứ 3 00:00–02:00.",
+  },
+  "criterionError.INVALID_PROXIMITY_RADIUS": {
+    code: "invalid_request",
+    vi: "Bán kính nhắm mục tiêu không hợp lệ (tối thiểu 1 km).",
+  },
+  "criterionError.INVALID_PROXIMITY_RADIUS_UNITS": {
+    code: "invalid_request",
+    vi: "Đơn vị bán kính không hợp lệ - chỉ dùng KILOMETERS hoặc MILES.",
+  },
+  "criterionError.INVALID_PROXIMITY_ADDRESS": {
+    code: "invalid_request",
+    vi: "Google không xác định được địa chỉ của vùng bán kính.",
+    hint: "Dùng tọa độ (latitude / longitude) thay cho địa chỉ.",
+  },
+  "criterionError.PROXIMITY_GEOPOINT_AND_ADDRESS_BOTH_CANNOT_BE_NULL": {
+    code: "invalid_request",
+    vi: "Vùng bán kính cần tọa độ (latitude / longitude).",
+  },
+  "criterionError.INVALID_LATITUDE": { code: "invalid_request", vi: "Vĩ độ (latitude) không hợp lệ - phải từ -90 đến 90." },
+  "criterionError.INVALID_LONGITUDE": { code: "invalid_request", vi: "Kinh độ (longitude) không hợp lệ - phải từ -180 đến 180." },
+  "campaignCriterionError.CANNOT_TARGET_AND_EXCLUDE": {
+    code: "invalid_request",
+    vi: "Không thể vừa nhắm vừa loại trừ cùng một vị trí trong chiến dịch.",
+    hint: "Gỡ tiêu chí cũ (google_ads_update_campaign_targeting, remove_criterion_ids) rồi thêm lại với kiểu mong muốn.",
+  },
+  "settingError.SETTING_VALUE_NOT_COMPATIBLE_WITH_CAMPAIGN": {
+    code: "invalid_request",
+    vi: "Giá trị cài đặt này không dùng được cho loại chiến dịch hiện tại (vd loại nhắm vị trí).",
+    hint: "Chọn PRESENCE hoặc PRESENCE_OR_INTEREST, hoặc chỉnh trong giao diện Google Ads.",
+  },
+  "settingError.SETTING_TYPE_IS_NOT_COMPATIBLE_WITH_CAMPAIGN": {
+    code: "invalid_request",
+    vi: "Loại chiến dịch này không hỗ trợ cài đặt được yêu cầu.",
+  },
+  // Assets (sitelink, callout, call, structured snippet, price, promotion)
+  "assetError.CALL_INVALID_PHONE_NUMBER": { code: "invalid_request", vi: "Số điện thoại không hợp lệ." },
+  "assetError.CALL_INVALID_COUNTRY_CODE": { code: "invalid_request", vi: "Mã quốc gia của số điện thoại không hợp lệ (dùng mã 2 chữ cái, vd VN)." },
+  "assetError.CALL_INVALID_DOMESTIC_PHONE_NUMBER_FORMAT": {
+    code: "invalid_request",
+    vi: "Số điện thoại không đúng định dạng trong nước của quốc gia đã chọn.",
+  },
+  "assetError.CALL_PHONE_NUMBER_NOT_SUPPORTED_FOR_COUNTRY": {
+    code: "invalid_request",
+    vi: "Số điện thoại này không được hỗ trợ cho quốc gia đã chọn.",
+  },
+  "assetError.CALL_PREMIUM_RATE_NUMBER_NOT_ALLOWED": { code: "invalid_request", vi: "Google không cho dùng số điện thoại tính cước cao (premium)." },
+  "assetError.CALL_VANITY_PHONE_NUMBER_NOT_ALLOWED": { code: "invalid_request", vi: "Google không cho dùng số điện thoại dạng chữ (vanity)." },
+  "assetError.CALL_DISALLOWED_NUMBER_TYPE": { code: "invalid_request", vi: "Loại số điện thoại này không được phép trong tiện ích cuộc gọi." },
+  "assetError.CALL_CARRIER_SPECIFIC_SHORT_NUMBER_NOT_ALLOWED": {
+    code: "invalid_request",
+    vi: "Google không cho dùng đầu số ngắn riêng của nhà mạng.",
+  },
+  "assetError.PRICE_HEADER_SAME_AS_DESCRIPTION": { code: "invalid_request", vi: "Tiêu đề và mô tả của mục giá không được giống nhau." },
+  "assetError.PROMOTION_CANNOT_SET_PERCENT_OFF_AND_MONEY_AMOUNT_OFF": {
+    code: "invalid_request",
+    vi: "Khuyến mãi chỉ chọn một: giảm theo phần trăm hoặc giảm theo số tiền.",
+  },
+  "assetError.PROMOTION_CANNOT_SET_PROMOTION_CODE_AND_ORDERS_OVER_AMOUNT": {
+    code: "invalid_request",
+    vi: "Khuyến mãi chỉ chọn một: mã khuyến mãi hoặc điều kiện đơn hàng tối thiểu.",
+  },
+  "assetError.CANNOT_MODIFY_AUTOMATICALLY_CREATED_ASSET": {
+    code: "invalid_request",
+    vi: "Không thể sửa asset do Google tự tạo.",
+  },
+  "assetError.DUPLICATE_ASSET": { code: "invalid_request", vi: "Asset này đã có trong tài khoản (trùng nội dung)." },
+  "assetLinkError.FIELD_TYPE_INCOMPATIBLE_WITH_ASSET_TYPE": {
+    code: "invalid_request",
+    vi: "Loại asset không khớp với vị trí gắn (field type) đã chọn.",
+  },
+  "assetLinkError.FIELD_TYPE_INCOMPATIBLE_WITH_CAMPAIGN_TYPE": {
+    code: "invalid_request",
+    vi: "Loại chiến dịch này không hỗ trợ loại asset đã chọn.",
+  },
+  "assetLinkError.INCOMPATIBLE_ADVERTISING_CHANNEL_TYPE": {
+    code: "invalid_request",
+    vi: "Loại chiến dịch này không gắn được asset đã chọn.",
+  },
+  "assetLinkError.UNSUPPORTED_FIELD_TYPE": { code: "invalid_request", vi: "Vị trí gắn asset (field type) không được hỗ trợ ở cấp này." },
+  "assetLinkError.CANNOT_LINK_TO_AUTOMATICALLY_CREATED_ASSET": {
+    code: "invalid_request",
+    vi: "Không thể gắn asset do Google tự tạo.",
+  },
+  "criterionError.AD_SCHEDULE_CRITERION_ID_MISMATCHING_FIELDS": {
+    code: "invalid_request",
+    vi: "ID tiêu chí lịch quảng cáo không khớp với ngày / giờ đã gửi.",
+    hint: "Gọi lại google_ads_get_campaign_targeting để lấy lịch hiện tại rồi thử lại.",
+  },
+  "assetError.DUPLICATE_ASSETS_WITH_DIFFERENT_FIELD_VALUE": {
+    code: "invalid_request",
+    vi: "Có các asset trùng nội dung trong cùng yêu cầu nhưng khác thông tin cấp asset (vd URL) - hãy gộp hoặc đổi nội dung.",
+  },
+  "assetLinkError.INVALID_STATUS": { code: "invalid_request", vi: "Trạng thái liên kết asset không hợp lệ cho thao tác này." },
+  "stringLengthError.TOO_LONG": { code: "invalid_request", vi: "Độ dài chữ không hợp lệ (quá dài) - xem field trong chi tiết lỗi.", withDetail: true },
+  "stringLengthError.TOO_SHORT": { code: "invalid_request", vi: "Độ dài chữ không hợp lệ (quá ngắn) - xem field trong chi tiết lỗi.", withDetail: true },
+  "stringLengthError.EMPTY": { code: "invalid_request", vi: "Độ dài chữ không hợp lệ (đang để trống) - xem field trong chi tiết lỗi.", withDetail: true },
+  "mutateError.RESOURCE_ALREADY_EXISTS": {
+    code: "invalid_request",
+    vi: "Đối tượng này đã có / đã được gắn rồi - không cần thêm lại.",
+  },
   "mutateError.RESOURCE_NOT_FOUND": { code: "not_found", vi: "Không tìm thấy đối tượng cần sửa. Gọi ads_list_objects để lấy đúng id." },
   "requestError.RESOURCE_NOT_FOUND": { code: "not_found", vi: "Không tìm thấy đối tượng. Gọi ads_list_objects để lấy đúng id." },
   "requestError.INVALID_PAGE_TOKEN": { code: "invalid_request", vi: "Cursor phân trang không hợp lệ - hãy truy vấn lại từ đầu." },
@@ -318,7 +439,7 @@ export function toProviderError(p: ParsedGoogleError): ProviderError {
   const m: Mapping = (primary && CODE_MAP[primary]) || (reason && REASON_MAP[reason]) || byHttpStatus(p.httpStatus)
   const detail = p.errors.length ? summarizeErrors(p.errors) : p.message
   // For generic validation errors include Google's message (Vietnamese prefix + upstream detail, no secrets inside).
-  const vi = !CODE_MAP[primary ?? ""] && !REASON_MAP[reason ?? ""] && p.errors.length ? `${m.vi} Chi tiết: ${summarizeErrors(p.errors, 3)}` : m.vi
+  const vi = ((!CODE_MAP[primary ?? ""] && !REASON_MAP[reason ?? ""]) || m.withDetail) && p.errors.length ? `${m.vi} Chi tiết: ${summarizeErrors(p.errors, 3)}` : m.vi
   return new ProviderError({
     platform: "google_ads",
     code: m.code,
