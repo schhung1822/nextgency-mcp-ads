@@ -276,3 +276,11 @@ Nguồn yêu cầu: góp ý khách (tool "google_ads_update_campaign_criteria": 
 - [x] Rà soát: `ads-api-reviewer` + `security-reviewer` (0 Nghiêm trọng / Cao; M1 tạo asset không được gắn vào chiến dịch, M2 nhắm mục tiêu luôn xác nhận, L1–L3 + kết quả không chắc chắn khi mất kết nối — đã sửa kèm test)
 - [ ] Thử thật với tài khoản Google Ads (chỉ object thử nghiệm): header "Service catalog" / "Services", gắn lại link đã gỡ, price asset `languageCode=vi`, bán kính trên PMax
 - [x] Tài liệu: 01, 04, `providers/google-ads.md`, `docs/ket-noi-ai.md`, `release-notes/v1.1.7.md`
+
+## Google Ads: tạo + sao chép chiến dịch Demand Gen (2026-10-23), v1.1.9
+Nguồn yêu cầu: khách báo không tạo được chiến dịch Demand Gen cho video YouTube và `ads_copy_object` từ chối nhân bản Demand Gen ("chỉ hỗ trợ Search"). Chủ dự án: "làm đầy đủ mọi thứ". Quyết định: kênh mặc định **chỉ YouTube** (cho chọn thêm), sao chép **mọi loại** quảng cáo Demand Gen, tạo mới quảng cáo video + ảnh (băng chuyền / sản phẩm chỉ sao chép). Thiết kế + API: `providers/google-ads.md` §5 "Tạo chiến dịch Demand Gen", §6 "Sao chép Demand Gen", 04 (bảng tool).
+- [x] Research doc chính thức Google Ads API v25 (2026-10-23, so v26): campaign / budget / bidding Demand Gen, channel controls, tiêu chí nhóm, 4 loại quảng cáo, thông số ảnh, lỗi (`BUDGET_BELOW_PER_DAY_MINIMUM` — sửa tên lỗi sai trong tài liệu cũ)
+- [x] `demand-gen.ts`: `google_ads_create_demand_gen_campaign` (1 mutate nguyên khối, PAUSED, kiểm tra asset ảnh, dùng lại video / CTA có sẵn, khôi phục khi mất kết nối); `errors.ts` thêm mức ngân sách tối thiểu từ chi tiết lỗi + mã lỗi Demand Gen
+- [x] `copy-demand-gen.ts` + `copy.ts`: sao chép Demand Gen cấp chiến dịch / nhóm / quảng cáo (4 loại quảng cáo, fail closed kênh / tiêu chí); `objects.ts` hiện chi tiết quảng cáo Demand Gen + kênh của nhóm; trần số tool = 50 (đủ trần)
+- [ ] Thử thật với tài khoản Google Ads (chỉ object thử nghiệm): mức tối thiểu VND, logo sai tỉ lệ, sao chép chiến dịch Demand Gen có đối tượng / băng chuyền / sản phẩm
+- [x] Tài liệu: 01, 04, `providers/google-ads.md`, `docs/ket-noi-ai.md`, `docs/huong-dan-lay-token-google-ads.md`, `release-notes/v1.1.9.md`

@@ -1,6 +1,7 @@
 // Google Ads REST error parsing: both GoogleAdsFailure details and google.rpc.ErrorInfo (infrastructure).
 // https://developers.google.com/google-ads/api/docs/best-practices/understand-api-errors
 import { ProviderError, type ProviderErrorCode } from "../errors"
+import { fromMicros } from "../money"
 
 export interface GoogleAdsErrorItem {
   /** e.g. { quotaError: "RESOURCE_TEMPORARILY_EXHAUSTED" } */
@@ -252,6 +253,84 @@ const CODE_MAP: Record<string, Mapping> = {
     vi: "Ngân sách thấp hơn mức tối thiểu hằng ngày của Google Ads (Demand Gen: tối thiểu tương đương 5 USD/ngày từ 01/04/2026).",
     hint: "Tăng ngân sách ngày (hoặc ngân sách trọn đời chia theo số ngày) rồi thử lại.",
   },
+  // v23–v26 enum name (BUDGET_BELOW_DAILY_MINIMUM above is kept as a defensive alias: only the 2026-02 blog uses it)
+  "campaignBudgetError.BUDGET_BELOW_PER_DAY_MINIMUM": {
+    code: "invalid_request",
+    vi: "Ngân sách thấp hơn mức tối thiểu mỗi ngày của Google Ads (Demand Gen: tối thiểu tương đương 5 USD/ngày từ 01/04/2026; ngân sách tổng tính theo số ngày chạy).",
+    hint: "Tăng ngân sách ngày (hoặc tăng ngân sách tổng / rút ngắn thời gian chạy) rồi thử lại.",
+  },
+  // Demand Gen
+  "campaignBudgetError.CAMPAIGN_BUDGET_CANNOT_BE_SHARED": {
+    code: "invalid_request",
+    vi: "Loại chiến dịch này (vd Demand Gen) không dùng được ngân sách chia sẻ - cần ngân sách riêng cho chiến dịch.",
+  },
+  "campaignError.END_DATE_TIME_REQUIRED_FOR_TOTAL_BUDGET": {
+    code: "invalid_request",
+    vi: "Ngân sách tổng cần ngày kết thúc chiến dịch.",
+    hint: "Truyền end_date (thời gian chạy 3 ngày – 1 năm) hoặc dùng ngân sách ngày.",
+  },
+  "campaignError.DURATION_TOO_LONG_FOR_TOTAL_BUDGET": {
+    code: "invalid_request",
+    vi: "Thời gian chạy quá dài cho ngân sách tổng (Demand Gen: tối đa 1 năm).",
+    hint: "Rút ngắn thời gian chạy hoặc dùng ngân sách ngày.",
+  },
+  "adError.MISSING_BUSINESS_NAME": { code: "invalid_request", vi: "Quảng cáo thiếu tên doanh nghiệp (Google bắt buộc)." },
+  "adError.MISSING_IMAGE": { code: "invalid_request", vi: "Quảng cáo thiếu ảnh bắt buộc (logo hoặc ảnh quảng cáo).", withDetail: true },
+  "adError.MISSING_REQUIRED_IMAGE_ASPECT_RATIO": {
+    code: "invalid_request",
+    vi: "Quảng cáo thiếu ảnh có tỉ lệ bắt buộc (vd cần ít nhất 1 ảnh ngang 1.91:1 hoặc 1 ảnh vuông 1:1).",
+    withDetail: true,
+  },
+  "adError.MISMATCHED_ASPECT_RATIOS": {
+    code: "invalid_request",
+    vi: "Tỉ lệ ảnh không khớp với vị trí ảnh trong quảng cáo.",
+    hint: "Tải ảnh đúng tỉ lệ bằng ads_upload_media (logo 1:1, ngang 1.91:1, vuông 1:1, dọc 4:5, dọc 9:16).",
+    withDetail: true,
+  },
+  "adError.INVALID_CALL_TO_ACTION_TEXT": { code: "invalid_request", vi: "Nút kêu gọi hành động không hợp lệ." },
+  "adError.VIDEO_RETRIEVAL_ERROR": {
+    code: "invalid_request",
+    vi: "Google không lấy được video YouTube.",
+    hint: "Kiểm tra video còn tồn tại và ở chế độ Công khai hoặc Không công khai (không phải Riêng tư).",
+  },
+  "adError.TOO_LONG": {
+    code: "invalid_request",
+    vi: "Chữ trong quảng cáo quá dài - xem field trong chi tiết lỗi.",
+    hint: "Demand Gen: tiêu đề quảng cáo ảnh có thể cần ≤30 ký tự (độ rộng hiển thị), tiêu đề quảng cáo video ≤40, tiêu đề dài / mô tả ≤90, tên doanh nghiệp ≤25.",
+    withDetail: true,
+  },
+  "adError.LINE_TOO_WIDE": {
+    code: "invalid_request",
+    vi: "Dòng chữ trong quảng cáo quá rộng khi hiển thị - xem field trong chi tiết lỗi.",
+    hint: "Demand Gen: tiêu đề quảng cáo ảnh có thể cần ≤30 ký tự (độ rộng hiển thị), tiêu đề quảng cáo video ≤40; chữ Trung/Nhật/Hàn và ký tự toàn độ rộng tính 2.",
+    withDetail: true,
+  },
+  "assetLinkError.IMAGE_NOT_WITHIN_SPECIFIED_DIMENSION_RANGE": {
+    code: "invalid_request",
+    vi: "Kích thước / tỉ lệ ảnh không đúng yêu cầu của vị trí ảnh này.",
+    hint: "Tải ảnh đúng tỉ lệ và đủ lớn bằng ads_upload_media (logo 1:1 ≥128×128, ngang 1.91:1 ≥600×314, vuông ≥300×300, dọc 4:5 ≥480×600, dọc 9:16 ≥600×1067).",
+    withDetail: true,
+  },
+  "assetLinkError.YOUTUBE_VIDEO_REMOVED": { code: "invalid_request", vi: "Video YouTube đã bị xoá hoặc không còn khả dụng." },
+  "assetLinkError.YOUTUBE_VIDEO_TOO_SHORT": { code: "invalid_request", vi: "Video YouTube quá ngắn cho quảng cáo này (Demand Gen: tối thiểu 5 giây)." },
+  "assetLinkError.YOUTUBE_VIDEO_TOO_LONG": { code: "invalid_request", vi: "Video YouTube quá dài cho quảng cáo này." },
+  "assetLinkError.UNSUPPORTED_CALL_TO_ACTION": { code: "invalid_request", vi: "Nút kêu gọi hành động này không được hỗ trợ cho loại quảng cáo." },
+  "imageError.ASPECT_RATIO_NOT_ALLOWED": {
+    code: "invalid_request",
+    vi: "Tỉ lệ ảnh không được phép ở vị trí này.",
+    hint: "Tải ảnh đúng tỉ lệ bằng ads_upload_media.",
+    withDetail: true,
+  },
+  "imageError.IMAGE_TOO_SMALL": { code: "invalid_request", vi: "Ảnh quá nhỏ so với kích thước tối thiểu.", hint: "Tải ảnh lớn hơn bằng ads_upload_media.", withDetail: true },
+  "collectionSizeError.TOO_FEW": { code: "invalid_request", vi: "Số lượng phần tử quá ít (vd tiêu đề, mô tả, ảnh) - xem field trong chi tiết lỗi.", withDetail: true },
+  "collectionSizeError.TOO_MANY": { code: "invalid_request", vi: "Số lượng phần tử quá nhiều (vd tiêu đề, mô tả, ảnh) - xem field trong chi tiết lỗi.", withDetail: true },
+  "criterionError.CANNOT_ADD_AUDIENCE_SEGMENT_CRITERION_WHEN_AUDIENCE_GROUPED_IS_SET": {
+    code: "invalid_request",
+    vi: "Nhóm quảng cáo dùng Đối tượng (audience) nên không thêm được phân khúc đối tượng riêng lẻ.",
+    hint: "Đưa phân khúc vào Đối tượng (Audience) trong Google Ads rồi gắn audience_id.",
+  },
+  "criterionError.AUDIENCE_NOT_ELIGIBLE_FOR_CAMPAIGN_TYPE": { code: "invalid_request", vi: "Đối tượng (audience) này không dùng được cho loại chiến dịch hiện tại." },
+  "criterionError.CANNOT_TARGET_LANGUAGE": { code: "invalid_request", vi: "Không nhắm mục tiêu được ngôn ngữ này cho loại chiến dịch / nhóm quảng cáo hiện tại." },
   // Targeting: ad schedule / proximity / geo target type
   "criterionError.AD_SCHEDULE_TIME_INTERVALS_OVERLAP": {
     code: "invalid_request",
@@ -433,13 +512,47 @@ function byHttpStatus(status: number): Mapping {
   return { code: "invalid_request", vi: "Google Ads từ chối yêu cầu." }
 }
 
+const BUDGET_MINIMUM_CODES = ["campaignBudgetError.BUDGET_BELOW_PER_DAY_MINIMUM", "campaignBudgetError.BUDGET_BELOW_DAILY_MINIMUM"]
+
+/**
+ * Minimum budget from errors[].details.budgetPerDayMinimumErrorDetails (v25: currencyCode, budgetPerDayMinimumMicros,
+ * minimumBudgetAmountMicros, minimumBudgetTotalAmountMicros…) as a Vietnamese sentence in MAJOR units. Only digits
+ * and a 3-letter currency code are taken from the response.
+ */
+export function budgetMinimumNote(errors: GoogleAdsErrorItem[]): string | null {
+  for (const e of errors) {
+    const d = e.details?.budgetPerDayMinimumErrorDetails
+    if (!d || typeof d !== "object") continue
+    const r = d as Record<string, unknown>
+    const cur = typeof r.currencyCode === "string" && /^[A-Z]{3}$/.test(r.currencyCode) ? ` ${r.currencyCode}` : ""
+    const fmt = (v: unknown): string | null => {
+      const s = typeof v === "string" || typeof v === "number" ? String(v) : ""
+      if (!/^\d{1,18}$/.test(s)) return null
+      const n = fromMicros(s)
+      return n === null || n <= 0 ? null : `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(n)}${cur}`
+    }
+    const parts: string[] = []
+    const daily = fmt(r.minimumBudgetAmountMicros)
+    const total = fmt(r.minimumBudgetTotalAmountMicros)
+    if (daily) parts.push(`ngân sách ngày tối thiểu ${daily}`)
+    if (total) parts.push(`ngân sách tổng tối thiểu ${total} cho thời gian chạy đã chọn`)
+    const perDay = parts.length ? null : fmt(r.budgetPerDayMinimumMicros)
+    if (perDay) parts.push(`tối thiểu ${perDay}/ngày`)
+    if (parts.length) return `Mức Google yêu cầu: ${parts.join("; ")}.`
+  }
+  return null
+}
+
 export function toProviderError(p: ParsedGoogleError): ProviderError {
   const primary = PRIORITY.find((c) => p.codes.includes(c)) ?? p.codes.find((c) => CODE_MAP[c]) ?? p.codes[0] ?? null
   const reason = p.reasons.find((r) => REASON_MAP[r]) ?? p.reasons[0] ?? null
   const m: Mapping = (primary && CODE_MAP[primary]) || (reason && REASON_MAP[reason]) || byHttpStatus(p.httpStatus)
   const detail = p.errors.length ? summarizeErrors(p.errors) : p.message
   // For generic validation errors include Google's message (Vietnamese prefix + upstream detail, no secrets inside).
-  const vi = ((!CODE_MAP[primary ?? ""] && !REASON_MAP[reason ?? ""]) || m.withDetail) && p.errors.length ? `${m.vi} Chi tiết: ${summarizeErrors(p.errors, 3)}` : m.vi
+  const base = ((!CODE_MAP[primary ?? ""] && !REASON_MAP[reason ?? ""]) || m.withDetail) && p.errors.length ? `${m.vi} Chi tiết: ${summarizeErrors(p.errors, 3)}` : m.vi
+  // atomic mutates often return several errors: surface the minimum whenever one of them is a budget-minimum error
+  const minimum = p.codes.some((c) => BUDGET_MINIMUM_CODES.includes(c)) ? budgetMinimumNote(p.errors) : null
+  const vi = minimum ? `${base} ${minimum}` : base
   return new ProviderError({
     platform: "google_ads",
     code: m.code,

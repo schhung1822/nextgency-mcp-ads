@@ -11,6 +11,7 @@ import type { GoogleAdsCredentials } from "./credentials"
 import { decodeCursor, slicePage } from "./cursor"
 import { assertId, gaqlString, idList } from "./gaql"
 import { googleAdsAssetExtensions } from "./assets"
+import { demandGenExtensions } from "./demand-gen"
 import { createYoutubeVideoAsset } from "./media"
 import {
   adScheduleBody,
@@ -736,6 +737,7 @@ export const googleAdsExtensions: Ext[] = [
     moneyOf: (input: CreateSearchCampaignInput) => searchCampaignMoney(input),
     run: (ctx, input: CreateSearchCampaignInput, opts) => runCreateSearchCampaign(ctx, input, opts),
   },
+  ...demandGenExtensions,
   {
     name: "google_ads_create_rsa",
     permission: "create",

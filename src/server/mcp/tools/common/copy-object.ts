@@ -37,7 +37,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
   registerToolSpec(server, tctx, {
     name: NAME,
     title: "Sao chép chiến dịch / nhóm / quảng cáo",
-    description: `Dùng khi cần nhân bản một chiến dịch, nhóm quảng cáo hoặc quảng cáo (deep=true để sao cả các cấp con, tối đa ${MAX_DEEP_COPY_ADS} quảng cáo mỗi lần), có thể thêm tiền tố/hậu tố tên và chọn parent đích (target_parent_id). Bản sao LUÔN ở trạng thái tạm dừng; dùng ads_set_status để bật sau - riêng chiến dịch GMV Max (TikTok, chỉ khi quản trị viên đã cho phép MCP thay đổi GMV Max) bản sao CHẠY NGAY vì TikTok không tạo GMV Max ở trạng thái tạm dừng. Gọi ads_list_accounts và ads_get_object (include_children) trước để xem cây đối tượng. Kết quả gồm bảng map id cũ → id mới và cảnh báo. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.`,
+    description: `Dùng khi cần nhân bản một chiến dịch, nhóm quảng cáo hoặc quảng cáo (deep=true để sao cả các cấp con, tối đa ${MAX_DEEP_COPY_ADS} quảng cáo mỗi lần), có thể thêm tiền tố/hậu tố tên và chọn parent đích (target_parent_id, cùng loại chiến dịch). Google: chiến dịch Tìm kiếm và Demand Gen. Bản sao LUÔN ở trạng thái tạm dừng; dùng ads_set_status để bật sau - riêng chiến dịch GMV Max (TikTok, chỉ khi quản trị viên đã cho phép MCP thay đổi GMV Max) bản sao CHẠY NGAY vì TikTok không tạo GMV Max ở trạng thái tạm dừng. Gọi ads_list_accounts và ads_get_object (include_children) trước để xem cây đối tượng. Kết quả gồm bảng map id cũ → id mới và cảnh báo. Có thể trả confirmation_required: cho người dùng xem preview rồi gọi lại với confirm_token khi họ đồng ý.`,
     kind: "write",
     annotations: CREATE_ANNOTATIONS,
     input: z.object({

@@ -58,6 +58,7 @@ describe("real adapter extensions", () => {
         "tiktok_create_campaign",
         "tiktok_create_adgroup",
         "google_ads_create_search_campaign",
+        "google_ads_create_demand_gen_campaign",
         "google_ads_add_keywords",
         "google_ads_create_assets",
         "openai_ads_create_campaign",

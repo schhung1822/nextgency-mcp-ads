@@ -95,11 +95,13 @@ YouTube **không có API quảng cáo riêng** — quảng cáo YouTube nằm tr
 | Loại chiến dịch                     | AI xem số liệu                                                | AI bật/tắt, đổi ngân sách, sửa         | AI tạo mới  |
 | ----------------------------------- | ------------------------------------------------------------- | -------------------------------------- | ----------- |
 | **Video** (TrueView, Shorts…)       | ✔ (lượt xem, tỉ lệ xem, quartile, thời gian xem, lượt thích…) | ✘ **chỉ xem** — chỉnh trong Google Ads | ✘           |
-| **Demand Gen** (gồm vị trí YouTube) | ✔                                                             | ✔ (ngân sách tối thiểu ~5 USD/ngày)    | chưa hỗ trợ |
+| **Demand Gen** (gồm vị trí YouTube) | ✔                                                             | ✔ (ngân sách tối thiểu ~5 USD/ngày), sao chép ✔ | ✔ quảng cáo video / ảnh |
 | **Performance Max**                 | ✔ kể cả riêng phần YouTube                                    | ✔                                      | chưa hỗ trợ |
 
 - Google không cho thay đổi chiến dịch **Video** qua API → Ads MCP từ chối kèm thông báo “Chiến dịch Video (YouTube) chỉ xem được qua API - hãy chỉnh trong Google Ads.”
 - Muốn dùng video cho quảng cáo: đăng video lên **YouTube** trước (Công khai hoặc Không công khai), rồi nhờ AI thêm bằng link YouTube (Ads MCP tạo asset video từ link, không tải file).
+- **Tạo chiến dịch Demand Gen** (MCP cần quyền **Tạo mới** trên Google Ads): đưa AI link video YouTube, link trang đích, **logo vuông** (link ảnh, file Google Drive hoặc tệp đính kèm — tối thiểu 128×128, nên ≤150 KB) và **tên doanh nghiệp** (≤25 ký tự) — Google bắt buộc logo và tên doanh nghiệp. AI tự viết tiêu đề, mô tả nếu bạn không đưa. Chiến dịch luôn tạo ở trạng thái **tạm dừng**, mặc định **chỉ chạy trên YouTube** (In-feed, In-stream, Shorts) — muốn thêm Gmail / Discover / Display thì nói rõ. Ngân sách tối thiểu khoảng 5 USD/ngày quy đổi; thấp hơn thì AI báo mức Google yêu cầu ngay ở bước xem trước.
+- **Nhân bản chiến dịch Demand Gen**: “Nhân bản chiến dịch Demand Gen X” — bản sao giữ kênh hiển thị, vị trí, ngôn ngữ, đối tượng và quảng cáo (video, ảnh, băng chuyền, sản phẩm — dùng lại đúng video / ảnh gốc), luôn ở trạng thái tạm dừng.
 - Hỏi AI theo kiểu “chi tiêu YouTube tuần này” — AI lọc chiến dịch Video + Demand Gen.
 
 ## Lỗi thường gặp
@@ -115,7 +117,7 @@ YouTube **không có API quảng cáo riêng** — quảng cáo YouTube nằm tr
 | `EU_POLITICAL_ADVERTISING_DECLARATION_REQUIRED`, `MISSING_EU_POLITICAL_ADVERTISING_SELF_DECLARATION` | TKQC chưa khai báo quảng cáo chính trị EU                                                     | Khai báo ở **cấp tài khoản** trong Google Ads (cài đặt tài khoản), hoặc nhờ AI chạy tool khai báo hàng loạt cho chiến dịch |
 | `OPERATION_NOT_PERMITTED_FOR_CONTEXT`                                                                | Thao tác không được phép (vd nhắm ngôn ngữ cho chiến dịch Tìm kiếm — Google bỏ từ 30/09/2026) | Bỏ nhắm ngôn ngữ; Google tự xác định ngôn ngữ                                                                              |
 | `MUTATE_REQUIRES_RESERVATION`, `OPERATION_NOT_PERMITTED_FOR_CAMPAIGN_TYPE`                           | Chiến dịch Video (YouTube) không sửa được qua API                                             | Chỉnh trong Google Ads                                                                                                     |
-| `BUDGET_BELOW_DAILY_MINIMUM`                                                                         | Ngân sách thấp hơn mức tối thiểu (Demand Gen ~5 USD/ngày)                                     | Tăng ngân sách                                                                                                             |
+| `BUDGET_BELOW_PER_DAY_MINIMUM`                                                                       | Ngân sách thấp hơn mức tối thiểu (Demand Gen ~5 USD/ngày)                                     | Tăng ngân sách                                                                                                             |
 
 ## Lưu ý
 

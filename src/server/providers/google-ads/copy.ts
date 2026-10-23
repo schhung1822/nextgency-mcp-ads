@@ -8,11 +8,14 @@
 // opts in to a partial copy. Proximity (radius) targeting is re-created from its geo point (or address). Campaign-level
 // Search asset links (sitelink, callout, call, structured snippet, price, promotion) are re-linked to the same assets
 // (same account); other asset links are skipped with a warning (assets are not targeting → not "incomplete").
+// Demand Gen campaigns / ad groups / ads are copied by copy-demand-gen.ts (dispatched from copyObject below; it reuses
+// the budget, flight, EU, shared-set, asset-link and run helpers exported here).
 import { ProviderError, isProviderError } from "../errors"
 import { addDays, todayInTz } from "../dates"
 import type { CopyMapping, CopyRequest, CopyResult, MutationOptions, ObjectLevel } from "../types"
 import { field, resourceId, str, type GoogleAdsClient, type GoogleAdsRow } from "./client"
 import { clientFor, customerIdOf, invalidRequest, notFound, type GCtx } from "./context"
+import { channelMismatch, copyDemandGenAd, copyDemandGenAdGroup, copyDemandGenCampaign } from "./copy-demand-gen"
 import { assertId, escapeLike, gaqlString, idList } from "./gaql"
 import { isOpenEnded } from "./time"
 import { assertNotVideo, videoReadOnlyError } from "./youtube"
@@ -56,9 +59,10 @@ const CAMPAIGN_COPY_FIELDS = [
   "campaign_budget.explicitly_shared",
 ]
 
-const CRITERION_COPY_FIELDS = [
+export const CRITERION_COPY_FIELDS = [
   "campaign_criterion.criterion_id",
   "campaign_criterion.type",
+  "campaign_criterion.status",
   "campaign_criterion.negative",
   "campaign_criterion.bid_modifier",
   "campaign_criterion.location.geo_target_constant",
@@ -84,12 +88,12 @@ const CRITERION_COPY_FIELDS = [
   "campaign_criterion.proximity.address.country_code",
 ]
 
-const ASSET_LINK_COPY_FIELDS = ["campaign_asset.asset", "campaign_asset.field_type", "campaign_asset.status", "campaign_asset.source"]
+export const ASSET_LINK_COPY_FIELDS = ["campaign_asset.asset", "campaign_asset.field_type", "campaign_asset.status", "campaign_asset.source"]
 
 /** Campaign-level asset links re-linked to a Search copy (same account, link - not duplicate). */
 export const COPYABLE_ASSET_FIELD_TYPES = new Set(["SITELINK", "CALLOUT", "CALL", "STRUCTURED_SNIPPET", "PRICE", "PROMOTION"])
 
-const SHARED_SET_COPY_FIELDS = [
+export const SHARED_SET_COPY_FIELDS = [
   "campaign_shared_set.shared_set",
   "campaign_shared_set.status",
   "shared_set.id",
@@ -188,7 +192,7 @@ export function uniqueName(desired: string, existing: Set<string>): string {
 
 const nonEmpty = (v: unknown) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)
 
-function compact<T extends Record<string, unknown>>(o: T): T {
+export function compact<T extends Record<string, unknown>>(o: T): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => nonEmpty(v))) as T
 }
 
@@ -213,7 +217,7 @@ export function unsupportedChannel(channel: string | null): ProviderError {
     platform: "google_ads",
     code: "unsupported",
     message: `Copying ${channel} campaigns is not supported`,
-    userMessageVi: `Hiện chỉ hỗ trợ sao chép chiến dịch Tìm kiếm (Search); chiến dịch loại ${channel ?? "không rõ"} chưa được hỗ trợ.`,
+    userMessageVi: `Hiện chỉ hỗ trợ sao chép chiến dịch Tìm kiếm (Search) và Demand Gen; chiến dịch loại ${channel ?? "không rõ"} chưa được hỗ trợ.`,
   })
 }
 
@@ -255,7 +259,7 @@ export function biddingFor(row: GoogleAdsRow, warnings: string[]): Record<string
   }
 }
 
-function textAssets(v: unknown): { text: string; pinnedField?: string }[] {
+export function textAssets(v: unknown): { text: string; pinnedField?: string }[] {
   if (!Array.isArray(v)) return []
   return v
     .map((x) => {
@@ -267,7 +271,7 @@ function textAssets(v: unknown): { text: string; pinnedField?: string }[] {
     .filter((x) => x.text)
 }
 
-function childStatus(s: string | null): "ENABLED" | "PAUSED" {
+export function childStatus(s: string | null): "ENABLED" | "PAUSED" {
   return s === "ENABLED" ? "ENABLED" : "PAUSED"
 }
 
@@ -437,18 +441,14 @@ export function euNotDeclared(campaignId: string): ProviderError {
   })
 }
 
-export function buildCampaignCopy(
+/** 1) budget of a campaign copy: always a new, non-shared budget with the same amount (daily or CUSTOM_PERIOD total). */
+export function addBudgetOp(
+  plan: CopyPlan,
   cid: string,
-  src: CampaignSource,
-  o: { name: string; today: string; deep: boolean; budgetSuffix?: string; allowIncomplete?: boolean }
-): CopyPlan {
-  const c = src.campaign
-  const channel = str(c, "campaign.advertising_channel_type")
-  if (channel !== "SEARCH") throw unsupportedChannel(channel)
-  const plan: CopyPlan = { ops: [], entries: [], warnings: [], uncopyable: [], rootLevel: "campaign", rootName: o.name, rootIndex: -1 }
-  const tmp = new TempIds()
-
-  // 1) budget: always a new, non-shared budget with the same amount
+  tmp: TempIds,
+  c: GoogleAdsRow,
+  o: { name: string; budgetSuffix?: string }
+): { budgetRn: string; lifetime: boolean } {
   const budgetRn = `customers/${cid}/campaignBudgets/${tmp.next()}`
   const period = str(c, "campaign_budget.period") ?? "DAILY"
   const lifetime = period === "CUSTOM_PERIOD"
@@ -471,16 +471,27 @@ export function buildCampaignCopy(
       }),
     },
   })
+  return { budgetRn, lifetime }
+}
 
-  // 2) campaign - PAUSED, EU declaration always present, start not in the past
-  const warnings = plan.warnings
+/** The source EU political-ads declaration. Never declare on the user's behalf: the declaration is a legal statement. */
+export function euDeclaration(c: GoogleAdsRow): string {
   const eu = str(c, "campaign.contains_eu_political_advertising")
-  // Never declare on the user's behalf: the declaration is a legal statement.
   if (eu !== "CONTAINS_EU_POLITICAL_ADVERTISING" && eu !== "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING") {
     throw euNotDeclared(str(c, "campaign.id") ?? "?")
   }
+  return eu
+}
+
+/** Start/end of a campaign copy: start not in the past; a moved start shifts the end by the same number of days. */
+export function copyFlight(
+  c: GoogleAdsRow,
+  today: string,
+  lifetime: boolean,
+  warnings: string[]
+): { startDateTime: string; endDateTime: string | undefined } {
   const srcStart = str(c, "campaign.start_date_time")
-  const startDateTime = srcStart && srcStart.slice(0, 10) > o.today ? srcStart : `${o.today} 00:00:00`
+  const startDateTime = srcStart && srcStart.slice(0, 10) > today ? srcStart : `${today} 00:00:00`
   const srcEnd = str(c, "campaign.end_date_time")
   let endDateTime: string | undefined
   if (!isOpenEnded(srcEnd) && srcEnd) {
@@ -501,7 +512,68 @@ export function buildCampaignCopy(
       "Chiến dịch gốc dùng ngân sách tổng nhưng ngày kết thúc đã qua; hãy sửa ngày kết thúc của chiến dịch gốc hoặc tạo chiến dịch mới."
     )
   }
-  if (srcStart && startDateTime !== srcStart) warnings.push(`Ngày bắt đầu của bản sao được đặt là ${o.today} (ngày gốc đã qua).`)
+  if (srcStart && startDateTime !== srcStart) warnings.push(`Ngày bắt đầu của bản sao được đặt là ${today} (ngày gốc đã qua).`)
+  return { startDateTime, endDateTime }
+}
+
+/** 3b) shared sets (negative keyword lists…) are linked, not copied - same account. */
+export function addSharedSetLinks(plan: CopyPlan, src: CampaignSource, campaignRn: string): void {
+  for (const ss of src.sharedSets ?? []) {
+    const rn = str(ss, "campaign_shared_set.shared_set")
+    if (!rn || str(ss, "campaign_shared_set.status") !== "ENABLED" || (str(ss, "shared_set.status") ?? "ENABLED") !== "ENABLED") continue
+    plan.ops.push({ campaignSharedSetOperation: { create: { campaign: campaignRn, sharedSet: rn } } })
+  }
+}
+
+/**
+ * 3c) campaign-level asset links (sitelinks, callouts…) are linked, not duplicated - same account. Not targeting:
+ * a skipped link does not broaden delivery → warning only (never uncopyable).
+ */
+export function addCampaignAssetLinks(plan: CopyPlan, src: CampaignSource, campaignRn: string): void {
+  const warnings = plan.warnings
+  let assetsLinked = 0
+  const assetsSkipped = new Map<string, number>()
+  for (const al of src.assets ?? []) {
+    const asset = str(al, "campaign_asset.asset")
+    const fieldType = str(al, "campaign_asset.field_type")
+    if (!asset || (str(al, "campaign_asset.status") ?? "ENABLED") !== "ENABLED") continue
+    const auto = str(al, "campaign_asset.source") === "AUTOMATICALLY_CREATED"
+    if (auto || !fieldType || !COPYABLE_ASSET_FIELD_TYPES.has(fieldType)) {
+      const key = `${fieldType ?? "?"}${auto ? " (Google tự tạo)" : ""}`
+      assetsSkipped.set(key, (assetsSkipped.get(key) ?? 0) + 1)
+      continue
+    }
+    plan.ops.push({ campaignAssetOperation: { create: { campaign: campaignRn, asset, fieldType } } })
+    assetsLinked++
+  }
+  if (assetsLinked) warnings.push(`Đã gắn lại ${assetsLinked} asset cấp chiến dịch (sitelink, chú thích…) vào bản sao.`)
+  if (assetsSkipped.size) {
+    const total = [...assetsSkipped.values()].reduce((a, b) => a + b, 0)
+    const detail = [...assetsSkipped].map(([t, n]) => `${t}: ${n}`).join(", ")
+    warnings.push(
+      `Không gắn lại ${total} asset cấp chiến dịch (${detail}) - chỉ sao chép sitelink, chú thích, cuộc gọi, đoạn nội dung có cấu trúc, giá, khuyến mãi do bạn tạo; hãy gắn lại thủ công nếu cần.`
+    )
+  }
+}
+
+export function buildCampaignCopy(
+  cid: string,
+  src: CampaignSource,
+  o: { name: string; today: string; deep: boolean; budgetSuffix?: string; allowIncomplete?: boolean }
+): CopyPlan {
+  const c = src.campaign
+  const channel = str(c, "campaign.advertising_channel_type")
+  if (channel !== "SEARCH") throw unsupportedChannel(channel)
+  const plan: CopyPlan = { ops: [], entries: [], warnings: [], uncopyable: [], rootLevel: "campaign", rootName: o.name, rootIndex: -1 }
+  const tmp = new TempIds()
+
+  // 1) budget: always a new, non-shared budget with the same amount
+  const { budgetRn, lifetime } = addBudgetOp(plan, cid, tmp, c, o)
+
+  // 2) campaign - PAUSED, EU declaration always present, start not in the past
+  const warnings = plan.warnings
+  const eu = euDeclaration(c)
+  const { startDateTime, endDateTime } = copyFlight(c, o.today, lifetime, warnings)
   const campaignRn = `customers/${cid}/campaigns/${tmp.next()}`
   const subType = str(c, "campaign.advertising_channel_sub_type")
   plan.rootIndex = plan.ops.length
@@ -587,6 +659,8 @@ export function buildCampaignCopy(
         create: compact({
           campaign: campaignRn,
           ...body,
+          // default is ENABLED; a paused positive criterion stays paused (re-enabling it would broaden delivery)
+          status: !negative && str(cr, "campaign_criterion.status") === "PAUSED" ? "PAUSED" : undefined,
           negative: negative ? true : undefined,
           bidModifier: !negative && typeof bidModifier === "number" && bidModifier !== 1 && type !== "LANGUAGE" ? bidModifier : undefined,
         }),
@@ -603,40 +677,13 @@ export function buildCampaignCopy(
   }
 
   // 3b) shared sets (negative keyword lists…) are linked, not copied - same account
-  for (const ss of src.sharedSets ?? []) {
-    const rn = str(ss, "campaign_shared_set.shared_set")
-    if (!rn || str(ss, "campaign_shared_set.status") !== "ENABLED" || (str(ss, "shared_set.status") ?? "ENABLED") !== "ENABLED") continue
-    plan.ops.push({ campaignSharedSetOperation: { create: { campaign: campaignRn, sharedSet: rn } } })
-  }
+  addSharedSetLinks(plan, src, campaignRn)
   if (!src.criteria.some((cr) => ["LOCATION", "PROXIMITY"].includes(str(cr, "campaign_criterion.type") ?? ""))) {
     warnings.push("Chiến dịch gốc không giới hạn vị trí - bản sao cũng nhắm mọi quốc gia.")
   }
 
-  // 3c) campaign-level asset links (sitelinks, callouts…) are linked, not duplicated - same account. Not targeting:
-  // a skipped link does not broaden delivery → warning only (never uncopyable).
-  let assetsLinked = 0
-  const assetsSkipped = new Map<string, number>()
-  for (const al of src.assets ?? []) {
-    const asset = str(al, "campaign_asset.asset")
-    const fieldType = str(al, "campaign_asset.field_type")
-    if (!asset || (str(al, "campaign_asset.status") ?? "ENABLED") !== "ENABLED") continue
-    const auto = str(al, "campaign_asset.source") === "AUTOMATICALLY_CREATED"
-    if (auto || !fieldType || !COPYABLE_ASSET_FIELD_TYPES.has(fieldType)) {
-      const key = `${fieldType ?? "?"}${auto ? " (Google tự tạo)" : ""}`
-      assetsSkipped.set(key, (assetsSkipped.get(key) ?? 0) + 1)
-      continue
-    }
-    plan.ops.push({ campaignAssetOperation: { create: { campaign: campaignRn, asset, fieldType } } })
-    assetsLinked++
-  }
-  if (assetsLinked) warnings.push(`Đã gắn lại ${assetsLinked} asset cấp chiến dịch (sitelink, chú thích…) vào bản sao.`)
-  if (assetsSkipped.size) {
-    const total = [...assetsSkipped.values()].reduce((a, b) => a + b, 0)
-    const detail = [...assetsSkipped].map(([t, n]) => `${t}: ${n}`).join(", ")
-    warnings.push(
-      `Không gắn lại ${total} asset cấp chiến dịch (${detail}) - chỉ sao chép sitelink, chú thích, cuộc gọi, đoạn nội dung có cấu trúc, giá, khuyến mãi do bạn tạo; hãy gắn lại thủ công nếu cần.`
-    )
-  }
+  // 3c) campaign-level asset links (sitelinks, callouts…) are linked, not duplicated - same account
+  addCampaignAssetLinks(plan, src, campaignRn)
 
   // 4) ad groups + keywords + ads
   if (o.deep) {
@@ -719,7 +766,7 @@ export function mappingsFrom(plan: CopyPlan, results: Record<string, unknown>[] 
 // ---------------------------------------------------------------------------
 
 /** searchAll that refuses a truncated read (a silent partial copy would drop objects). */
-async function readAll(client: GoogleAdsClient, cid: string, query: string, maxRows: number, whatVi: string): Promise<GoogleAdsRow[]> {
+export async function readAll(client: GoogleAdsClient, cid: string, query: string, maxRows: number, whatVi: string): Promise<GoogleAdsRow[]> {
   const { rows, truncated } = await client.searchAll(cid, query, { maxRows })
   if (truncated) {
     throw invalidRequest(
@@ -731,7 +778,7 @@ async function readAll(client: GoogleAdsClient, cid: string, query: string, maxR
 }
 
 /** Campaign-specific conversion goals are not copied (the copy uses account-level goals) → warn. */
-async function conversionGoalWarning(client: GoogleAdsClient, cid: string, campaignId: string): Promise<string | null> {
+export async function conversionGoalWarning(client: GoogleAdsClient, cid: string, campaignId: string): Promise<string | null> {
   try {
     const { rows } = await client.searchAll(
       cid,
@@ -746,7 +793,7 @@ async function conversionGoalWarning(client: GoogleAdsClient, cid: string, campa
   }
 }
 
-async function existingNames(client: GoogleAdsClient, cid: string, from: "campaign" | "ad_group", base: string, campaignId?: string): Promise<Set<string>> {
+export async function existingNames(client: GoogleAdsClient, cid: string, from: "campaign" | "ad_group", base: string, campaignId?: string): Promise<Set<string>> {
   const nameField = `${from}.name`
   const conds = [`${nameField} LIKE ${gaqlString(`${escapeLike(base)}%`)}`, `${from}.status != 'REMOVED'`]
   if (campaignId) conds.push(`campaign.id = ${assertId(campaignId)}`)
@@ -754,7 +801,7 @@ async function existingNames(client: GoogleAdsClient, cid: string, from: "campai
   return new Set(rows.map((r) => str(r, nameField) ?? ""))
 }
 
-async function runPlan(
+export async function runPlan(
   client: GoogleAdsClient,
   cid: string,
   plan: CopyPlan,
@@ -798,6 +845,7 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
     const c = (await client.searchAll(cid, `SELECT ${CAMPAIGN_COPY_FIELDS.join(", ")} FROM campaign WHERE campaign.id = ${id}`, { maxRows: 1 })).rows[0]
     if (!c) throw notFound("chiến dịch", id)
     const channel = str(c, "campaign.advertising_channel_type")
+    if (channel === "DEMAND_GEN") return copyDemandGenCampaign(client, cid, id, r, today, opts)
     if (channel !== "SEARCH") throw unsupportedChannel(channel)
     if (r.targetParentId) throw invalidRequest("targetParentId not applicable", "Sao chép chiến dịch chỉ trong cùng tài khoản; không dùng target_parent_id.")
     const criteria = await readAll(
@@ -865,6 +913,7 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
     const ag = (await client.searchAll(cid, `SELECT ${AD_GROUP_COPY_FIELDS.join(", ")} FROM ad_group WHERE ad_group.id = ${id}`, { maxRows: 1 })).rows[0]
     if (!ag) throw notFound("nhóm quảng cáo", id)
     const srcChannel = str(ag, "campaign.advertising_channel_type")
+    if (srcChannel === "DEMAND_GEN") return copyDemandGenAdGroup(client, cid, ag, r, opts)
     if (srcChannel !== "SEARCH") throw unsupportedChannel(srcChannel)
     const targetCampaign = r.targetParentId ? assertId(r.targetParentId, "target_parent_id") : str(ag, "campaign.id")!
     if (targetCampaign !== str(ag, "campaign.id")) {
@@ -874,7 +923,8 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
         })
       ).rows[0]
       if (!t || str(t, "campaign.status") === "REMOVED") throw notFound("chiến dịch đích", targetCampaign)
-      if (str(t, "campaign.advertising_channel_type") !== "SEARCH") throw unsupportedChannel(str(t, "campaign.advertising_channel_type"))
+      const targetChannel = str(t, "campaign.advertising_channel_type")
+      if (targetChannel !== "SEARCH") throw targetChannel === "DEMAND_GEN" ? channelMismatch("SEARCH", targetChannel) : unsupportedChannel(targetChannel)
     }
     let ads: GoogleAdsRow[] = []
     if (r.deep) {
@@ -911,6 +961,7 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
     if (rows.length > 1) throw invalidRequest("Ambiguous ad", "Quảng cáo xuất hiện ở nhiều nhóm - hãy dùng id dạng AD_GROUP_ID~AD_ID.")
     const ad = rows[0]!
     assertNotVideo([ad], "copy")
+    if (str(ad, "campaign.advertising_channel_type") === "DEMAND_GEN") return copyDemandGenAd(client, cid, ad, r, opts)
     const targetAg = r.targetParentId ? assertId(r.targetParentId, "target_parent_id") : str(ad, "ad_group.id")!
     if (targetAg !== str(ad, "ad_group.id")) {
       const t = (
@@ -939,7 +990,7 @@ export async function copyObject(ctx: GCtx, r: CopyRequest, opts: MutationOption
   throw invalidRequest(`Unsupported copy level ${String((r as { level: string }).level)}`, "Cấp sao chép không hợp lệ.")
 }
 
-function assertAdCap(n: number) {
+export function assertAdCap(n: number) {
   if (n > MAX_COPY_ADS) {
     throw invalidRequest(
       `Too many ads to copy: ${n}`,
@@ -948,7 +999,7 @@ function assertAdCap(n: number) {
   }
 }
 
-async function findByName(client: GoogleAdsClient, cid: string, from: "campaign" | "ad_group", name: string, campaignId?: string): Promise<string | null> {
+export async function findByName(client: GoogleAdsClient, cid: string, from: "campaign" | "ad_group", name: string, campaignId?: string): Promise<string | null> {
   const conds = [`${from}.name = ${gaqlString(name)}`, `${from}.status != 'REMOVED'`]
   if (campaignId) conds.push(`campaign.id = ${assertId(campaignId)}`)
   const { rows } = await client.searchAll(cid, `SELECT ${from}.id FROM ${from} WHERE ${conds.join(" AND ")}`, { maxRows: 1 })

@@ -102,7 +102,35 @@ export const AD_VIDEO_FIELDS = [
   "ad_group_ad.ad.demand_gen_video_responsive_ad.headlines",
   "ad_group_ad.ad.demand_gen_video_responsive_ad.business_name",
 ]
-export const AD_LIST_FIELDS = [...AD_FIELDS, ...AD_VIDEO_FIELDS]
+/** Demand Gen ad content (list/detail reads only): shows what ads_copy_object will copy. */
+export const AD_DEMAND_GEN_FIELDS = [
+  "ad_group_ad.ad.demand_gen_video_responsive_ad.long_headlines",
+  "ad_group_ad.ad.demand_gen_video_responsive_ad.descriptions",
+  "ad_group_ad.ad.demand_gen_video_responsive_ad.logo_images",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.headlines",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.descriptions",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.business_name",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.marketing_images",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.square_marketing_images",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.portrait_marketing_images",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.tall_portrait_marketing_images",
+  "ad_group_ad.ad.demand_gen_multi_asset_ad.logo_images",
+  "ad_group_ad.ad.demand_gen_carousel_ad.headline",
+  "ad_group_ad.ad.demand_gen_carousel_ad.description",
+  "ad_group_ad.ad.demand_gen_carousel_ad.business_name",
+  "ad_group_ad.ad.demand_gen_carousel_ad.carousel_cards",
+]
+export const AD_LIST_FIELDS = [...AD_FIELDS, ...AD_VIDEO_FIELDS, ...AD_DEMAND_GEN_FIELDS]
+
+const DG_CHANNELS = ["youtube_in_feed", "youtube_in_stream", "youtube_shorts", "discover", "gmail", "display", "maps"]
+const DG_CC = "ad_group.demand_gen_ad_group_settings.channel_controls"
+/** ad_group detail (get only): Demand Gen channel controls (where the ads may show). */
+const AD_GROUP_DETAIL_FIELDS = [
+  ...AD_GROUP_FIELDS,
+  `${DG_CC}.channel_config`,
+  `${DG_CC}.channel_strategy`,
+  ...DG_CHANNELS.map((c) => `${DG_CC}.selected_channels.${c}`),
+]
 
 export const KEYWORD_FIELDS = [
   "campaign.id",
@@ -219,6 +247,8 @@ export function summaryFromRow(level: ObjectLevel, row: GoogleAdsRow, ctx: { cur
         ...texts(field(row, "ad_group_ad.ad.responsive_search_ad.headlines")),
         ...texts(field(row, "ad_group_ad.ad.video_responsive_ad.headlines")),
         ...texts(field(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.headlines")),
+        ...texts(field(row, "ad_group_ad.ad.demand_gen_multi_asset_ad.headlines")),
+        ...texts([field(row, "ad_group_ad.ad.demand_gen_carousel_ad.headline")]),
       ]
       const videoAssets = videoAssetsOf(row)
       return {
@@ -552,10 +582,48 @@ function videoAdConfig(row: GoogleAdsRow): Record<string, unknown> {
     out.demand_gen_video_responsive_ad = {
       videos: videoAssetList(field(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.videos")),
       headlines: texts(field(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.headlines")),
+      long_headlines: texts(field(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.long_headlines")),
+      descriptions: texts(field(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.descriptions")),
       business_name: str(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.business_name.text"),
+      logo_images: videoAssetList(field(row, "ad_group_ad.ad.demand_gen_video_responsive_ad.logo_images")),
+    }
+  }
+  const ma = "ad_group_ad.ad.demand_gen_multi_asset_ad"
+  if (field(row, ma) && typeof field(row, ma) === "object") {
+    const count = (f: string) => videoAssetList(field(row, `${ma}.${f}`)).length
+    out.demand_gen_multi_asset_ad = {
+      headlines: texts(field(row, `${ma}.headlines`)),
+      descriptions: texts(field(row, `${ma}.descriptions`)),
+      business_name: str(row, `${ma}.business_name`),
+      image_counts: {
+        landscape: count("marketing_images"),
+        square: count("square_marketing_images"),
+        portrait: count("portrait_marketing_images"),
+        tall_portrait: count("tall_portrait_marketing_images"),
+        logo: count("logo_images"),
+      },
+    }
+  }
+  const ca = "ad_group_ad.ad.demand_gen_carousel_ad"
+  if (field(row, ca) && typeof field(row, ca) === "object") {
+    out.demand_gen_carousel_ad = {
+      headline: str(row, `${ca}.headline.text`),
+      description: str(row, `${ca}.description.text`),
+      business_name: str(row, `${ca}.business_name`),
+      card_count: videoAssetList(field(row, `${ca}.carousel_cards`)).length,
     }
   }
   return out
+}
+
+/** Demand Gen ad group channel controls: a strategy (ALL_CHANNELS…) or the selected channels. */
+function channelControlsConfig(row: GoogleAdsRow): Record<string, unknown> {
+  const config = str(row, `${DG_CC}.channel_config`)
+  if (config === "SELECTED_CHANNELS") {
+    return { config, selected_channels: DG_CHANNELS.filter((c) => field(row, `${DG_CC}.selected_channels.${c}`) === true) }
+  }
+  // nothing read → null (never assume ALL_CHANNELS)
+  return { config, strategy: str(row, `${DG_CC}.channel_strategy`) }
 }
 
 function videoAssetList(v: unknown): string[] {
@@ -570,7 +638,7 @@ export async function getObject(ctx: GCtx, level: ObjectLevel, id: string, opts:
   const cid = customerIdOf(ctx)
   const client = clientFor(ctx)
   const [ref] = await resolveRefs(client, cid, level, [id])
-  const fields = level === "campaign" ? CAMPAIGN_DETAIL_FIELDS : level === "ad" ? AD_LIST_FIELDS : undefined
+  const fields = level === "campaign" ? CAMPAIGN_DETAIL_FIELDS : level === "ad" ? AD_LIST_FIELDS : level === "ad_group" ? AD_GROUP_DETAIL_FIELDS : undefined
   const rows = await readCurrent(client, cid, level, [ref!], fields)
   const row = rows.get(ref!.key)
   if (!row) throw notFound(level, id)
@@ -610,6 +678,7 @@ export async function getObject(ctx: GCtx, level: ObjectLevel, id: string, opts:
       cpc_bid: microsToMajor(row, "ad_group.cpc_bid_micros"),
       target_cpa: microsToMajor(row, "ad_group.target_cpa_micros"),
       currency: cur,
+      ...(str(row, "campaign.advertising_channel_type") === "DEMAND_GEN" ? { channel_controls: channelControlsConfig(row) } : {}),
     })
     if (opts.includeChildren) {
       const children = await adGroupChildren(client, cid, ctx, `ad_group.id = ${ref!.id}`).then((m) => m.get(ref!.id) ?? [])

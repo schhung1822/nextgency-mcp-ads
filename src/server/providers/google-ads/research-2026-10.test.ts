@@ -120,6 +120,12 @@ describe("#3 map lỗi mới", () => {
       map({ mutateError: "EU_POLITICAL_ADVERTISING_DECLARATION_REQUIRED" }).hint
     ).toContain("cấp tài khoản")
   })
+  it("Demand Gen BUDGET_BELOW_PER_DAY_MINIMUM (tên enum v23–v26) → invalid_request nhắc 5 USD/ngày", () => {
+    const e = map({ campaignBudgetError: "BUDGET_BELOW_PER_DAY_MINIMUM" })
+    expect(e.code).toBe("invalid_request")
+    expect(e.userMessageVi).toContain("5 USD")
+    expect(e.upstream?.code).toBe("campaignBudgetError.BUDGET_BELOW_PER_DAY_MINIMUM")
+  })
   it("Demand Gen BUDGET_BELOW_DAILY_MINIMUM → invalid_request nhắc 5 USD/ngày", () => {
     const e = map({ campaignBudgetError: "BUDGET_BELOW_DAILY_MINIMUM" })
     expect(e.code).toBe("invalid_request")
