@@ -26,7 +26,7 @@ if [ "${GEN_SECRETS_FALLBACK:-}" != "1" ]; then
     echo "Không thấy Node ≥ 20 — chạy gen-env.mjs trong Docker (node:24-slim)…" >&2
     # image ghim theo digest (giống FROM của Dockerfile) - script này sinh secret
     exec docker run --rm -e "HOST_PROJECT_DIR=${HOST_PROJECT_DIR:-$PWD}" --user "$(id -u):$(id -g)" -v "$PWD:/w" -w /w \
-      node:24-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 node scripts/gen-env.mjs "$@"
+      node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 node scripts/gen-env.mjs "$@"
   fi
 fi
 
