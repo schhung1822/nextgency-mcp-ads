@@ -284,3 +284,9 @@ Nguồn yêu cầu: khách báo không tạo được chiến dịch Demand Gen 
 - [x] `copy-demand-gen.ts` + `copy.ts`: sao chép Demand Gen cấp chiến dịch / nhóm / quảng cáo (4 loại quảng cáo, fail closed kênh / tiêu chí); `objects.ts` hiện chi tiết quảng cáo Demand Gen + kênh của nhóm; trần số tool = 50 (đủ trần)
 - [ ] Thử thật với tài khoản Google Ads (chỉ object thử nghiệm): mức tối thiểu VND, logo sai tỉ lệ, sao chép chiến dịch Demand Gen có đối tượng / băng chuyền / sản phẩm
 - [x] Tài liệu: 01, 04, `providers/google-ads.md`, `docs/ket-noi-ai.md`, `docs/huong-dan-lay-token-google-ads.md`, `release-notes/v1.1.9.md`
+
+## Sửa lỗi "Kiểm tra lại" báo "Nền tảng này chưa được hỗ trợ" (2026-10-24), v1.1.10
+Nguồn: khách báo — TKQC Meta bị vô hiệu hoá do lỗi thanh toán, thanh toán xong bấm "Kiểm tra lại" thì báo "Không kiểm tra được: Nền tảng này chưa được hỗ trợ." Nguyên nhân: registry adapter của tiến trình web chỉ được nạp khi tạo / thay token hoặc gọi MCP; `refreshForUser` ("Kiểm tra lại", "Đồng bộ tài khoản") gọi `getProvider` khi registry còn trống (sau khi khởi động lại). Worker không bị (tự nạp).
+- [x] `verifyCredentials` (`src/server/jobs/lib/connection-ops.ts`) tự gọi `ensureProvidersRegistered()`; test hồi quy `connection-ops.registry.test.ts`
+- [x] Rà mọi chỗ gọi `getProvider` / `hasProvider`: MCP (`handler.ts`), worker (`connection-refresh.ts`, `media-video-upload.ts`), tạo / thay token (`parseCredentialsOrThrow`) đều đã nạp
+- [x] Tài liệu: `release-notes/v1.1.10.md`

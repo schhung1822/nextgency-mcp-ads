@@ -15,7 +15,7 @@ import { db, type Tx } from "@/server/db/client"
 import { adAccounts, connections, mcpPageScopes, metaPages } from "@/server/db/schema"
 import { isProviderError } from "@/server/providers/errors"
 import { notifyConnectionHealth } from "@/server/notifications/events"
-import { getProvider } from "@/server/providers/registry"
+import { ensureProvidersRegistered, getProvider } from "@/server/providers"
 import type { AdAccountInfo, CredentialCheck, PageInfo, PageListResult, Platform } from "@/server/providers/types"
 
 /** Tokens expiring within this window are flagged "expiring" (Sắp hết hạn). */
@@ -138,6 +138,8 @@ export async function verifyCredentials(
     now?: Date
   } = {}
 ): Promise<VerifyOutcome> {
+  // the web process registers adapters lazily: "Kiểm tra lại" right after a restart must not answer "chưa hỗ trợ"
+  ensureProvidersRegistered()
   const provider = getProvider(platform)
   const baseMeta = { ...(opts.connectionMeta ?? {}) }
   delete baseMeta[META_WARNINGS_KEY]
