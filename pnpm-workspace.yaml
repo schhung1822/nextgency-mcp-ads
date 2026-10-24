@@ -9,3 +9,9 @@ allowBuilds:
   unrs-resolver: true
   esbuild: true
   msw: false
+
+# Ghim bản đã vá cho gói gián tiếp mà `pnpm update` không tự nâng (cảnh báo Dependabot 2026-10):
+# fast-uri qua ajv (@hookform/resolvers, có trong image chạy thật); vite chỉ dùng cho vitest/msw (dev).
+overrides:
+  fast-uri: ^3.1.9
+  vite: ^8.3.3

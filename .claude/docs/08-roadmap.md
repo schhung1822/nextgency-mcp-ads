@@ -290,3 +290,11 @@ Nguồn: khách báo — TKQC Meta bị vô hiệu hoá do lỗi thanh toán, th
 - [x] `verifyCredentials` (`src/server/jobs/lib/connection-ops.ts`) tự gọi `ensureProvidersRegistered()`; test hồi quy `connection-ops.registry.test.ts`
 - [x] Rà mọi chỗ gọi `getProvider` / `hasProvider`: MCP (`handler.ts`), worker (`connection-refresh.ts`, `media-video-upload.ts`), tạo / thay token (`parseCredentialsOrThrow`) đều đã nạp
 - [x] Tài liệu: `release-notes/v1.1.10.md`
+
+## Vá bảo mật thư viện theo cảnh báo Dependabot (2026-10-25), v1.1.11
+Nguồn: commit phát hành v1.1.10 hiện đỏ trên GitHub (job GitHub Release không chạy vì lỗi thanh toán Actions; Dependabot báo `security_update_not_possible` cho gói gián tiếp) — rà thêm thì có cảnh báo Next.js critical / MCP SDK high. Chủ dự án: "ok làm". Chỉ nâng minor / patch, bản phát hành ≥ 3 ngày (`minimumReleaseAge`).
+- [x] `next` / `eslint-config-next` 16.3.8 → 16.4.2 (GHSA-673q-mjm6-r5xr, GHSA-2464-fhr4-w9xw: không dùng `use cache`, `images.unoptimized`; GHSA-p3m5-59mp-jv5r DoS Server Actions: có dùng)
+- [x] `@modelcontextprotocol/server` 2.2.0 → 2.3.1 (đã tạo `McpServer` mới mỗi request trong factory `createMcpHandler` — đúng yêu cầu 2.3)
+- [x] `zod` → 4.6.7; `undici`, `ip-address`, `@modelcontextprotocol/sdk` (dev, qua shadcn) nâng bằng `pnpm update`; `overrides` trong `pnpm-workspace.yaml` cho `fast-uri` ^3.1.9 (qua ajv, runtime) và `vite` ^8.3.3 (dev)
+- [ ] `body-parser` 2.4.0 (dev, qua shadcn → express): bản vá chưa đủ 3 ngày — để lần sau
+- [x] Tài liệu: CLAUDE.md, 02 (bảng stack), `release-notes/v1.1.11.md`

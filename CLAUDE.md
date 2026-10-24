@@ -30,7 +30,7 @@ Next.js 16 khác dữ liệu huấn luyện — trước khi dùng API Next, đ�
 | `.claude/docs/16-apify.md` | Apify: token công ty / cá nhân (Kết nối → tab Apify), kho token của MCP + xoay vòng ngẫu nhiên theo credit, danh mục ~30 việc (Actor chính + dự phòng), tool MCP `apify_*`, trần chi phí mỗi lần chạy (luôn bật) / mỗi ngày (nâng cao), pháp lý — **đã triển khai 2026-10-15; §12 = bản thực tế** (quyết định A1–A4 = D8), hướng dẫn người dùng `docs/huong-dan-apify.md` |
 
 ## Stack (chi tiết + version: 02-architecture.md)
-Next.js 16.3.8 App Router · React 19 · TypeScript strict · Tailwind v4 · shadcn/ui (Radix, style `radix-maia`, icon Hugeicons) · Better Auth 1.7.7 (email/password, 2FA TOTP, admin) · Drizzle 0.45 + PostgreSQL 18 · pg-boss (worker) · MCP TS SDK v2 `@modelcontextprotocol/server` · Caddy · pnpm · Node 24 · Vitest + Playwright.
+Next.js 16.4.2 App Router · React 19 · TypeScript strict · Tailwind v4 · shadcn/ui (Radix, style `radix-maia`, icon Hugeicons) · Better Auth 1.7.7 (email/password, 2FA TOTP, admin) · Drizzle 0.45 + PostgreSQL 18 · pg-boss (worker) · MCP TS SDK v2 `@modelcontextprotocol/server` · Caddy · pnpm · Node 24 · Vitest + Playwright.
 
 ## Lệnh (sẽ có sau Giai đoạn 0)
 ```bash

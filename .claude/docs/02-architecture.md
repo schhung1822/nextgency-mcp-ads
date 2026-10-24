@@ -7,7 +7,7 @@
 |---|---|---|
 | Runtime | Node.js LTS | **24.x** (`node:24-slim`); chuyển 26 sau 2026-10-28 |
 | Package manager | pnpm (corepack, ghim trong `packageManager`) | 10.x |
-| Framework | **Next.js App Router** (Turbopack mặc định) | **16.3.8** (bản vá bảo mật SSRF — không dùng < 16.3.8) |
+| Framework | **Next.js App Router** (Turbopack mặc định) | **16.4.2** (bản vá bảo mật RCE / DoS Server Actions 2026-10 — không dùng < 16.4.1) |
 | UI runtime | React / React DOM | 19.x (theo create-next-app 16.3.8) |
 | Ngôn ngữ | TypeScript strict | 5.9.x (typescript-eslint chưa hỗ trợ TS ≥ 6.1) |
 | CSS | Tailwind CSS v4 + `tw-animate-css` | 4.3.x |
@@ -21,7 +21,7 @@
 | ORM | **Drizzle ORM** + drizzle-kit + `pg` | 0.45.3 / 0.31.11 / 8.23 (KHÔNG dùng 1.0-rc, KHÔNG dùng Prisma) |
 | DB | **PostgreSQL 18** (`uuidv7()` built-in) | 18.6 |
 | Job | **pg-boss** (cron có `tz`, retry, singleton) — process `worker` riêng | 12.35.x |
-| MCP | **`@modelcontextprotocol/server`** (SDK v2, `createMcpHandler`) | 2.2.x |
+| MCP | **`@modelcontextprotocol/server`** (SDK v2, `createMcpHandler`; mỗi request 1 server mới — bắt buộc từ 2.3) | 2.3.x |
 | Ngày giờ | `date-fns` + locale `vi` | 4.x |
 | QR 2FA | `qrcode.react` (render phía client, KHÔNG gửi otpauth URI ra dịch vụ ngoài) | 4.2 |
 | Font | **Inter** qua `next/font/google` (`subsets: ['latin','vietnamese']`); build offline → `@fontsource-variable/inter` | — |
