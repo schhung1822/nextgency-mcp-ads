@@ -72,7 +72,7 @@ describe("pickToken (thuần)", () => {
 
   it("bỏ cả tài khoản khi một token của nó còn hạn 'hết credit'; hết hạn exhausted_until thì dùng lại", () => {
     const now = Date.parse("2026-10-14T00:00:00Z")
-    const future = "2026-11-01T00:00:00.000Z"
+    const future = "2099-11-01T00:00:00.000Z"
     const past = "2026-10-01T00:00:00.000Z"
     const tokens = [
       gt("a", {
@@ -158,7 +158,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
       apifyUserId: o.apifyUserId === undefined ? `acc-${tag}` : o.apifyUserId,
       usageUsd: o.usage ?? 0,
       limitUsd: o.limit ?? 5,
-      cycleEndAt: new Date("2026-11-01T00:00:00Z"),
+      cycleEndAt: new Date("2099-11-01T00:00:00Z"),
       lastCheckedAt: o.checked === undefined ? new Date() : o.checked,
       status: o.status ?? "active",
       exhaustedUntil: o.exhaustedUntil ?? null,
@@ -245,14 +245,14 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
         username: "a",
         usageUsd: 5,
         limitUsd: 5,
-        cycleEndAt: "2026-11-01T00:00:00.000Z",
+        cycleEndAt: "2099-11-01T00:00:00.000Z",
       })
     fake.accounts.set(b.secret, {
       userId: "accRotB",
       username: "b",
       usageUsd: 0,
       limitUsd: 0.5,
-      cycleEndAt: "2026-11-02T00:00:00.000Z",
+      cycleEndAt: "2099-11-02T00:00:00.000Z",
     })
     fake.force("POST /runs", {
       status: 402,
@@ -266,7 +266,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
     for (const id of [a1.id, a2.id]) {
       const r = await row(id)
       expect(r.status).toBe("exhausted")
-      expect(r.exhaustedUntil?.toISOString()).toBe("2026-11-01T00:00:00.000Z")
+      expect(r.exhaustedUntil?.toISOString()).toBe("2099-11-01T00:00:00.000Z")
       expect(r.statusMessage).toBeTruthy()
     }
     expect((await row(a2.id)).updatedAt.getTime()).toBe(
@@ -293,14 +293,14 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
       username: "busy",
       usageUsd: 0,
       limitUsd: 10,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     fake.accounts.set(good.secret, {
       userId: "accGood",
       username: "good",
       usageUsd: 0,
       limitUsd: 1,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     fake.force("POST /runs", {
       status: 402,
@@ -331,7 +331,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
         username: u,
         usageUsd: 0,
         limitUsd: 5,
-        cycleEndAt: "2026-11-01T00:00:00.000Z",
+        cycleEndAt: "2099-11-01T00:00:00.000Z",
       })
     fake.force("POST /runs", {
       status: 400,
@@ -377,14 +377,14 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
       username: "s",
       usageUsd: 99.99,
       limitUsd: 100,
-      cycleEndAt: "2026-11-03T00:00:00.000Z",
+      cycleEndAt: "2099-11-03T00:00:00.000Z",
     })
     fake.accounts.set(other.secret, {
       userId: "accOther",
       username: "o",
       usageUsd: 0,
       limitUsd: 1,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     const res = await startWith(await grantOf([stale.id, other.id]))
     expect(res.tokenId).toBe(other.id)
@@ -392,7 +392,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
     const r = await row(stale.id)
     expect(r.status).toBe("exhausted")
     expect(r.usageUsd).toBeCloseTo(99.99)
-    expect(r.exhaustedUntil?.toISOString()).toBe("2026-11-03T00:00:00.000Z")
+    expect(r.exhaustedUntil?.toISOString()).toBe("2099-11-03T00:00:00.000Z")
     expect(fake.callsTo("GET /users/me/limits")).toHaveLength(1)
   })
 
@@ -403,7 +403,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
       username: "r",
       usageUsd: 0,
       limitUsd: 5,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     const r = await startActorRunForMcp({
       mcpId,
@@ -460,7 +460,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
       username: "a",
       usageUsd: 0,
       limitUsd: 5,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     const ac = new AbortController()
     const fetchImpl: typeof fake.fetch = async (url, init) => {
@@ -551,8 +551,8 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
   it("lỗi kiểu hết credit nhưng /limits cho thấy còn credit → KHÔNG đánh dấu tài khoản (chỉ bỏ qua lần này), chuyển tài khoản khác", async () => {
     const x = await addToken("rotUnconf", { apifyUserId: "accUnconf", limit: 50 })
     const y = await addToken("rotUnconfB", { apifyUserId: "accUnconfB", limit: 1 })
-    fake.accounts.set(x.secret, { userId: "accUnconf", username: "x", usageUsd: 1, limitUsd: 50, cycleEndAt: "2026-11-01T00:00:00.000Z" })
-    fake.accounts.set(y.secret, { userId: "accUnconfB", username: "y", usageUsd: 0, limitUsd: 1, cycleEndAt: "2026-11-01T00:00:00.000Z" })
+    fake.accounts.set(x.secret, { userId: "accUnconf", username: "x", usageUsd: 1, limitUsd: 50, cycleEndAt: "2099-11-01T00:00:00.000Z" })
+    fake.accounts.set(y.secret, { userId: "accUnconfB", username: "y", usageUsd: 0, limitUsd: 1, cycleEndAt: "2099-11-01T00:00:00.000Z" })
     // an expensive Actor refused for THIS run (e.g. minimum charge above the remaining credit of the cycle)
     fake.force("POST /runs", { status: 402, body: { error: { type: "not-enough-usage-to-run-paid-actor" } } })
     const res = await startWith(await grantOf([x.id, y.id]))
@@ -582,7 +582,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
 
   it("trần ngày: giữ chỗ nguyên tử - 5 lần gọi song song (trần $1, ngày $2.5) chỉ 2 lần chạy, 3 lần daily_budget_exceeded", async () => {
     const t = await addToken("rotDaily", { apifyUserId: "accDaily", limit: 100 })
-    fake.accounts.set(t.secret, { userId: "accDaily", username: "d", usageUsd: 0, limitUsd: 100, cycleEndAt: "2026-11-01T00:00:00.000Z" })
+    fake.accounts.set(t.secret, { userId: "accDaily", username: "d", usageUsd: 0, limitUsd: 100, cycleEndAt: "2099-11-01T00:00:00.000Z" })
     const dailyMcp = randomUUID()
     await db.insert(mcpServers).values({ id: dailyMcp, ownerId: OWNER, name: `${PREFIX} daily`, keyHash: `h-${dailyMcp}`, keyPrefix: "amcp_x", keyEncrypted: "v1.x.y.z" })
     const tokens = await grantOf([t.id])
@@ -635,7 +635,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
 
   it("trần ngày: thất bại chắc chắn (input sai) → huỷ giữ chỗ; start_uncertain → GIỮ chỗ (vẫn tính trần, gắn token đã thử)", async () => {
     const t = await addToken("rotRes", { apifyUserId: "accRes", limit: 100 })
-    fake.accounts.set(t.secret, { userId: "accRes", username: "r", usageUsd: 0, limitUsd: 100, cycleEndAt: "2026-11-01T00:00:00.000Z" })
+    fake.accounts.set(t.secret, { userId: "accRes", username: "r", usageUsd: 0, limitUsd: 100, cycleEndAt: "2099-11-01T00:00:00.000Z" })
     fake.actors.set(ACTOR, { id: "ACT1", username: "shopx", name: "shopee-scraper", required: ["keyword"] })
     const resMcp = randomUUID()
     await db.insert(mcpServers).values({ id: resMcp, ownerId: OWNER, name: `${PREFIX} res`, keyHash: `h-${resMcp}`, keyPrefix: "amcp_x", keyEncrypted: "v1.x.y.z" })
@@ -687,7 +687,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
       status: "exhausted",
       exhaustedUntil: new Date(Date.now() - 3600_000),
     })
-    fake.accounts.set(t.secret, { userId: "accRevive", username: "r", usageUsd: 0, limitUsd: 5, cycleEndAt: "2026-12-01T00:00:00.000Z" })
+    fake.accounts.set(t.secret, { userId: "accRevive", username: "r", usageUsd: 0, limitUsd: 5, cycleEndAt: "2099-12-01T00:00:00.000Z" })
     const grant = await grantOf([t.id])
     // stale cache: remaining counts as unknown, not "too low"
     expect(usableAccounts(grant, { minCreditUsd: 0.05 }).map((g) => g.remaining)).toEqual([null])
@@ -703,7 +703,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
   it("lỗi cuối: một tài khoản bận + một token invalid → báo lý do bận (không phải no_token)", async () => {
     const bad = await addToken("rotFinBad", { apifyUserId: "accFinBad", limit: 50 })
     const busy = await addToken("rotFinBusy", { apifyUserId: "accFinBusy", limit: 1 })
-    fake.accounts.set(busy.secret, { userId: "accFinBusy", username: "busy", usageUsd: 0, limitUsd: 1, cycleEndAt: "2026-11-01T00:00:00.000Z" })
+    fake.accounts.set(busy.secret, { userId: "accFinBusy", username: "busy", usageUsd: 0, limitUsd: 1, cycleEndAt: "2099-11-01T00:00:00.000Z" })
     fake.force("POST /runs", { status: 403, body: { error: { type: "apify-plan-required-to-use-paid-actor" } } })
     await expect(startWith(await grantOf([bad.id, busy.id]))).rejects.toMatchObject({ code: "paid_plan_required" })
     expect((await row(bad.id)).status).toBe("invalid")
@@ -711,7 +711,7 @@ describe.skipIf(!HAS_DB)("runWithRotation + apify_runs (DB)", () => {
 
   it("trần ngày + client huỷ giữa POST: run tìm thấy bị abort và giữ chỗ hạ về chi phí thật; không có run → huỷ giữ chỗ", async () => {
     const t = await addToken("rotAbortRes", { apifyUserId: "accAbortRes", limit: 100 })
-    fake.accounts.set(t.secret, { userId: "accAbortRes", username: "a", usageUsd: 0, limitUsd: 100, cycleEndAt: "2026-11-01T00:00:00.000Z" })
+    fake.accounts.set(t.secret, { userId: "accAbortRes", username: "a", usageUsd: 0, limitUsd: 100, cycleEndAt: "2099-11-01T00:00:00.000Z" })
     fake.actors.set(ACTOR, { id: "ACT1", username: "shopx", name: "shopee-scraper" })
     const m = randomUUID()
     await db.insert(mcpServers).values({ id: m, ownerId: OWNER, name: `${PREFIX} abortres`, keyHash: `h-${m}`, keyPrefix: "amcp_x", keyEncrypted: "v1.x.y.z" })

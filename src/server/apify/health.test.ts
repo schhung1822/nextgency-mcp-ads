@@ -191,7 +191,7 @@ describe.skipIf(!HAS_DB)("store + runApifyHealth (DB)", () => {
     expect(after.lastCheckedAt).not.toBeNull()
     const changed = await markApifyAccountExhausted(
       { id: lone.id, apifyUserId: null },
-      new Date("2026-12-01T00:00:00Z"),
+      new Date("2099-12-01T00:00:00Z"),
       "hết"
     )
     expect(changed).toEqual([lone.id])
@@ -216,21 +216,21 @@ describe.skipIf(!HAS_DB)("store + runApifyHealth (DB)", () => {
       tier: "BRONZE",
       usageUsd: 1,
       limitUsd: 19,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     fake.accounts.set(broke.secret, {
       userId: "accBroke",
       username: "broke",
       usageUsd: 5,
       limitUsd: 5,
-      cycleEndAt: "2026-11-02T00:00:00.000Z",
+      cycleEndAt: "2099-11-02T00:00:00.000Z",
     })
     fake.accounts.set(off.secret, {
       userId: "accOff",
       username: "off",
       usageUsd: 0,
       limitUsd: 5,
-      cycleEndAt: "2026-11-02T00:00:00.000Z",
+      cycleEndAt: "2099-11-02T00:00:00.000Z",
     })
     // flaky: a known account, but users/me answers 503 three times (retried, then transient)
     fake.accounts.set(flaky.secret, {
@@ -238,7 +238,7 @@ describe.skipIf(!HAS_DB)("store + runApifyHealth (DB)", () => {
       username: "flaky",
       usageUsd: 0,
       limitUsd: 5,
-      cycleEndAt: "2026-11-02T00:00:00.000Z",
+      cycleEndAt: "2099-11-02T00:00:00.000Z",
     })
     const flakyFetch: FetchLike = (url, init) => {
       const auth = new Headers(init.headers as HeadersInit).get("authorization")
@@ -298,7 +298,7 @@ describe.skipIf(!HAS_DB)("store + runApifyHealth (DB)", () => {
     expect(rOk.updatedAt.getTime()).toBe(beforeOk.updatedAt.getTime())
     expect(await row(broke.id)).toMatchObject({ status: "exhausted" })
     expect((await row(broke.id)).exhaustedUntil?.toISOString()).toBe(
-      "2026-11-02T00:00:00.000Z"
+      "2099-11-02T00:00:00.000Z"
     )
     expect((await row(bad.id)).status).toBe("invalid")
     expect(await row(flaky.id)).toMatchObject({
@@ -337,8 +337,8 @@ describe.skipIf(!HAS_DB)("store + runApifyHealth (DB)", () => {
   it("kiểm tra không ghi đè token bị tắt / bị thay trong lúc gọi Apify (gắn với bản mã đã kiểm tra)", async () => {
     const off = await add(A, "hRaceOff")
     const swap = await add(A, "hRaceSwap")
-    fake.accounts.set(off.secret, { userId: "accRaceOff", username: "off", usageUsd: 0, limitUsd: 5, cycleEndAt: "2026-11-01T00:00:00.000Z" })
-    fake.accounts.set(swap.secret, { userId: "accRaceSwap", username: "old-account", usageUsd: 0, limitUsd: 5, cycleEndAt: "2026-11-01T00:00:00.000Z" })
+    fake.accounts.set(off.secret, { userId: "accRaceOff", username: "off", usageUsd: 0, limitUsd: 5, cycleEndAt: "2099-11-01T00:00:00.000Z" })
+    fake.accounts.set(swap.secret, { userId: "accRaceSwap", username: "old-account", usageUsd: 0, limitUsd: 5, cycleEndAt: "2099-11-01T00:00:00.000Z" })
     const newCipher = encryptApifyToken(swap.id, fakeToken("hRaceSwapNew"))
     const racing: FetchLike = async (url, init) => {
       const auth = new Headers(init.headers as HeadersInit).get("authorization")
@@ -363,7 +363,7 @@ describe.skipIf(!HAS_DB)("store + runApifyHealth (DB)", () => {
     const inv = await add(A, "exInv", { apifyUserId: "accEx2", status: "invalid", statusMessage: "401" })
     const err = await add(A, "exErr", { apifyUserId: "accEx2", status: "error", statusMessage: "x" })
     const off = await add(A, "exOff", { apifyUserId: "accEx2", status: "disabled" })
-    const changed = await markApifyAccountExhausted({ id: act.id, apifyUserId: "accEx2" }, new Date("2026-12-01T00:00:00Z"), "hết")
+    const changed = await markApifyAccountExhausted({ id: act.id, apifyUserId: "accEx2" }, new Date("2099-12-01T00:00:00Z"), "hết")
     expect(changed).toEqual([act.id])
     expect((await row(inv.id)).status).toBe("invalid")
     expect((await row(err.id)).status).toBe("error")

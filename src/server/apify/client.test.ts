@@ -39,7 +39,7 @@ describe("apifyRequest", () => {
       username: "shop",
       usageUsd: 1,
       limitUsd: 5,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     const seen: RequestInit[] = []
     const fetchImpl: FetchLike = (url, init) => {

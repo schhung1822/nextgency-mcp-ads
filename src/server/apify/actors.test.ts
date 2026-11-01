@@ -46,14 +46,14 @@ beforeEach(() => {
     tier: "BRONZE",
     usageUsd: 3.5,
     limitUsd: 19,
-    cycleEndAt: "2026-11-01T00:00:00.000Z",
+    cycleEndAt: "2099-11-01T00:00:00.000Z",
   })
   fake.accounts.set(OTHER, {
     userId: "u2",
     username: "other",
     usageUsd: 0,
     limitUsd: 5,
-    cycleEndAt: "2026-11-05T00:00:00.000Z",
+    cycleEndAt: "2099-11-05T00:00:00.000Z",
   })
   fake.actors.set(ACTOR, {
     id: "ACT1",
@@ -81,7 +81,7 @@ describe("tài khoản", () => {
     expect(l).toMatchObject({
       usageUsd: 3.5,
       limitUsd: 19,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
     })
     expect(remainingCreditUsd(l)).toBe(15.5)
     expect(remainingCreditUsd({ usageUsd: null, limitUsd: 5 })).toBeNull()
@@ -93,7 +93,7 @@ describe("tài khoản", () => {
       planTier: "BRONZE",
       usageUsd: 3.5,
       limitUsd: 19,
-      cycleEndAt: "2026-11-01T00:00:00.000Z",
+      cycleEndAt: "2099-11-01T00:00:00.000Z",
       actorsEnabled: true,
     })
     expect(JSON.stringify(a)).not.toMatch(/private|proxy/)
