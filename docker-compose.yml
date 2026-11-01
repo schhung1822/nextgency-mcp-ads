@@ -81,7 +81,7 @@ x-app: &app
 
 services:
   db:
-    image: postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
     restart: unless-stopped
     # Không cap_drop: entrypoint của image cần chown thư mục dữ liệu rồi hạ quyền bằng gosu (vẫn chạy được
     # với no-new-privileges vì gosu đổi user bằng syscall, không dùng file setuid).
@@ -240,7 +240,7 @@ services:
   #     (Caddy chỉ nói HTTP trong mạng Docker, không mở 80/443 ra Internet).
   # Giá trị CADDY_CLIENT_IP / CADDY_TLS là tên file trong deploy/caddy/ (client-ip-<x>.caddy, tls-<x>.caddy).
   caddy:
-    image: caddy:2.11-alpine@sha256:d44355d3c2149dc580ce2cac735955d1c08d3d00882c30489c241aa51a5c10d9
+    image: caddy:2.11-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
     restart: unless-stopped
     # Image chạy root: bỏ mọi capability trừ quyền mở cổng 80/443; chỉ ghi vào volume /data, /config.
     read_only: true
@@ -287,7 +287,7 @@ services:
   # KHÔNG bật --loglevel debug / TUNNEL_LOGLEVEL=debug: mức debug ghi cả URL và header request (lộ key /mcp/<key>).
   # Updater không đụng tới service này (chỉ `up -d --no-deps web worker`).
   cloudflared:
-    image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
     restart: unless-stopped
     deploy:
       replicas: ${CLOUDFLARED_REPLICAS:-0}
@@ -324,7 +324,7 @@ services:
   # mã hoá trước khi đẩy ra ngoài máy chủ. Bỏ dữ liệu log khỏi bản sao lưu:
   #   BACKUP_PG_DUMP_ARGS=--exclude-table-data=mcp_call_logs_p* --exclude-table-data=activity_logs_p*
   backup:
-    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     restart: unless-stopped
     <<: *hardening
     tmpfs: ["/tmp:size=16m"]

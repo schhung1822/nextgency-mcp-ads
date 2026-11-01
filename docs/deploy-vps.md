@@ -876,7 +876,7 @@ Mạng của VPS chặn UDP: thêm dòng `CLOUDFLARED_PROTOCOL=http2`.
 
 ### 10b.5 Khởi chạy
 ```bash
-docker compose pull                 # kéo thêm cloudflare/cloudflared:2026.9.3
+docker compose pull                 # kéo thêm cloudflare/cloudflared:2026.10.7
 docker compose up -d --no-build     # đang chạy A/B: caddy được tạo lại và thôi mở 80/443
 docker compose ps
 #   caddy        running             127.0.0.1:<cổng ngẫu nhiên>->80/tcp ...  (không còn 0.0.0.0:80, :443)
@@ -941,7 +941,7 @@ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://mcp.congty.vn/.
 - **SSE:** cloudflared đẩy ngay phản hồi `text/event-stream` (không buffer); Caddy không nén/buffer `/mcp/`.
 - **Phụ thuộc Cloudflare:** tunnel hoặc Cloudflare sự cố thì web và MCP cùng ngừng. Theo dõi `https://mcp.congty.vn/api/health` từ bên ngoài (13.1) và trạng thái tunnel trong dashboard.
 - **Log:** **không** đặt `TUNNEL_LOGLEVEL=debug` / `--loglevel debug`: mức debug ghi cả URL và header request, lộ key `/mcp/<key>`. Mức mặc định `info` không ghi đường dẫn.
-- **Phiên bản cloudflared** được ghim trong `docker-compose.yml` (`cloudflare/cloudflared:2026.9.3`), không tự cập nhật. Bản phát hành mới của Ads MCP có thể nâng phiên bản (ghi chú phát hành sẽ nêu). Áp dụng: `git pull --ff-only && docker compose pull cloudflared && docker compose up -d --no-build cloudflared` (tunnel ngắt vài giây).
+- **Phiên bản cloudflared** được ghim trong `docker-compose.yml` (`cloudflare/cloudflared:2026.10.7`), không tự cập nhật. Bản phát hành mới của Ads MCP có thể nâng phiên bản (ghi chú phát hành sẽ nêu). Áp dụng: `git pull --ff-only && docker compose pull cloudflared && docker compose up -d --no-build cloudflared` (tunnel ngắt vài giây).
 - **Một connector là đủ** cho 1 VPS. Không chạy song song lệnh `docker run ... --token` của dashboard: mọi connector cùng tunnel đều nhận lưu lượng.
 - **Đổi token** (sau khi Rotate): sửa `TUNNEL_TOKEN` trong `.env` → `docker compose up -d --no-build cloudflared`.
 - **Quay về phương án A:** trong Cloudflare xoá route của tunnel và bản ghi CNAME, tạo lại bản ghi A trỏ IP VPS (mục 2), mở lại 80/443 (3.5), rồi:

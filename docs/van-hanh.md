@@ -110,7 +110,7 @@ docker compose up -d
 Làm **mỗi quý** (và sau mỗi lần đổi cấu hình backup) — backup chưa thử khôi phục coi như chưa có:
 ```bash
 # DB tạm, không ảnh hưởng hệ thống đang chạy
-docker run -d --name restore-test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=adsmcp -e POSTGRES_DB=adsmcp postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+docker run -d --name restore-test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=adsmcp -e POSTGRES_DB=adsmcp postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
 sleep 5
 docker cp backups/<file>.dump restore-test:/tmp/x.dump
 docker exec restore-test pg_restore -U adsmcp -d adsmcp --no-owner /tmp/x.dump
