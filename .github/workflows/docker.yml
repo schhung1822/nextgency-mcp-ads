@@ -42,7 +42,7 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
       stable: ${{ steps.ver.outputs.stable }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # cần lịch sử nhánh mặc định để kiểm tra tag nằm trên đó
           persist-credentials: false
@@ -85,7 +85,7 @@ jobs:
           echo "stable=$stable" >> "$GITHUB_OUTPUT"
           echo "APP_BUILD_VERSION=$version (stable release: $stable)"
 
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
@@ -188,7 +188,7 @@ jobs:
     steps:
       # release-notes/<tag>.md (Vietnamese, written by the maintainer) is the release body the admins read in
       # "Cài đặt → Cập nhật hệ thống"; auto-generated notes are only a fallback when the file is missing.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: release-notes
           persist-credentials: false
