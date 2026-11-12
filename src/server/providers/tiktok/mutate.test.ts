@@ -97,6 +97,13 @@ describe("deleteObject", () => {
 })
 
 describe("updateBudget", () => {
+  // TikTok refuses budget changes 23:55-00:00 account time (inBudgetLockWindow): pin the clock to midday so the
+  // suite never depends on when it runs (it failed when run at 23:56 Asia/Ho_Chi_Minh)
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-02T05:00:00Z"))
+  })
+  afterEach(() => vi.useRealTimers())
   const routes = (extra: Record<string, unknown> = {}) => ({
     "GET /adgroup/get/": ok({ list: [{ ...ADGROUP, ...extra }], page_info: { total_page: 1 } }),
     "POST /adgroup/budget/update/": ok({}),

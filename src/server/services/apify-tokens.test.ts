@@ -100,7 +100,7 @@ function setupAccounts() {
     tier: "FREE",
     usageUsd: 1,
     limitUsd: 5,
-    cycleEndAt: "2026-11-01T00:00:00.000Z",
+    cycleEndAt: "2099-11-01T00:00:00.000Z",
   })
   // same Apify account as T_A (shares the credit)
   fake.accounts.set(T_A2, {
@@ -110,14 +110,14 @@ function setupAccounts() {
     tier: "FREE",
     usageUsd: 1,
     limitUsd: 5,
-    cycleEndAt: "2026-11-01T00:00:00.000Z",
+    cycleEndAt: "2099-11-01T00:00:00.000Z",
   })
   fake.accounts.set(T_B, {
     userId: `${ACC}accB`,
     username: "nhanvien-b",
     usageUsd: 0,
     limitUsd: 5,
-    cycleEndAt: "2026-11-01T00:00:00.000Z",
+    cycleEndAt: "2099-11-01T00:00:00.000Z",
   })
   fake.accounts.set(T_CO, {
     userId: `${ACC}accCo`,
@@ -126,14 +126,14 @@ function setupAccounts() {
     tier: "BRONZE",
     usageUsd: 2,
     limitUsd: 19,
-    cycleEndAt: "2026-11-01T00:00:00.000Z",
+    cycleEndAt: "2099-11-01T00:00:00.000Z",
   })
   fake.accounts.set(T_EX, {
     userId: `${ACC}accEx`,
     username: "hetcredit",
     usageUsd: 5,
     limitUsd: 5,
-    cycleEndAt: "2026-11-03T00:00:00.000Z",
+    cycleEndAt: "2099-11-03T00:00:00.000Z",
   })
 }
 
@@ -327,7 +327,7 @@ describe.skipIf(!HAS_DB)("apify tokens service (DB)", () => {
       .from(apifyTokens)
       .where(eq(apifyTokens.id, id))
     expect(row!.status).toBe("exhausted")
-    expect(row!.exhaustedUntil?.toISOString()).toBe("2026-11-03T00:00:00.000Z")
+    expect(row!.exhaustedUntil?.toISOString()).toBe("2099-11-03T00:00:00.000Z")
     const p = await previewApifyToken(staffA, T_A2)
     expect(p).toMatchObject({
       apifyUserId: `${ACC}accA`,
