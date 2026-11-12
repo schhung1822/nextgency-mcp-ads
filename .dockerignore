@@ -21,6 +21,7 @@ next-env.d.ts
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
+agent-ads-mcp
 
 # secret & dữ liệu runtime — TUYỆT ĐỐI không vào image
 .env
