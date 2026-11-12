@@ -298,3 +298,11 @@ Nguồn: commit phát hành v1.1.10 hiện đỏ trên GitHub (job GitHub Releas
 - [x] `zod` → 4.6.7; `undici`, `ip-address`, `@modelcontextprotocol/sdk` (dev, qua shadcn) nâng bằng `pnpm update`; `overrides` trong `pnpm-workspace.yaml` cho `fast-uri` ^3.1.9 (qua ajv, runtime) và `vite` ^8.3.3 (dev)
 - [ ] `body-parser` 2.4.0 (dev, qua shadcn → express): bản vá chưa đủ 3 ngày — để lần sau
 - [x] Tài liệu: CLAUDE.md, 02 (bảng stack), `release-notes/v1.1.11.md`
+
+## Meta: mẫu lời chào đã lưu + quảng cáo livestream (2026-11-12), v1.2.0
+Nguồn: khách không chọn được "Mẫu đã lưu" khi AI tạo quảng cáo tin nhắn; chủ dự án muốn chạy quảng cáo livestream (Doanh số → website / tin nhắn, Tương tác → tin nhắn / trên quảng cáo / website). Chủ dự án: "làm", "mọi thứ phải oke nhất". Kiểm chứng trên TKQC thật T1 (localhost + token mới), đối tượng thử đã xoá.
+- [x] `welcome_message: {from_ad_id}` (meta_create_ad, meta_update_ad_creative): chép nguyên lời chào của quảng cáo có sẵn; Meta lưu mẫu dạng `JSON_SETUP` + `template_id`, không có API liệt kê mẫu (`welcome_message_flows` rỗng, `template_id` 100/33) — ma trận Messenger 9/9 [T]
+- [x] Livestream: `meta_create_campaign live_video_destination`, `ads_lookup kind=live_videos` (+ `postButton`), `existing_post.call_to_action`, kiểm tra nút của bài live khi tạo / đổi creative — 7/7 [T]
+- [x] Sửa: ENGAGEMENT tự đặt destination ON_POST / ON_VIDEO / ON_PAGE / WEBSITE (trước đó Meta luôn từ chối); LEADS + Messenger từ chối sớm; map lỗi 1885272 / 1885760
+- [ ] Chưa làm: quảng cáo đặt trước cho live sắp diễn ra, live Instagram, sao chép chiến dịch live, nhóm đa đích Messenger + Instagram; `meta_update_ad_creative` trên bài live chưa thử thật (video live đã bị xoá)
+- [x] Tài liệu: `providers/meta.md` §5 ("Mẫu lời chào đã lưu", "Quảng cáo video trực tiếp"), 04, `release-notes/v1.2.0.md`; script dò `scripts/dev-probe-meta-messaging-live.ts`

@@ -662,6 +662,8 @@ export const LOOKUP_KINDS = [
   "custom_audiences",
   /** TikTok: posts of a TikTok identity usable for Spark Ads (tiktok_item_id) - needs LookupQuery.parentId */
   "tiktok_posts",
+  /** Meta: live videos of a Page (live video ads: existing_post object_story_id) - needs LookupQuery.parentId = page_id */
+  "live_videos",
 ] as const
 export type LookupKind = (typeof LOOKUP_KINDS)[number]
 
@@ -675,7 +677,7 @@ export interface LookupItem {
 export interface LookupQuery {
   q?: string
   limit?: number
-  /** parent object of the lookup (kind tiktok_posts: the TikTok identity_id) */
+  /** parent object of the lookup (kind tiktok_posts: the TikTok identity_id; kind live_videos: the Meta page_id) */
   parentId?: string
   /** kind tiktok_posts: identity type of parentId (AUTH_CODE | TT_USER | BC_AUTH_TT); absent = adapter resolves it */
   identityType?: string

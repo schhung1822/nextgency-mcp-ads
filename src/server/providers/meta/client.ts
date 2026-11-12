@@ -346,6 +346,26 @@ export function mapGraphError(
       }
     )
   }
+  // 100/1885272 [T 2026-11-12] budget below Meta's minimum - also returned when an AD is created in a live video ad set
+  // whose budget is fine for normal ads (live ads need more); Meta's text names the minimum
+  if (code === 100 && sub === 1885272) {
+    const metaSays = sanitizeExternalLabel(userMsg, 300)
+    return make("invalid_request", metaSays ? `Meta báo: ${metaSays}` : "Ngân sách thấp hơn mức tối thiểu của Meta.", {
+      hint: "Tăng ngân sách của nhóm quảng cáo / chiến dịch bằng ads_update_budget (quảng cáo video trực tiếp cần ngân sách cao hơn quảng cáo thường), rồi thử lại.",
+    })
+  }
+  // 100/1885760 [T 2026-11-12]: a campaign budget (CBO) with lowest cost needs the SAME optimization goal in every ad set
+  if (code === 100 && sub === 1885760) {
+    const metaSays = sanitizeExternalLabel(userMsg, 300)
+    return make(
+      "invalid_request",
+      "Chiến dịch dùng ngân sách chiến dịch (CBO, chi phí thấp nhất): mọi nhóm quảng cáo phải cùng optimization_goal." +
+        (metaSays ? ` Meta báo: ${metaSays}` : ""),
+      {
+        hint: "Dùng cùng optimization_goal với các nhóm đã có (xem bằng ads_list_objects level=ad_group), hoặc tạo chiến dịch mới bằng meta_create_campaign cho mục tiêu khác.",
+      }
+    )
+  }
   // creative / ad edit errors (v1.1.4 E3, meta.md §5 "Đổi creative"): Vietnamese text + Meta's own message (one line)
   const creativeErr = (sub !== undefined ? CREATIVE_ERRORS[sub] : undefined) ?? (code !== undefined ? CREATIVE_ERRORS[code] : undefined)
   if (creativeErr) {

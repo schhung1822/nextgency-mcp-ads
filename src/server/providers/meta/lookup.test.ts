@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { __resetBuckets } from "../rate-limit"
-import { advertisablePages, metaLookup } from "./lookup"
+import { __clearAdvertisablePagesCache, advertisablePages, metaLookup } from "./lookup"
 import { forgetPageTokens } from "./pages"
 import { graphError, json, mockGraph, providerCtx, type Route } from "./test-utils"
 
@@ -169,5 +169,78 @@ describe("advertisablePages cache (D4)", () => {
     const first = await advertisablePages(providerCtx())
     first.length = 0
     expect((await advertisablePages(providerCtx())).map((p) => p.id)).toEqual(["888"])
+  })
+})
+
+describe("metaLookup live_videos (live video ads, shape read from Meta 2026-11-12)", () => {
+  const pages: Route = ["GET", "act_1001/promote_pages", () => json({ data: [{ id: "888", name: "Shop VN" }] })]
+  const me: Route = ["GET", "me/accounts", () => json({ data: [] })]
+
+  it("lists the Page's live videos with object_story_id = <page>_<video.id>, safe fields only, absolute permalink, post button", async () => {
+    __clearAdvertisablePagesCache()
+    forgetPageTokens("conn-1")
+    const m = mockGraph([
+      pages,
+      me,
+      ["GET", "888", () => json({ id: "888", access_token: "PAGETOKEN888abcdef" })],
+      ["GET", "888_2102382157051746", () => json({ id: "888_2102382157051746", call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } } })],
+      ["GET", "888_28823886943919764", () => json({ id: "888_28823886943919764" })],
+      [
+        "GET",
+        "888/live_videos",
+        () =>
+          json({
+            data: [
+              {
+                id: "1135515559267957",
+                title: "Live‮ sale 12/11",
+                status: "LIVE",
+                creation_time: "2026-11-12T14:06:50+0000",
+                broadcast_start_time: "2026-11-12T14:07:05+0000",
+                permalink_url: "/1096754366477410/videos/2102382157051746",
+                live_views: 2,
+                video: { id: "2102382157051746" },
+              },
+              { id: "1135508289268684", description: "Phát lại", status: "VOD", video: { id: "28823886943919764" } },
+              { id: "999", status: "SCHEDULED_UNPUBLISHED" },
+            ],
+          }),
+      ],
+    ])
+    const res = await metaLookup(providerCtx(), "live_videos", { parentId: "888" })
+    expect(res.items).toEqual([
+      {
+        id: "888_2102382157051746",
+        name: "Live sale 12/11",
+        extra: {
+          objectStoryId: "888_2102382157051746",
+          liveVideoId: "1135515559267957",
+          videoId: "2102382157051746",
+          status: "LIVE",
+          broadcastStartTime: "2026-11-12T14:07:05+0000",
+          plannedStartTime: null,
+          creationTime: "2026-11-12T14:06:50+0000",
+          liveViews: 2,
+          permalinkUrl: "https://www.facebook.com/1096754366477410/videos/2102382157051746",
+          postButton: { type: "MESSAGE_PAGE", link: null },
+        },
+      },
+      expect.objectContaining({ id: "888_28823886943919764", name: "Phát lại", extra: expect.objectContaining({ status: "VOD", postButton: null }) }),
+    ])
+    expect(res.warnings.join(" ")).toMatch(/existing_post/)
+    expect(res.warnings.join(" ")).toMatch(/postButton = nút đang gắn trên bài live/)
+    expect(m.calls.find((c) => c.path === "888_2102382157051746")?.params.access_token).toBe("PAGETOKEN888abcdef")
+    // no Copyright-API / stream-key field is ever requested
+    const fields = m.calls.find((c) => c.path === "888/live_videos")?.params.fields ?? ""
+    expect(fields).not.toMatch(/is_reference_only|dash_preview_url|ingest_streams|stream_url/)
+  })
+
+  it("needs a numeric parent_id and a Page this ad account may advertise for (never reads another Page)", async () => {
+    __clearAdvertisablePagesCache()
+    const m = mockGraph([pages, me])
+    await expect(metaLookup(providerCtx(), "live_videos", {})).rejects.toThrow(/parent_id = page_id/)
+    await expect(metaLookup(providerCtx(), "live_videos", { parentId: "abc" })).rejects.toThrow(/parent_id = page_id/)
+    await expect(metaLookup(providerCtx(), "live_videos", { parentId: "999" })).rejects.toThrow(/Trang 999 không dùng được/)
+    expect(m.calls.some((c) => c.path.endsWith("/live_videos"))).toBe(false)
   })
 })

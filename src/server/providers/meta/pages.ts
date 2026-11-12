@@ -836,6 +836,39 @@ function imageOf(a: Raw): string | null {
   )
 }
 
+/** Button stored ON a Page post: `null` = the post has none. */
+export interface MetaPostCta {
+  type: string
+  link: string | null
+}
+
+/**
+ * call_to_action stored ON a Page post, read with the Page token (the user token gets #10 pages_read_engagement /
+ * Page Public Content Access). [T 2026-11-12, owner-checked] a live video post keeps the button it got first (Ads
+ * Manager or the first ad) for EVERY ad that uses it; an ad's own button only sticks while the post has none.
+ */
+export async function readMetaPostCta(
+  ctx: ConnectionContext<MetaCredentials>,
+  postId: string
+): Promise<MetaPostCta | null> {
+  const pageId = postId.split("_")[0] ?? ""
+  if (!isPageId(pageId) || !postBelongsToPage(postId, pageId)) {
+    throw invalid("object_story_id phải có dạng PAGEID_POSTID.")
+  }
+  const p = await pageGet<Raw>(
+    ctx,
+    pageId,
+    postId,
+    { fields: "id,call_to_action" },
+    "posts"
+  )
+  const cta = p.call_to_action as
+    | { type?: unknown; value?: { link?: unknown } }
+    | undefined
+  const type = s(cta?.type)
+  return type ? { type, link: s(cta?.value?.link) || null } : null
+}
+
 export async function getMetaPagePost(
   ctx: ConnectionContext<MetaCredentials>,
   pageId: string,

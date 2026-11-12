@@ -296,3 +296,31 @@ describe("Graph error mapping - signed CDN URLs are never echoed (v1.1.4)", () =
     }
   })
 })
+
+describe("mapGraphError - CBO ad sets with different goals (live-tested 2026-11-12)", () => {
+  it("100/1885760 → invalid_request explaining that a CBO campaign needs one optimization goal, with a hint", () => {
+    const e = mapGraphError(
+      { code: 100, error_subcode: 1885760, message: "Invalid parameter", error_user_title: "Bạn phải tối ưu hóa phân phối quảng cáo theo cách giống nhau", error_user_msg: "Hãy nhân bản chiến dịch." },
+      400,
+      null
+    )
+    expect(e.code).toBe("invalid_request")
+    expect(e.retryable).toBe(false)
+    expect(e.userMessageVi).toMatch(/^Chiến dịch dùng ngân sách chiến dịch \(CBO, chi phí thấp nhất\): mọi nhóm quảng cáo phải cùng optimization_goal\. Meta báo: /)
+    expect(e.hint).toMatch(/meta_create_campaign/)
+    expect(e.upstream).toMatchObject({ code: 100, subcode: 1885760 })
+  })
+})
+
+describe("mapGraphError - budget below minimum (live video ad sets, live-tested 2026-11-12)", () => {
+  it("100/1885272 → Meta's minimum kept, hint to raise the budget with ads_update_budget", () => {
+    const e = mapGraphError(
+      { code: 100, error_subcode: 1885272, message: "Invalid parameter", error_user_title: "Ngân sách quá thấp", error_user_msg: "Ngân sách nhóm quảng cáo phải đạt mức tối thiểu là 259.539 ₫ thì mới có thể phân phối quảng cáo." },
+      400,
+      null
+    )
+    expect(e.code).toBe("invalid_request")
+    expect(e.userMessageVi).toMatch(/Meta báo: Ngân sách quá thấp: .*259\.539/)
+    expect(e.hint).toMatch(/ads_update_budget/)
+  })
+})

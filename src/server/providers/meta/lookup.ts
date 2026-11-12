@@ -2,8 +2,10 @@
 import { createHash } from "node:crypto"
 import { LRUCache } from "lru-cache"
 import { isProviderError, ProviderError } from "../errors"
-import type { LookupItem, LookupKind, ProviderContext } from "../types"
+import { sanitizeExternalLabel } from "../../../lib/text-safety"
+import type { LookupItem, LookupKind, LookupQuery, ProviderContext } from "../types"
 import { actId, graphAll, graphPage, type MetaCredentials } from "./client"
+import { readMetaPostCta } from "./pages"
 import { callCtx, invalid } from "./shared"
 
 type Raw = Record<string, unknown> & { id?: string }
@@ -146,10 +148,84 @@ async function fetchAdvertisablePages(ctx: ProviderContext<MetaCredentials>, acc
   return out
 }
 
+/**
+ * Fields of a Page live video readable with the user token (tested 2026-11-12, meta.md §5 "Quảng cáo video trực
+ * tiếp"): is_reference_only → "Copyright API only opens to page users" (#100), dash_preview_url / ingest_streams →
+ * stream-key permission (#10); video.post_id is always "0" → object_story_id = <page_id>_<video.id>.
+ */
+const LIVE_VIDEO_FIELDS =
+  "id,title,description,status,creation_time,broadcast_start_time,planned_start_time,permalink_url,live_views,video{id}"
+
+/** Live posts whose button (post call_to_action) is read per lookup call */
+const LIVE_CTA_READS = 10
+
+/** kind live_videos: live videos of one advertisable Page, usable as existing_post (object_story_id) in live ads. */
+async function liveVideos(
+  ctx: ProviderContext<MetaCredentials>,
+  pageId: string | undefined,
+  q: string | undefined,
+  limit: number
+): Promise<{ items: LookupItem[]; warnings: string[] }> {
+  const page = pageId?.trim() ?? ""
+  if (!/^\d{1,30}$/.test(page)) {
+    throw invalid("kind live_videos cần parent_id = page_id của Trang (id chỉ gồm chữ số).", "Gọi ads_lookup kind=pages để lấy page_id.")
+  }
+  // grant boundary: only Pages this ad account may advertise for (same rule as meta_create_ad)
+  if (!(await advertisablePages(ctx)).some((p) => p.id === page)) {
+    throw invalid(
+      `Trang ${page} không dùng được để chạy quảng cáo với tài khoản quảng cáo này.`,
+      "Gọi ads_lookup kind=pages để xem các Trang dùng được."
+    )
+  }
+  const res = await graphPage<Raw>(callCtx(ctx), `${page}/live_videos`, { fields: LIVE_VIDEO_FIELDS, limit: Math.min(limit, 100) })
+  const items: LookupItem[] = []
+  for (const v of res.data) {
+    const video = (v.video ?? null) as Raw | null
+    const videoId = s(video?.id)
+    if (!/^\d+$/.test(videoId)) continue
+    const title = sanitizeExternalLabel(s(v.title), 200) || sanitizeExternalLabel(s(v.description), 120) || `Video trực tiếp ${s(v.creation_time)}`
+    const link = s(v.permalink_url)
+    items.push({
+      id: `${page}_${videoId}`,
+      name: title,
+      extra: {
+        objectStoryId: `${page}_${videoId}`,
+        liveVideoId: s(v.id),
+        videoId,
+        status: v.status ?? null,
+        broadcastStartTime: v.broadcast_start_time ?? null,
+        plannedStartTime: v.planned_start_time ?? null,
+        creationTime: v.creation_time ?? null,
+        liveViews: v.live_views ?? null,
+        permalinkUrl: link.startsWith("/") ? `https://www.facebook.com${link}` : link || null,
+      },
+    })
+  }
+  // the button stored on each live post (Page token, a read per post - first LIVE_CTA_READS items only)
+  let unread = 0
+  for (const item of items.slice(0, LIVE_CTA_READS)) {
+    try {
+      const cta = await readMetaPostCta(ctx, item.id)
+      item.extra!.postButton = cta ? { type: cta.type, link: cta.link ? sanitizeExternalLabel(cta.link, 500) : null } : null
+    } catch (e) {
+      if (isProviderError(e) && e.code === "auth_invalid") throw e
+      unread++
+    }
+  }
+  const warnings = [
+    "id = object_story_id: dùng làm meta_create_ad creative existing_post trong chiến dịch có live_video_destination (meta_create_campaign). " +
+      "status LIVE = đang phát, VOD = đã phát xong (quảng cáo bản phát lại), SCHEDULED_* = đã lên lịch (chưa có bài để quảng cáo qua API).",
+    "postButton = nút đang gắn trên bài live (null = chưa có): bài đã có nút thì MỌI quảng cáo dùng bài đều hiện nút đó - chọn bài có nút hợp với quảng cáo (website / tin nhắn), hoặc bài chưa có nút (nút của quảng cáo đầu tiên sẽ gắn vào bài).",
+  ]
+  if (unread) warnings.push(`Không đọc được nút của ${unread} bài live (via cần có vai trò trên Trang).`)
+  if (items.length === 0) warnings.push("Trang chưa có video trực tiếp nào (hoặc token không đọc được video trực tiếp của Trang).")
+  return { items: filterByName(items, q, limit), warnings }
+}
+
 export async function metaLookup(
   ctx: ProviderContext<MetaCredentials>,
   kind: LookupKind,
-  query: { q?: string; limit?: number } = {}
+  query: LookupQuery = {}
 ): Promise<{ items: LookupItem[]; warnings: string[] }> {
   const call = callCtx(ctx)
   const account = actId(ctx.account.externalId)
@@ -268,13 +344,15 @@ export async function metaLookup(
       const res = await graphPage<Raw>(call, "search", { type: "adlocale", q: needQ(), limit })
       return { items: res.data.map((l) => ({ id: s(l.key), name: s(l.name) })), warnings }
     }
+    case "live_videos":
+      return liveVideos(ctx, query.parentId, q, limit)
     case "identities":
     case "tiktok_posts":
       throw new ProviderError({
         platform: "meta",
         code: "unsupported",
         message: `meta: ${kind} lookup is TikTok-only`,
-        userMessageVi: `Meta không có “${kind}” (chỉ TikTok) - dùng pages hoặc instagram_accounts.`,
+        userMessageVi: `Meta không có “${kind}” (chỉ TikTok) - dùng pages, instagram_accounts hoặc live_videos.`,
       })
   }
 }

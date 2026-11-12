@@ -82,7 +82,7 @@ export const SUMMARY_FIELDS: Record<MetaLevel, string[]> = {
 }
 
 export const DETAIL_EXTRA_FIELDS: Record<MetaLevel, string[]> = {
-  campaign: ["configured_status", "spend_cap", "is_adset_budget_sharing_enabled", "issues_info", "smart_promotion_type"],
+  campaign: ["configured_status", "spend_cap", "is_adset_budget_sharing_enabled", "issues_info", "smart_promotion_type", "promoted_object"],
   adset: [
     "configured_status",
     "targeting",

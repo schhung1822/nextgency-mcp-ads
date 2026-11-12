@@ -4,6 +4,7 @@ import { __resetBuckets } from "../rate-limit"
 import type { MutationOptions, ProviderExtension } from "../types"
 import type { MetaCredentials } from "./client"
 import { greetingShown, greetingVerdict, metaExtensions, type MetaWriteResult } from "./extensions"
+import { __clearPageTokenCache } from "./pages"
 import { graphError, json, mockGraph, providerCtx, type FakeResponse, type Route } from "./test-utils"
 
 beforeEach(() => __resetBuckets())
@@ -2321,5 +2322,593 @@ describe("greeting helpers (v1.1.4)", () => {
     expect(greetingShown("Chào\u202E bạn")).toEqual({ text: "Chào bạn" })
     const ve = JSON.stringify({ text_format: { message: { text: "Hi", ice_breakers: [{ title: "A\u200B?", response: "B" }] } } })
     expect(greetingShown(ve)).toEqual({ text: "Hi", ice_breakers: [{ title: "A?", response: "B" }] })
+  })
+})
+
+describe("welcome_message {from_ad_id} - reuse the greeting of an existing ad (saved templates)", () => {
+  const HASH = "0123456789abcdef0123456789abcdef"
+  // shape of a greeting made in Ads Manager (VISUAL_EDITOR with quick replies) - kept verbatim
+  const TEMPLATE = JSON.stringify({
+    type: "VISUAL_EDITOR",
+    version: 2,
+    landing_screen_type: "welcome_message",
+    media_type: "text",
+    text_format: {
+      customer_action_type: "quick_replies",
+      message: {
+        ice_breakers: [],
+        quick_replies: [
+          { content_type: "text", title: "Tư vấn da" },
+          { content_type: "text", title: "Bảng giá" },
+        ],
+        text: "Chào chị! Chị gái nhắn số PHONE + tình trạng da nha!",
+      },
+    },
+    user_edit: true,
+    surface: "visual_editor_new",
+  })
+  const msgAdset = {
+    id: "2001",
+    name: "Nhóm nhắn tin",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "CONVERSATIONS",
+    destination_type: "MESSENGER",
+    promoted_object: { page_id: "888" },
+    campaign: { id: "3001", objective: "OUTCOME_SALES" },
+  }
+  const sourceAd = (creative: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    id: "77",
+    name: "Ad dùng mẫu",
+    account_id: "1001",
+    campaign_id: "3002",
+    creative: { id: "500", ...creative },
+    ...extra,
+  })
+  const flexible = (greeting: string = TEMPLATE) => ({
+    object_story_spec: { page_id: "888" },
+    asset_feed_spec: { additional_data: { page_welcome_message: greeting } },
+  })
+  const setup = (source: unknown, adset: Record<string, unknown> = msgAdset, extra: Route[] = []) => {
+    __resetBuckets()
+    return mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ["GET", "77", () => json(source)],
+      ...advertisable,
+      ...extra,
+      ["POST", "act_1001/ads", () => json({ id: "21" })],
+    ])
+  }
+  const linkAd = (welcome: unknown) => ({
+    adset_id: "2001",
+    name: "Ad mới",
+    page_id: "888",
+    creative: { type: "link", message: "Inbox ngay", image_hash: HASH, welcome_message: welcome },
+  })
+  const creativeOf = (m: ReturnType<typeof mockGraph>) => JSON.parse(m.mutatingPosts()[0].params.creative)
+
+  it("copies the greeting of an Ads Manager ad verbatim (quick replies kept) and shows a sanitised copy", async () => {
+    const m = setup(sourceAd(flexible()))
+    const res = await run("meta_create_ad", linkAd({ from_ad_id: "77" }))
+    expect(creativeOf(m).object_story_spec.link_data.page_welcome_message).toBe(TEMPLATE)
+    expect(m.mutatingPosts()[0].params.status).toBe("PAUSED")
+    expect(res.payload.welcome_message).toEqual({
+      text: "Chào chị! Chị gái nhắn số PHONE + tình trạng da nha!",
+      quick_replies: ["Tư vấn da", "Bảng giá"],
+      copied_from_ad_id: "77",
+    })
+    expect(res.warnings.join(" ")).toMatch(/lấy nguyên từ quảng cáo 77/)
+    // the source ad is read with the account check (account_id requested)
+    const read = m.calls.find((c) => c.method === "GET" && c.path === "77")
+    expect(read?.params.fields).toMatch(/account_id/)
+    expect(read?.params.fields).toMatch(/asset_feed_spec/)
+  })
+
+  it("finds the greeting in object_story_spec / at creative level too", async () => {
+    const m = setup(sourceAd({ object_story_spec: { page_id: "888", video_data: { video_id: "9", page_welcome_message: "Chào bạn" } } }))
+    await run("meta_create_ad", linkAd({ from_ad_id: "77" }))
+    expect(creativeOf(m).object_story_spec.link_data.page_welcome_message).toBe("Chào bạn")
+    const m2 = setup(sourceAd({ object_story_id: "888_5", page_welcome_message: TEMPLATE }))
+    await run("meta_create_ad", linkAd({ from_ad_id: "77" }))
+    expect(creativeOf(m2).object_story_spec.link_data.page_welcome_message).toBe(TEMPLATE)
+  })
+
+  it("refuses an ad of another ad account (not_found) without creating anything", async () => {
+    const m = setup(sourceAd(flexible(), { account_id: "999" }))
+    await expect(run("meta_create_ad", linkAd({ from_ad_id: "77" }))).rejects.toMatchObject({ code: "not_found" })
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("refuses a source ad without greeting, with a partner-app flow, or with a malformed / oversized greeting", async () => {
+    setup(sourceAd({ object_story_spec: { page_id: "888", link_data: { link: "https://x.vn" } } }))
+    await expect(run("meta_create_ad", linkAd({ from_ad_id: "77" }))).rejects.toThrow(/không có lời chào/)
+    setup(sourceAd({ asset_feed_spec: { additional_data: { partner_app_welcome_message_flow_id: "4455" } } }))
+    await expect(run("meta_create_ad", linkAd({ from_ad_id: "77" }))).rejects.toThrow(/ứng dụng đối tác.*4455/)
+    setup(sourceAd(flexible('{"type":"VISUAL_EDITOR",')))
+    await expect(run("meta_create_ad", linkAd({ from_ad_id: "77" }))).rejects.toThrow(/không đúng định dạng/)
+    setup(sourceAd(flexible(`{"a":"${"x".repeat(20_001)}"}`)))
+    await expect(run("meta_create_ad", linkAd({ from_ad_id: "77" }))).rejects.toThrow(/quá dài/)
+  })
+
+  it("keeps the Messenger-only rule and the strict schema", async () => {
+    const m = setup(sourceAd(flexible()), { ...msgAdset, destination_type: "WEBSITE", optimization_goal: "OFFSITE_CONVERSIONS" })
+    const ad = linkAd({ from_ad_id: "77" })
+    await expect(run("meta_create_ad", { ...ad, creative: { ...ad.creative, link: "https://shop.vn" } })).rejects.toThrow(
+      /welcome_message chỉ dùng cho quảng cáo nhắn tin/
+    )
+    expect(m.mutatingPosts()).toHaveLength(0)
+    const e = ext("meta_create_ad")
+    for (const w of [{ from_ad_id: "abc" }, { from_ad_id: "77", text: "x" }, { from_ad_id: "" }]) {
+      expect(e.input.safeParse(linkAd(w)).success, JSON.stringify(w)).toBe(false)
+    }
+  })
+
+  it("warns when the source ad belongs to another Page", async () => {
+    setup(sourceAd({ ...flexible(), object_story_spec: { page_id: "777" } }))
+    const res = await run("meta_create_ad", linkAd({ from_ad_id: "77" }))
+    expect(res.warnings.join(" ")).toMatch(/Trang 777, khác Trang 888/)
+  })
+
+  it("existing post: creative-level greeting, read back with quick replies (Meta re-serialises JSON) → no warning", async () => {
+    const stored = JSON.stringify({ ...JSON.parse(TEMPLATE), user_edit: false, extra_meta_field: 1 })
+    const m = setup(sourceAd(flexible()), msgAdset, [
+      ["GET", "21", () => json({ id: "21", creative: { id: "600", page_welcome_message: stored } })],
+    ])
+    const res = await run("meta_create_ad", {
+      adset_id: "2001",
+      name: "Ad bài có sẵn",
+      creative: { type: "existing_post", object_story_id: "888_42", welcome_message: { from_ad_id: "77" } },
+    })
+    expect(creativeOf(m).page_welcome_message).toBe(TEMPLATE)
+    expect(res.warnings.join(" ")).not.toMatch(/KHÔNG có lời chào|KHÁC lời chào/)
+  })
+
+  it("meta_update_ad_creative welcome_message {from_ad_id}: new creative carries the copied greeting, verified, then swapped", async () => {
+    __resetBuckets()
+    let sent: Record<string, string> = {}
+    const ad = {
+      id: "11",
+      name: "Ad cũ",
+      account_id: "1001",
+      campaign_id: "3001",
+      adset_id: "2001",
+      status: "PAUSED",
+      effective_status: "PAUSED",
+      adset: { ...msgAdset, status: "ACTIVE", effective_status: "ACTIVE", is_dynamic_creative: false },
+      campaign: { id: "3001", name: "Camp", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_SALES" },
+      creative: {
+        id: "200",
+        object_story_spec: {
+          page_id: "888",
+          link_data: { link: "https://fb.com/messenger_doc/", message: "Inbox", image_hash: HASH, page_welcome_message: "Chào cũ" },
+        },
+      },
+    }
+    const m = mockGraph([
+      ["GET", "11", () => json(ad)],
+      ["GET", "77", () => json(sourceAd(flexible()))],
+      ...advertisable,
+      [
+        "POST",
+        "act_1001/adcreatives",
+        (c) => {
+          if ((c.params.execution_options ?? "").includes("validate_only")) return json({ success: true })
+          sent = c.params
+          return json({ id: "900" })
+        },
+      ],
+      ["GET", "900", () => json({ id: "900", account_id: "1001", object_story_spec: JSON.parse(sent.object_story_spec ?? "{}") })],
+      ["POST", "11", () => json({ success: true })],
+    ])
+    const res = await run("meta_update_ad_creative", { ad_id: "11", welcome_message: { from_ad_id: "77" } })
+    expect(JSON.parse(sent.object_story_spec!).link_data.page_welcome_message).toBe(TEMPLATE)
+    expect(res.createdIds).toEqual(["900"])
+    expect(res.changes[0]?.after).toMatchObject({ welcome_message: { quick_replies: ["Tư vấn da", "Bảng giá"], copied_from_ad_id: "77" } })
+    expect(m.mutatingPosts().map((p) => p.path)).toEqual(["act_1001/adcreatives", "11"])
+  })
+
+  it("greeting helpers: quick replies are shown and compared", () => {
+    expect(greetingShown(TEMPLATE)).toEqual({
+      text: "Chào chị! Chị gái nhắn số PHONE + tình trạng da nha!",
+      quick_replies: ["Tư vấn da", "Bảng giá"],
+    })
+    const other = TEMPLATE.replace("Bảng giá", "Đặt lịch")
+    expect(greetingVerdict(TEMPLATE, other)).toBe("different")
+    expect(greetingVerdict(TEMPLATE, TEMPLATE)).toBe("match")
+  })
+})
+
+describe("saved greeting templates made in Ads Manager (JSON_SETUP, shape read from Meta 2026-11-12)", () => {
+  // creative.page_welcome_message of an ad using a saved template (texts / URLs replaced)
+  const JSON_SETUP = JSON.stringify({
+    message_data: {
+      message: {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: "Cáp sạc nhanh 6-in-1.\n- Mở đặt trước: 20h ngày 20/05\n- Dự kiến trả hàng: cuối tháng 6",
+            buttons: [
+              { title: "Chi tiết sản phẩm", type: "web_url", url: "https://shop.example.vn/p", messenger_extensions: true, webview_height_ratio: "full" },
+              { title: "Đặt trước là gì", type: "web_url", url: "https://shop.example.vn/faq", messenger_extensions: true, webview_height_ratio: "full" },
+            ],
+          },
+        },
+      },
+    },
+    type: "JSON_SETUP",
+    template_id: "527000000000001",
+    is_user_editing: false,
+  })
+
+  it("greetingShown: text, buttons and the saved template id", () => {
+    expect(greetingShown(JSON_SETUP)).toEqual({
+      // display copy is one line (sanitizeExternalLabel); Meta receives the template verbatim
+      text: "Cáp sạc nhanh 6-in-1. - Mở đặt trước: 20h ngày 20/05 - Dự kiến trả hàng: cuối tháng 6",
+      buttons: [
+        { title: "Chi tiết sản phẩm", type: "web_url", url: "https://shop.example.vn/p" },
+        { title: "Đặt trước là gì", type: "web_url", url: "https://shop.example.vn/faq" },
+      ],
+      template_id: "527000000000001",
+    })
+    // quick replies / plain text message of a structured greeting
+    const qr = JSON.stringify({ type: "JSON_SETUP", message_data: { message: { text: "Chọn nhé", quick_replies: [{ content_type: "text", title: "Mua" }] } } })
+    expect(greetingShown(qr)).toEqual({ text: "Chọn nhé", quick_replies: ["Mua"] })
+    // unknown JSON never leaks as text
+    expect(greetingShown('{"foo":"bar"}')).toEqual({ text: "" })
+  })
+
+  it("greetingVerdict: Meta re-serialising (key order, template id) still matches; a changed button does not", () => {
+    const j = JSON.parse(JSON_SETUP)
+    const reordered = JSON.stringify({ is_user_editing: false, type: "JSON_SETUP", message_data: j.message_data })
+    expect(greetingVerdict(JSON_SETUP, reordered)).toBe("match")
+    expect(greetingVerdict(JSON_SETUP, JSON_SETUP.replace("https://shop.example.vn/faq", "https://evil.example/x"))).toBe("different")
+    expect(greetingVerdict(JSON_SETUP, JSON_SETUP.replace("Đặt trước là gì", "Khác"))).toBe("different")
+    expect(greetingVerdict(JSON_SETUP, "")).toBe("missing")
+  })
+
+  it("meta_create_ad existing post + {from_ad_id}: the template JSON is sent verbatim (template_id kept) and read back", async () => {
+    __resetBuckets()
+    const m = mockGraph([
+      [
+        "GET",
+        "2001",
+        () =>
+          json({
+            id: "2001",
+            account_id: "1001",
+            campaign_id: "3001",
+            optimization_goal: "CONVERSATIONS",
+            destination_type: "MESSENGER",
+            promoted_object: { page_id: "888" },
+            campaign: { id: "3001", objective: "OUTCOME_SALES" },
+          }),
+      ],
+      [
+        "GET",
+        "77",
+        () =>
+          json({
+            id: "77",
+            account_id: "1001",
+            campaign_id: "3002",
+            creative: { id: "500", object_story_id: "888_42", page_welcome_message: JSON_SETUP },
+          }),
+      ],
+      ...advertisable,
+      ["POST", "act_1001/ads", () => json({ id: "21" })],
+      ["GET", "21", () => json({ id: "21", creative: { id: "600", page_welcome_message: JSON_SETUP } })],
+    ])
+    const res = await run("meta_create_ad", {
+      adset_id: "2001",
+      name: "Ad dùng mẫu",
+      creative: { type: "existing_post", object_story_id: "888_43", welcome_message: { from_ad_id: "77" } },
+    })
+    const creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+    expect(creative.page_welcome_message).toBe(JSON_SETUP)
+    expect(creative.call_to_action).toEqual({ type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } })
+    expect(res.payload.welcome_message).toMatchObject({ template_id: "527000000000001", copied_from_ad_id: "77" })
+    expect(res.warnings.join(" ")).not.toMatch(/KHÔNG có lời chào|KHÁC lời chào/)
+  })
+})
+
+describe("Messenger messaging ad sets per campaign objective (live-tested 2026-11-12)", () => {
+  const conv = { ...mpcInput, optimization_goal: "CONVERSATIONS", destination_type: "MESSENGER" }
+
+  it("LEADS + CONVERSATIONS → Messenger is refused before any POST (Meta rejects the goal for the objective)", async () => {
+    __resetBuckets()
+    const m = mockGraph([["GET", "3001", () => json({ ...salesAbo, objective: "OUTCOME_LEADS" })]])
+    await expect(run("meta_create_adset", conv)).rejects.toThrow(/Khách hàng tiềm năng \(OUTCOME_LEADS\) không chạy được CONVERSATIONS tới Messenger/)
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("ENGAGEMENT + CONVERSATIONS → Messenger stays allowed", async () => {
+    __resetBuckets()
+    const m = mockGraph([
+      ["GET", "3001", () => json({ ...salesAbo, objective: "OUTCOME_ENGAGEMENT" })],
+      ...advertisable,
+      ["POST", "act_1001/adsets", () => json({ id: "2001" })],
+    ])
+    const res = await run("meta_create_adset", conv)
+    expect(res.createdIds).toEqual(["2001"])
+    expect(m.mutatingPosts()[0].params).toMatchObject({ optimization_goal: "CONVERSATIONS", destination_type: "MESSENGER", status: "PAUSED" })
+  })
+})
+
+describe("live video ads + engagement destinations (live-tested 2026-11-12)", () => {
+  const liveCampaign = (objective: string) => ({ ...aboCampaign, objective, promoted_object: { live_video_destination: "FACEBOOK" } })
+
+  it("meta_create_campaign live_video_destination → promoted_object.live_video_destination, notes in the preview", async () => {
+    __resetBuckets()
+    const m = mockGraph([["POST", "act_1001/campaigns", () => json({ id: "3009" })]])
+    const res = await run("meta_create_campaign", { name: "Live sale", objective: "OUTCOME_SALES", live_video_destination: "FACEBOOK" })
+    const p = m.mutatingPosts()[0].params
+    expect(JSON.parse(p.promoted_object)).toEqual({ live_video_destination: "FACEBOOK" })
+    expect(p.status).toBe("PAUSED")
+    expect(res.changes[0]?.after).toMatchObject({ live_video_destination: "FACEBOOK" })
+    expect(res.warnings.join(" ")).toMatch(/ads_lookup kind=live_videos/)
+    // no flag → no promoted_object
+    __resetBuckets()
+    const m2 = mockGraph([["POST", "act_1001/campaigns", () => json({ id: "3010" })]])
+    await run("meta_create_campaign", { name: "Thường", objective: "OUTCOME_SALES" })
+    expect(m2.mutatingPosts()[0].params.promoted_object).toBeUndefined()
+    expect(ext("meta_create_campaign").input.safeParse({ name: "x", objective: "OUTCOME_SALES", live_video_destination: "FACEBOOK_LIVE" }).success).toBe(false)
+  })
+
+  it("ENGAGEMENT on-ad goals get their destination (ON_POST / ON_VIDEO / ON_PAGE), website = OFFSITE_CONVERSIONS; a wrong destination is refused", async () => {
+    const cases: [string, Record<string, unknown>, string][] = [
+      ["POST_ENGAGEMENT", { page_id: "888" }, "ON_POST"],
+      ["THRUPLAY", { page_id: "888" }, "ON_VIDEO"],
+      ["PAGE_LIKES", { page_id: "888" }, "ON_PAGE"],
+      ["OFFSITE_CONVERSIONS", { pixel_id: "555000", custom_event_type: "CONTENT_VIEW" }, "WEBSITE"],
+    ]
+    for (const [optimization_goal, promoted_object, dest] of cases) {
+      __resetBuckets()
+      const m = mockGraph([
+        ["GET", "3001", () => json(liveCampaign("OUTCOME_ENGAGEMENT"))],
+        ...advertisable,
+        ["POST", "act_1001/adsets", () => json({ id: "2001" })],
+      ])
+      const res = await run("meta_create_adset", { ...adsetInput, optimization_goal, promoted_object })
+      expect(m.mutatingPosts()[0].params.destination_type, optimization_goal).toBe(dest)
+      expect(res.changes[0]?.after).toMatchObject({ live_video_destination: "FACEBOOK" })
+      expect(res.warnings.join(" ")).toMatch(/ngân sách nhóm cao hơn/)
+    }
+    __resetBuckets()
+    mockGraph([["GET", "3001", () => json(liveCampaign("OUTCOME_ENGAGEMENT"))], ...advertisable])
+    await expect(
+      run("meta_create_adset", { ...adsetInput, optimization_goal: "THRUPLAY", destination_type: "ON_POST", promoted_object: { page_id: "888" } })
+    ).rejects.toThrow(/Tương tác \+ THRUPLAY cần destination_type ON_VIDEO/)
+    // non-live campaigns get the same destination (Meta refuses the goal without it)
+    __resetBuckets()
+    const m3 = mockGraph([["GET", "3001", () => json({ ...aboCampaign, objective: "OUTCOME_ENGAGEMENT" })], ...advertisable, ["POST", "act_1001/adsets", () => json({ id: "2002" })]])
+    const r3 = await run("meta_create_adset", { ...adsetInput, optimization_goal: "POST_ENGAGEMENT", promoted_object: { page_id: "888" } })
+    expect(m3.mutatingPosts()[0].params.destination_type).toBe("ON_POST")
+    expect(r3.warnings.join(" ")).not.toMatch(/ngân sách nhóm cao hơn/)
+  })
+
+  const liveAdset = (extra: Record<string, unknown> = {}) => ({
+    id: "2001",
+    name: "Nhóm live",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "OFFSITE_CONVERSIONS",
+    promoted_object: { pixel_id: "555000", custom_event_type: "PURCHASE" },
+    campaign: { id: "3001", objective: "OUTCOME_SALES", promoted_object: { live_video_destination: "FACEBOOK" } },
+    ...extra,
+  })
+  /** `postCta` = the button stored on the live post 888_2102 (read with the Page token); "fail" = unreadable */
+  const setupAd = (adset: Record<string, unknown>, postCta: Record<string, unknown> | null | "fail" = null) => {
+    __resetBuckets()
+    __clearPageTokenCache()
+    return mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ["GET", "888", () => json({ id: "888", access_token: "PAGETOKEN888abcdef" })],
+      [
+        "GET",
+        "888_2102",
+        () => (postCta === "fail" ? graphError(10, undefined, { message: "requires pages_read_engagement" }, 403) : json({ id: "888_2102", ...(postCta ? { call_to_action: postCta } : {}) })),
+      ],
+      ["POST", "act_1001/ads", () => json({ id: "21" })],
+    ])
+  }
+
+  it("existing_post (live post) + call_to_action → creative-level CTA with link; live notes; the ad set read asks for the campaign promoted_object", async () => {
+    const m = setupAd(liveAdset())
+    const res = await run("meta_create_ad", {
+      adset_id: "2001",
+      name: "Live web",
+      creative: { type: "existing_post", object_story_id: "888_2102", call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn/sale" } },
+    })
+    const creative = JSON.parse(m.mutatingPosts()[0].params.creative)
+    expect(creative).toMatchObject({ object_story_id: "888_2102", call_to_action: { type: "SEE_DETAILS", value: { link: "https://shop.vn/sale" } } })
+    expect(res.changes[0]?.after).toMatchObject({ live_video_destination: "FACEBOOK", live_post_button: null })
+    // live post without a button: the ad's button sticks to the post (owner-checked)
+    expect(res.warnings.join(" ")).toMatch(/Bài live chưa có nút: nút SEE_DETAILS của quảng cáo này sẽ gắn luôn vào bài/)
+    expect(res.warnings.join(" ")).not.toMatch(/bài viết gốc trên Trang không bị sửa/)
+    expect(res.warnings.join(" ")).toMatch(/Bảng feed và Reels/)
+    // the post is read with the Page token, never with the user token
+    expect(m.calls.find((c) => c.path === "888_2102")?.params.access_token).toBe("PAGETOKEN888abcdef")
+    expect(m.calls.find((c) => c.method === "GET" && c.path === "2001")?.params.fields).toMatch(/campaign\{id,objective,promoted_object\}/)
+  })
+
+  it("existing_post CTA rules: link needed (except WATCH_LIVE_VIDEO / NO_BUTTON…), refused in messaging ad sets; non-post creative in a live campaign warns", async () => {
+    setupAd(liveAdset())
+    await expect(
+      run("meta_create_ad", { adset_id: "2001", name: "x", creative: { type: "existing_post", object_story_id: "888_2102", call_to_action: { type: "SHOP_NOW" } } })
+    ).rejects.toThrow(/Nút SHOP_NOW của bài có sẵn cần call_to_action.link/)
+    const m = setupAd(liveAdset({ optimization_goal: "POST_ENGAGEMENT", destination_type: "ON_POST", promoted_object: { page_id: "888" } }))
+    await run("meta_create_ad", { adset_id: "2001", name: "x", creative: { type: "existing_post", object_story_id: "888_2102", call_to_action: { type: "WATCH_LIVE_VIDEO" } } })
+    expect(JSON.parse(m.mutatingPosts()[0].params.creative).call_to_action).toEqual({ type: "WATCH_LIVE_VIDEO" })
+    setupAd(liveAdset({ optimization_goal: "CONVERSATIONS", destination_type: "MESSENGER", promoted_object: { page_id: "888" } }))
+    await expect(
+      run("meta_create_ad", {
+        adset_id: "2001",
+        name: "x",
+        creative: { type: "existing_post", object_story_id: "888_2102", call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn" } },
+      })
+    ).rejects.toThrow(/tự gắn nút nhắn tin cho bài có sẵn - bỏ call_to_action/)
+    setupAd(liveAdset())
+    const res = await run("meta_create_ad", {
+      adset_id: "2001",
+      name: "x",
+      page_id: "888",
+      creative: { type: "link", link: "https://shop.vn", message: "m", image_hash: "0123456789abcdef0123456789abcdef" },
+    })
+    expect(res.warnings.join(" ")).toMatch(/creative không phải bài live/)
+    setupAd(liveAdset())
+    const res2 = await run("meta_create_ad", { adset_id: "2001", name: "x", creative: { type: "existing_post", object_story_id: "888_2102" } })
+    expect(res2.warnings.join(" ")).toMatch(/Không có call_to_action: quảng cáo dùng nút \/ link sẵn có của bài live/)
+  })
+})
+
+describe("live video ads - the button stored on the live post wins (owner-checked 2026-11-12)", () => {
+  const websiteAdset = {
+    id: "2001",
+    name: "Nhóm live web",
+    account_id: "1001",
+    campaign_id: "3001",
+    optimization_goal: "OFFSITE_CONVERSIONS",
+    promoted_object: { pixel_id: "555000", custom_event_type: "PURCHASE" },
+    campaign: { id: "3001", objective: "OUTCOME_SALES", promoted_object: { live_video_destination: "FACEBOOK" } },
+  }
+  const messengerAdset = {
+    ...websiteAdset,
+    optimization_goal: "CONVERSATIONS",
+    destination_type: "MESSENGER",
+    promoted_object: { page_id: "888" },
+  }
+  const setup = (adset: Record<string, unknown>, postCta: Record<string, unknown> | null | "fail") => {
+    __resetBuckets()
+    __clearPageTokenCache()
+    return mockGraph([
+      ["GET", "2001", () => json(adset)],
+      ...advertisable,
+      ["GET", "888", () => json({ id: "888", access_token: "PAGETOKEN888abcdef" })],
+      [
+        "GET",
+        "888_2102",
+        () => (postCta === "fail" ? graphError(10, undefined, { message: "requires pages_read_engagement" }, 403) : json({ id: "888_2102", ...(postCta ? { call_to_action: postCta } : {}) })),
+      ],
+      ["POST", "act_1001/ads", () => json({ id: "21" })],
+    ])
+  }
+  const ad = (creative: Record<string, unknown>) => ({ adset_id: "2001", name: "Live", creative: { type: "existing_post", object_story_id: "888_2102", ...creative } })
+  const msgBtn = { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } }
+  const webBtn = { type: "SEE_DETAILS", value: { link: "https://shop.vn/a", link_format: "VIDEO_LPP" } }
+
+  it("post already shows Gửi tin nhắn → a website ad (with or without its own button) is refused before any write", async () => {
+    for (const creative of [{ call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn/a" } }, {}]) {
+      const m = setup(websiteAdset, msgBtn)
+      await expect(run("meta_create_ad", ad(creative))).rejects.toThrow(/đã gắn nút MESSAGE_PAGE - Meta luôn hiện nút này/)
+      expect(m.mutatingPosts()).toHaveLength(0)
+    }
+  })
+
+  it("post shows Xem chi tiết → a Messenger ad is refused; the same button is accepted, a different link only warns", async () => {
+    setup(messengerAdset, webBtn)
+    await expect(run("meta_create_ad", ad({ welcome_message: "Chào bạn" }))).rejects.toThrow(/không đổi sang MESSAGE_PAGE được/)
+    const m = setup(websiteAdset, webBtn)
+    const res = await run("meta_create_ad", ad({ call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn/b" } }))
+    expect(m.mutatingPosts()).toHaveLength(1)
+    expect(res.changes[0]?.after).toMatchObject({ live_post_button: { type: "SEE_DETAILS", link: "https://shop.vn/a" } })
+    expect(res.warnings.join(" ")).toMatch(/Bài live đã gắn link https:\/\/shop\.vn\/a: quảng cáo hiện link này, không phải https:\/\/shop\.vn\/b/)
+  })
+
+  it("post shows Gửi tin nhắn → a Messenger ad is accepted; no own button → told which button shows", async () => {
+    const m = setup(messengerAdset, msgBtn)
+    await run("meta_create_ad", ad({ welcome_message: "Chào bạn" }))
+    expect(m.mutatingPosts()).toHaveLength(1)
+    setup({ ...websiteAdset, optimization_goal: "POST_ENGAGEMENT", destination_type: "ON_POST", promoted_object: { page_id: "888" } }, webBtn)
+    const res = await run("meta_create_ad", ad({}))
+    expect(res.warnings.join(" ")).toMatch(/Quảng cáo hiện nút SEE_DETAILS \(https:\/\/shop\.vn\/a\) đang gắn trên bài live/)
+  })
+
+  it("the post button cannot be read → a warning, the ad is still created; non-live campaigns never read the post", async () => {
+    const m = setup(websiteAdset, "fail")
+    const res = await run("meta_create_ad", ad({ call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn/a" } }))
+    expect(m.mutatingPosts()).toHaveLength(1)
+    expect(res.warnings.join(" ")).toMatch(/Không đọc được nút đang gắn trên bài live/)
+    const m2 = setup({ ...websiteAdset, campaign: { id: "3001", objective: "OUTCOME_SALES" } }, msgBtn)
+    await run("meta_create_ad", ad({ call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn/a" } }))
+    expect(m2.calls.some((c) => c.path === "888_2102")).toBe(false)
+  })
+})
+
+describe("meta_update_ad_creative in live video campaigns - the post's button wins (owner-checked 2026-11-12)", () => {
+  const liveCampaign = { id: "3001", name: "Live", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_SALES", promoted_object: { live_video_destination: "FACEBOOK" } }
+  const msgAdset = { id: "2001", name: "Nhóm", status: "ACTIVE", effective_status: "ACTIVE", destination_type: "MESSENGER", promoted_object: { page_id: "888" }, optimization_goal: "CONVERSATIONS", is_dynamic_creative: false }
+  const webAdset = { ...msgAdset, destination_type: undefined, promoted_object: { pixel_id: "555000", custom_event_type: "PURCHASE" }, optimization_goal: "OFFSITE_CONVERSIONS" }
+  const adOn = (adset: Record<string, unknown>, campaign: Record<string, unknown> = liveCampaign) => ({
+    id: "11",
+    name: "Ad live",
+    account_id: "1001",
+    campaign_id: "3001",
+    adset_id: "2001",
+    status: "PAUSED",
+    effective_status: "PAUSED",
+    adset,
+    campaign,
+    creative: { id: "100", object_story_id: "888_42", effective_object_story_id: "888_42", call_to_action: { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } } },
+  })
+  const msgBtn = { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } }
+  const webBtn = { type: "SEE_DETAILS", value: { link: "https://shop.vn/a" } }
+  function world(ad: Record<string, unknown>, posts: Record<string, Record<string, unknown> | null>, extra: Route[] = []) {
+    __resetBuckets()
+    __clearPageTokenCache()
+    let sent: Record<string, string> = {}
+    return mockGraph([
+      ["GET", "11", () => json(ad)],
+      ...advertisable,
+      ["GET", "888", () => json({ id: "888", access_token: "PAGETOKEN888abcdef" })],
+      ...Object.entries(posts).map(([id, cta]): Route => ["GET", id, () => json({ id, ...(cta ? { call_to_action: cta } : {}) })]),
+      ...extra,
+      [
+        "POST",
+        "act_1001/adcreatives",
+        (c) => {
+          if ((c.params.execution_options ?? "").includes("validate_only")) return json({ success: true })
+          sent = c.params
+          return json({ id: "900" })
+        },
+      ],
+      ["GET", "900", () => json({ id: "900", account_id: "1001", page_welcome_message: sent.page_welcome_message })],
+      ["POST", "11", () => json({ success: true })],
+    ])
+  }
+
+  it("new content on ANOTHER live post whose button does not fit → refused before any write", async () => {
+    const m = world(adOn(webAdset), { "888_43": msgBtn })
+    await expect(
+      run("meta_update_ad_creative", {
+        ad_id: "11",
+        creative: { type: "existing_post", object_story_id: "888_43", call_to_action: { type: "SEE_DETAILS", link: "https://shop.vn/a" } },
+      })
+    ).rejects.toThrow(/Bài live 888_43 đã gắn nút MESSAGE_PAGE/)
+    expect(m.mutatingPosts()).toHaveLength(0)
+  })
+
+  it("greeting only on the SAME live post with a mismatching button → warning, the swap still runs", async () => {
+    const m = world(adOn(msgAdset), { "888_42": webBtn })
+    const res = await run("meta_update_ad_creative", { ad_id: "11", welcome_message: "Chào bạn" })
+    expect(m.mutatingPosts().map((p) => p.path)).toEqual(["act_1001/adcreatives", "11"])
+    expect(res.warnings.join(" ")).toMatch(/Bài live 888_42 đã gắn nút SEE_DETAILS .* Quảng cáo này vẫn dùng bài đó nên nút hiển thị không đổi/)
+    expect(res.payload).toMatchObject({ live_post_button: { type: "SEE_DETAILS", link: "https://shop.vn/a" } })
+  })
+
+  it("creative_id of another live post with a mismatching button → refused; a fitting one passes", async () => {
+    const target = (post: string) => ({ id: "700", account_id: "1001", object_story_id: post, effective_object_story_id: post, call_to_action: msgBtn })
+    world(adOn(msgAdset), { "888_44": webBtn }, [["GET", "700", () => json(target("888_44"))]])
+    await expect(run("meta_update_ad_creative", { ad_id: "11", creative_id: "700" })).rejects.toThrow(/Bài live 888_44 đã gắn nút SEE_DETAILS/)
+    const m = world(adOn(msgAdset), { "888_45": msgBtn }, [["GET", "700", () => json(target("888_45"))]])
+    await run("meta_update_ad_creative", { ad_id: "11", creative_id: "700" })
+    expect(m.mutatingPosts().map((p) => p.path)).toEqual(["11"])
+  })
+
+  it("non-live campaigns never read the post button", async () => {
+    const m = world(adOn(msgAdset, { ...liveCampaign, promoted_object: undefined }), { "888_42": webBtn })
+    await run("meta_update_ad_creative", { ad_id: "11", welcome_message: "Chào bạn" })
+    expect(m.calls.some((c) => c.path === "888_42")).toBe(false)
   })
 })

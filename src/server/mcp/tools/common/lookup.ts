@@ -26,7 +26,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
     name: NAME,
     title: "Tra cứu tài sản phụ",
     description:
-      "Dùng khi cần id của tài sản phụ để tạo/sửa quảng cáo: pages (Fanpage), pixels, instagram_accounts, identities (TikTok), locations, interests, languages, conversion_events, custom_audiences, tiktok_posts (bài đăng TikTok của một identity để chạy Spark Ads: parent_id = identity_id từ kind=identities, identity_type / identity_authorized_bc_id tuỳ chọn - BC_AUTH_TT cần BC id; trả item_id = tiktok_item_id, nội dung, trạng thái hiển thị, used_in_ads ước lượng; trang tiếp theo qua cursor = next_cursor) - tuỳ nền tảng hỗ trợ. Gọi ads_list_accounts trước để có account_id; q là chuỗi tìm kiếm (bắt buộc với locations/interests trên đa số nền tảng).",
+      "Dùng khi cần id của tài sản phụ để tạo/sửa quảng cáo: pages (Fanpage), pixels, instagram_accounts, identities (TikTok), locations, interests, languages, conversion_events, custom_audiences, tiktok_posts (bài đăng TikTok của một identity để chạy Spark Ads: parent_id = identity_id từ kind=identities, identity_type / identity_authorized_bc_id tuỳ chọn - BC_AUTH_TT cần BC id; trả item_id = tiktok_item_id, nội dung, trạng thái hiển thị, used_in_ads ước lượng; trang tiếp theo qua cursor = next_cursor), live_videos (Meta: video trực tiếp của một Trang để chạy quảng cáo video trực tiếp: parent_id = page_id; trả id = object_story_id cho creative existing_post, status LIVE / VOD) - tuỳ nền tảng hỗ trợ. Gọi ads_list_accounts trước để có account_id; q là chuỗi tìm kiếm (bắt buộc với locations/interests trên đa số nền tảng).",
     kind: "read",
     annotations: READ_ANNOTATIONS,
     input: z.object({
@@ -35,7 +35,7 @@ export function register(server: Parameters<typeof registerToolSpec>[0], tctx: T
       kind: lookupKindSchema,
       q: z.string().max(200).optional(),
       limit: z.number().int().min(1).max(100).default(50),
-      parent_id: lookupParentIdSchema.optional().describe("Chỉ kind tiktok_posts: identity_id (ads_lookup kind=identities)"),
+      parent_id: lookupParentIdSchema.optional().describe("kind tiktok_posts: identity_id (ads_lookup kind=identities); kind live_videos: page_id (ads_lookup kind=pages)"),
       identity_type: z
         .enum(["AUTH_CODE", "TT_USER", "BC_AUTH_TT"])
         .optional()
