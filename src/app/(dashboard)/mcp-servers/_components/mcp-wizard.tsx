@@ -59,6 +59,7 @@ import {
   TiktokGmvMaxBlock,
   type GmvMaxFormContext,
 } from "./tiktok-gmv-max-section"
+import { MetaMessagesBlock } from "./meta-messages-section"
 
 const NO_GMV_MAX: GmvMaxFormContext = { isAdmin: false, flags: {} }
 
@@ -132,6 +133,10 @@ export function mapServerErrors(
           : "platforms"
       ] = msg
       at(1)
+    } else if (k === "settings.metaPageMessages") {
+      // admin-only "đọc tin nhắn Trang" switch: step 3 (Chọn quyền), Meta card
+      errors.metaPageMessages = msg
+      at(2)
     } else if (k === "settings.tiktokGmvMaxWrite") {
       // admin-only GMV Max switch: lives in step 3 (Chọn quyền), TikTok card
       errors.tiktokGmvMaxWrite = msg
@@ -364,6 +369,14 @@ export function McpWizard({
                     ) : undefined
                   }
                   platformExtra={{
+                    meta: (
+                      <MetaMessagesBlock
+                        values={values}
+                        update={update}
+                        isAdmin={gmvMax.isAdmin}
+                        error={errors.metaPageMessages}
+                      />
+                    ),
                     tiktok: (
                       <TiktokGmvMaxBlock
                         values={values}

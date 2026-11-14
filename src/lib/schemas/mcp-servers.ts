@@ -259,6 +259,11 @@ export const mcpSettingsSchema = z.object({
     msg.apifyDailyMax
   ).default(MCP_LIMITS.apifyDailyMaxUsd.default),
   apifyStoreActors: z.boolean().default(false),
+  /**
+   * Facebook Pages: the AI may read the Messenger inbox of the Pages in scope (11-meta-pages.md §13). Default OFF;
+   * only an admin may turn it on (enforced server-side).
+   */
+  metaPageMessages: z.boolean().default(false),
 })
 export type McpSettingsInput = z.infer<typeof mcpSettingsSchema>
 
@@ -284,6 +289,7 @@ export const DEFAULT_SETTINGS_INPUT: McpSettingsInput = {
   apifyRunMaxUsd: APIFY_LIMITS.runMaxUsd.default,
   apifyDailyMaxUsd: APIFY_LIMITS.dailyMaxUsd.default,
   apifyStoreActors: false,
+  metaPageMessages: false,
 }
 
 /** Shape stored in `mcp_servers.settings` (snake_case, as documented in 03-database-schema.md). */
@@ -310,6 +316,7 @@ export interface StoredMcpSettings {
   apify_run_max_usd: number
   apify_daily_max_usd: number
   apify_store_actors: boolean
+  meta_page_messages: boolean
 }
 
 function sortedCaps(r: Record<string, number>): Record<string, number> {
@@ -342,6 +349,7 @@ export function toStoredMcpSettings(s: McpSettingsInput): StoredMcpSettings {
     apify_run_max_usd: s.apifyRunMaxUsd,
     apify_daily_max_usd: s.apifyDailyMaxUsd,
     apify_store_actors: s.apifyStoreActors,
+    meta_page_messages: s.metaPageMessages,
   }
 }
 
@@ -578,6 +586,8 @@ export type McpFormValues = {
   apifyDailyMaxUsd: string
   /** Actors outside the catalog (admin-only switch) */
   apifyStoreActors: boolean
+  /** Messenger inbox of the Pages in scope (admin-only switch) */
+  metaPageMessages: boolean
 }
 
 export const PERMISSION_PRESETS = {
@@ -639,6 +649,7 @@ export function defaultMcpFormValues(): McpFormValues {
     apifyRunMaxUsd: String(DEFAULT_SETTINGS_INPUT.apifyRunMaxUsd),
     apifyDailyMaxUsd: String(DEFAULT_SETTINGS_INPUT.apifyDailyMaxUsd),
     apifyStoreActors: DEFAULT_SETTINGS_INPUT.apifyStoreActors,
+    metaPageMessages: DEFAULT_SETTINGS_INPUT.metaPageMessages,
   }
 }
 
@@ -849,6 +860,8 @@ export function formValuesToConfig(
       ),
       apifyStoreActors:
         v.apifyStoreActors ?? DEFAULT_SETTINGS_INPUT.apifyStoreActors,
+      metaPageMessages:
+        v.metaPageMessages ?? DEFAULT_SETTINGS_INPUT.metaPageMessages,
     },
     expiresAt: v.expiresOn ? expiryDateToIso(v.expiresOn) : null,
     notificationChannelIds: [...new Set(v.notificationChannelIds)],
@@ -948,6 +961,8 @@ export function configToFormValues(config: {
   )
   v.apifyStoreActors =
     config.settings.apifyStoreActors ?? DEFAULT_SETTINGS_INPUT.apifyStoreActors
+  v.metaPageMessages =
+    config.settings.metaPageMessages ?? DEFAULT_SETTINGS_INPUT.metaPageMessages
   return v
 }
 

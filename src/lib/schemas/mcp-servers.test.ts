@@ -181,6 +181,7 @@ describe("mcp-servers schemas", () => {
       apify_run_max_usd: 1,
       apify_daily_max_usd: 10,
       apify_store_actors: false,
+      meta_page_messages: false,
     })
   })
 

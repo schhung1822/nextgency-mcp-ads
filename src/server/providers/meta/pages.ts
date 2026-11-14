@@ -10,6 +10,7 @@ import {
   splitRange,
   todayInTz,
 } from "../dates"
+import { maskContactInfo } from "../../../lib/pii-mask"
 import { sanitizeExternalLabel } from "../../../lib/text-safety"
 import { isProviderError, ProviderError } from "../errors"
 import type {
@@ -231,6 +232,10 @@ export interface PageCapabilities {
   posts: boolean
   insights: boolean
   adsPosts: boolean
+  /** reading post comments needs the MODERATE task (Graph comments edge) */
+  comments: boolean
+  /** reading the Messenger inbox needs the MESSAGING or MODERATE task (Conversations API) */
+  messages: boolean
 }
 
 export function pageCapabilities(tasks: readonly string[]): PageCapabilities {
@@ -239,6 +244,8 @@ export function pageCapabilities(tasks: readonly string[]): PageCapabilities {
     posts: has("CREATE_CONTENT") || has("MANAGE") || has("MODERATE"),
     insights: has("ANALYZE"),
     adsPosts: has("ADVERTISE"),
+    comments: has("MODERATE"),
+    messages: has("MESSAGING") || has("MODERATE"),
   }
 }
 
@@ -526,7 +533,7 @@ export function __clearPageTokenCache() {
 }
 
 /** What a Page call was trying to read: picks the permissions named in a Graph permission error (B7). */
-export type PageAccessKind = "posts" | "insights" | "token"
+export type PageAccessKind = "posts" | "insights" | "token" | "messages"
 
 const PAGE_PERMISSION_TEXT: Record<PageAccessKind, string> = {
   posts:
@@ -535,6 +542,8 @@ const PAGE_PERMISSION_TEXT: Record<PageAccessKind, string> = {
     "Token / via không có quyền xem chỉ số của Trang này (cần quyền read_insights + pages_read_engagement và via có task Phân tích - ANALYZE trên Trang).",
   token:
     "Token / via không lấy được quyền truy cập Trang này (cần quyền pages_show_list + pages_read_engagement và via có vai trò trên Trang).",
+  messages:
+    "Token / via không có quyền đọc tin nhắn của Trang này (cần quyền pages_messaging trong token và via có task Nhắn tin hoặc Kiểm duyệt - MESSAGING / MODERATE - trên Trang).",
 }
 const PAGE_PERMISSION_HINT =
   "Thêm quyền còn thiếu vào token (Graph API Explorer → tạo token mới → “Thay token” ở trang Kết nối) hoặc gán task cho via trên Trang / trong Business Manager, rồi bấm Đồng bộ lại. Lỗi này không liên quan quyền ads_management của tài khoản quảng cáo."
@@ -834,6 +843,319 @@ function imageOf(a: Raw): string | null {
     s((a.media as { image?: { src?: unknown } } | undefined)?.image?.src) ||
     null
   )
+}
+
+// ---------------------------------------------------------------------------
+// Post comments (read only, .claude/docs/11-meta-pages.md §12, tested live 2026-11-15)
+// ---------------------------------------------------------------------------
+
+/** Longest comment text returned (Facebook allows ~8.000; the rest is cut with `messageTruncated`) */
+export const COMMENT_TEXT_CHARS = 2_000
+/** Replies embedded under each top-level comment (more: list the comment's replies with commentId) */
+export const REPLIES_PER_COMMENT = 5
+
+const COMMENT_FIELDS =
+  "id,message,created_time,from{id},like_count,comment_count,parent{id},is_hidden,attachment{type,url},permalink_url"
+
+export interface PageComment {
+  commentId: string
+  parentId: string | null
+  message: string | null
+  messageTruncated: boolean
+  createdTime: string | null
+  likeCount: number | null
+  replyCount: number | null
+  isHidden: boolean | null
+  /** written by the Page itself (Meta only returns `from` for the Page's own comments, never for customers) */
+  byPage: boolean
+  attachment: { type: string | null; url: string | null } | null
+  permalinkUrl: string | null
+  /** first replies (oldest first) when embedded; undefined = not requested */
+  replies?: PageComment[]
+  /** at least one embedded reply is from the Page */
+  pageReplied?: boolean
+}
+
+export interface CommentListQuery {
+  order: "newest" | "oldest"
+  limit: number
+  cursor: string | null
+  /** embed the first REPLIES_PER_COMMENT replies of each top-level comment */
+  includeReplies: boolean
+  /** list the replies of this comment instead of the post's top-level comments */
+  commentId?: string
+}
+
+function toComment(c: Raw, pageId: string): PageComment {
+  // comment text is written by anyone: invisible / bidi characters removed, one line, capped
+  const raw = typeof c.message === "string" ? c.message : null
+  const message = raw === null ? null : sanitizeExternalLabel(raw, COMMENT_TEXT_CHARS)
+  const att = c.attachment as Raw | undefined
+  return {
+    commentId: s(c.id),
+    parentId: s((c.parent as Raw | undefined)?.id) || null,
+    message,
+    messageTruncated: raw !== null && raw.length > COMMENT_TEXT_CHARS,
+    createdTime: s(c.created_time) || null,
+    likeCount: num(c.like_count),
+    replyCount: num(c.comment_count),
+    isHidden: typeof c.is_hidden === "boolean" ? c.is_hidden : null,
+    byPage: s((c.from as Raw | undefined)?.id) === pageId,
+    attachment: att ? { type: s(att.type) || null, url: s(att.url) || null } : null,
+    permalinkUrl: s(c.permalink_url) || null,
+  }
+}
+
+/**
+ * Comments of one Page post (top level, newest or oldest first, replies embedded) or the replies of one comment.
+ * Page token only: with the user token Meta answers 190/2069032 (would look like a dead connection) or empty data.
+ * `since` is ignored by Meta (tested) - no date filter. Rows whose id is not under the post are dropped.
+ */
+export async function listMetaPostComments(
+  ctx: ConnectionContext<MetaCredentials>,
+  pageId: string,
+  postId: string,
+  q: CommentListQuery
+): Promise<{ comments: PageComment[]; totalCount: number | null; nextCursor: string | null }> {
+  if (!isPageId(pageId) || !postBelongsToPage(postId, pageId)) {
+    throw invalid(
+      "post_id phải có dạng PAGEID_POSTID của chính Trang đã chọn.",
+      "Gọi meta_list_page_posts để lấy đúng post_id."
+    )
+  }
+  // comment ids are "<post object id>_<comment id>": a comment of another post is refused
+  const objectPrefix = `${postId.split("_")[1]}_`
+  if (q.commentId !== undefined && !(q.commentId.startsWith(objectPrefix) && /^\d+_\d+$/.test(q.commentId))) {
+    throw invalid(
+      "comment_id không thuộc bài viết này.",
+      "Dùng comment_id lấy từ meta_list_post_comments của chính bài viết đó."
+    )
+  }
+  const nested =
+    q.includeReplies && q.commentId === undefined
+      ? `,comments.order(chronological).limit(${REPLIES_PER_COMMENT}){${COMMENT_FIELDS}}`
+      : ""
+  const params: GraphParams = {
+    fields: COMMENT_FIELDS + nested,
+    filter: "toplevel",
+    order: q.order === "newest" ? "reverse_chronological" : "chronological",
+    summary: "true",
+    limit: q.limit,
+  }
+  if (q.cursor) params.after = q.cursor
+  const res = await pageGet<{
+    data?: Raw[]
+    summary?: { total_count?: unknown }
+    paging?: { next?: string; cursors?: { after?: string } }
+  }>(ctx, pageId, `${q.commentId ?? postId}/comments`, params, "posts")
+  const under = (c: Raw) => s(c.id).startsWith(objectPrefix)
+  const comments = (res.data ?? []).filter(under).map((c) => {
+    const row = toComment(c, pageId)
+    if (nested) {
+      const replies = (((c.comments as Raw | undefined)?.data as Raw[] | undefined) ?? [])
+        .filter(under)
+        .map((r) => toComment(r, pageId))
+      row.replies = replies
+      row.pageReplied = replies.some((r) => r.byPage)
+    }
+    return row
+  })
+  return {
+    comments,
+    totalCount: num(res.summary?.total_count),
+    nextCursor: res.paging?.next ? (res.paging.cursors?.after ?? null) : null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Messenger inbox (read only, .claude/docs/11-meta-pages.md §13, tested live 2026-11-15)
+// ---------------------------------------------------------------------------
+
+/** Longest message / snippet text returned (Messenger allows 2.000 characters) */
+export const MESSAGE_TEXT_CHARS = 2_000
+
+export const CONVERSATION_FOLDERS = ["inbox", "page_done", "spam", "other"] as const
+export type ConversationFolder = (typeof CONVERSATION_FOLDERS)[number]
+
+export interface MaskCounts {
+  phones: number
+  emails: number
+}
+
+export interface PageConversation {
+  conversationId: string
+  /** the customer (the participant that is not the Page): real name as Meta returns it (owner decision) */
+  customer: { id: string; name: string | null } | null
+  updatedTime: string | null
+  messageCount: number | null
+  unreadCount: number | null
+  /** last message preview, contacts masked */
+  snippet: string | null
+  /** Meta Business Suite / Facebook inbox link of the thread */
+  inboxUrl: string | null
+  canReply: boolean | null
+}
+
+export interface PageMessage {
+  messageId: string
+  createdTime: string | null
+  /** true = sent by the Page (an admin / automation), false = by the customer */
+  fromPage: boolean
+  /** text, contacts masked */
+  text: string | null
+  textTruncated: boolean
+  attachments: { type: string | null; name: string | null; url: string | null }[]
+  sticker: boolean
+  shareLinks: string[]
+}
+
+/** Customer-written text → safe for the AI: invisible characters removed, contacts masked (counted), capped. */
+function maskedText(raw: unknown, counts: MaskCounts): { text: string | null; truncated: boolean } {
+  if (typeof raw !== "string" || !raw.trim()) return { text: null, truncated: false }
+  const m = maskContactInfo(raw)
+  counts.phones += m.phones
+  counts.emails += m.emails
+  return {
+    text: sanitizeExternalLabel(m.text, MESSAGE_TEXT_CHARS),
+    truncated: m.text.length > MESSAGE_TEXT_CHARS,
+  }
+}
+
+function customerOf(participants: unknown, pageId: string): { id: string; name: string | null } | null {
+  const list = ((participants as Raw | undefined)?.data as Raw[] | undefined) ?? []
+  const other = list.find((p) => s(p.id) && s(p.id) !== pageId)
+  return other ? { id: s(other.id), name: sanitizeExternalLabel(s(other.name), 120) } : null
+}
+
+function inThread(participants: unknown, pageId: string): boolean {
+  const list = ((participants as Raw | undefined)?.data as Raw[] | undefined) ?? []
+  return list.some((p) => s(p.id) === pageId)
+}
+
+/**
+ * Messenger conversations of a Page, most recently updated first (Conversations API, Page token only - the user token
+ * gets 190 / 100-33). `customerId` = the conversation with one customer (Page-scoped id). Never requests the
+ * participants' e-mail field (Meta returns a <PSID>@facebook.com alias); threads without the Page are dropped.
+ */
+export async function listMetaConversations(
+  ctx: ConnectionContext<MetaCredentials>,
+  pageId: string,
+  q: { folder: ConversationFolder; limit: number; cursor: string | null; customerId?: string }
+): Promise<{ conversations: PageConversation[]; nextCursor: string | null; masked: MaskCounts }> {
+  if (!isPageId(pageId)) throw invalid("page_id không hợp lệ.", "Gọi meta_list_pages để lấy page_id.")
+  const params: GraphParams = {
+    platform: "messenger",
+    folder: q.folder,
+    fields: "id,updated_time,message_count,unread_count,participants{id,name},link,snippet,can_reply",
+    limit: q.limit,
+  }
+  if (q.customerId) params.user_id = q.customerId
+  if (q.cursor) params.after = q.cursor
+  const res = await pageGet<{ data?: Raw[]; paging?: { next?: string; cursors?: { after?: string } } }>(
+    ctx,
+    pageId,
+    `${pageId}/conversations`,
+    params,
+    "messages"
+  )
+  const masked: MaskCounts = { phones: 0, emails: 0 }
+  const conversations = (res.data ?? [])
+    .filter((c) => /^t_[\w-]+$/.test(s(c.id)) && inThread(c.participants, pageId))
+    .map((c) => {
+      const link = s(c.link)
+      return {
+        conversationId: s(c.id),
+        customer: customerOf(c.participants, pageId),
+        updatedTime: s(c.updated_time) || null,
+        messageCount: num(c.message_count),
+        unreadCount: num(c.unread_count),
+        snippet: maskedText(c.snippet, masked).text,
+        inboxUrl: link.startsWith("/") ? `https://www.facebook.com${link}` : null,
+        canReply: typeof c.can_reply === "boolean" ? c.can_reply : null,
+      }
+    })
+  return {
+    conversations,
+    nextCursor: res.paging?.next ? (res.paging.cursors?.after ?? null) : null,
+    masked,
+  }
+}
+
+/**
+ * Messages of one conversation of the Page, newest first (edge /{conversation}/messages, Page token). The thread must
+ * include the Page (checked on the conversation node first: another Page's thread is refused).
+ */
+export async function getMetaConversationMessages(
+  ctx: ConnectionContext<MetaCredentials>,
+  pageId: string,
+  conversationId: string,
+  q: { limit: number; cursor: string | null }
+): Promise<{
+  conversation: { conversationId: string; customer: { id: string; name: string | null } | null; messageCount: number | null }
+  messages: PageMessage[]
+  nextCursor: string | null
+  masked: MaskCounts
+}> {
+  if (!isPageId(pageId)) throw invalid("page_id không hợp lệ.", "Gọi meta_list_pages để lấy page_id.")
+  if (!/^t_[\w-]{1,100}$/.test(conversationId)) {
+    throw invalid("conversation_id không hợp lệ.", "Lấy conversation_id từ meta_list_conversations.")
+  }
+  const node = await pageGet<Raw>(ctx, pageId, conversationId, { fields: "id,message_count,participants{id,name}" }, "messages")
+  if (s(node.id) !== conversationId || !inThread(node.participants, pageId)) {
+    throw new ProviderError({
+      platform: "meta",
+      code: "not_found",
+      message: `meta pages: ${conversationId} is not a conversation of ${pageId}`,
+      userMessageVi: "Không tìm thấy cuộc trò chuyện này trên Trang đã chọn.",
+      hint: "Gọi meta_list_conversations để lấy đúng conversation_id.",
+    })
+  }
+  const params: GraphParams = {
+    fields: "id,created_time,from{id},message,attachments{mime_type,name,file_url,image_data{url}},sticker,shares{link}",
+    limit: q.limit,
+  }
+  if (q.cursor) params.after = q.cursor
+  const res = await pageGet<{ data?: Raw[]; paging?: { next?: string; cursors?: { after?: string } } }>(
+    ctx,
+    pageId,
+    `${conversationId}/messages`,
+    params,
+    "messages"
+  )
+  const masked: MaskCounts = { phones: 0, emails: 0 }
+  const messages = (res.data ?? []).map((m) => {
+    const t = maskedText(m.message, masked)
+    const atts = (((m.attachments as Raw | undefined)?.data as Raw[] | undefined) ?? []).slice(0, 10).map((a) => ({
+      type: s(a.mime_type) || null,
+      // a file name may carry contacts too ("CV 0912345678.pdf")
+      name: maskedText(a.name, masked).text,
+      url: s(a.file_url) || s((a.image_data as Raw | undefined)?.url) || null,
+    }))
+    const shares = (((m.shares as Raw | undefined)?.data as Raw[] | undefined) ?? [])
+      .map((x) => s(x.link))
+      .filter((l) => /^https?:\/\//.test(l))
+      .slice(0, 5)
+    return {
+      messageId: s(m.id),
+      createdTime: s(m.created_time) || null,
+      fromPage: s((m.from as Raw | undefined)?.id) === pageId,
+      text: t.text,
+      textTruncated: t.truncated,
+      attachments: atts,
+      sticker: !!m.sticker,
+      shareLinks: shares,
+    }
+  })
+  return {
+    conversation: {
+      conversationId,
+      customer: customerOf(node.participants, pageId),
+      messageCount: num(node.message_count),
+    },
+    messages,
+    nextCursor: res.paging?.next ? (res.paging.cursors?.after ?? null) : null,
+    masked,
+  }
 }
 
 /** Button stored ON a Page post: `null` = the post has none. */

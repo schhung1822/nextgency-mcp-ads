@@ -47,7 +47,11 @@ const PAGE_TOOLS = [
   "meta_get_post_insights",
   "meta_list_page_posts",
   "meta_list_pages",
+  "meta_list_post_comments",
 ]
+const MESSAGE_TOOLS = ["meta_get_conversation", "meta_list_conversations"]
+/** the Page of a fake Page token "PT_<pageId>_secretpagetoken" */
+const pageOfToken = (token: string | undefined) => /^PT_(\d+)_/.exec(token ?? "")?.[1] ?? "?"
 
 describe.skipIf(!hasDb)(
   "Facebook Pages (real Meta adapter, faked Graph API)",
@@ -175,6 +179,77 @@ describe.skipIf(!hasDb)(
               attachments: { data: [] },
             }),
         ],
+        // Messenger inbox (shape of the live probe 2026-11-15): customer name + contact in the text
+        [
+          "GET",
+          /^\d+\/conversations$/,
+          (c) => {
+            const page = c.path.split("/")[0]!
+            return json({
+              data: [
+                {
+                  id: "t_77",
+                  updated_time: "2026-11-13T17:14:08+0000",
+                  message_count: 2,
+                  unread_count: 1,
+                  participants: { data: [{ id: "5550001", name: "Lan Nguyễn" }, { id: page, name: "Shop" }] },
+                  link: `/${page}/inbox/1/?section=messages`,
+                  snippet: "Gọi 0912345678",
+                  can_reply: true,
+                },
+              ],
+            })
+          },
+        ],
+        [
+          "GET",
+          /^t_\w+$/,
+          (c) => {
+            const page = pageOfToken(c.params.access_token)
+            // t_other: a thread of another Page
+            const owner = c.path === "t_other" ? "999999" : page
+            return json({
+              id: c.path,
+              message_count: 2,
+              participants: { data: [{ id: "5550001", name: "Lan Nguyễn" }, { id: owner, name: "Shop" }] },
+            })
+          },
+        ],
+        [
+          "GET",
+          /^t_\w+\/messages$/,
+          (c) =>
+            json({
+              data: [
+                { id: "m_2", created_time: "2026-11-13T17:14:08+0000", from: { id: "5550001" }, message: "Sđt em 0912345678, mail lan@gmail.com" },
+                { id: "m_1", created_time: "2026-11-13T17:00:00+0000", from: { id: pageOfToken(c.params.access_token) }, message: "Shop chào chị" },
+              ],
+            }),
+        ],
+        // comments of a post (shape of the live probe 2026-11-15: customers carry no `from`)
+        [
+          "GET",
+          /^\d+_\d+\/comments$/,
+          (c) => {
+            const obj = c.path.split("/")[0]!.split("_")[1]
+            const page = c.path.split("_")[0]
+            return json({
+              data: [
+                {
+                  id: `${obj}_1`,
+                  message: "Giá bao nhiêu shop?",
+                  created_time: "2026-09-30T04:00:00+0000",
+                  comment_count: 1,
+                  comments: {
+                    data: [{ id: `${obj}_2`, message: "Shop inbox bạn nhé", from: { id: page }, parent: { id: `${obj}_1` } }],
+                  },
+                },
+              ],
+              summary: { total_count: 1 },
+              paging: { cursors: { after: "AFTERC" }, next: "https://graph.facebook.com/next" },
+            })
+          },
+        ],
         [
           "GET",
           /^\d+\/insights$/,
@@ -288,7 +363,7 @@ describe.skipIf(!hasDb)(
       expect(detail.pagesSync).toMatchObject({ ok: true, count: 2 })
       expect(
         detail.pages.find((p) => p.externalId === a)!.capabilities
-      ).toEqual({ posts: true, insights: true, adsPosts: false })
+      ).toEqual({ posts: true, insights: true, adsPosts: false, comments: false, messages: false })
 
       // the token now sees C but no longer B
       const c = uniq()
@@ -411,6 +486,25 @@ describe.skipIf(!hasDb)(
       expect(r.isError, r.text).toBe(false)
       expect(r.sc.post.message).toBe("Toàn bộ nội dung")
 
+      r = await w.call(mcp.key, "meta_list_post_comments", { post_id: `${a}_555` })
+      expect(r.isError, r.text).toBe(false)
+      expect(r.sc).toMatchObject({
+        post_id: `${a}_555`,
+        order: "newest",
+        total_count: 1,
+        has_more: true,
+        comments: [{ comment_id: "555_1", by_page: false, page_replied: true, replies: [{ comment_id: "555_2", by_page: true }] }],
+      })
+      const cEdge = graph.calls.find((c) => c.path === `${a}_555/comments`)!
+      expect(cEdge.params.access_token).toBe(`PT_${a}_secretpagetoken`)
+      // the signed cursor continues the same query only
+      const next = r.sc.next_cursor as string
+      r = await w.call(mcp.key, "meta_list_post_comments", { post_id: `${a}_555`, cursor: next })
+      expect(r.isError, r.text).toBe(false)
+      expect(graph.calls.filter((c) => c.path === `${a}_555/comments`).at(-1)!.params.after).toBe("AFTERC")
+      r = await w.call(mcp.key, "meta_list_post_comments", { post_id: `${a}_555`, order: "oldest", cursor: next })
+      expect(r.isError).toBe(true)
+
       r = await w.call(mcp.key, "meta_get_post_insights", {
         post_ids: [`${a}_555`],
       })
@@ -442,6 +536,7 @@ describe.skipIf(!hasDb)(
       for (const [tool, args] of [
         ["meta_list_page_posts", { page_id: outside }],
         ["meta_get_post", { post_id: `${outside}_1` }],
+        ["meta_list_post_comments", { post_id: `${outside}_1` }],
         ["meta_get_post_insights", { post_ids: [`${outside}_1`] }],
         [
           "meta_get_page_insights",
@@ -463,6 +558,64 @@ describe.skipIf(!hasDb)(
       expect(logs.length).toBeGreaterThanOrEqual(9)
       expect(JSON.stringify(logs)).not.toContain("secretpagetoken")
       expect(JSON.stringify(logs)).not.toContain(conn.token)
+    })
+
+    it("Messenger inbox: listed only with the admin switch; Page token; contacts masked; call logs keep no names / text", async () => {
+      const actor = w.users.admin
+      const a = uniq()
+      const conn = await connectMeta(actor, [{ id: a, name: "Trang Inbox", tasks: ["MESSAGING"] }])
+      const input = mcpInput(conn, [conn.pageIds[a]!])
+      const off = await w.mcpRaw(actor, input)
+      expect((await w.tools(off.key)).names.filter((n) => MESSAGE_TOOLS.includes(n))).toEqual([])
+      let r = await w.call(off.key, "meta_list_conversations", { page_id: a })
+      expect(r.isError).toBe(true)
+
+      const on = await w.mcpRaw(actor, {
+        ...input,
+        settings: { ...(input.settings as Record<string, unknown>), metaPageMessages: true },
+      })
+      expect((await w.tools(on.key)).names.filter((n) => MESSAGE_TOOLS.includes(n)).sort()).toEqual(MESSAGE_TOOLS)
+
+      r = await w.call(on.key, "meta_list_conversations", { page_id: a })
+      expect(r.isError, r.text).toBe(false)
+      expect(r.sc.conversations).toEqual([
+        expect.objectContaining({
+          conversation_id: "t_77",
+          customer_name: "Lan Nguyễn",
+          unread_count: 1,
+          last_message: "Gọi [SĐT ẩn …678]",
+        }),
+      ])
+      expect(r.text).not.toContain("0912345678")
+      const edge = graph.calls.find((c) => c.path === `${a}/conversations`)!
+      expect(edge.params.access_token).toBe(`PT_${a}_secretpagetoken`)
+
+      r = await w.call(on.key, "meta_get_conversation", { page_id: a, conversation_id: "t_77" })
+      expect(r.isError, r.text).toBe(false)
+      expect(r.sc).toMatchObject({
+        customer_name: "Lan Nguyễn",
+        masked: { phones: 1, emails: 1 },
+        messages: [
+          { message_id: "m_2", from: "customer", text: "Sđt em [SĐT ẩn …678], mail [email ẩn]" },
+          { message_id: "m_1", from: "page", text: "Shop chào chị" },
+        ],
+      })
+      expect(r.text).not.toMatch(/0912345678|lan@gmail\.com/)
+
+      // a thread of another Page / a Page outside the scope
+      r = await w.call(on.key, "meta_get_conversation", { page_id: a, conversation_id: "t_other" })
+      expect(r.isError).toBe(true)
+      const outside = uniq()
+      r = await w.call(on.key, "meta_list_conversations", { page_id: outside })
+      expect(r.sc.code).toBe("page_not_in_scope")
+
+      // the call logs keep counts / ids only: no customer name, no message text, no contact, no token
+      await flushMcpLogs()
+      const logs = JSON.stringify(await db.select().from(mcpCallLogs).where(eq(mcpCallLogs.mcpId, on.id)))
+      expect(logs).toContain("t_77")
+      for (const secret of ["Lan Nguyễn", "0912345678", "SĐT ẩn", "Shop chào chị", "lan@gmail.com", "secretpagetoken"]) {
+        expect(logs, secret).not.toContain(secret)
+      }
     })
 
     it("scope validation: staff cannot use another staff's Pages, Pages only on Meta, picked Page must be enabled", async () => {

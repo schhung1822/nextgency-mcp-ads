@@ -169,7 +169,7 @@ export interface MetaPageDto {
   isMissing: boolean
   lastSyncedAt: string | null
   /** what the connection's user may read on the Page */
-  capabilities: { posts: boolean; insights: boolean; adsPosts: boolean }
+  capabilities: { posts: boolean; insights: boolean; adsPosts: boolean; comments: boolean; messages: boolean }
 }
 
 /** Outcome of the last Pages sync of a Meta connection. */

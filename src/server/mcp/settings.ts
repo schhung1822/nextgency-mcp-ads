@@ -2,7 +2,7 @@
 // ({ two_step_confirm, budget_change_max_pct, max_daily_budget, max_lifetime_budget, max_bid,
 //    rate_limit_per_min, write_rate_limit_per_10min, write_delay_seconds, allowed_ips, money_caps_required,
 //    telegram_tool, telegram_notify_writes, telegram_messages_per_hour, drive_public_links, drive_sheet_writeback,
-//    tiktok_gmv_max_write, protection_mode, apify_enabled, apify_run_max_usd, apify_daily_max_usd, apify_store_actors })
+//    tiktok_gmv_max_write, protection_mode, apify_enabled, apify_run_max_usd, apify_daily_max_usd, apify_store_actors, meta_page_messages })
 // and camelCase (McpSettings). Every field is validated on its own: an invalid field falls back to
 // its safe default without discarding the other (valid) fields; the two request limits are clamped to the bounds of
 // the MCP form (MCP_LIMITS) instead.
@@ -51,6 +51,7 @@ const SNAKE_TO_CAMEL: Record<string, keyof McpSettings> = {
   apify_run_max_usd: "apifyRunMaxUsd",
   apify_daily_max_usd: "apifyDailyMaxUsd",
   apify_store_actors: "apifyStoreActors",
+  meta_page_messages: "metaPageMessages",
 }
 
 /**
@@ -126,6 +127,7 @@ export function parseMcpSettings(raw: unknown): McpSettings {
     apifyRunMaxUsd: pick(fields.apifyRunMaxUsd, n.apifyRunMaxUsd, d.apifyRunMaxUsd),
     apifyDailyMaxUsd: pick(fields.apifyDailyMaxUsd, n.apifyDailyMaxUsd, d.apifyDailyMaxUsd),
     apifyStoreActors: n.apifyStoreActors === true,
+    metaPageMessages: n.metaPageMessages === true,
   }
 }
 

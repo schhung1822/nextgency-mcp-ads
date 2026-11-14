@@ -306,3 +306,11 @@ Nguồn: khách không chọn được "Mẫu đã lưu" khi AI tạo quảng c�
 - [x] Sửa: ENGAGEMENT tự đặt destination ON_POST / ON_VIDEO / ON_PAGE / WEBSITE (trước đó Meta luôn từ chối); LEADS + Messenger từ chối sớm; map lỗi 1885272 / 1885760
 - [ ] Chưa làm: quảng cáo đặt trước cho live sắp diễn ra, live Instagram, sao chép chiến dịch live, nhóm đa đích Messenger + Instagram; `meta_update_ad_creative` trên bài live chưa thử thật (video live đã bị xoá)
 - [x] Tài liệu: `providers/meta.md` §5 ("Mẫu lời chào đã lưu", "Quảng cáo video trực tiếp"), 04, `release-notes/v1.2.0.md`; script dò `scripts/dev-probe-meta-messaging-live.ts`
+
+## Trang Facebook: bình luận + tin nhắn Messenger (2026-11-15), v1.2.1
+Nguồn: chủ dự án muốn AI lấy bình luận bài viết và đọc tin nhắn Trang. Quyết định: chỉ đọc; bình luận lọc mới nhất / cũ nhất, giữ nguyên nội dung; tin nhắn bật riêng từng MCP (chỉ admin, mặc định tắt), hiện tên khách, tự che SĐT / email trước khi gửi AI. Kiểm chứng trên Trang thật SiliconZ.
+- [x] `meta_list_post_comments` (page token, MODERATE, 5 trả lời lồng + `page_replied`) — 11-meta-pages.md §12
+- [x] `meta_list_conversations` / `meta_get_conversation` sau công tắc `meta_page_messages` (admin-only, xác thực lại, nhân viên không nới Trang), `src/lib/pii-mask.ts`, log chỉ lưu số lượng — §13
+- [x] Khả năng Trang `comments` / `messages` (chip "Bình luận" / "Tin nhắn"), hướng dẫn token thêm `pages_messaging`
+- [ ] Chưa làm: Instagram Direct (cần `instagram_manage_messages` + doanh nghiệp xác minh), trả lời / ẩn bình luận, gửi tin nhắn; giao diện công tắc / chip chưa chụp màn hình
+- [x] Tài liệu: 01, 03, 04, 05, 11 §12–13, `providers/meta.md` §10.4b–c, `release-notes/v1.2.1.md`

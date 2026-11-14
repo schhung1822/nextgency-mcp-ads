@@ -169,3 +169,14 @@ describe("parseMcpSettings - request limits share the form bounds (v1.1.6 B8)", 
     }
   })
 })
+
+describe("parseMcpSettings - Messenger inbox switch (11-meta-pages.md §13)", () => {
+  it("off by default; on only for an explicit true (fail closed), snake_case and camelCase", () => {
+    expect(parseMcpSettings(null).metaPageMessages).toBe(false)
+    expect(parseMcpSettings({ meta_page_messages: true }).metaPageMessages).toBe(true)
+    expect(parseMcpSettings({ metaPageMessages: true }).metaPageMessages).toBe(true)
+    for (const garbage of ["true", 1, {}, [], null]) {
+      expect(parseMcpSettings({ meta_page_messages: garbage }).metaPageMessages).toBe(false)
+    }
+  })
+})

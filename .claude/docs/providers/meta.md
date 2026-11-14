@@ -439,6 +439,13 @@ Create (POST) timeout → **không retry mù**; kiểm tra bằng list theo tên
 - **Không dùng** (deprecated từ v3.3): `type`→`attachments{media_type}`, `link`→`attachments{unshimmed_url}`, `object_id`→`attachments{target{id}}`, `caption`/`name`→`attachments{title}`, `description`, `source`→`attachments{media{source}}`; `picture` (bài link) [H].
 - Reaction enum: LIKE, LOVE, WOW, HAHA, SAD, ANGRY, CARE… [H].
 
+### 10.4b Bình luận bài viết (test thật 2026-11-15, chi tiết: `11-meta-pages.md` §12)
+- `GET /{post_id}/comments?filter=toplevel&order=reverse_chronological|chronological&summary=true` + `fields=id,message,created_time,from{id},like_count,comment_count,parent{id},is_hidden,attachment{type,url},permalink_url[,comments.order(chronological).limit(5){…}]` — **chỉ page token** (user token → `190/2069032`), via cần task MODERATE (thiếu → có thể trả rỗng).
+- Khách bình luận: **không có `from`**; chỉ bình luận của Trang có `from.id`. `since` bị bỏ qua. id bình luận = `<id số của bài>_<id>`. `total_count` có thể lớn hơn số trả về.
+
+### 10.4c Tin nhắn Messenger (test thật 2026-11-15, chi tiết: `11-meta-pages.md` §13)
+- `GET /{page_id}/conversations?platform=messenger&folder=…[&user_id=]`, `GET /{t_id}`, `GET /{t_id}/messages` (phân trang) — **chỉ page token** + quyền `pages_messaging`, via task MESSAGING / MODERATE. `participants` có tên thật + bí danh email `<PSID>@facebook.com` (không xin). Instagram (`platform=instagram`) → 230 khi thiếu `instagram_manage_messages`.
+
 ### 10.5 Insights (page token + `read_insights` + `pages_read_engagement` + task ANALYZE)
 
 - `GET /{page_id}/insights?metric=a,b&period=day&since=YYYY-MM-DD&until=YYYY-MM-DD` · `GET /{post_id}/insights?metric=…` (post: hầu hết **lifetime**).

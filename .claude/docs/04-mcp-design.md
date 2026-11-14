@@ -267,6 +267,9 @@ Chỉ đăng ký khi MCP có quyền `read` cho `meta` **và** có phạm vi Tra
 | `meta_list_pages` | read | Trang trong phạm vi + khả năng (bài viết / chỉ số / bài QC) |
 | `meta_list_page_posts` | read | `source` published/feed/ads/scheduled, lọc ngày, phân trang |
 | `meta_get_post` | read | chi tiết bài, attachments, số tương tác |
+| `meta_list_post_comments` | read | **v1.2.1** — bình luận của 1 bài viết Trang (chỉ đọc): `post_id`, `order` newest/oldest, `comment_id?` (trả lời của 1 bình luận), `include_replies` (5 trả lời đầu + `page_replied`), `limit` ≤100, `cursor` ký. Page token; Meta không trả tên người bình luận. 11-meta-pages.md §12 |
+| `meta_list_conversations` | read | **v1.2.1**, chỉ khi MCP bật `meta_page_messages` (admin) — hội thoại Messenger của Trang: `page_id`, `folder`, `customer_id?`, `limit` ≤50, cursor ký; tên khách thật, đoạn trích đã che SĐT/email; log chỉ lưu số lượng. 11-meta-pages.md §13 |
+| `meta_get_conversation` | read | **v1.2.1**, cùng công tắc — tin nhắn của 1 hội thoại (mới nhất trước): `page_id`, `conversation_id`, `limit` ≤100, cursor ký; SĐT còn 3 số cuối, email che hết; log chỉ lưu số lượng |
 | `meta_get_post_insights` | read | metric lifetime trong whitelist (`providers/meta.md` §10.5) |
 | `meta_get_page_insights` | read | theo ngày/tuần/28 ngày, tự chia khúc 90 ngày, ngày theo giờ Thái Bình Dương [L] |
 Tổng tối đa ≈ 42 tool (4 nền tảng + Trang Facebook + Telegram; v1.1.7 thêm 5 tool Google Ads); thêm Drive và Apify (5, hoặc 8 khi bật Actor ngoài danh mục) khi được bật.

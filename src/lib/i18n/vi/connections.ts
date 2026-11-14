@@ -243,6 +243,8 @@ export const connections = {
     abilityPosts: "Bài viết",
     abilityInsights: "Chỉ số",
     abilityAds: "Bài QC",
+    abilityComments: "Bình luận",
+    abilityMessages: "Tin nhắn",
     listOnly: "Chỉ liệt kê",
     listOnlyHelp:
       "Via không có vai trò trên Trang này nên không đọc được bài viết/chỉ số.",

@@ -130,7 +130,7 @@ export const metaGuide: ConnectionGuide = {
     {
       title: "Tạo token trong Graph API Explorer",
       detail:
-        "Mở Graph API Explorer → chọn đúng app ở mục Meta App → User or Page: chọn “User Token” → Add permissions: ads_management, ads_read, pages_show_list, pages_read_engagement (tuỳ chọn: business_management, pages_manage_ads; muốn đọc bài viết & chỉ số Trang thêm read_insights, pages_read_user_content - nếu không thấy các quyền này, thêm use case “Manage everything on your Page” cho app) → Generate Access Token → đồng ý cấp quyền cho mọi TKQC/Trang cần dùng.",
+        "Mở Graph API Explorer → chọn đúng app ở mục Meta App → User or Page: chọn “User Token” → Add permissions: ads_management, ads_read, pages_show_list, pages_read_engagement (tuỳ chọn: business_management, pages_manage_ads; muốn đọc bài viết & chỉ số Trang thêm read_insights, pages_read_user_content; muốn AI đọc tin nhắn Messenger của Trang thêm pages_messaging - nếu không thấy các quyền này, thêm use case “Manage everything on your Page” cho app) → Generate Access Token → đồng ý cấp quyền cho mọi TKQC/Trang cần dùng.",
       link: { label: "Graph API Explorer", url: "https://developers.facebook.com/tools/explorer/" },
     },
     {

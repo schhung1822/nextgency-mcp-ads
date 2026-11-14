@@ -127,6 +127,7 @@ export const DEFAULT_SETTINGS: McpSettingsInput = {
   apifyRunMaxUsd: 1,
   apifyDailyMaxUsd: 10,
   apifyStoreActors: false,
+  metaPageMessages: false,
 }
 
 export class World {

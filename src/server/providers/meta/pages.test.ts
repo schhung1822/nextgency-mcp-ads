@@ -6,12 +6,15 @@ import { __resetBuckets } from "../rate-limit"
 import { appSecretProof, mapGraphError } from "./client"
 import {
   __clearPageTokenCache,
+  getMetaConversationMessages,
   getMetaPageInsights,
   getMetaPagePost,
   getMetaPostInsights,
   insightDayFromEndTime,
+  listMetaConversations,
   listMetaPagePosts,
   listMetaPages,
+  listMetaPostComments,
   normalizePageTasks,
   PAGE_TOKEN_TTL_MS,
   pageCapabilities,
@@ -66,16 +69,22 @@ describe("helpers", () => {
       posts: false,
       insights: true,
       adsPosts: false,
+      comments: false,
+      messages: false,
     })
     expect(pageCapabilities(["MODERATE", "ADVERTISE"])).toEqual({
       posts: true,
       insights: false,
       adsPosts: true,
+      comments: true,
+      messages: true,
     })
     expect(pageCapabilities([])).toEqual({
       posts: false,
       insights: false,
       adsPosts: false,
+      comments: false,
+      messages: false,
     })
   })
 
@@ -864,5 +873,237 @@ describe("Page permission errors name the Page permissions, not ads_management (
       userMessageVi:
         "Via của kết nối không có vai trò trên Trang này nên không đọc được bài viết/chỉ số.",
     })
+  })
+})
+
+// Response shapes copied from the live probe of 2026-11-15 (scripts/dev-probe-meta-comments.ts), texts anonymised:
+// customers' comments carry NO `from`; the Page's own replies carry from.id = the Page.
+describe("listMetaPostComments (shape read from Meta 2026-11-15)", () => {
+  const POST = `${PAGE}_1380309533`
+  const OBJ = "1380309533"
+  const customer = (id: string, extra: Record<string, unknown> = {}) => ({
+    id: `${OBJ}_${id}`,
+    message: "Giá sao shop",
+    created_time: "2026-08-08T05:32:57+0000",
+    like_count: 0,
+    comment_count: 1,
+    is_hidden: false,
+    permalink_url: `https://www.facebook.com/reel/857/?comment_id=${id}`,
+    ...extra,
+  })
+  const pageReply = (id: string, parent: string) => ({
+    id: `${OBJ}_${id}`,
+    message: "Bạn kiểm tra inbox của shop nhé.",
+    created_time: "2026-08-08T05:40:00+0000",
+    from: { id: PAGE },
+    like_count: 0,
+    comment_count: 0,
+    parent: { id: `${OBJ}_${parent}` },
+    is_hidden: false,
+  })
+
+  it("top-level comments with embedded replies: Page token, toplevel filter, order mapped, page_replied computed", async () => {
+    const m = mockGraph([
+      tokenRoute(),
+      [
+        "GET",
+        `${POST}/comments`,
+        () =>
+          json({
+            data: [
+              { ...customer("1"), comments: { data: [pageReply("11", "1")] } },
+              { ...customer("2", { comment_count: 0, message: "Ship‮ Hà Nội?​", attachment: { type: "photo", url: "https://fb.example/p" } }) },
+              // a row of another object is dropped (defence in depth)
+              { ...customer("3"), id: "999_3" },
+            ],
+            summary: { order: "reverse_chronological", total_count: 193, can_comment: true },
+            paging: { cursors: { after: "AFTER1" }, next: "https://graph.facebook.com/next" },
+          }),
+      ],
+    ])
+    const res = await listMetaPostComments(ctx(), PAGE, POST, { order: "newest", limit: 25, cursor: null, includeReplies: true })
+    const call = m.calls.find((c) => c.path === `${POST}/comments`)!
+    expect(call.params.access_token).toBe(PAGE_TOKEN)
+    expect(call.params.appsecret_proof).toBe(appSecretProof(PAGE_TOKEN, SECRET))
+    expect(call.params).toMatchObject({ filter: "toplevel", order: "reverse_chronological", summary: "true", limit: "25" })
+    expect(call.params.fields).toMatch(/,comments\.order\(chronological\)\.limit\(5\)\{/)
+    expect(call.params.fields).not.toMatch(/from\{id,name\}/)
+    expect(res.totalCount).toBe(193)
+    expect(res.nextCursor).toBe("AFTER1")
+    expect(res.comments).toHaveLength(2)
+    expect(res.comments[0]).toMatchObject({
+      commentId: `${OBJ}_1`,
+      byPage: false,
+      replyCount: 1,
+      pageReplied: true,
+      replies: [expect.objectContaining({ commentId: `${OBJ}_11`, parentId: `${OBJ}_1`, byPage: true })],
+    })
+    // invisible / bidi characters removed from text written by anyone
+    expect(res.comments[1]).toMatchObject({
+      message: "Ship Hà Nội?",
+      messageTruncated: false,
+      attachment: { type: "photo", url: "https://fb.example/p" },
+      replies: [],
+      pageReplied: false,
+    })
+  })
+
+  it("oldest first, no replies, cursor forwarded, long text cut with a flag", async () => {
+    const long = "a".repeat(2_100)
+    const m = mockGraph([
+      tokenRoute(),
+      ["GET", `${POST}/comments`, () => json({ data: [customer("1", { message: long })], summary: { total_count: 1 } })],
+    ])
+    const res = await listMetaPostComments(ctx(), PAGE, POST, { order: "oldest", limit: 10, cursor: "C1", includeReplies: false })
+    const call = m.calls.find((c) => c.path === `${POST}/comments`)!
+    expect(call.params).toMatchObject({ order: "chronological", after: "C1" })
+    expect(call.params.fields).not.toMatch(/comments\./)
+    expect(res.comments[0]!.messageTruncated).toBe(true)
+    expect(res.comments[0]!.message!.length).toBeLessThanOrEqual(2_000)
+    expect(res.comments[0]!.replies).toBeUndefined()
+    expect(res.nextCursor).toBeNull()
+  })
+
+  it("replies of one comment: the comment's edge, only comments of this post; others refused before any call", async () => {
+    const m = mockGraph([tokenRoute(), ["GET", `${OBJ}_1/comments`, () => json({ data: [pageReply("11", "1")] })]])
+    const res = await listMetaPostComments(ctx(), PAGE, POST, { order: "oldest", limit: 25, cursor: null, includeReplies: true, commentId: `${OBJ}_1` })
+    expect(res.comments).toEqual([expect.objectContaining({ commentId: `${OBJ}_11`, byPage: true })])
+    expect(m.calls.find((c) => c.path === `${OBJ}_1/comments`)!.params.fields).not.toMatch(/comments\./)
+    const m2 = mockGraph([tokenRoute()])
+    await expect(
+      listMetaPostComments(ctx(), PAGE, POST, { order: "newest", limit: 5, cursor: null, includeReplies: false, commentId: "777_1" })
+    ).rejects.toMatchObject({ code: "invalid_request" })
+    await expect(
+      listMetaPostComments(ctx(), PAGE, "999_1380309533", { order: "newest", limit: 5, cursor: null, includeReplies: false })
+    ).rejects.toMatchObject({ code: "invalid_request" })
+    expect(m2.calls).toHaveLength(0)
+  })
+
+  it("never uses the user token (Meta answers 190/2069032 to it)", async () => {
+    const m = mockGraph([tokenRoute(), ["GET", `${POST}/comments`, () => json({ data: [] })]])
+    await listMetaPostComments(ctx(), PAGE, POST, { order: "newest", limit: 5, cursor: null, includeReplies: true })
+    expect(m.calls.filter((c) => c.path.endsWith("/comments")).every((c) => c.params.access_token === PAGE_TOKEN)).toBe(true)
+    expect(m.calls.filter((c) => c.path.endsWith("/comments")).some((c) => c.params.access_token === TEST_TOKEN)).toBe(false)
+  })
+})
+
+// Response shapes copied from the live probe of 2026-11-15 (scripts/dev-probe-meta-conversations.ts), names / texts /
+// ids anonymised. Meta returns participants' names and a <PSID>@facebook.com "email" (never requested).
+describe("Messenger inbox: listMetaConversations / getMetaConversationMessages (shape read from Meta 2026-11-15)", () => {
+  const CUSTOMER = "24542683012087421"
+  const participants = (pageId = PAGE) => ({ data: [{ id: CUSTOMER, name: "Lan Nguyễn" }, { id: pageId, name: "Shop" }] })
+
+  it("lists conversations with the Page token: customer name kept, snippet contacts masked, threads of other Pages dropped", async () => {
+    const m = mockGraph([
+      tokenRoute(),
+      [
+        "GET",
+        `${PAGE}/conversations`,
+        () =>
+          json({
+            data: [
+              {
+                id: "t_2839910566208796",
+                updated_time: "2026-11-13T17:14:08+0000",
+                message_count: 4,
+                unread_count: 2,
+                participants: participants(),
+                link: `/${PAGE}/inbox/2309775476466396/?section=messages`,
+                snippet: "Sđt em 0912 345 678, mail lan@gmail.com",
+                can_reply: true,
+              },
+              // a thread without this Page (defence in depth) and a malformed id are dropped
+              { id: "t_1", participants: participants("999") },
+              { id: "x_2", participants: participants() },
+            ],
+            paging: { cursors: { after: "AFT" }, next: "https://graph.facebook.com/next" },
+          }),
+      ],
+    ])
+    const res = await listMetaConversations(ctx(), PAGE, { folder: "inbox", limit: 20, cursor: "C0", customerId: CUSTOMER })
+    const call = m.calls.find((c) => c.path === `${PAGE}/conversations`)!
+    expect(call.params.access_token).toBe(PAGE_TOKEN)
+    expect(call.params.appsecret_proof).toBe(appSecretProof(PAGE_TOKEN, SECRET))
+    expect(call.params).toMatchObject({ platform: "messenger", folder: "inbox", limit: "20", after: "C0", user_id: CUSTOMER })
+    // the participants' e-mail alias is never requested
+    expect(call.params.fields).toContain("participants{id,name}")
+    expect(call.params.fields).not.toMatch(/email/)
+    expect(res.nextCursor).toBe("AFT")
+    expect(res.conversations).toEqual([
+      {
+        conversationId: "t_2839910566208796",
+        customer: { id: CUSTOMER, name: "Lan Nguyễn" },
+        updatedTime: "2026-11-13T17:14:08+0000",
+        messageCount: 4,
+        unreadCount: 2,
+        snippet: "Sđt em [SĐT ẩn …678], mail [email ẩn]",
+        inboxUrl: `https://www.facebook.com/${PAGE}/inbox/2309775476466396/?section=messages`,
+        canReply: true,
+      },
+    ])
+    expect(res.masked).toEqual({ phones: 1, emails: 1 })
+  })
+
+  it("reads the messages of a thread of THIS Page: from page / customer, contacts masked in text and file names", async () => {
+    const m = mockGraph([
+      tokenRoute(),
+      ["GET", "t_123", () => json({ id: "t_123", message_count: 3, participants: participants() })],
+      [
+        "GET",
+        "t_123/messages",
+        () =>
+          json({
+            data: [
+              { id: "m_3", created_time: "2026-11-13T17:14:08+0000", from: { id: CUSTOMER }, message: "Gọi em 0987654321 nhé‮" },
+              { id: "m_2", created_time: "2026-11-13T17:10:00+0000", from: { id: PAGE }, message: "Dạ shop gửi bảng giá ạ" },
+              {
+                id: "m_1",
+                created_time: "2026-11-13T17:00:00+0000",
+                from: { id: CUSTOMER },
+                attachments: { data: [{ mime_type: "image/jpeg", name: "CV 0912345678.jpg", image_data: { url: "https://cdn.example/i.jpg" } }] },
+                shares: { data: [{ link: "https://shop.example/p/1" }, { link: "javascript:alert(1)" }] },
+              },
+            ],
+            paging: { cursors: { after: "M2" }, next: "https://graph.facebook.com/next" },
+          }),
+      ],
+    ])
+    const res = await getMetaConversationMessages(ctx(), PAGE, "t_123", { limit: 30, cursor: null })
+    expect(m.calls.filter((c) => c.path.startsWith("t_123")).every((c) => c.params.access_token === PAGE_TOKEN)).toBe(true)
+    expect(res.conversation).toEqual({ conversationId: "t_123", customer: { id: CUSTOMER, name: "Lan Nguyễn" }, messageCount: 3 })
+    expect(res.messages.map((x) => [x.messageId, x.fromPage, x.text])).toEqual([
+      ["m_3", false, "Gọi em [SĐT ẩn …321] nhé"],
+      ["m_2", true, "Dạ shop gửi bảng giá ạ"],
+      ["m_1", false, null],
+    ])
+    expect(res.messages[2]).toMatchObject({
+      attachments: [{ type: "image/jpeg", name: "CV [SĐT ẩn …678].jpg", url: "https://cdn.example/i.jpg" }],
+      shareLinks: ["https://shop.example/p/1"],
+    })
+    expect(res.masked).toEqual({ phones: 2, emails: 0 })
+    expect(res.nextCursor).toBe("M2")
+  })
+
+  it("a thread without this Page is not found, and nothing of it is read; bad ids never reach Meta", async () => {
+    const m = mockGraph([tokenRoute(), ["GET", "t_9", () => json({ id: "t_9", participants: participants("777") })]])
+    await expect(getMetaConversationMessages(ctx(), PAGE, "t_9", { limit: 5, cursor: null })).rejects.toMatchObject({ code: "not_found" })
+    expect(m.calls.some((c) => c.path === "t_9/messages")).toBe(false)
+    const m2 = mockGraph([tokenRoute()])
+    await expect(getMetaConversationMessages(ctx(), PAGE, "../me", { limit: 5, cursor: null })).rejects.toMatchObject({ code: "invalid_request" })
+    expect(m2.calls).toHaveLength(0)
+  })
+
+  it("a Graph permission error is re-worded for the inbox (pages_messaging), not the ads hint", async () => {
+    mockGraph([tokenRoute(), ["GET", `${PAGE}/conversations`, () => graphError(200, undefined, { message: "Requires pages_messaging permission" }, 403)]])
+    await expect(listMetaConversations(ctx(), PAGE, { folder: "inbox", limit: 5, cursor: null })).rejects.toMatchObject({
+      code: "permission_denied",
+      userMessageVi: expect.stringMatching(/pages_messaging/),
+    })
+  })
+
+  it("capabilities: messages = MESSAGING or MODERATE", () => {
+    expect(pageCapabilities(["MESSAGING"]).messages).toBe(true)
+    expect(pageCapabilities(["MODERATE"]).messages).toBe(true)
+    expect(pageCapabilities(["ANALYZE", "ADVERTISE"]).messages).toBe(false)
   })
 })

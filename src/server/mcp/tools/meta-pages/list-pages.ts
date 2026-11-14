@@ -29,6 +29,8 @@ const output = z.object({
         posts: z.boolean(),
         insights: z.boolean(),
         ads_posts: z.boolean(),
+        comments: z.boolean(),
+        messages: z.boolean(),
       }),
       connection_status: z.string(),
     })
@@ -47,7 +49,7 @@ export function register(
     name: NAME,
     title: "Danh sách Trang Facebook",
     description:
-      "Dùng khi người dùng hỏi về Trang Facebook (fanpage), bài viết hoặc chỉ số của Trang: liệt kê các Trang mà MCP này được phép đọc - page_id, tên, danh mục, số người theo dõi, Business Manager chứa Trang và khả năng đọc (capabilities: posts = bài viết, insights = chỉ số, ads_posts = bài quảng cáo). Gọi TRƯỚC các tool meta_list_page_posts / meta_get_post / meta_get_post_insights / meta_get_page_insights để lấy đúng page_id. Lọc theo tên bằng q; nhiều Trang thì dùng next_cursor.",
+      "Dùng khi người dùng hỏi về Trang Facebook (fanpage), bài viết hoặc chỉ số của Trang: liệt kê các Trang mà MCP này được phép đọc - page_id, tên, danh mục, số người theo dõi, Business Manager chứa Trang và khả năng đọc (capabilities: posts = bài viết, insights = chỉ số, ads_posts = bài quảng cáo, comments = bình luận, messages = tin nhắn Messenger nếu MCP được bật đọc tin nhắn). Gọi TRƯỚC các tool meta_list_page_posts / meta_get_post / meta_list_post_comments / meta_get_post_insights / meta_get_page_insights để lấy đúng page_id. Lọc theo tên bằng q; nhiều Trang thì dùng next_cursor.",
     kind: "read",
     annotations: READ_ANNOTATIONS,
     input: z.object({
@@ -116,6 +118,8 @@ export function register(
             posts: caps.posts,
             insights: caps.insights,
             ads_posts: caps.adsPosts,
+            comments: caps.comments,
+            messages: caps.messages,
           },
           connection_status: statusOf.get(p.connectionId) ?? "unknown",
         }

@@ -358,6 +358,33 @@ export const mcp = {
   },
 
   /** Apify block of the MCP form + overview (16-apify.md §8) */
+  /** Meta card of step "Chọn quyền": admin-only switch settings.metaPageMessages (11-meta-pages.md §13) */
+  metaMessages: {
+    groupLabel: "Tin nhắn Trang Facebook",
+    /** overview "Phạm vi MCP" summary row */
+    summaryLabel: "Đọc tin nhắn Trang",
+    summaryOn: "Bật (quản trị viên cho phép)",
+    summaryOff: "Tắt",
+    switchLabel: "Cho phép AI đọc tin nhắn Messenger của Trang",
+    adminBadge: "Chỉ quản trị viên bật",
+    helpOff:
+      "Đang tắt: AI chỉ đọc bài viết, bình luận và chỉ số của các Trang đã chọn, không đọc hộp thư.",
+    helpOn:
+      "Đang bật: AI đọc được danh sách cuộc trò chuyện và nội dung tin nhắn Messenger (chỉ đọc, không gửi) của **mọi Trang đã chọn** ở bước trước - kể cả tên khách. Số điện thoại và email trong tin được tự động che trước khi gửi cho AI; nhật ký chỉ lưu số lượng, không lưu nội dung.",
+    staffLocked: "Chỉ quản trị viên được bật. Nhờ quản trị viên bật nếu MCP này cần đọc tin nhắn.",
+    staffCanTurnOff:
+      "Quản trị viên đã bật cho MCP này: bạn có thể tắt, nhưng thêm Trang (hoặc chọn \"Tất cả Trang\") khi đang bật cần quản trị viên lưu.",
+    noPages: "Chọn ít nhất 1 Trang Facebook ở bước \"Nền tảng & tài khoản\" để dùng được.",
+    tokenNote:
+      "Token của kết nối Meta cần quyền pages_messaging và via cần quyền Nhắn tin / Kiểm duyệt trên Trang (chip \"Tin nhắn\" ở thẻ Trang của kết nối).",
+    reauth: {
+      title: "Xác minh để bật đọc tin nhắn",
+      description:
+        "Cho AI đọc tin nhắn của khách là thay đổi nhạy cảm (dữ liệu cá nhân). Nhập lại mật khẩu (và mã 2FA nếu có) để lưu - thao tác này được ghi vào nhật ký.",
+      submit: "Xác minh và lưu",
+      submitting: "Đang lưu…",
+    },
+  },
   apify: {
     title: "Apify",
     /** one line under the title of the Apify platform card (step "Nền tảng & tài khoản") */

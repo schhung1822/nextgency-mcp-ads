@@ -68,7 +68,7 @@ function SourceBadge({ page }: { page: MetaPageDto }) {
 
 function Abilities({ page }: { page: MetaPageDto }) {
   const c = page.capabilities
-  if (!c.posts && !c.insights && !c.adsPosts)
+  if (!c.posts && !c.insights && !c.adsPosts && !c.comments && !c.messages)
     return (
       <Badge
         variant="secondary"
@@ -93,6 +93,16 @@ function Abilities({ page }: { page: MetaPageDto }) {
       {c.adsPosts && (
         <Badge variant="secondary" className="rounded-full text-[11px]">
           {t.abilityAds}
+        </Badge>
+      )}
+      {c.comments && (
+        <Badge variant="secondary" className="rounded-full text-[11px]">
+          {t.abilityComments}
+        </Badge>
+      )}
+      {c.messages && (
+        <Badge variant="secondary" className="rounded-full text-[11px]">
+          {t.abilityMessages}
         </Badge>
       )}
     </span>

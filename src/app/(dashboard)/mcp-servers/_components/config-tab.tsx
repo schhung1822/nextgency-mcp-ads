@@ -59,6 +59,7 @@ import {
   type FormUpdater,
 } from "./mcp-form-sections"
 import { mapServerErrors } from "./mcp-wizard"
+import { META_MESSAGES_SWITCH_ID, MetaMessagesBlock } from "./meta-messages-section"
 import { ScopeIssuesAlert } from "./scope-issues"
 import {
   TelegramChannelsSection,
@@ -324,7 +325,8 @@ export function ConfigTab({
       setErrors(mapped)
       toast.error(r.error)
       const apifyField = apifyFieldToFocus(mapped)
-      if (mapped.tiktokGmvMaxWrite) requestAnimationFrame(focusGmvMaxSwitch)
+      if (mapped.metaPageMessages) requestAnimationFrame(() => focusById(META_MESSAGES_SWITCH_ID))
+      else if (mapped.tiktokGmvMaxWrite) requestAnimationFrame(focusGmvMaxSwitch)
       else if (mapped.protectionMode)
         requestAnimationFrame(focusProtectionModeSwitch)
       else if (apifyField) requestAnimationFrame(() => focusById(apifyField))
@@ -427,6 +429,15 @@ export function ConfigTab({
                 ) : undefined
               }
               platformExtra={{
+                meta: (
+                  <MetaMessagesBlock
+                    values={values}
+                    update={update}
+                    isAdmin={gmvMax.isAdmin}
+                    savedOn={initial.metaPageMessages}
+                    error={errors.metaPageMessages}
+                  />
+                ),
                 tiktok: (
                   <TiktokGmvMaxBlock
                     values={values}
@@ -473,12 +484,18 @@ export function ConfigTab({
           idPrefix="mcp-config-reauth"
           hint={null}
           texts={
-            // the Apify "Actor ngoài danh mục" switch turned on without the GMV Max one: Apify wording
-            values.apifyStoreActors &&
-            !initial.apifyStoreActors &&
-            !(values.tiktokGmvMaxWrite && !initial.tiktokGmvMaxWrite)
-              ? t.apify.reauth
-              : tgm.reauth
+            // only the "đọc tin nhắn Trang" switch turned on: its own wording (personal data, no spending)
+            values.metaPageMessages &&
+            !initial.metaPageMessages &&
+            !(values.tiktokGmvMaxWrite && !initial.tiktokGmvMaxWrite) &&
+            !(values.apifyStoreActors && !initial.apifyStoreActors)
+              ? t.metaMessages.reauth
+              : // the Apify "Actor ngoài danh mục" switch turned on without the GMV Max one: Apify wording
+                values.apifyStoreActors &&
+                  !initial.apifyStoreActors &&
+                  !(values.tiktokGmvMaxWrite && !initial.tiktokGmvMaxWrite)
+                ? t.apify.reauth
+                : tgm.reauth
           }
           onSubmit={(fields) =>
             updateAction({ ...reauthPayload, reauth: fields })
@@ -496,7 +513,9 @@ export function ConfigTab({
             setErrors(mapped.errors)
             toast.error(r.error)
             const apifyField = apifyFieldToFocus(mapped.errors)
-            if (mapped.errors.tiktokGmvMaxWrite)
+            if (mapped.errors.metaPageMessages)
+              requestAnimationFrame(() => focusById(META_MESSAGES_SWITCH_ID))
+            else if (mapped.errors.tiktokGmvMaxWrite)
               requestAnimationFrame(focusGmvMaxSwitch)
             else if (mapped.errors.protectionMode)
               requestAnimationFrame(focusProtectionModeSwitch)

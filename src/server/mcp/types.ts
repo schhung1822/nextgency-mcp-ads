@@ -104,6 +104,12 @@ export interface McpSettings {
    * only an admin can turn it on (like tiktokGmvMaxWrite). Fail closed: only an explicit true enables it.
    */
   apifyStoreActors: boolean
+  /**
+   * Facebook Pages: meta_list_conversations / meta_get_conversation (Messenger inbox of the Pages in scope, read only,
+   * contacts masked - 11-meta-pages.md §13). Default OFF; only an admin can turn it on. Fail closed: only an explicit
+   * true enables it.
+   */
+  metaPageMessages: boolean
 }
 
 /** Bounds of McpSettings.telegramMessagesPerHour */
@@ -141,6 +147,7 @@ export const DEFAULT_MCP_SETTINGS: McpSettings = {
   apifyRunMaxUsd: 1,
   apifyDailyMaxUsd: 10,
   apifyStoreActors: false,
+  metaPageMessages: false,
 }
 
 /** An ad account the MCP may act on (already filtered: enabled, connection active, owner rules applied). */

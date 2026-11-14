@@ -43,6 +43,7 @@ Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **t
 | Kho token Apify của một MCP | token công ty + token cá nhân của **chủ MCP** (sửa MCP của nhân viên: token cá nhân của nhân viên đó, không phải của admin) | token công ty + token cá nhân của mình |
 | Thẻ nền tảng **Apify** của MCP (bật / tắt; MCP có thể chỉ dùng Apify — D9) + trần Apify mỗi lần chạy / mỗi ngày | ✔ | ✔ MCP của mình (MCP có công tắc GMV Max do admin bật: không được nới trần Apify) |
 | Công tắc "Cho phép Actor ngoài danh mục" (`apify_store_actors`) | ✔ **chỉ admin bật** (mọi MCP; bật khi sửa cần xác thực lại) | ✘ không bật được; chỉ giữ nguyên hoặc **tắt** |
+| Công tắc "Cho phép AI đọc tin nhắn Messenger của Trang" (`meta_page_messages`, 2026-11-15) | ✔ **chỉ admin bật** (bật khi sửa cần xác thực lại) | ✘ không bật được; chỉ giữ nguyên hoặc **tắt**; khi đang bật không thêm Trang được |
 | MCP: tạo/sửa/tắt/xoá/xoay key | ✔ tất cả (thấy "Người tạo") | ✔ **chỉ của mình** |
 | Bật quyền thay đổi GMV Max cho MCP (`tiktok_gmv_max_write`) | ✔ **chỉ admin** (mọi MCP, kể cả MCP của nhân viên) | ✘ không bật được (công tắc khoá "Chỉ quản trị viên bật được - nhờ quản trị viên mở MCP này để bật"); chỉ giữ nguyên hoặc **tắt** - server từ chối "Chỉ quản trị viên được bật quyền thay đổi GMV Max." |
 | Xem lại link MCP (reveal) | ✔ (ghi log) | ✔ của mình (ghi log, cần nhập lại mật khẩu/OTP) |

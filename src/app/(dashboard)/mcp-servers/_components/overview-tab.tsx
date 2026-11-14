@@ -236,6 +236,11 @@ export function OverviewTab({
   const bidCaps = Object.entries(mcp.settings.maxBid)
   const hasTiktok = mcp.config.some((p) => p.platform === "tiktok")
   const gmvWrite = hasTiktok && mcp.settings.tiktokGmvMaxWrite === true
+  // Facebook Pages in scope (null = all Pages) → the "đọc tin nhắn Trang" switch matters
+  const hasPages = mcp.config.some(
+    (p) => p.platform === "meta" && p.connections.some((c) => c.pageIds === null || (c.pageIds?.length ?? 0) > 0)
+  )
+  const pageMessages = hasPages && mcp.settings.metaPageMessages === true
   // basic mode: only the expiry applies - the stored advanced values are kept but not enforced, so show what applies
   const basic = mcp.settings.protectionMode === "basic"
   return (
@@ -446,6 +451,13 @@ export function OverviewTab({
               <SummaryRow label={o.summaryTwoStep}>
                 {!basic && mcp.settings.twoStepConfirm ? o.on : o.off}
               </SummaryRow>
+              {hasPages && (
+                <SummaryRow label={t.metaMessages.summaryLabel}>
+                  <span className={pageMessages ? "font-medium text-warning-strong" : undefined}>
+                    {pageMessages ? t.metaMessages.summaryOn : t.metaMessages.summaryOff}
+                  </span>
+                </SummaryRow>
+              )}
               {hasTiktok && (
                 <SummaryRow label={gmv.summaryLabel}>
                   <span className={gmvWrite ? "font-medium text-warning-strong" : undefined}>

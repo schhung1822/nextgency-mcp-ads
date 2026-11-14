@@ -133,6 +133,9 @@ export const MCP_ERRORS = {
     "MCP này đang có quyền thay đổi GMV Max do quản trị viên duyệt: nâng trần chi phí Apify (mỗi lần chạy / mỗi ngày) cần quản trị viên lưu - hoặc tắt quyền GMV Max rồi lưu.",
   apifyStoreStaffWidening:
     "MCP này đang được quản trị viên cho phép chạy Actor ngoài danh mục Apify: nâng trần chi phí Apify (mỗi lần chạy / mỗi ngày) hoặc chuyển sang chế độ bảo vệ Cơ bản cần quản trị viên lưu - hoặc tắt Actor ngoài danh mục rồi lưu.",
+  metaMessagesAdminOnly: "Chỉ quản trị viên được bật đọc tin nhắn Trang Facebook.",
+  metaMessagesStaffWidening:
+    "MCP này đang được quản trị viên cho phép đọc tin nhắn Trang Facebook: thêm Trang (hoặc chọn \"Tất cả Trang\") cần quản trị viên lưu - hoặc tắt đọc tin nhắn rồi lưu.",
   apifyOnlyNoToken:
     "MCP chỉ dùng Apify cần ít nhất 1 token Apify (token công ty hoặc token cá nhân của chủ MCP). Thêm token ở trang Kết nối → Apify, hoặc chọn thêm 1 nền tảng quảng cáo.",
 } as const
@@ -182,6 +185,57 @@ function assertApifyStoreSwitchAllowed(
   throw invalid(MCP_ERRORS.apifyStoreAdminOnly, {
     "settings.apifyStoreActors": MCP_ERRORS.apifyStoreAdminOnly,
   })
+}
+
+/**
+ * "Đọc tin nhắn Trang" switch (settings.metaPageMessages, 11-meta-pages.md §13) is admin-only, like the GMV Max switch:
+ * a non-admin may keep the stored value or turn it OFF, never turn it ON (create with true = turning it on).
+ */
+function assertMetaMessagesSwitchAllowed(actor: McpActor, before: boolean, after: boolean): void {
+  if (actor.role === "admin" || !after || before) return
+  throw invalid(MCP_ERRORS.metaMessagesAdminOnly, {
+    "settings.metaPageMessages": MCP_ERRORS.metaMessagesAdminOnly,
+  })
+}
+
+/** Page scope of a Meta config per connection: null = all Pages, set = those Pages (missing / [] = none). */
+function metaPageScope(
+  platforms: readonly { platform: string; connections: readonly { connectionId: string; pageIds?: string[] | null }[] }[]
+): Map<string, Set<string> | null> {
+  const out = new Map<string, Set<string> | null>()
+  for (const p of platforms) {
+    if (p.platform !== "meta") continue
+    for (const c of p.connections) {
+      if (c.pageIds === null) out.set(c.connectionId, null)
+      else if (c.pageIds && c.pageIds.length) out.set(c.connectionId, new Set(c.pageIds))
+    }
+  }
+  return out
+}
+
+/**
+ * While an admin-approved "Đọc tin nhắn Trang" switch is stored on and stays on, a NON-admin save may keep or narrow
+ * the Page scope, never widen it (a new Page, a new connection with Pages, or "all Pages"): the inbox of those Pages
+ * would become readable without an admin. Field error on settings.metaPageMessages.
+ */
+export function assertNoStaffMetaMessagesWidening(
+  actor: McpActor,
+  stored: McpSettings,
+  beforeConfig: readonly McpPlatformConfig[],
+  data: Pick<CreateMcpData, "platforms" | "settings">
+): void {
+  if (actor.role === "admin" || !stored.metaPageMessages || !data.settings.metaPageMessages) return
+  const before = metaPageScope(beforeConfig)
+  for (const [connectionId, after] of metaPageScope(data.platforms)) {
+    const had = before.get(connectionId)
+    const widened =
+      had === undefined || (after === null && had !== null) || (after !== null && had !== null && [...after].some((id) => !had.has(id)))
+    if (widened) {
+      throw invalid(MCP_ERRORS.metaMessagesStaffWidening, {
+        "settings.metaPageMessages": MCP_ERRORS.metaMessagesStaffWidening,
+      })
+    }
+  }
 }
 
 export interface McpListItem {
@@ -1340,6 +1394,7 @@ export async function createMcpServer(
   const data = parseOrThrow(createMcpSchema, input)
   assertGmvMaxSwitchAllowed(actor, false, data.settings.tiktokGmvMaxWrite)
   assertApifyStoreSwitchAllowed(actor, false, data.settings.apifyStoreActors)
+  assertMetaMessagesSwitchAllowed(actor, false, data.settings.metaPageMessages)
   if (data.expiresAt && data.expiresAt.getTime() <= Date.now()) {
     throw invalid(MCP_SCHEMA_MESSAGES.expiresFuture, {
       expiresAt: MCP_SCHEMA_MESSAGES.expiresFuture,
@@ -1426,11 +1481,14 @@ export async function updateMcpServer(
       storedSettings.apifyStoreActors,
       data.settings.apifyStoreActors
     )
+    assertMetaMessagesSwitchAllowed(actor, storedSettings.metaPageMessages, data.settings.metaPageMessages)
     // S4: false → true (admin) is like the other sensitive MCP changes - re-authenticate first (same for the Apify
     // "Actor ngoài danh mục" switch: Actors outside the curated catalog spend Apify money)
     const switchedOn =
       (!storedSettings.tiktokGmvMaxWrite && data.settings.tiktokGmvMaxWrite) ||
-      (!storedSettings.apifyStoreActors && data.settings.apifyStoreActors)
+      (!storedSettings.apifyStoreActors && data.settings.apifyStoreActors) ||
+      // reading customers' messages is personal data: re-authenticate like the other admin-only switches
+      (!storedSettings.metaPageMessages && data.settings.metaPageMessages)
     if (switchedOn && !reauthed) {
       throw reauthRequiredError()
     }
@@ -1461,6 +1519,8 @@ export async function updateMcpServer(
     await assertNoStaffGmvMaxWidening(tx, actor, storedSettings, beforeConfig, data, row.expiresAt)
     // M1: same rule for the Apify caps while an admin-approved "Actor ngoài danh mục" switch stays on
     assertNoStaffApifyStoreWidening(actor, storedSettings, data.settings)
+    // same rule for the Page scope while an admin-approved "Đọc tin nhắn Trang" switch stays on
+    assertNoStaffMetaMessagesWidening(actor, storedSettings, beforeConfig, data)
     const beforeChannels = await loadChannelIds(tx, row.id)
     // Telegram channels of the MCP OWNER only (an admin editing a staff MCP cannot add the admin's channels, an
     // admin MCP cannot use a staff channel); omitted = keep the stored scope; stored foreign rows are pruned
@@ -1603,10 +1663,12 @@ export function assertNoStaffApifyStoreWidening(
 function reauthReason(s: {
   tiktokGmvMaxWrite: boolean
   apifyStoreActors: boolean
+  metaPageMessages: boolean
 }): string {
   const reasons = [
     s.tiktokGmvMaxWrite ? "tiktok_gmv_max_write" : null,
     s.apifyStoreActors ? "apify_store_actors" : null,
+    s.metaPageMessages ? "meta_page_messages" : null,
   ].filter(Boolean)
   return reasons.length ? reasons.join(",") : "tiktok_gmv_max_write"
 }
