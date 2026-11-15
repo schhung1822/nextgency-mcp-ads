@@ -1,0 +1,95 @@
+// TikTok Social (organic TikTok accounts, 17-tiktok-social.md) - Vietnamese strings (UI + server messages).
+export const tiktokSocialVi = {
+  name: "TikTok Social",
+  tab: "TikTok Social",
+  tabShort: "TikTok",
+  pageTitle: "Tài khoản TikTok (TikTok Social)",
+  pageDescription:
+    "Kết nối tài khoản TikTok (kênh đăng video) để AI đọc thông tin kênh, video, bình luận, nhắc tên thương hiệu và xu hướng. Chỉ đọc - không đăng, không trả lời bình luận.",
+  connectButton: "Kết nối tài khoản TikTok",
+  reconnect: "Kết nối lại",
+  rename: "Đổi tên",
+  enable: "Bật",
+  disable: "Tắt",
+  delete: "Xoá",
+  empty: "Chưa kết nối tài khoản TikTok nào.",
+  emptyHint:
+    "Bấm \"Kết nối tài khoản TikTok\", đăng nhập TikTok và đồng ý. Không cần tạo developer app. Mỗi lần kết nối là 1 tài khoản; kết nối bao nhiêu tài khoản cũng được.",
+  columns: {
+    account: "Tài khoản",
+    type: "Loại",
+    owner: "Người kết nối",
+    status: "Trạng thái",
+    expires: "Đăng nhập lại trước",
+    lastUsed: "Dùng lần cuối",
+  },
+  type: { business: "Business", personal: "Cá nhân / Creator", unknown: "-" },
+  status: {
+    active: "Đang hoạt động",
+    expiring: "Sắp hết hạn",
+    invalid: "Cần kết nối lại",
+    disabled: "Đã tắt",
+  },
+  howItWorks: [
+    "Đăng nhập trực tiếp trên trang TikTok - Ads MCP Simple không thấy mật khẩu.",
+    "Quyền đăng nhập có hạn 1 năm; hệ thống tự làm mới token hằng ngày. Sắp hết hạn sẽ báo để bấm Kết nối lại.",
+    "Kết nối lại cùng tài khoản sẽ thay token cũ, không tạo kết nối trùng.",
+    "Số điện thoại và email trong bình luận được che trước khi gửi cho AI.",
+  ],
+  notBusinessNote:
+    "Tài khoản cá nhân / Creator: không có dữ liệu nhắc tên thương hiệu (chỉ Business Account).",
+  detail: {
+    mcps: "MCP đang dùng",
+    noMcps: "Chưa MCP nào dùng tài khoản này.",
+    scopes: "Quyền TikTok đã cấp",
+    connectedAt: "Kết nối lúc",
+    lastChecked: "Kiểm tra lần cuối",
+    profile: "Mở trang TikTok",
+  },
+  deleteConfirm: {
+    title: "Xoá kết nối TikTok?",
+    body: "Token sẽ bị xoá và thu hồi; các MCP đang dùng tài khoản này không đọc được nữa. Gõ tên kết nối để xác nhận.",
+  },
+  callback: {
+    title: "Kết nối TikTok",
+    ok: (u: string) => `Đã kết nối tài khoản TikTok @${u}.`,
+    reconnected: (u: string) => `Đã kết nối lại tài khoản TikTok @${u}.`,
+    back: "Về trang Kết nối",
+  },
+  server: {
+    renamed: "Đã đổi tên.",
+    enabled: "Đã bật tài khoản.",
+    disabled: "Đã tắt tài khoản.",
+    deleted: "Đã xoá kết nối TikTok.",
+  },
+  errors: {
+    notFound: "Không tìm thấy tài khoản TikTok này.",
+    nameRequired: "Nhập tên kết nối.",
+    nameTooLong: "Tên tối đa 80 ký tự.",
+    confirmName: "Tên xác nhận không khớp.",
+    generic: "Có lỗi khi xử lý kết nối TikTok. Thử lại sau.",
+    tooMany: (s: number) => `Thao tác quá nhanh. Thử lại sau ${s} giây.`,
+    disclaimer: "Hãy đọc và đồng ý miễn trừ trách nhiệm trước khi thêm kết nối.",
+    stateInvalid:
+      "Phiên kết nối TikTok đã hết hạn hoặc không khớp (quá 10 phút, mở ở trình duyệt / tài khoản khác). Hãy bấm Kết nối lại từ đầu.",
+    denied: "Bạn đã huỷ hoặc TikTok từ chối cấp quyền. Không có gì được lưu.",
+    duplicateOther:
+      "Tài khoản TikTok này đã được người khác kết nối. Liên hệ quản trị viên để dùng chung (admin gán được cho MCP).",
+    wrongAccount: (expected: string, got: string) =>
+      `Bạn đăng nhập @${got}, nhưng kết nối này là của @${expected}. Hãy đăng xuất TikTok trên trình duyệt rồi kết nối lại đúng tài khoản (hoặc dùng "Kết nối tài khoản TikTok" để thêm tài khoản mới).`,
+    noProfile: "TikTok không trả thông tin tài khoản (username). Thử lại sau.",
+    tiktokDown: "Không gọi được TikTok lúc này. Thử lại sau ít phút.",
+    tiktokAuth: "TikTok không chấp nhận mã đăng nhập (mã đã dùng hoặc hết hạn). Hãy kết nối lại từ đầu.",
+    registerFailed: "Không đăng ký được ứng dụng với TikTok cho địa chỉ này. Kiểm tra địa chỉ web (BETTER_AUTH_URL) phải là https:// công khai.",
+  },
+  mcp: {
+    cardTitle: "TikTok Social",
+    cardDescription: "Kênh TikTok (không phải quảng cáo): thông tin kênh, video, bình luận, nhắc tên thương hiệu, xu hướng - chỉ đọc.",
+    pick: "Chọn tài khoản TikTok MCP này được đọc",
+    none: "Chưa có tài khoản TikTok dùng được. Kết nối ở trang Kết nối → TikTok Social.",
+    permissionNote: "Chỉ đọc: AI không đăng video, không trả lời / ẩn / xoá bình luận. Số điện thoại và email trong bình luận được che.",
+    tooMany: "Tối đa 50 tài khoản TikTok cho mỗi MCP.",
+    notAllowed: "Có tài khoản TikTok không dùng được cho MCP này (đã xoá, đã tắt hoặc của người khác).",
+    summary: (n: number) => `${n} tài khoản TikTok`,
+  },
+} as const

@@ -21,6 +21,7 @@ import { driveToolsAllowed, registerDriveTools } from "./tools/drive"
 import { registerExtensions } from "./tools/extensions"
 import { metaPagesAllowed, registerMetaPageTools } from "./tools/meta-pages"
 import { registerTelegramTools, telegramToolsAllowed } from "./tools/telegram"
+import { registerTiktokSocialTools, tiktokSocialAllowed } from "./tools/tiktok-social"
 
 export interface ToolsetDef {
   name: string
@@ -95,6 +96,13 @@ export const TOOLSETS: ToolsetDef[] = [
     register: (server, ctx, taken) => registerApifyTools(server, ctx, taken),
   },
   {
+    // TikTok Social (17-tiktok-social.md §6): >= 1 TikTok account picked for the MCP; independent of the ad platforms
+    name: "tiktok_social",
+    permission: "read",
+    isAllowed: (grant) => tiktokSocialAllowed(grant),
+    register: (server, ctx, taken) => registerTiktokSocialTools(server, ctx, taken),
+  },
+  {
     name: "platform_extensions",
     permission: "read",
     isAllowed: (grant) => grantPlatformsWith(grant, "read").length > 0,
@@ -105,7 +113,7 @@ export const TOOLSETS: ToolsetDef[] = [
 /** Names of the common tools (for docs / UI). */
 export const COMMON_TOOL_PERMISSIONS: Record<string, Permission> = Object.fromEntries(
   TOOLSETS.filter(
-    (t) => !["platform_extensions", "meta_pages", "telegram", "drive", "apify"].includes(t.name)
+    (t) => !["platform_extensions", "meta_pages", "telegram", "drive", "apify", "tiktok_social"].includes(t.name)
   ).map((t) => [
     t.name,
     t.permission,

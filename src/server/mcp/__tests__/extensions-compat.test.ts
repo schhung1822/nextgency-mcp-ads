@@ -156,6 +156,7 @@ describe("real adapter extensions", () => {
       driveSources: [],
       drivePublicAvailable: false,
       apifyTokens: [],
+      tiktokSocialAccounts: [],
     }
     const req: RequestState = {
       startedAt: Date.now(),

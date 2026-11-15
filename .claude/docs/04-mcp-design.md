@@ -260,6 +260,21 @@ Settings (`mcp_servers.settings`, snake_case, parser từng trường như các 
 | `apify_daily_max_usd` | `10` | trần / ngày mỗi MCP (giờ VN), `0` = không giới hạn; chỉ `advanced` (`basic` → `UNLIMITED`) |
 | `apify_store_actors` | `false` (chỉ `=== true`) | Actor ngoài danh mục — **chỉ admin bật** (service kiểm tra như `tiktok_gmv_max_write`); nhân viên giữ / tắt được. Nhân viên trên MCP có công tắc GMV Max **hoặc** `apify_store_actors` do admin bật không được nới `apify_run_max_usd` / `apify_daily_max_usd` (với `apify_store_actors`: cũng không chuyển nâng cao → Cơ bản) |
 
+### Tool TikTok Social (`tiktok_social_*`) — đã làm 2026-11-15 (thiết kế + bản thực tế `17-tiktok-social.md`, code `src/server/mcp/tools/tiktok-social/` + `src/server/tiktok-social/`)
+
+Kênh TikTok (không phải quảng cáo), **chỉ đọc**, gọi tool của TikTok Social MCP Server bằng token của tài khoản TikTok đã kết nối (OAuth DCR + PKCE). Toolset chỉ đăng ký khi MCP có ≥ 1 tài khoản TikTok Social trong phạm vi (`mcp_tiktok_social_scopes`, sống, không tắt, quy tắc chủ MCP); độc lập với nền tảng quảng cáo (MCP chỉ có TikTok Social hợp lệ). Mọi handler kiểm tra lại `account_id` (uuid hoặc @username) thuộc grant.
+
+| Tool | Tool TikTok | Ghi chú |
+|---|---|---|
+| `tiktok_social_list_accounts` | — | không gọi TikTok |
+| `tiktok_social_get_account` | `account_user_get` (+ `account_user_benchmark_get`) | chỉ số theo ngày (UTC, trễ 24–48 giờ: ngày cuối `followers_count = 0` → cảnh báo), khán giả, chuẩn ngành |
+| `tiktok_social_list_videos` | `account_user_post_list_get` | chỉ số trọn đời; link bỏ query theo dõi; cursor số của TikTok bọc trong cursor ký HMAC |
+| `tiktok_social_list_comments` | `account_user_comment_list_get` / `_reply_list_get` | tên + username người bình luận giữ nguyên, SĐT / email che (`masked`), `owner_replied` (cả khi chưa có trả lời → false); không trả avatar (link ký) / user_id băm |
+| `tiktok_social_list_mentions` | `account_user_mention_*` | chỉ Business Account (tài khoản khác: rỗng + cảnh báo) |
+| `tiktok_social_trends` | `discovery_*`, `account_user_hashtag_suggestion_get` | hashtag: bỏ dấu cách (TikTok từ chối) |
+
+Lỗi TikTok nằm **trong** nội dung tool (`code ≠ 0`): 40130 → `tiktok_scope_missing`, 40002 → `tiktok_invalid_request` (kèm câu của TikTok), 40100 / HTTP 429 → `tiktok_rate_limited`, 401 / 4010x → làm mới token 1 lần rồi `tiktok_account_needs_reconnect` (đánh dấu `invalid`). Log: `logResponse` của bình luận / nhắc tên chỉ giữ số lượng + id.
+
 ### Tool Trang Facebook (đã làm 2026-10-04; thiết kế `11-meta-pages.md` §6 + §11, code `src/server/mcp/tools/meta-pages/`)
 Chỉ đăng ký khi MCP có quyền `read` cho `meta` **và** có phạm vi Trang (`mcp_page_scopes`). Tất cả đều chỉ đọc.
 | Tool | Quyền | Ghi chú |

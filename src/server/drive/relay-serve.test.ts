@@ -124,6 +124,7 @@ function grant(over: Partial<McpGrant> = {}): McpGrant {
     ],
     drivePublicAvailable: true,
     apifyTokens: [],
+    tiktokSocialAccounts: [],
     ...over,
   }
 }

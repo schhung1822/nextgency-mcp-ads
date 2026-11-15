@@ -1,5 +1,7 @@
 "use client"
 
+import { TiktokSocialPlatformCard, type TiktokSocialOption } from "./tiktok-social-sections"
+
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { InformationCircleIcon } from "@hugeicons/core-free-icons"
@@ -18,6 +20,7 @@ import {
   formValuesToCreateInput,
   pruneChannelsToSelectable,
   pruneDriveSourcesToSelectable,
+  pruneTiktokSocialToSelectable,
   pruneToSelectable,
   summarizeScopeIssues,
   validateNameStep,
@@ -70,6 +73,8 @@ import {
   TiktokGmvMaxBlock,
   type GmvMaxFormContext,
 } from "./tiktok-gmv-max-section"
+
+const NO_TIKTOK_SOCIAL: TiktokSocialOption[] = []
 
 const NO_NAMES: Record<string, string> = {}
 const NO_CHANNELS: McpChannelOption[] = []
@@ -153,7 +158,9 @@ export function initialConfigValues(
   /** Telegram channels the MCP owner can pick; omitted = keep the stored ids as they are */
   channels?: readonly { id: string }[],
   /** Google Drive sources the MCP owner can pick; omitted = keep the stored ids as they are */
-  driveSources?: readonly { id: string }[]
+  driveSources?: readonly { id: string }[],
+  /** TikTok Social accounts the MCP owner can pick; omitted = keep the stored ids as they are */
+  tiktokSocialOptions?: readonly { id: string }[]
 ): McpFormValues {
   const values = pruneToSelectable(
     configToFormValues({
@@ -173,6 +180,7 @@ export function initialConfigValues(
       expiresAt: mcp.expiresAt,
       notificationChannelIds: (mcp.notificationChannels ?? []).map((c) => c.id),
       driveSourceIds: (mcp.driveSources ?? []).map((d) => d.id),
+      tiktokSocialAccountIds: (mcp.tiktokSocialAccounts ?? []).map((a) => a.id),
     }),
     connections
   )
@@ -180,9 +188,10 @@ export function initialConfigValues(
   const withChannels = channels
     ? pruneChannelsToSelectable(values, channels)
     : values
-  return driveSources
+  const withDrive = driveSources
     ? pruneDriveSourcesToSelectable(withChannels, driveSources)
     : withChannels
+  return tiktokSocialOptions ? pruneTiktokSocialToSelectable(withDrive, tiktokSocialOptions) : withDrive
 }
 
 /** Edit name + steps 2–4 with a contextual save bar. Keyed by the parent on mcp.updatedAt so it resets after save. */
@@ -199,9 +208,12 @@ export function ConfigTab({
   gmvMax = NO_GMV_MAX,
   twoFactorEnabled = false,
   apifyPool = null,
+  tiktokSocialOptions = NO_TIKTOK_SOCIAL,
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
+  /** TikTok Social accounts the MCP owner can pick */
+  tiktokSocialOptions?: TiktokSocialOption[]
   /** Telegram channels of the MCP owner (staff MCP: the owner's; admin MCP: all) */
   channels?: McpChannelOption[]
   /** Google Drive sources the MCP owner can pick (company + the owner's; admin MCP: all) */
@@ -224,8 +236,8 @@ export function ConfigTab({
 }) {
   const router = useRouter()
   const initial = React.useMemo(
-    () => initialConfigValues(mcp, connections, channels, driveSources),
-    [mcp, connections, channels, driveSources]
+    () => initialConfigValues(mcp, connections, channels, driveSources, tiktokSocialOptions),
+    [mcp, connections, channels, driveSources, tiktokSocialOptions]
   )
   const analysis = React.useMemo(
     () => analyzeScope(mcp.config, connections, accountNames),
@@ -380,13 +392,16 @@ export function ConfigTab({
               connections={connections}
               layout="grid"
               extraCards={
-                <ApifyPlatformCard
-                  values={values}
-                  update={update}
-                  errors={errors}
-                  pool={apifyPool}
-                  ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
-                />
+                <>
+                  <ApifyPlatformCard
+                    values={values}
+                    update={update}
+                    errors={errors}
+                    pool={apifyPool}
+                    ownerEmail={!mcp.isMine ? mcp.ownerEmail : undefined}
+                  />
+                  <TiktokSocialPlatformCard values={values} update={update} errors={errors} options={tiktokSocialOptions} />
+                </>
               }
             />
             <TelegramChannelsSection

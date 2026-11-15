@@ -97,4 +97,8 @@ export const aad = {
   driveFileRef: (mcpId: string) => `drive_ref:${mcpId}`,
   // Apify API tokens (16-apify.md §3): src/server/apify/store.ts is the only module that encrypts / decrypts them
   apifyTokenCredentials: (tokenId: string) => `apify_token:${tokenId}:credentials`,
+  // TikTok Social tokens (17-tiktok-social.md §4): src/server/tiktok-social/store.ts is the only module that uses it
+  tiktokSocialAccountCredentials: (accountId: string) => `tiktok_social_account:${accountId}:credentials`,
+  // the OAuth start cookie (state + PKCE verifier) of a TikTok Social sign-in
+  tiktokSocialOauthState: () => "tiktok_social_oauth_state",
 }

@@ -56,7 +56,9 @@ import {
   mcpPageScopes,
   mcpPlatformPermissions,
   mcpServers,
+  mcpTiktokSocialScopes,
   notificationChannels,
+  tiktokSocialAccounts,
   user,
 } from "@/server/db/schema"
 import { appBaseUrl } from "@/server/env"
@@ -79,6 +81,7 @@ import {
 } from "@/server/services/drive-sources"
 import type { McpDriveSourceRef } from "@/lib/schemas/drive"
 import { loadGrantApifyTokens } from "@/server/apify/store"
+import { tiktokSocialVi } from "@/lib/i18n/vi/tiktok-social"
 import { invalidateGrantCache } from "@/server/mcp/grant"
 import { parseMcpSettings } from "@/server/mcp/settings"
 import type { McpSettings, Permission, ProtectionMode } from "@/server/mcp/types"
@@ -148,13 +151,27 @@ export const MCP_ERRORS = {
 async function assertApifyOnlyHasPool(
   tx: Tx | typeof db,
   ownerId: string,
-  data: { platforms: readonly unknown[]; settings: { apifyEnabled: boolean } }
+  data: { platforms: readonly unknown[]; settings: { apifyEnabled: boolean } },
+  tiktokSocialIds: readonly string[] = []
 ): Promise<void> {
-  if (data.platforms.length > 0 || !data.settings.apifyEnabled) return
+  // TikTok Social accounts also make the MCP usable (17-tiktok-social.md TSD3)
+  if (data.platforms.length > 0 || !data.settings.apifyEnabled || tiktokSocialIds.length > 0) return
   if ((await loadGrantApifyTokens(ownerId, tx)).length > 0) return
   throw invalid(MCP_ERRORS.apifyOnlyNoToken, {
     "settings.apifyEnabled": MCP_ERRORS.apifyOnlyNoToken,
   })
+}
+
+/**
+ * The zod rule counts the TikTok Social ids SENT; on update they may be omitted (= keep the stored ones) or pruned:
+ * re-check with the resolved ids - an MCP with nothing at all is refused.
+ */
+function assertNotEmptyMcp(
+  data: { platforms: readonly unknown[]; settings: { apifyEnabled: boolean } },
+  tiktokSocialIds: readonly string[]
+): void {
+  if (data.platforms.length === 0 && !data.settings.apifyEnabled && tiktokSocialIds.length === 0)
+    throw invalid(MCP_SCHEMA_MESSAGES.platformsRequired, { platforms: MCP_SCHEMA_MESSAGES.platformsRequired })
 }
 
 /**
@@ -310,12 +327,21 @@ export interface McpChannelRef {
   deleted: boolean
 }
 
+export interface McpTiktokSocialRef {
+  id: string
+  name: string
+  username: string
+  status: string
+}
+
 export interface McpDetail extends McpListItem {
   ownerRole: "admin" | "staff"
   /** Telegram channels in scope (incl. disabled / deleted ones, flagged) */
   notificationChannels: McpChannelRef[]
   /** Google Drive sources in scope that the MCP may still use (others are pruned on the next save) */
   driveSources: McpDriveSourceRef[]
+  /** TikTok Social accounts in scope that the MCP may still use (others are pruned on the next save) */
+  tiktokSocialAccounts: McpTiktokSocialRef[]
   maskedUrl: string
   /** + moneyCapsRequired: false = legacy MCP (created before daily caps became mandatory) */
   settings: McpSettingsInput & Pick<McpSettings, "moneyCapsRequired">
@@ -567,6 +593,77 @@ async function writeDriveScopes(tx: Tx, mcpId: string, sourceIds: string[]) {
     await tx
       .insert(mcpDriveScopes)
       .values(sourceIds.map((sourceId) => ({ mcpId, sourceId })))
+}
+
+// ---- TikTok Social scope (17-tiktok-social.md §4) -------------------------------------------------------------
+
+/** live rows the MCP owner may use: admin owner → any live row; staff owner → own rows. Disabled rows included. */
+async function tiktokSocialRowsForOwner(tx: Tx | typeof db, owner: { id: string; role: string }, ids: string[]) {
+  if (!ids.length) return []
+  return tx
+    .select({ id: tiktokSocialAccounts.id, status: tiktokSocialAccounts.status })
+    .from(tiktokSocialAccounts)
+    .where(
+      and(
+        inArray(tiktokSocialAccounts.id, ids),
+        isNull(tiktokSocialAccounts.deletedAt),
+        owner.role === "admin" ? undefined : eq(tiktokSocialAccounts.ownerId, owner.id)
+      )
+    )
+}
+
+/**
+ * TikTok Social ids for a save: omitted = keep the stored scope; NEW ids must be live, not disabled and allowed for the
+ * MCP owner (else field error); stored ids that are no longer allowed (deleted / other owner) are pruned.
+ */
+async function tiktokSocialIdsFor(
+  tx: Tx | typeof db,
+  owner: { id: string; role: string },
+  requested: string[] | undefined,
+  stored: string[]
+): Promise<string[]> {
+  const wanted = [...new Set(requested ?? stored)]
+  const rows = await tiktokSocialRowsForOwner(tx, owner, wanted)
+  const ok = new Map(rows.map((r) => [r.id, r.status]))
+  const storedSet = new Set(stored)
+  for (const id of wanted) {
+    if (storedSet.has(id)) continue
+    const st = ok.get(id)
+    if (!st || st === "disabled")
+      throw invalid(tiktokSocialVi.mcp.notAllowed, { tiktokSocialAccountIds: tiktokSocialVi.mcp.notAllowed })
+  }
+  return wanted.filter((id) => ok.has(id)).sort()
+}
+
+async function loadTiktokSocialIds(tx: Tx | typeof db, mcpId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ id: mcpTiktokSocialScopes.accountId })
+    .from(mcpTiktokSocialScopes)
+    .where(eq(mcpTiktokSocialScopes.mcpId, mcpId))
+  return rows.map((r) => r.id).sort()
+}
+
+async function writeTiktokSocialScopes(tx: Tx, mcpId: string, ids: string[]) {
+  await tx.delete(mcpTiktokSocialScopes).where(eq(mcpTiktokSocialScopes.mcpId, mcpId))
+  if (ids.length) await tx.insert(mcpTiktokSocialScopes).values(ids.map((accountId) => ({ mcpId, accountId })))
+}
+
+async function loadTiktokSocialRefs(mcpId: string, owner: { id: string; role: string }): Promise<McpTiktokSocialRef[]> {
+  const rows = await db
+    .select({
+      id: tiktokSocialAccounts.id,
+      name: tiktokSocialAccounts.name,
+      username: tiktokSocialAccounts.username,
+      status: tiktokSocialAccounts.status,
+      ownerId: tiktokSocialAccounts.ownerId,
+    })
+    .from(mcpTiktokSocialScopes)
+    .innerJoin(tiktokSocialAccounts, eq(tiktokSocialAccounts.id, mcpTiktokSocialScopes.accountId))
+    .where(and(eq(mcpTiktokSocialScopes.mcpId, mcpId), isNull(tiktokSocialAccounts.deletedAt)))
+    .orderBy(asc(tiktokSocialAccounts.name))
+  return rows
+    .filter((r) => owner.role === "admin" || r.ownerId === owner.id)
+    .map(({ ownerId: _o, ...r }) => r)
 }
 
 /** Channels in scope that belong to the MCP owner (another person's channel is ignored by the grant and pruned on save). */
@@ -888,6 +985,8 @@ interface ConfigSummary {
   channels: string[]
   /** Google Drive source ids in scope (sorted) */
   driveSources: string[]
+  /** TikTok Social account ids in scope (sorted) */
+  tiktokSocial: string[]
 }
 
 /** Settings as compared/logged in activity diffs (the internal `moneyCapsRequired` marker is left out). */
@@ -931,6 +1030,7 @@ function summarize(data: {
   expiresAt: Date | null
   channels: string[]
   driveSources: string[]
+  tiktokSocial: string[]
 }): ConfigSummary {
   const platforms: ConfigSummary["platforms"] = {}
   for (const p of [...data.platforms].sort((a, b) =>
@@ -963,6 +1063,7 @@ function summarize(data: {
     expiresAt: iso(data.expiresAt),
     channels: [...new Set(data.channels)].sort(),
     driveSources: [...new Set(data.driveSources)].sort(),
+    tiktokSocial: [...new Set(data.tiktokSocial)].sort(),
   }
 }
 
@@ -1327,6 +1428,7 @@ export async function getMcpServer(
     apifyEnabled: parseMcpSettings(r.settings).apifyEnabled,
     notificationChannels: notificationChannelRefs,
     driveSources: driveSourceRefs,
+    tiktokSocialAccounts: await loadTiktokSocialRefs(r.id, { id: r.ownerId, role: roleOf(r.ownerRole) }),
   }
 }
 
@@ -1415,7 +1517,10 @@ export async function createMcpServer(
   const reauthLog = { action: "mcp.create" as const, target: { type: "mcp", id: null, label: data.name } }
   await withReauth(actor, reauthLog, verify, async (tx) => {
     await assertScopesAllowed(tx, actor, data.platforms)
-    await assertApifyOnlyHasPool(tx, actor.id, data)
+    // TikTok Social accounts of the creator (admin creator: any live row)
+    const tiktokSocialIds = await tiktokSocialIdsFor(tx, { id: actor.id, role: actor.role }, data.tiktokSocialAccountIds ?? [], [])
+    assertNotEmptyMcp(data, tiktokSocialIds)
+    await assertApifyOnlyHasPool(tx, actor.id, data, tiktokSocialIds)
     await assertDailyCaps(tx, data.platforms, data.settings)
     await tx.insert(mcpServers).values({
       id,
@@ -1430,6 +1535,7 @@ export async function createMcpServer(
     await writeScopes(tx, id, data.platforms)
     await writeChannelScopes(tx, id, channelIds)
     await writeDriveScopes(tx, id, driveSourceIds)
+    await writeTiktokSocialScopes(tx, id, tiktokSocialIds)
     await logActivity(
       {
         actor: actorOf(actor),
@@ -1443,6 +1549,7 @@ export async function createMcpServer(
             ),
             channels: channelIds,
             driveSources: driveSourceIds,
+            tiktokSocial: tiktokSocialIds,
           }),
           keyPrefix: columns.keyPrefix,
           ...disclaimerAuditMeta(audit),
@@ -1509,8 +1616,12 @@ export async function updateMcpServer(
       { id: row.ownerId, email: "", role: ownerRole },
       data.platforms
     )
+    // TikTok Social accounts usable by the MCP OWNER; omitted = keep the stored scope
+    const beforeTiktokSocial = await loadTiktokSocialIds(tx, row.id)
+    const tiktokSocialIds = await tiktokSocialIdsFor(tx, { id: row.ownerId, role: ownerRole }, data.tiktokSocialAccountIds, beforeTiktokSocial)
+    assertNotEmptyMcp(data, tiktokSocialIds)
     // an Apify-only MCP needs a token in the pool of the MCP OWNER (not of the admin editing it)
-    await assertApifyOnlyHasPool(tx, row.ownerId, data)
+    await assertApifyOnlyHasPool(tx, row.ownerId, data, tiktokSocialIds)
     // every save makes the MCP a "caps required" one: a legacy MCP with write permissions must get its caps now
     await assertDailyCaps(tx, data.platforms, data.settings)
 
@@ -1545,12 +1656,14 @@ export async function updateMcpServer(
       expiresAt: row.expiresAt,
       channels: beforeChannels,
       driveSources: beforeDrive,
+      tiktokSocial: beforeTiktokSocial,
     })
     const after = summarize({
       ...data,
       settings: normalizeSettingsForDiff(toStoredMcpSettings(data.settings)),
       channels: channelIds,
       driveSources: driveSourceIds,
+      tiktokSocial: tiktokSocialIds,
     })
     const diff = diffSummaries(before, after)
     if (Object.keys(diff.after).length === 0) {
@@ -1592,6 +1705,7 @@ export async function updateMcpServer(
     if ("channels" in diff.after) await writeChannelScopes(tx, row.id, channelIds)
     if ("driveSources" in diff.after)
       await writeDriveScopes(tx, row.id, driveSourceIds)
+    if ("tiktokSocial" in diff.after) await writeTiktokSocialScopes(tx, row.id, tiktokSocialIds)
     await logActivity(
       {
         actor: actorOf(actor),

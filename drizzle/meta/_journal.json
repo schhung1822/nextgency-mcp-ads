@@ -71,6 +71,13 @@
       "when": 1792002280830,
       "tag": "0009_apify",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794752293056,
+      "tag": "0010_tiktok_social",
+      "breakpoints": true
     }
   ]
 }

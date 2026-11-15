@@ -1,5 +1,7 @@
 "use client"
 
+import type { TiktokSocialOption } from "./tiktok-social-sections"
+
 import * as React from "react"
 import Link from "next/link"
 import {
@@ -157,6 +159,7 @@ export function McpDetailView({
   actions,
   gmvMax,
   apifyPool = null,
+  tiktokSocialOptions = [],
 }: {
   mcp: McpDetail
   connections: SelectableConnection[]
@@ -175,6 +178,8 @@ export function McpDetailView({
   gmvMax?: GmvMaxFormContext
   /** Apify token pool of the MCP OWNER (config tab: Apify card) */
   apifyPool?: McpApifyPoolSummary | null
+  /** TikTok Social accounts the MCP OWNER may pick (config tab) */
+  tiktokSocialOptions?: TiktokSocialOption[]
 }) {
   const [tab, setTab] = React.useState<DetailTab>(initialTab)
   const [revealOpen, setRevealOpen] = React.useState(false)
@@ -271,6 +276,7 @@ export function McpDetailView({
             capsFocusSignal={capsFocus}
             gmvMax={gmvMax}
             apifyPool={apifyPool}
+            tiktokSocialOptions={tiktokSocialOptions}
           />
         </TabsContent>
         <TabsContent value="connect">

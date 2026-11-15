@@ -1,5 +1,7 @@
 "use client"
 
+import { TiktokSocialOverviewRow } from "./tiktok-social-sections"
+
 import * as React from "react"
 import Link from "next/link"
 import {
@@ -444,6 +446,8 @@ export function OverviewTab({
             ))}
             {/* Apify counts as a platform of the MCP (decision A5) */}
             <ApifyScopeBlock settings={mcp.settings} pool={apifyPool} />
+            {/* TikTok Social accounts (17-tiktok-social.md TSD3) */}
+            <TiktokSocialOverviewRow accounts={mcp.tiktokSocialAccounts ?? []} />
             <dl className="divide-y">
               <SummaryRow label={o.summaryMode}>
                 {basic ? o.modeBasic : o.modeAdvanced}

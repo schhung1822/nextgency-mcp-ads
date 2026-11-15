@@ -32,6 +32,7 @@ import { db, pool } from "@/server/db/client"
 import {
   account,
   apifyTokens,
+  tiktokSocialAccounts,
   connections,
   driveCredentials,
   driveRelayLinks,
@@ -382,6 +383,7 @@ type ReencryptFailure = {
     | "drive_relay_link"
     | "media_upload_job"
     | "apify_token"
+    | "tiktok_social"
   id: string
   reason: string
 }
@@ -592,8 +594,34 @@ async function reencrypt(args: string[]) {
     dry,
     failures
   )
+  // TikTok Social tokens (AAD tiktok_social_account:<id>:credentials; soft-deleted rows hold an encrypted "")
+  const ttsRows = await db
+    .select({ id: tiktokSocialAccounts.id, enc: tiktokSocialAccounts.credentialsEncrypted })
+    .from(tiktokSocialAccounts)
+  const tts = await reencryptRows(
+    "tiktok_social",
+    ttsRows,
+    aad.tiktokSocialAccountCredentials,
+    async (id, prev, next) =>
+      (
+        await db
+          .update(tiktokSocialAccounts)
+          .set({ credentialsEncrypted: next })
+          .where(and(eq(tiktokSocialAccounts.id, id), eq(tiktokSocialAccounts.credentialsEncrypted, prev)))
+          .returning({ id: tiktokSocialAccounts.id })
+      ).length === 1,
+    dry,
+    failures
+  )
   const driveCount = driveCreds.count + driveKeys.count + driveSrc.count + relays.count + jobs.count
   if (!dry) {
+    if (tts.count > 0 || tts.failed > 0)
+      await insertActivity({
+        actor: CLI_ACTOR,
+        action: "tiktok_social.update",
+        target: { type: "tiktok_social", id: null, label: "reencrypt" },
+        metadata: { via: "cli", op: "reencrypt", count: tts.count, failed: tts.failed },
+      })
     if (driveCreds.count + driveKeys.count > 0 || driveCreds.failed + driveKeys.failed > 0)
       await insertActivity({
         actor: CLI_ACTOR,
@@ -653,8 +681,8 @@ async function reencrypt(args: string[]) {
   }
   out(
     dry
-      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive, ${apify.count} token Apify (chạy lại không có --dry-run để thực hiện).`
-      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive và ${apify.count} token Apify bằng khoá đang hoạt động.`
+      ? `Cần mã hoá lại: ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive, ${apify.count} token Apify, ${tts.count} tài khoản TikTok Social (chạy lại không có --dry-run để thực hiện).`
+      : `✔ Đã mã hoá lại ${conn.count} kết nối, ${mcp.count} key MCP, ${channels.count} kết nối Telegram, ${driveCount} bí mật Google Drive ${apify.count} token Apify và ${tts.count} tài khoản TikTok Social bằng khoá đang hoạt động.`
   )
   // ids + a redacted error message only - never ciphertext or plaintext
   const kindLabel = {
@@ -667,10 +695,11 @@ async function reencrypt(args: string[]) {
     drive_relay_link: "link tạm Google Drive",
     media_upload_job: "lượt tải video Google Drive",
     apify_token: "token Apify",
+    tiktok_social: "tài khoản TikTok Social",
   } as const
   for (const f of failures) process.stderr.write(`✖ ${kindLabel[f.kind]} ${f.id}: ${f.reason}\n`)
   const raced =
-    conn.raced + mcp.raced + channels.raced + driveCreds.raced + driveKeys.raced + driveSrc.raced + relays.raced + jobs.raced + apify.raced
+    conn.raced + mcp.raced + channels.raced + driveCreds.raced + driveKeys.raced + driveSrc.raced + relays.raced + jobs.raced + apify.raced + tts.raced
   if (raced > 0) out(`  ${raced} bản ghi vừa được thay đổi trong lúc chạy - chạy lại lệnh để mã hoá nốt.`)
   if (failures.length > 0) {
     throw new CliError(

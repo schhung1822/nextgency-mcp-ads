@@ -1083,7 +1083,7 @@ describe("Apify settings (16-apify.md §7)", () => {
   })
 
   it("A5: Apify counts as a platform - an Apify-only MCP is valid, nothing selected is not (form + create / update / config schemas)", () => {
-    const required = "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads hoặc Apify)."
+    const required = "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads, Apify hoặc 1 tài khoản TikTok Social)."
     const none = { ...defaultMcpFormValues(), name: "Chỉ Apify" }
     expect(validatePlatformsStep(none).platforms).toBe(required)
     const apifyOnly = { ...none, apifyEnabled: true }

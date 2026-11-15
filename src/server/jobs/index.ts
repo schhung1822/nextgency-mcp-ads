@@ -14,6 +14,7 @@ import { notificationsCleanupJob } from "./notifications-cleanup"
 import { notificationsSweepJob } from "./notifications-sweep"
 import { notifyTelegramJob } from "./notify-telegram"
 import { pendingActionsCleanupJob } from "./pending-cleanup"
+import { tiktokSocialHealthJob } from "./tiktok-social-health"
 import { tokensHealthJob } from "./tokens-health"
 import type { JobDefinition } from "./types"
 import { updateCheckJob } from "./update-check"
@@ -36,6 +37,7 @@ export const JOBS: JobDefinition<any>[] = [
   mediaVideoUploadJob,
   mediaUploadSweepJob,
   apifyHealthJob,
+  tiktokSocialHealthJob,
 ]
 
 export {

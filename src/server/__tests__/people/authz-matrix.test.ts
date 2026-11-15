@@ -139,6 +139,13 @@ const ACTIONS: Record<string, Record<string, Access>> = {
     replaceApifyTokenAction: "any",
     deleteApifyTokenAction: "any",
   },
+  // TikTok Social accounts: staff manage their own rows, admins every row (checked inside the service)
+  "@/server/actions/tiktok-social": {
+    startTiktokSocialConnectAction: "any",
+    renameTiktokSocialAction: "any",
+    setTiktokSocialEnabledAction: "any",
+    deleteTiktokSocialAction: "any",
+  },
 }
 
 // Pure expectation model (the documented rules of requireUserForAction):

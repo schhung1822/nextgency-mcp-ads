@@ -314,3 +314,10 @@ Nguồn: chủ dự án muốn AI lấy bình luận bài viết và đọc tin 
 - [x] Khả năng Trang `comments` / `messages` (chip "Bình luận" / "Tin nhắn"), hướng dẫn token thêm `pages_messaging`
 - [ ] Chưa làm: Instagram Direct (cần `instagram_manage_messages` + doanh nghiệp xác minh), trả lời / ẩn bình luận, gửi tin nhắn; giao diện công tắc / chip chưa chụp màn hình
 - [x] Tài liệu: 01, 03, 04, 05, 11 §12–13, `providers/meta.md` §10.4b–c, `release-notes/v1.2.1.md`
+
+## TikTok Social: kênh TikTok qua TikTok Social MCP (2026-11-15) - chưa phát hành
+
+- Thiết kế + bản thực tế: `17-tiktok-social.md`. Quyết định TS1–TS4 (cách 1: Ads MCP Simple là client của TikTok Social MCP, không developer app; bình luận chỉ đọc; che SĐT / email; không giới hạn kết nối).
+- Kết nối → tab TikTok Social (đăng nhập TikTok, DCR + PKCE, cookie trạng thái mã hoá), token 1 ngày tự làm mới (lúc gọi + job `tiktok-social.health` 6 giờ), quyền 1 năm (`expiring` khi còn < 14 ngày).
+- MCP: thẻ nền tảng TikTok Social (chọn tài khoản), 6 tool đọc `tiktok_social_*`; migration `0010_tiktok_social`.
+- Thử thật 2026-11-15 với tài khoản Creator của chủ dự án: cả 6 tool chạy; nhắc tên thương hiệu rỗng (không phải Business Account). Chưa thử: tài khoản Business (nhắc tên), 2 tài khoản trong cùng trình duyệt, hết hạn 1 năm.

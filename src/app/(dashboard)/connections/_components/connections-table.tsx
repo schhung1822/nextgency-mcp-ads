@@ -51,6 +51,9 @@ import type {
 import type { NotificationChannelDto } from "@/lib/schemas/notifications"
 
 import { ApifyTokensTable } from "./apify-tokens-table"
+import { TiktokSocialTable, type TiktokSocialCallbackResult } from "./tiktok-social-table"
+import { tiktokSocialVi } from "@/lib/i18n/vi/tiktok-social"
+import type { TiktokSocialAccountDto } from "@/lib/schemas/tiktok-social"
 import { DriveSourcesTable } from "./drive-sources-table"
 import { TelegramChannelsTable } from "./telegram-channels-table"
 
@@ -62,6 +65,8 @@ export const TELEGRAM_TAB = "telegram"
 export const DRIVE_TAB = "drive"
 /** view tab of the Apify API tokens (data source for the apify_* MCP tools) */
 export const APIFY_TAB = "apify"
+/** view tab of the TikTok Social accounts (organic TikTok, 17-tiktok-social.md) */
+export const TIKTOK_SOCIAL_TAB = "tiktok-social"
 
 const NO_DRIVE_SYSTEM: DriveSystemInfo = {
   configured: false,
@@ -189,6 +194,8 @@ export function ConnectionsTable({
   driveSystem = NO_DRIVE_SYSTEM,
   drivePersonalCredentials = [],
   apifyTokens = [],
+  tiktokSocialAccounts = [],
+  tiktokSocialCallback = null,
   isAdmin,
   initialTab = ADS_TAB,
   initialPlatforms = [],
@@ -204,6 +211,10 @@ export function ConnectionsTable({
   drivePersonalCredentials?: PersonalDriveCredentialDto[]
   /** Apify API tokens (tab "Apify"; staff: company tokens read-only + own personal) - never a secret */
   apifyTokens?: ApifyTokenDto[]
+  /** TikTok Social accounts (tab "TikTok Social"; staff: own) - never a token */
+  tiktokSocialAccounts?: TiktokSocialAccountDto[]
+  /** result of the TikTok sign-in callback (?status=…) */
+  tiktokSocialCallback?: TiktokSocialCallbackResult | null
   isAdmin: boolean
   /** ?tab=… (e.g. "telegram" after deleting a channel) */
   initialTab?: string
@@ -237,10 +248,15 @@ export function ConnectionsTable({
   }, [items, search, platformFilter, statusFilter, isAdmin])
 
   const total =
-    items.length + channels.length + driveSources.length + apifyTokens.length
+    items.length +
+    channels.length +
+    driveSources.length +
+    apifyTokens.length +
+    tiktokSocialAccounts.length
   const onTelegram = tab === TELEGRAM_TAB
   const onDrive = tab === DRIVE_TAB
   const onApify = tab === APIFY_TAB
+  const onTiktokSocial = tab === TIKTOK_SOCIAL_TAB
   // four tabs are tight on a 360px phone: keep the selected one in view inside the scrollable strip
   const tabStripRef = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => {
@@ -268,12 +284,14 @@ export function ConnectionsTable({
               ? m.list.descriptionDrive
               : onApify
                 ? m.list.descriptionApify
-                : m.list.descriptionAds
+                : onTiktokSocial
+                  ? tiktokSocialVi.pageDescription
+                  : m.list.descriptionAds
       }
       // empty list: the empty state carries the one brand button instead;
       // the Telegram / Drive / Apify views add a channel / source / token straight away (no platform picker)
       primaryAction={
-        total > 0 || onDrive ? (
+        total > 0 || onDrive || onTiktokSocial ? (
           <Button variant="brand" asChild>
             <Link
               href={
@@ -283,7 +301,9 @@ export function ConnectionsTable({
                     ? "/connections/drive/new"
                     : onApify
                       ? "/connections/apify/new"
-                      : "/connections/new"
+                      : onTiktokSocial
+                        ? "/connections/tiktok-social/new"
+                        : "/connections/new"
               }
             >
               <HugeiconsIcon
@@ -298,7 +318,9 @@ export function ConnectionsTable({
                   ? driveUi.list.add
                   : onApify
                     ? ta.list.add
-                    : m.list.add}
+                    : onTiktokSocial
+                      ? tiktokSocialVi.connectButton
+                      : m.list.add}
             </Link>
           </Button>
         ) : undefined
@@ -308,7 +330,7 @@ export function ConnectionsTable({
 
   // ?tab=drive / ?tab=apify keep the tabs: the Drive view explains the system email and the Apify view its guide
   // (how to get a token, terms) even before anything exists
-  if (total === 0 && !onDrive && !onApify) {
+  if (total === 0 && !onDrive && !onApify && !onTiktokSocial) {
     return (
       <>
         {header}
@@ -425,6 +447,15 @@ export function ConnectionsTable({
                 {ta.list.tab}
                 <TabCount n={apifyTokens.length} />
               </TabsTrigger>
+              <TabsTrigger value={TIKTOK_SOCIAL_TAB} className="max-sm:gap-1 max-sm:px-1.5">
+                <PlatformIcon platform="tiktok" className="max-sm:hidden" />
+                <span className="max-sm:hidden">{tiktokSocialVi.tab}</span>
+                <span className="sm:hidden" aria-hidden>
+                  {tiktokSocialVi.tabShort}
+                </span>
+                <span className="sr-only sm:hidden">{tiktokSocialVi.tab}</span>
+                <TabCount n={tiktokSocialAccounts.length} />
+              </TabsTrigger>
             </TabsList>
           </div>
           {onTelegram ? (
@@ -442,6 +473,15 @@ export function ConnectionsTable({
                 system={driveSystem}
                 personalCredentials={drivePersonalCredentials}
                 isAdmin={isAdmin}
+                ctaVariant="outline"
+              />
+            </TabsContent>
+          ) : onTiktokSocial ? (
+            <TabsContent value={TIKTOK_SOCIAL_TAB} className="flex flex-col">
+              <TiktokSocialTable
+                accounts={tiktokSocialAccounts}
+                isAdmin={isAdmin}
+                callback={tiktokSocialCallback}
                 ctaVariant="outline"
               />
             </TabsContent>

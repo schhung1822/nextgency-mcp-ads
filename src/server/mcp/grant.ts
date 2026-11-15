@@ -4,6 +4,7 @@ import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import { LRUCache } from "lru-cache"
 // the store module (not the server-only service): the worker reaches this file through apify health → pool
 import { loadGrantApifyTokens } from "../apify/store"
+import { loadGrantTiktokSocialAccounts } from "../tiktok-social/store"
 import { hashMcpKey, isWellFormedMcpKey } from "../crypto/mcp-key"
 import { db } from "../db/client"
 import {
@@ -18,6 +19,7 @@ import {
   mcpPlatformPermissions,
   mcpServers,
   metaPages,
+  mcpTiktokSocialScopes,
   notificationChannels,
   user,
 } from "../db/schema"
@@ -369,6 +371,17 @@ export async function loadGrantByHash(keyHash: string): Promise<McpGrant | null>
     // Apify pool (16-apify.md §5): company tokens + the MCP OWNER's personal tokens (admin-owned MCP too), no secrets;
     // read only when the MCP uses Apify (no query otherwise)
     apifyTokens: settings.apifyEnabled ? await loadGrantApifyTokens(m.ownerId) : [],
+    // TikTok Social accounts picked for this MCP (17-tiktok-social.md §4): live, not disabled; staff-owned MCP → the
+    // owner's rows only (admin: any row). No secrets.
+    tiktokSocialAccounts: await loadGrantTiktokSocialAccounts(
+      (
+        await db
+          .select({ id: mcpTiktokSocialScopes.accountId })
+          .from(mcpTiktokSocialScopes)
+          .where(eq(mcpTiktokSocialScopes.mcpId, m.id))
+      ).map((r) => r.id),
+      { id: m.ownerId, isAdmin: ownerIsAdmin }
+    ),
   }
 }
 

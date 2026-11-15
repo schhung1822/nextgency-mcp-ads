@@ -138,6 +138,7 @@ describe("grant checks", () => {
     driveSources: [],
     drivePublicAvailable: false,
     apifyTokens: [],
+    tiktokSocialAccounts: [],
   }
   it("accepts a granted Page and refuses others / an MCP without Meta read", () => {
     expect(assertPageGrant(grant, "111").id).toBe("p1")

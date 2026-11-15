@@ -4,6 +4,8 @@ import { z } from "zod"
 
 import { isReleasedPlatform, RELEASED_PLATFORMS, type ReleasedPlatform } from "@/lib/platforms"
 import { APIFY_LIMITS } from "@/lib/schemas/apify"
+import { TIKTOK_SOCIAL_LIMITS } from "@/lib/schemas/tiktok-social"
+import { tiktokSocialVi } from "@/lib/i18n/vi/tiktok-social"
 import { notifications as notificationsVi } from "@/lib/i18n/vi/notifications"
 import {
   MULTILINE_FORBIDDEN_CHARS,
@@ -88,7 +90,7 @@ const msg = {
   descTooLong: `Mô tả tối đa ${MCP_LIMITS.descriptionMax} ký tự.`,
   badChars: "Không dùng ký tự điều khiển hoặc ký tự đảo chiều văn bản.",
   platformsRequired:
-    "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads hoặc Apify).",
+    "Chọn ít nhất 1 nền tảng (Meta, TikTok, Google Ads, OpenAI Ads, Apify hoặc 1 tài khoản TikTok Social).",
   platformDuplicate: "Mỗi nền tảng chỉ được khai báo 1 lần.",
   connectionsRequired: "Chọn ít nhất 1 kết nối cho nền tảng này.",
   connectionDuplicate: "Kết nối bị chọn trùng.",
@@ -415,10 +417,11 @@ const nullableExpiry = z
  * on (an Apify-only MCP is valid). The service also refuses an Apify-only MCP whose owner has no Apify token.
  */
 function refineAtLeastOnePlatform(
-  v: { platforms: unknown[]; settings: { apifyEnabled: boolean } },
+  v: { platforms: unknown[]; settings: { apifyEnabled: boolean }; tiktokSocialAccountIds?: string[] },
   ctx: z.RefinementCtx
 ) {
-  if (v.platforms.length === 0 && !v.settings.apifyEnabled)
+  // TikTok Social (17-tiktok-social.md TSD3) also counts: an MCP that only reads TikTok accounts is valid
+  if (v.platforms.length === 0 && !v.settings.apifyEnabled && !(v.tiktokSocialAccountIds?.length ?? 0))
     ctx.addIssue({
       code: "custom",
       message: msg.platformsRequired,
@@ -452,6 +455,14 @@ const mcpConfigObject = z.object({
   driveSourceIds: z
     .array(z.uuid(msg.id))
     .max(MCP_LIMITS.driveSourcesMax, msg.tooManyDriveSources)
+    .optional(),
+  /**
+   * TikTok Social accounts (tiktok_social_accounts ids) the MCP may read. Omitted = keep the stored scope on update
+   * (none on create); [] = none.
+   */
+  tiktokSocialAccountIds: z
+    .array(z.uuid(msg.id))
+    .max(TIKTOK_SOCIAL_LIMITS.perMcpMax, tiktokSocialVi.mcp.tooMany)
     .optional(),
 })
 
@@ -574,6 +585,8 @@ export type McpFormValues = {
   telegramMessagesPerHour: string
   /** Google Drive sources in scope (drive_sources ids) */
   driveSourceIds: string[]
+  /** TikTok Social accounts in scope (tiktok_social_accounts ids) */
+  tiktokSocialAccountIds: string[]
   drivePublicLinks: boolean
   driveSheetWriteback: boolean
   /** TikTok GMV Max write switch (admin-only) */
@@ -642,6 +655,7 @@ export function defaultMcpFormValues(): McpFormValues {
     telegramNotifyWrites: DEFAULT_SETTINGS_INPUT.telegramNotifyWrites,
     telegramMessagesPerHour: String(DEFAULT_SETTINGS_INPUT.telegramMessagesPerHour),
     driveSourceIds: [],
+    tiktokSocialAccountIds: [],
     drivePublicLinks: DEFAULT_SETTINGS_INPUT.drivePublicLinks,
     driveSheetWriteback: DEFAULT_SETTINGS_INPUT.driveSheetWriteback,
     tiktokGmvMaxWrite: DEFAULT_SETTINGS_INPUT.tiktokGmvMaxWrite,
@@ -866,6 +880,7 @@ export function formValuesToConfig(
     expiresAt: v.expiresOn ? expiryDateToIso(v.expiresOn) : null,
     notificationChannelIds: [...new Set(v.notificationChannelIds)],
     driveSourceIds: [...new Set(v.driveSourceIds ?? [])],
+    tiktokSocialAccountIds: [...new Set(v.tiktokSocialAccountIds ?? [])],
   }
 }
 
@@ -890,6 +905,7 @@ export function configToFormValues(config: {
   expiresAt: Date | string | null
   notificationChannelIds?: string[]
   driveSourceIds?: string[]
+  tiktokSocialAccountIds?: string[]
 }): McpFormValues {
   const v = defaultMcpFormValues()
   v.name = config.name
@@ -944,6 +960,7 @@ export function configToFormValues(config: {
       DEFAULT_SETTINGS_INPUT.telegramMessagesPerHour
   )
   v.driveSourceIds = [...(config.driveSourceIds ?? [])]
+  v.tiktokSocialAccountIds = [...(config.tiktokSocialAccountIds ?? [])]
   // missing on rows saved before the feature → ON (same default as the runtime parser)
   v.drivePublicLinks = config.settings.drivePublicLinks ?? DEFAULT_SETTINGS_INPUT.drivePublicLinks
   v.driveSheetWriteback =
@@ -977,6 +994,17 @@ export function pruneDriveSourcesToSelectable(
   return kept.length === current.length
     ? values
     : { ...values, driveSourceIds: kept }
+}
+
+/** Keep only TikTok Social accounts the owner can still pick (deleted / disabled / foreign ones are dropped on save). */
+export function pruneTiktokSocialToSelectable(
+  values: McpFormValues,
+  options: readonly { id: string }[]
+): McpFormValues {
+  const ids = new Set(options.map((o) => o.id))
+  const current = values.tiktokSocialAccountIds ?? []
+  const kept = current.filter((id) => ids.has(id))
+  return kept.length === current.length ? values : { ...values, tiktokSocialAccountIds: kept }
 }
 
 /** Keep only Telegram channels the owner can still pick (deleted channels / other owners are dropped on save). */
@@ -1016,8 +1044,8 @@ export function validatePermissionsStep(v: McpFormValues): StepErrors {
 export function validatePlatformsStep(v: McpFormValues): StepErrors {
   const e: StepErrors = {}
   const enabled = MCP_PLATFORMS.filter((p) => v.platforms[p]?.enabled)
-  // Apify counts as a platform (A5): an Apify-only MCP is valid
-  if (enabled.length === 0 && !v.apifyEnabled) e.platforms = msg.platformsRequired
+  // Apify (A5) and TikTok Social (17-tiktok-social.md TSD3) count as platforms
+  if (enabled.length === 0 && !v.apifyEnabled && !(v.tiktokSocialAccountIds?.length ?? 0)) e.platforms = msg.platformsRequired
   for (const p of enabled) {
     const d = v.platforms[p]
     if (d.connections.length === 0)

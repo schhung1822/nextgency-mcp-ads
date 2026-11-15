@@ -14,6 +14,7 @@ import { listDriveSourcesForMcpScope } from "@/server/services/drive-sources"
 import { gmvMaxFlagsForMcpScope } from "@/server/services/mcp-gmv-max"
 import { listSelectableConnections } from "@/server/services/mcp-servers"
 import { listChannelsForMcpScope } from "@/server/services/notification-channels"
+import { listPickableTiktokSocialAccounts } from "@/server/services/tiktok-social-accounts"
 
 import { McpWizard } from "../_components/mcp-wizard"
 
@@ -22,7 +23,7 @@ export const metadata: Metadata = { title: t.meta.newTitle }
 export default async function NewMcpPage() {
   const { user } = await requireUser()
   const actor = { id: user.id, email: user.email, role: user.role }
-  const [connections, channels, driveSources, driveInfo, accepted, apifyPool] = await Promise.all([
+  const [connections, channels, driveSources, driveInfo, accepted, apifyPool, tiktokSocial] = await Promise.all([
     listSelectableConnections(actor),
     listChannelsForMcpScope(actor),
     listDriveSourcesForMcpScope(actor, { id: actor.id, role: actor.role }),
@@ -30,6 +31,8 @@ export default async function NewMcpPage() {
     hasAcceptedDisclaimer(actor.id, "mcp"),
     // the creator owns the new MCP: company Apify tokens + the creator's personal tokens
     getMcpApifyPoolSummary({ id: actor.id, role: actor.role }),
+    // TikTok Social accounts the creator may pick (staff: own; admin: all)
+    listPickableTiktokSocialAccounts({ id: actor.id, role: actor.role }),
   ])
   // TikTok accounts with TikTok Shop / GMV Max (connection check summary) - for the admin-only GMV Max switch
   const gmvFlags = await gmvMaxFlagsForMcpScope(actor, connections)
@@ -46,7 +49,7 @@ export default async function NewMcpPage() {
         kind="mcp"
         cancelHref="/mcp-servers"
         accept={acceptDisclaimerAction}
-        disabled={connections.length === 0 && !hasUsableApifyToken(apifyPool)}
+        disabled={connections.length === 0 && !hasUsableApifyToken(apifyPool) && tiktokSocial.length === 0}
         alreadyAccepted={accepted}
       >
         <McpWizard
@@ -58,6 +61,7 @@ export default async function NewMcpPage() {
           twoFactorEnabled={user.twoFactorEnabled}
           gmvMax={{ isAdmin: actor.role === "admin", flags: gmvFlags }}
           apifyPool={apifyPool}
+          tiktokSocialOptions={tiktokSocial}
         />
       </DisclaimerGate>
     </div>

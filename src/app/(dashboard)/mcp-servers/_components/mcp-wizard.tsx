@@ -38,6 +38,7 @@ import type { McpChannelOption } from "@/lib/schemas/notifications"
 import type { SelectableConnection } from "@/server/services/mcp-servers"
 
 import { ApifyPermissionsCard, ApifyPlatformCard } from "./apify-sections"
+import { TiktokSocialPlatformCard, type TiktokSocialOption } from "./tiktok-social-sections"
 import {
   DrivePermissionsSection,
   DriveSourcesSection,
@@ -177,8 +178,11 @@ export function McpWizard({
   twoFactorEnabled,
   gmvMax = NO_GMV_MAX,
   apifyPool = null,
+  tiktokSocialOptions = [],
 }: {
   connections: SelectableConnection[]
+  /** TikTok Social accounts the creator may pick */
+  tiktokSocialOptions?: TiktokSocialOption[]
   /** Telegram channels the user may give the MCP: the user's own channels (admins too) */
   channels?: McpChannelOption[]
   /** Google Drive sources the MCP may read: company + the user's own (admin: + staff sources) */
@@ -229,7 +233,7 @@ export function McpWizard({
     )
 
   // nothing to build an MCP on: no ad connection and no usable Apify token (Apify counts as a platform, A5)
-  if (connections.length === 0 && !hasUsableApifyToken(apifyPool)) {
+  if (connections.length === 0 && !hasUsableApifyToken(apifyPool) && tiktokSocialOptions.length === 0) {
     return (
       <Card>
         <EmptyState
@@ -331,12 +335,15 @@ export function McpWizard({
                   errors={errors}
                   connections={connections}
                   extraCards={
-                    <ApifyPlatformCard
-                      values={values}
-                      update={update}
-                      errors={errors}
-                      pool={apifyPool}
-                    />
+                    <>
+                      <ApifyPlatformCard
+                        values={values}
+                        update={update}
+                        errors={errors}
+                        pool={apifyPool}
+                      />
+                      <TiktokSocialPlatformCard values={values} update={update} errors={errors} options={tiktokSocialOptions} />
+                    </>
                   }
                 />
                 <TelegramChannelsSection

@@ -40,6 +40,7 @@ import {
   activityLogs,
   apifyRuns,
   apifyTokens,
+  tiktokSocialAccounts,
   connections,
   mcpServers,
   notificationChannels,
@@ -660,7 +661,8 @@ export async function deleteUserByAdmin(
       if (toRole(target.role) === "admin" && !reauthed) await reauthAdmin(actor, { action: "user.delete" }, undefined)
       // connections/mcp_servers/notification_channels/apify_tokens.owner_id are ON DELETE RESTRICT (also soft-deleted
       // rows). A live Apify token blocks - also a company token the user added (an admin must delete it first).
-      const [[c], [m], [t], [a]] = await Promise.all([
+      // live TikTok Social accounts count as connections (17-tiktok-social.md)
+      const [[c], [m], [t], [a], [ts]] = await Promise.all([
         tx.select({ n: count() }).from(connections).where(eq(connections.ownerId, target.id)),
         tx.select({ n: count() }).from(mcpServers).where(eq(mcpServers.ownerId, target.id)),
         tx
@@ -671,14 +673,22 @@ export async function deleteUserByAdmin(
           .select({ n: count() })
           .from(apifyTokens)
           .where(and(eq(apifyTokens.ownerId, target.id), isNull(apifyTokens.deletedAt))),
+        tx
+          .select({ n: count() })
+          .from(tiktokSocialAccounts)
+          .where(and(eq(tiktokSocialAccounts.ownerId, target.id), isNull(tiktokSocialAccounts.deletedAt))),
       ])
-      const nc = Number(c?.n ?? 0)
+      const nc = Number(c?.n ?? 0) + Number(ts?.n ?? 0)
       const nm = Number(m?.n ?? 0)
       const nt = Number(t?.n ?? 0)
       const na = Number(a?.n ?? 0)
       if (nc > 0 || nm > 0 || nt > 0 || na > 0) throw new UserFacingError(tUsers.errors.ownsResources(nc, nm, nt, na))
       await purgeDeletedChannels(actor, target)
       await purgeDeletedApifyTokens(actor, target)
+      // soft-deleted TikTok Social rows (secret already erased) block the FK: removed for good
+      await db
+        .delete(tiktokSocialAccounts)
+        .where(and(eq(tiktokSocialAccounts.ownerId, target.id), isNotNull(tiktokSocialAccounts.deletedAt)))
       await getAuth().api.removeUser({ body: { userId: target.id }, headers: h })
       await logActivity(
         {

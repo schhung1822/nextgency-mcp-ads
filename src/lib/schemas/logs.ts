@@ -27,6 +27,7 @@ export const ACTIVITY_GROUPS = [
   "drive_credential",
   "drive_source",
   "apify_token",
+  "tiktok_social",
   "mcp",
   "settings",
   "logs",

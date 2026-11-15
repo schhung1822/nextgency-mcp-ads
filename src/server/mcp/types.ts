@@ -7,6 +7,7 @@ import type {
   SheetSourceConfig,
 } from "../drive/types"
 import type { GrantApifyToken } from "../apify/types"
+import type { GrantTiktokSocialAccount } from "../tiktok-social/store"
 import type { Platform } from "../providers/types"
 
 export const PERMISSIONS = ["read", "status", "update", "copy", "create", "delete"] as const
@@ -239,6 +240,8 @@ export interface McpGrant {
    * exhausted) - loaded only when settings.apifyEnabled (empty otherwise). Never carries a secret.
    */
   apifyTokens: GrantApifyToken[]
+  /** TikTok Social accounts in scope (tiktok_social_* tools, 17-tiktok-social.md): live, not disabled. No secrets. */
+  tiktokSocialAccounts: GrantTiktokSocialAccount[]
 }
 
 export function grantAllows(grant: McpGrant, platform: Platform, permission: Permission): boolean {
