@@ -14,7 +14,7 @@
 #   node:24-slim (base/builder/runner) và node:24-alpine (updater) - đổi tag thì đổi luôn digest.
 
 # ---------------------------------------------------------------------------
-FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS base
+FROM node:24-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -49,7 +49,7 @@ RUN pnpm build \
 # cap_drop ALL, no-new-privileges, không nhận kết nối vào, chỉ gọi docker bằng spawn(args[]) với giá trị đã kiểm tra.
 # Cần: docker CLI + compose plugin + cosign (xác minh chữ ký số image trước khi cập nhật, 10-update-system.md).
 # KHÔNG cần pg_dump (sao lưu chạy trong container db qua `docker compose exec`). Gỡ npm/yarn/corepack (không dùng).
-FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS updater
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS updater
 LABEL org.opencontainers.image.title="Ads MCP by: Nextgency - updater" \
       org.opencontainers.image.source="https://github.com/schhung1822/nextgency-mcp-ads" \
       org.opencontainers.image.vendor="Nextgency" \
@@ -70,7 +70,7 @@ CMD ["node", "/app/dist/updater.mjs"]
 # ---------------------------------------------------------------------------
 # runner: chỉ chứa output đã build, chạy bằng user không phải root. File của app thuộc root (tiến trình `node`
 # không sửa được mã); chỗ ghi được duy nhất là /app/.next/cache (compose mới còn đặt rootfs read-only + tmpfs).
-FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS runner
+FROM node:24-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runner
 LABEL org.opencontainers.image.title="Ads MCP by: Nextgency" \
       org.opencontainers.image.source="https://github.com/schhung1822/nextgency-mcp-ads" \
       org.opencontainers.image.vendor="Nextgency" \
