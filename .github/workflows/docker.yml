@@ -132,7 +132,7 @@ jobs:
 
       # Web/worker/migrate/cli image (target mặc định: runner)
       - id: build-web
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: runner
@@ -149,7 +149,7 @@ jobs:
 
       # Updater image: dùng lại layer builder đã có trong cache của bước trên
       - id: build-updater
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: updater
