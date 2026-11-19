@@ -81,7 +81,7 @@ x-app: &app
 
 services:
   db:
-    image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+    image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
     restart: unless-stopped
     # Không cap_drop: entrypoint của image cần chown thư mục dữ liệu rồi hạ quyền bằng gosu (vẫn chạy được
     # với no-new-privileges vì gosu đổi user bằng syscall, không dùng file setuid).
@@ -324,7 +324,7 @@ services:
   # mã hoá trước khi đẩy ra ngoài máy chủ. Bỏ dữ liệu log khỏi bản sao lưu:
   #   BACKUP_PG_DUMP_ARGS=--exclude-table-data=mcp_call_logs_p* --exclude-table-data=activity_logs_p*
   backup:
-    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: postgres:18.6-alpine@sha256:9ba53c7d41ea093baf5c1ba635ba5434c4f979880527d49bb7d9237d3193085b
     restart: unless-stopped
     <<: *hardening
     tmpfs: ["/tmp:size=16m"]
