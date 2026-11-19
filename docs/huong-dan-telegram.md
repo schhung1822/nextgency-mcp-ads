@@ -1,6 +1,6 @@
 # Hướng dẫn: kênh thông báo Telegram
 
-> Áp dụng cho **Ads MCP by: noti.vn** (10/2026). Giao diện Telegram thay đổi theo phiên bản app — nếu tên menu khác, tìm mục tương ứng (_Quản trị viên_, _Thêm thành viên_, _Chủ đề / Topics_).
+> Áp dụng cho **Ads MCP by: Nextgency** (10/2026). Giao diện Telegram thay đổi theo phiên bản app — nếu tên menu khác, tìm mục tương ứng (_Quản trị viên_, _Thêm thành viên_, _Chủ đề / Topics_).
 
 Ads MCP gửi tin vào **nhóm, kênh hoặc chat riêng** trên Telegram thông qua một **bot** do bạn tạo. Bạn không cần biết lập trình: tạo bot mất 2 phút trong chính app Telegram.
 
@@ -51,7 +51,7 @@ Chi tiêu hôm qua (09/10): Meta 4.250.000 ₫, TikTok 2.100.000 ₫ …
 Ads MCP Simple
 ```
 
-**Mọi tin** (cả tin hệ thống, tin thử, chú thích ảnh/video/tệp) kết thúc bằng dòng ghi nguồn chữ nghiêng **"Ads MCP Simple"** (bấm vào mở <https://s.noti.vn/s/ads-mcp-simple>). Dòng này luôn có, không tắt được.
+**Mọi tin** (cả tin hệ thống, tin thử, chú thích ảnh/video/tệp) kết thúc bằng dòng ghi nguồn chữ nghiêng **"Ads MCP Simple"** (bấm vào mở <https://nextgency.vn>). Dòng này luôn có, không tắt được.
 
 ---
 

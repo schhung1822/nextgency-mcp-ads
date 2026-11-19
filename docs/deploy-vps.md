@@ -1,8 +1,8 @@
 # Triển khai Ads MCP trên VPS (hướng dẫn chi tiết)
 
-> Dành cho người vận hành của đơn vị được noti.vn cấp quyền. Làm lần lượt từ trên xuống, mỗi khối lệnh có thể sao chép và chạy nguyên văn (chỉ thay các giá trị ví dụ như `mcp.congty.vn`, `it@congty.vn`, `deploy`).
+> Dành cho người vận hành của đơn vị được Nextgency cấp quyền. Làm lần lượt từ trên xuống, mỗi khối lệnh có thể sao chép và chạy nguyên văn (chỉ thay các giá trị ví dụ như `mcp.congty.vn`, `it@congty.vn`, `deploy`).
 >
-> Phiên bản tài liệu: 1.0.0 (cập nhật 2026-10-03, thêm phương án D - Cloudflare Tunnel). Mã nguồn: repo **riêng tư** `notivn/Ads-MCP-simple`. Image dựng sẵn (riêng tư): `ghcr.io/notivn/ads-mcp-simple:<phiên bản>` và `ghcr.io/notivn/ads-mcp-simple-updater:<phiên bản>`, bản đầu tiên `1.0.0` (tag git `v1.0.0`).
+> Phiên bản tài liệu: 1.0.0 (cập nhật 2026-10-03, thêm phương án D - Cloudflare Tunnel). Mã nguồn: repo **riêng tư** `schhung1822/nextgency-mcp-ads`. Image dựng sẵn (riêng tư): `ghcr.io/schhung1822/nextgency-mcp-ads:<phiên bản>` và `ghcr.io/schhung1822/nextgency-mcp-ads-updater:<phiên bản>`, bản đầu tiên `1.0.0` (tag git `v1.0.0`).
 
 ## Mục lục
 0. [Cài nhanh bằng script (khuyến nghị)](#0-cài-nhanh-bằng-script-khuyến-nghị)
@@ -27,21 +27,21 @@
 
 ## 0. Cài nhanh bằng script (khuyến nghị)
 
-Script `install-ads-mcp.sh` (công khai ở <https://github.com/notivn/ads-mcp-simple-install>, bản gốc trong repo ở `scripts/install-ads-mcp.sh`; script không chứa bí mật — vẫn cần tài khoản GitHub được noti.vn cấp quyền + token mới cài được) làm tự động các mục 3.4, 3.5, 4, 6, 7 (và 10b.4 với Cloudflare Tunnel) trên **VPS mới** Ubuntu 22.04/24.04 hoặc Debian 12/13 (amd64/arm64), bằng **một lệnh**. Thời gian khoảng 5-15 phút, phần lớn là tải Docker và image. Các mục còn lại của tài liệu này vẫn dùng để hiểu hệ thống, xử lý sự cố và cài tay.
+Script `install-ads-mcp.sh` (nằm trong repo <https://github.com/schhung1822/nextgency-mcp-ads> ở `scripts/install-ads-mcp.sh`; script không chứa bí mật — vẫn cần tài khoản GitHub được Nextgency cấp quyền + token mới cài được) làm tự động các mục 3.4, 3.5, 4, 6, 7 (và 10b.4 với Cloudflare Tunnel) trên **VPS mới** Ubuntu 22.04/24.04 hoặc Debian 12/13 (amd64/arm64), bằng **một lệnh**. Thời gian khoảng 5-15 phút, phần lớn là tải Docker và image. Các mục còn lại của tài liệu này vẫn dùng để hiểu hệ thống, xử lý sự cố và cài tay.
 
 ### 0.1 Cần chuẩn bị
 | Thứ cần có | Ghi chú |
 |---|---|
 | VPS | Đăng nhập được bằng `root` hoặc user có `sudo`. Tối thiểu 2 GB RAM (ít hơn: script tạo swap), ổ đĩa trống ≥ 10 GB (khuyến nghị ≥ 20 GB) |
 | Tên miền con, vd `mcp.congty.vn` | **Cách 1 - tự động (mặc định):** bản ghi **A** trỏ IPv4 của VPS; nếu DNS ở Cloudflare thì để **DNS only** (mây xám); không tạo AAAA; mở 22, 80, 443 ở tường lửa của nhà cung cấp VPS. **Cách 2 - Cloudflare Tunnel:** tạo tunnel + route `http://caddy:80` theo 10b.3 và sao chép token `eyJ…` (không cần bản ghi A, không mở cổng) |
-| Tài khoản GitHub đã được noti.vn cấp quyền Read | Còn lời mời chưa chấp nhận: script hỏi và chấp nhận giúp |
+| Tài khoản GitHub đã được Nextgency cấp quyền Read | Còn lời mời chưa chấp nhận: script hỏi và chấp nhận giúp |
 | **1 token GitHub** | PAT classic tích `repo` + `read:packages` (mục 5.1, có link tích sẵn). Một token dùng cho mọi việc |
 | Email | Nhận thông báo của Let's Encrypt (cách 1) |
 
 ### 0.2 Chạy
-Trên VPS, tải script từ repo công khai rồi chạy (khuyến nghị tải về trước để xem được file; kiểm tra tuỳ chọn bằng `SHA256SUMS` trong repo đó):
+Trên VPS, tải script từ repo rồi chạy (cách `curl` dưới đây chỉ dùng được khi repo **công khai**; repo riêng tư thì chép file như bên dưới). Nên tải về trước để xem nội dung file:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/notivn/ads-mcp-simple-install/main/install-ads-mcp.sh -o install-ads-mcp.sh
+curl -fsSL https://raw.githubusercontent.com/schhung1822/nextgency-mcp-ads/main/scripts/install-ads-mcp.sh -o install-ads-mcp.sh
 sudo bash install-ads-mcp.sh
 ```
 Hoặc chép file lên VPS (trên máy tính của bạn: `scp install-ads-mcp.sh root@IP_VPS:/root/`), rồi trên VPS:
@@ -57,7 +57,7 @@ Các câu hỏi (Enter = giá trị trong ngoặc vuông; nhập sai thì hỏi 
 | Tên miền chạy phần mềm | vd `mcp.congty.vn` (không `http://`, không `/`) |
 | Cách đưa web ra Internet `[1]` | `1` = tự động (Caddy + Let's Encrypt), `2` = Cloudflare Tunnel. Cloudflare proxy mây cam (mục 9) và Nginx (mục 10) cài tay |
 | Email | Bắt buộc với cách 1; cách 2 có thể bỏ trống |
-| Tên tài khoản GitHub | Tài khoản đã được noti.vn cấp quyền |
+| Tên tài khoản GitHub | Tài khoản đã được Nextgency cấp quyền |
 | Token GitHub | **Nhập ẩn** (không hiện ra màn hình). Kiểm tra ngay: sai/hết hạn, token của tài khoản khác, thiếu `repo`/`read:packages`, token fine-grained, chưa có quyền đọc repo: báo rõ lý do và cách sửa. Hiện ngày hết hạn, cảnh báo khi còn dưới 30 ngày |
 | Token Cloudflare Tunnel | Chỉ cách 2, nhập ẩn |
 | Bật tường lửa UFW? `[Y/n]` | Mở cổng SSH đang dùng **trước** khi bật; cách 1 mở thêm 80/tcp, 443/tcp, 443/udp |
@@ -94,7 +94,7 @@ Nhật ký: `/var/log/ads-mcp-install.log` (quyền 600, **không** chứa token
 Ví dụ (mã cài đặt đã che; mã chỉ in ra màn hình, không ghi vào nhật ký):
 ```text
 ════════════════════════════════════════════════════════════════════════
- ✅ CÀI ĐẶT THÀNH CÔNG — Ads MCP by noti.vn v1.0.6
+ ✅ CÀI ĐẶT THÀNH CÔNG — Ads MCP by Nextgency v1.0.6
 ════════════════════════════════════════════════════════════════════════
 
 👉 BƯỚC TIẾP THEO: tạo tài khoản quản trị (admin)
@@ -356,7 +356,7 @@ Từ đây, **mọi lệnh `docker`/`docker compose` chạy bằng user `deploy`
 
 ## 5. Quyền truy cập GitHub (mã nguồn + image riêng tư)
 
-noti.vn thêm **tài khoản GitHub do đơn vị chọn** vào repo `notivn/Ads-MCP-simple` với vai trò *outside collaborator*, quyền **Read**. Từ tài khoản đó tạo **một PAT classic** tích **`repo` + `read:packages`** và dùng cho cả 3 việc (từ 2026-10-09; script cài nhanh ở mục 0 dùng đúng token này):
+Nextgency thêm **tài khoản GitHub do đơn vị chọn** vào repo `schhung1822/nextgency-mcp-ads` với vai trò *outside collaborator*, quyền **Read**. Từ tài khoản đó tạo **một PAT classic** tích **`repo` + `read:packages`** và dùng cho cả 3 việc (từ 2026-10-09; script cài nhanh ở mục 0 dùng đúng token này):
 
 | Dùng cho | Scope cần | Đặt ở đâu |
 |---|---|---|
@@ -364,10 +364,10 @@ noti.vn thêm **tài khoản GitHub do đơn vị chọn** vào repo `notivn/Ads
 | `git clone` / `git pull` qua HTTPS (docker-compose.yml, Caddyfile, script) | `repo` | Dán khi git hỏi mật khẩu (**không** lưu bằng `credential.helper store`); cài bằng script: `sudo ads-mcp update-config` tự dùng token trong `.env` |
 | Web/worker kiểm tra bản mới (GitHub Releases) | `repo` | `UPDATE_GITHUB_TOKEN` trong `.env` |
 
-Không dùng PAT fine-grained: GitHub không cho PAT fine-grained truy cập repo mà tài khoản chỉ là *outside collaborator*, và GHCR chỉ nhận PAT classic. Tài khoản chỉ có quyền Read trên repo của noti.vn, nên token bị lộ cũng **không** đẩy được mã hay tag lên repo phần mềm.
+Không dùng PAT fine-grained: GitHub không cho PAT fine-grained truy cập repo mà tài khoản chỉ là *outside collaborator*, và GHCR chỉ nhận PAT classic. Tài khoản chỉ có quyền Read trên repo của Nextgency, nên token bị lộ cũng **không** đẩy được mã hay tag lên repo phần mềm.
 
 > [!WARNING]
-> Scope `repo` cho quyền **đọc và ghi mọi repo mà chính tài khoản đó có quyền** (repo cá nhân, repo của tổ chức khác). Token nằm trên máy chủ ở 2 chỗ (`.env` và `config.json` của Docker, chỉ chủ sở hữu đọc được). Nếu tài khoản có repo quan trọng, nên tạo **tài khoản GitHub riêng cho máy chủ** (vd `congty-ads-server`, bật 2FA) và nhờ noti.vn thêm tài khoản này thay cho tài khoản cá nhân (không bắt buộc). Nhân viên giữ tài khoản nghỉ việc: chuyển sang tài khoản khác và xoá token cũ.
+> Scope `repo` cho quyền **đọc và ghi mọi repo mà chính tài khoản đó có quyền** (repo cá nhân, repo của tổ chức khác). Token nằm trên máy chủ ở 2 chỗ (`.env` và `config.json` của Docker, chỉ chủ sở hữu đọc được). Nếu tài khoản có repo quan trọng, nên tạo **tài khoản GitHub riêng cho máy chủ** (vd `congty-ads-server`, bật 2FA) và nhờ Nextgency thêm tài khoản này thay cho tài khoản cá nhân (không bắt buộc). Nhân viên giữ tài khoản nghỉ việc: chuyển sang tài khoản khác và xoá token cũ.
 
 ### 5.1 Tạo token (PAT classic `repo` + `read:packages`)
 GHCR (GitHub Packages) **chỉ nhận PAT classic**, không nhận PAT fine-grained (docs.github.com, 2026-10-03).
@@ -377,7 +377,7 @@ GHCR (GitHub Packages) **chỉ nhận PAT classic**, không nhận PAT fine-grai
 4. Tích **`repo`** (các ô con tự được tích theo) và **`read:packages`**. Không tích `write:packages`, `delete:packages`, `admin:*` hay ô nào khác.
 5. Generate, sao chép token ngay (chỉ hiện 1 lần).
 
-Lưu ý: package riêng tư của tổ chức **kế thừa quyền của repo liên kết**, nên tài khoản phải có quyền Read trên repo. Nếu tổ chức bật SAML SSO phải bấm **Configure SSO → Authorize** cho token; nếu tổ chức chặn PAT classic thì liên hệ noti.vn.
+Lưu ý: package riêng tư của tổ chức **kế thừa quyền của repo liên kết**, nên tài khoản phải có quyền Read trên repo. Nếu tổ chức bật SAML SSO phải bấm **Configure SSO → Authorize** cho token; nếu tổ chức chặn PAT classic thì liên hệ Nextgency.
 
 **Đổi token** (sắp hết hạn, nghi bị lộ): cài bằng script → `sudo ads-mcp token` (kiểm tra token, đăng nhập lại GHCR, ghi `UPDATE_GITHUB_TOKEN`, khởi động lại web/worker). Cài tay → đăng nhập lại GHCR (6.2), thay dòng `UPDATE_GITHUB_TOKEN=` trong `.env`, `docker compose up -d --no-build`. Sau đó xoá token cũ ở <https://github.com/settings/tokens>.
 
@@ -387,7 +387,7 @@ Repo riêng tư thì API Releases trả 404 khi không có token, web sẽ báo 
 - Mật khẩu khi `git clone` / `git pull` qua HTTPS hỏi (`Username` = tên tài khoản GitHub, `Password` = token). **Không** ghép token vào URL (bị lưu trong `.git/config`), **không** chạy `git config credential.helper store` (lưu token dạng chữ thường ở `~/.git-credentials`). Tuỳ chọn: `git config --global credential.helper 'cache --timeout=900'` (chỉ giữ trong RAM 15 phút). Script cài nhanh và lệnh `ads-mcp` đưa token cho git qua `GIT_ASKPASS` tạm thời, không lưu lại.
 
 ### 5.3 (Nâng cao, tuỳ chọn) Deploy key cho `git pull`
-Muốn `git pull` không phải dán token: tạo deploy key chỉ đọc và gửi phần `.pub` cho noti.vn thêm ở **repo → Settings → Deploy keys** ("Allow write access" **không** tick). Token vẫn cần cho `UPDATE_GITHUB_TOKEN` và `docker login`.
+Muốn `git pull` không phải dán token: tạo deploy key chỉ đọc và gửi phần `.pub` cho Nextgency thêm ở **repo → Settings → Deploy keys** ("Allow write access" **không** tick). Token vẫn cần cho `UPDATE_GITHUB_TOKEN` và `docker login`.
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/ads-mcp-deploy -N "" -C "ads-mcp@$(hostname)"
 cat ~/.ssh/ads-mcp-deploy.pub
@@ -399,10 +399,10 @@ Host github-ads-mcp
   IdentitiesOnly yes
 EOF
 chmod 600 ~/.ssh/config
-ssh -T github-ads-mcp                                               # sau khi noti.vn báo đã thêm khoá
-git -C /opt/ads-mcp remote set-url origin github-ads-mcp:notivn/Ads-MCP-simple.git
+ssh -T github-ads-mcp                                               # sau khi Nextgency báo đã thêm khoá
+git -C /opt/ads-mcp remote set-url origin github-ads-mcp:schhung1822/nextgency-mcp-ads.git
 ```
-Lần đầu SSH hỏi xác nhận khoá máy chủ GitHub: so dấu vân tay ED25519 với trang chính thức "GitHub's SSH key fingerprints" (`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`) rồi gõ `yes`. Kết quả đúng: `Hi notivn/Ads-MCP-simple! You've successfully authenticated, but GitHub does not provide shell access.`
+Lần đầu SSH hỏi xác nhận khoá máy chủ GitHub: so dấu vân tay ED25519 với trang chính thức "GitHub's SSH key fingerprints" (`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`) rồi gõ `yes`. Kết quả đúng: `Hi schhung1822/nextgency-mcp-ads! You've successfully authenticated, but GitHub does not provide shell access.`
 
 ### 5.4 Đã cài theo hướng dẫn cũ
 - **2 token** (Token A chỉ `read:packages` cho `docker login`, Token B chỉ `repo` cho git + `UPDATE_GITHUB_TOKEN`, theo tài liệu 2026-10-05 đến 2026-10-08): vẫn chạy bình thường, **không bắt buộc đổi**. Muốn gộp về 1 token: tạo token theo 5.1, `docker logout ghcr.io` rồi đăng nhập lại bằng token mới (6.2), thay dòng `UPDATE_GITHUB_TOKEN=` trong `.env`, `docker compose up -d --no-build`, xoá 2 token cũ.
@@ -421,7 +421,7 @@ Lần đầu SSH hỏi xác nhận khoá máy chủ GitHub: so dấu vân tay ED
 ### 6.1 Lấy mã nguồn
 ```bash
 sudo mkdir -p /opt/ads-mcp && sudo chown deploy:deploy /opt/ads-mcp
-git clone https://github.com/notivn/Ads-MCP-simple.git /opt/ads-mcp   # Username = tên GitHub, Password = token GitHub (mục 5)
+git clone https://github.com/schhung1822/nextgency-mcp-ads.git /opt/ads-mcp   # Username = tên GitHub, Password = token GitHub (mục 5)
 cd /opt/ads-mcp
 git log --oneline -1          # xem đang ở commit nào
 mkdir -p backups && chmod 700 backups   # tạo trước để thư mục thuộc deploy (Docker tự tạo sẽ thuộc root)
@@ -976,9 +976,9 @@ Tài liệu xử lý lỗi tunnel của Cloudflare: <https://developers.cloudfla
 ## 11. Cập nhật phiên bản
 
 ### 11.1 Trong web (khuyến nghị)
-Khi noti.vn phát hành bản mới (tag `vX.Y.Z` → GitHub Actions build image + tạo Release), admin thấy thông báo trong web. **Cài đặt → Cập nhật → Cập nhật lên vX.Y.Z** (xác thực lại mật khẩu/2FA). Service `updater`:
+Khi Nextgency phát hành bản mới (tag `vX.Y.Z` → GitHub Actions build image + tạo Release), admin thấy thông báo trong web. **Cài đặt → Cập nhật → Cập nhật lên vX.Y.Z** (xác thực lại mật khẩu/2FA). Service `updater`:
 1. sao lưu database → `backups/pre-update-<thời gian UTC>.dump` (giữ lại, không tự xoá);
-2. `docker pull` image mới, kiểm tra image mang đúng phiên bản và **xác minh chữ ký số** (cosign) do GitHub Actions của noti.vn ký cho đúng tag `vX.Y.Z` - image không có chữ ký (tự build, đẩy tay, bị tráo) bị từ chối, bản đang chạy không bị ảnh hưởng;
+2. `docker pull` image mới, kiểm tra image mang đúng phiên bản và **xác minh chữ ký số** (cosign) do GitHub Actions của Nextgency ký cho đúng tag `vX.Y.Z` - image không có chữ ký (tự build, đẩy tay, bị tráo) bị từ chối, bản đang chạy không bị ảnh hưởng;
 3. chạy migration bằng image mới (bản cũ vẫn phục vụ; lỗi thì dừng, không đụng bản đang chạy);
 4. ghi `APP_VERSION=X.Y.Z` vào `.env` (bản cũ ở `.env.bak`) rồi thay `web` + `worker`;
 5. kiểm tra sức khoẻ tối đa 5 phút; lỗi thì **tự quay về bản cũ**;
@@ -1027,8 +1027,8 @@ docker compose logs --tail=50 migrate web
 ### 11.3 Tự kiểm tra chữ ký số của image (tuỳ chọn)
 Updater đã tự làm việc này. Muốn kiểm tra tay (cần [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) bản 3 trở lên và đã `docker login ghcr.io` bằng token mục 5; thay `X.Y.Z` ở cả 2 chỗ):
 ```bash
-cosign verify ghcr.io/notivn/ads-mcp-simple:X.Y.Z \
-  --certificate-identity https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/vX.Y.Z \
+cosign verify ghcr.io/schhung1822/nextgency-mcp-ads:X.Y.Z \
+  --certificate-identity https://github.com/schhung1822/nextgency-mcp-ads/.github/workflows/docker.yml@refs/tags/vX.Y.Z \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 Image updater: thay `ads-mcp-simple:` bằng `ads-mcp-simple-updater:`. Kết quả đúng có dòng `The cosign claims were validated` và `The code-signing certificate was verified`.
@@ -1036,7 +1036,7 @@ Image updater: thay `ads-mcp-simple:` bằng `ads-mcp-simple-updater:`. Kết qu
 ### 11.4 Dọn image cũ
 Mỗi phiên bản ~vài trăm MB. Sau khi bản mới chạy ổn vài ngày:
 ```bash
-docker image ls 'ghcr.io/notivn/*'
+docker image ls 'ghcr.io/schhung1822/*'
 docker image prune -a -f          # xoá image không còn container nào dùng (cần quay về bản cũ thì kéo lại)
 docker system df
 ```
@@ -1118,7 +1118,7 @@ df -h / && docker system df                         # đĩa
 | Lệnh tay chạy được nhưng updater báo lỗi bước "Tải image" | Đăng nhập bằng user khác với `UPDATER_DOCKER_CONFIG`, hoặc dùng credential helper | 6.2; sửa `UPDATER_DOCKER_CONFIG` rồi `docker compose up -d --no-build` |
 | `manifest unknown`, `not found` | `APP_VERSION` sai (có chữ `v`, hoặc bản chưa phát hành/đang build) | Xem trang Releases; `APP_VERSION=1.0.0` |
 | `no matching manifest for linux/...` | Kiến trúc máy không được build (vd đã chỉ build amd64) | Dùng VPS amd64 hoặc build lại cả arm64 (mục 14) |
-| Updater: bước "Tải image" báo `không xác minh được chữ ký số` | Máy chủ không ra được Sigstore/ghcr.io, hoặc image không do GitHub Actions của noti.vn ký cho đúng tag | Mở chiều ra tới `ghcr.io`, `*.sigstore.dev`; xem `docker compose logs --tail=100 updater`; báo noti.vn nếu mạng ổn (11.1, 11.3) |
+| Updater: bước "Tải image" báo `không xác minh được chữ ký số` | Máy chủ không ra được Sigstore/ghcr.io, hoặc image không do GitHub Actions của Nextgency ký cho đúng tag | Mở chiều ra tới `ghcr.io`, `*.sigstore.dev`; xem `docker compose logs --tail=100 updater`; báo Nextgency nếu mạng ổn (11.1, 11.3) |
 | Mọi lệnh `docker compose` báo `Thiếu APP_VERSION trong .env` | `.env` không có hoặc để trống `APP_VERSION` | Đặt `APP_VERSION=<phiên bản đang chạy>` (không có `v`) trong `.env` |
 | `toomanyrequests` từ Docker Hub (postgres, caddy) | Giới hạn kéo ẩn danh của Docker Hub | Đợi, hoặc `docker login` Docker Hub |
 
@@ -1174,7 +1174,7 @@ Khuyến nghị (phòng khi GitHub bắt đầu tính phí, sẽ báo trước �
 - [ ] `.env` quyền 600, đã sao lưu ở nơi an toàn **khác** nơi chứa bản dump.
 - [ ] Bản sao lưu được đẩy ra ngoài VPS (12.2) và đã thử khôi phục.
 - [ ] Admin bật 2FA, bật "Bắt buộc 2FA cho quản trị viên".
-- [ ] Token GitHub (PAT classic) chỉ tích `repo` + `read:packages` (bản cài cũ: Token A chỉ `read:packages`, Token B chỉ `repo`), của tài khoản chỉ có quyền Read trên repo noti.vn (nên là tài khoản riêng cho máy chủ); có hạn và lịch nhắc; không còn `~/.git-credentials` / `credential.helper store` trên VPS (5.4); deploy key (nếu dùng) chỉ đọc.
+- [ ] Token GitHub (PAT classic) chỉ tích `repo` + `read:packages` (bản cài cũ: Token A chỉ `read:packages`, Token B chỉ `repo`), của tài khoản chỉ có quyền Read trên repo Nextgency (nên là tài khoản riêng cho máy chủ); có hạn và lịch nhắc; không còn `~/.git-credentials` / `credential.helper store` trên VPS (5.4); deploy key (nếu dùng) chỉ đọc.
 - [ ] Bản sao lưu được mã hoá trước khi ra khỏi VPS; khoá mã hoá bản sao lưu cất riêng (12.1).
 - [ ] Không dùng credential helper cho `docker login`; `UPDATER_DOCKER_CONFIG` đúng user.
 - [ ] Kiểm tra IP thật: nhật ký nhân sự ghi đúng IP của bạn (9.4).
@@ -1185,14 +1185,14 @@ Khuyến nghị (phòng khi GitHub bắt đầu tính phí, sẽ báo trước �
 - [ ] Đăng ký giám sát `/api/health` + hạn chứng chỉ.
 - [ ] Nắm rủi ro service `updater` (có `docker.sock` = quyền root máy chủ; `.claude/docs/07-deployment.md` §6.4). Không muốn: bỏ `COMPOSE_PROFILES=updater` → `docker compose rm -sf updater`, cập nhật tay (11.2).
 
-### 15.2 Checklist phát hành phiên bản mới (người duy trì, noti.vn)
+### 15.2 Checklist phát hành phiên bản mới (người duy trì, Nextgency)
 Quy tắc dự án: **build Docker image ở máy local thành công và chạy thử trước, rồi mới push**.
 1. `pnpm lint && pnpm typecheck && pnpm test` xanh; migration mới tương thích ngược 1 phiên bản (07-deployment §6.7).
 2. Sửa `package.json#version` = `X.Y.Z`, commit `chore(release): vX.Y.Z`.
 3. Build local đúng target phát hành **chỉ để chạy thử** (image này không có chữ ký, **không bao giờ** `docker push` image/tag phát hành bằng tay: updater của khách sẽ từ chối):
    ```bash
-   docker build --build-arg APP_BUILD_VERSION=X.Y.Z -t ghcr.io/notivn/ads-mcp-simple:X.Y.Z .
-   docker build --target updater --build-arg APP_BUILD_VERSION=X.Y.Z -t ghcr.io/notivn/ads-mcp-simple-updater:X.Y.Z .
+   docker build --build-arg APP_BUILD_VERSION=X.Y.Z -t ghcr.io/schhung1822/nextgency-mcp-ads:X.Y.Z .
+   docker build --target updater --build-arg APP_BUILD_VERSION=X.Y.Z -t ghcr.io/schhung1822/nextgency-mcp-ads-updater:X.Y.Z .
    ```
    (hoặc `APP_BUILD_VERSION=X.Y.Z APP_VERSION=X.Y.Z docker compose -f docker-compose.yml -f docker-compose.build.yml build`)
 4. Smoke test stack production local với chính image đó: `APP_VERSION=X.Y.Z docker compose up -d --no-build`, `migrate` exit 0, `web` healthy, đăng nhập, gọi thử 1 tool MCP.
@@ -1200,12 +1200,12 @@ Quy tắc dự án: **build Docker image ở máy local thành công và chạy 
 5b. **Thử ký + xác minh bằng tag rc trước** (bắt buộc khi workflow ký/updater thay đổi, nên làm mỗi lần): đặt `package.json#version` = `X.Y.Z-rc.1`, commit lên `main`, `git tag vX.Y.Z-rc.1 && git push origin main vX.Y.Z-rc.1`. CI build + ký 2 image `X.Y.Z-rc.1` (không tạo Release). Rồi xác minh bằng cosign **trong image updater vừa build** (đúng bản cosign khách sẽ chạy):
    ```bash
    # digest index (multi-arch) của 2 image rc, rồi xác minh bằng chính cosign trong image updater rc
-   W=$(docker buildx imagetools inspect ghcr.io/notivn/ads-mcp-simple:X.Y.Z-rc.1 --format '{{.Manifest.Digest}}')
-   U=$(docker buildx imagetools inspect ghcr.io/notivn/ads-mcp-simple-updater:X.Y.Z-rc.1 --format '{{.Manifest.Digest}}')
-   for ref in "ghcr.io/notivn/ads-mcp-simple@$W" "ghcr.io/notivn/ads-mcp-simple-updater@$U"; do
+   W=$(docker buildx imagetools inspect ghcr.io/schhung1822/nextgency-mcp-ads:X.Y.Z-rc.1 --format '{{.Manifest.Digest}}')
+   U=$(docker buildx imagetools inspect ghcr.io/schhung1822/nextgency-mcp-ads-updater:X.Y.Z-rc.1 --format '{{.Manifest.Digest}}')
+   for ref in "ghcr.io/schhung1822/nextgency-mcp-ads@$W" "ghcr.io/schhung1822/nextgency-mcp-ads-updater@$U"; do
      docker run --rm -v "$HOME/.docker:/root/.docker:ro" -e TUF_ROOT=/tmp/sigstore-tuf --entrypoint cosign \
-       ghcr.io/notivn/ads-mcp-simple-updater:X.Y.Z-rc.1 verify \
-       --certificate-identity https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/vX.Y.Z-rc.1 \
+       ghcr.io/schhung1822/nextgency-mcp-ads-updater:X.Y.Z-rc.1 verify \
+       --certificate-identity https://github.com/schhung1822/nextgency-mcp-ads/.github/workflows/docker.yml@refs/tags/vX.Y.Z-rc.1 \
        --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" || echo "KHÔNG ĐẠT: $ref"
    done
    ```
@@ -1214,7 +1214,7 @@ Quy tắc dự án: **build Docker image ở máy local thành công và chạy 
    Đạt thì sửa `package.json#version` về `X.Y.Z`, commit, rồi mới tạo tag thật. Không đạt: **không** phát hành, sửa workflow rồi thử `-rc.2`.
 6. `git push origin main`, rồi `git tag vX.Y.Z && git push origin vX.Y.Z` (tag phải trỏ vào commit đã có trên `main`). Bản phát hành **chỉ** được tạo bởi CI.
 7. GitHub Actions `docker.yml`: kiểm tra version khớp tag, tag nằm trên `main`, bản chưa từng phát hành → build + push 2 image (amd64 + arm64, kèm SBOM/provenance) → ký cả 2 bằng cosign keyless → tạo GitHub Release. Theo dõi tab Actions đến khi xanh. Lỗi giữa chừng thì chạy lại job (Release chỉ được tạo ở cuối); đã có Release thì **không** đẩy lại cùng phiên bản, tạo bản vá mới.
-7b. Bản phát hành có sửa `scripts/install-ads-mcp.sh` hoặc `scripts/ads-mcp`: chép 2 file sang repo công khai <https://github.com/notivn/ads-mcp-simple-install> (giữ LF + quyền thực thi), tạo lại `SHA256SUMS` (`sha256sum install-ads-mcp.sh ads-mcp > SHA256SUMS`), cập nhật README nếu câu hỏi / tuỳ chọn đổi, commit + push; tải lại từ `raw.githubusercontent.com` trên một máy Linux sạch và chạy `sha256sum -c SHA256SUMS` + `bash install-ads-mcp.sh --help`.
+7b. Bản phát hành có sửa `scripts/install-ads-mcp.sh` hoặc `scripts/ads-mcp`: hai file này nằm ngay trong repo (không còn repo installer riêng), nên không cần chép đi đâu; chỉ cần cập nhật README nếu câu hỏi / tuỳ chọn của script đổi.
 8. Chạy lệnh `cosign verify` ở 11.3 cho **cả 2 image** `X.Y.Z`. Kiểm tra Release và package trên GHCR có tag `X.Y.Z`; trên một máy thử, admin bấm **Cập nhật** và xác nhận thành công trước khi thông báo cho khách.
 
 ### 15.3 Nguồn tham khảo (truy cập 2026-10-03)

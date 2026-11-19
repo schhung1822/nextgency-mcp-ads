@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: { default: "Ads MCP · noti.vn", template: "%s · Ads MCP" },
+  title: { default: "Ads MCP · Nextgency", template: "%s · Ads MCP" },
   description:
     "Kết nối tài khoản quảng cáo Meta, TikTok, Google Ads (gồm YouTube), OpenAI Ads với Claude, ChatGPT, Gemini qua MCP.",
   icons: { icon: "/brand/favicon.png" },
@@ -23,8 +23,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fcfaf9" },
-    { media: "(prefers-color-scheme: dark)", color: "#141010" },
+    { media: "(prefers-color-scheme: light)", color: "#faf9fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#120f16" },
   ],
 }
 

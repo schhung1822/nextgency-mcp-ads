@@ -153,7 +153,7 @@ export function DateRangePicker({
                 className={cn(
                   "shrink-0 justify-start rounded-xl pointer-coarse:h-10",
                   current === p &&
-                    "bg-brand-red/10 font-medium text-brand-ink hover:bg-brand-red/15"
+                    "bg-brand-primary/10 font-medium text-brand-ink hover:bg-brand-primary/15"
                 )}
               >
                 {DATE_PRESET_LABELS[p]}
@@ -166,7 +166,7 @@ export function DateRangePicker({
               className={cn(
                 "shrink-0 justify-start rounded-xl pointer-coarse:h-10",
                 current === "custom" &&
-                  "bg-brand-red/10 font-medium text-brand-ink hover:bg-brand-red/15"
+                  "bg-brand-primary/10 font-medium text-brand-ink hover:bg-brand-primary/15"
               )}
               onClick={() => setDraft(undefined)}
             >

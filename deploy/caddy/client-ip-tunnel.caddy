@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - CADDY_CLIENT_IP=tunnel (phương án D - Cloudflare Tunnel). Nạp vào khối servers {}.
+# Ads MCP by: Nextgency - CADDY_CLIENT_IP=tunnel (phương án D - Cloudflare Tunnel). Nạp vào khối servers {}.
 # Khách -> Cloudflare -> cloudflared (container trong mạng Docker nội bộ) -> Caddy. Kết nối tới Caddy luôn đến từ
 # địa chỉ mạng riêng của Docker (cloudflared), nên tin dải mạng riêng (private_ranges = 10.0.0.0/8, 172.16.0.0/12,
 # 192.168.0.0/16, 127.0.0.1/8, fd00::/8, ::1) và lấy IP khách từ CF-Connecting-IP (Cloudflare tự đặt ở edge, ghi đè

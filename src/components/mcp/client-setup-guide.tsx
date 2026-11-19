@@ -45,7 +45,7 @@ export function claudeCodeCommand(url: string) {
 
 export function geminiCliSnippet(url: string) {
   return JSON.stringify(
-    { mcpServers: { adsnoti: { httpUrl: url, timeout: 120000 } } },
+    { mcpServers: { adsnextgency: { httpUrl: url, timeout: 120000 } } },
     null,
     2
   )
@@ -229,7 +229,7 @@ function Steps({ steps }: { steps: readonly string[] }) {
         <li key={i} className="flex gap-3 text-sm">
           <span
             aria-hidden
-            className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-semibold text-brand-ink tabular-nums"
+            className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-xs font-semibold text-brand-ink tabular-nums"
           >
             {i + 1}
           </span>

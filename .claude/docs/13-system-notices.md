@@ -1,6 +1,6 @@
 # 13 - Thông báo hệ thống (chỉ top bar web)
 
-> Yêu cầu chủ dự án (2026-10-04): 1 giờ/lần hệ thống GET webhook noti.vn, có `content` thì chạy chữ lặp nối đuôi ở top bar (giữa breadcrumb và ô tìm kiếm).
+> Yêu cầu chủ dự án (2026-10-04): 1 giờ/lần hệ thống GET webhook Nextgency, có `content` thì chạy chữ lặp nối đuôi ở top bar (giữa breadcrumb và ô tìm kiếm).
 >
 > **Quyết định chủ dự án 2026-10-05**: thông báo hệ thống **chỉ hiện trên top bar web**. Kết quả MCP trong chat AI **không** kèm thông báo hệ thống, cũng **không** kèm dòng nhắc cập nhật ("Ads MCP Simple có bản update…") - bản 1.0.1 từng kèm cả hai, đã gỡ (xem §4).
 
@@ -8,7 +8,7 @@
 
 ```
 worker job notices.fetch (phút 10 mỗi giờ + 1 lần khi worker khởi động, singleton 10 phút)
-  └─ GET SYSTEM_NOTICES_URL (mặc định webhook noti.vn) → parse + làm sạch → app_settings.system_notices
+  └─ GET SYSTEM_NOTICES_URL (mặc định webhook Nextgency) → parse + làm sạch → app_settings.system_notices
 web (dashboard layout) ── getActiveNotices() (cache 60 s/process) ──► AppShell → NoticeTicker (top bar)
 ```
 
@@ -20,7 +20,7 @@ Không có migration: dùng bảng `app_settings` (khoá nội bộ, không nằ
 - Mỗi dòng cần `content` (string). `status` = off/false/0/disabled/inactive/hidden/tắt → ẩn; không có `status` → hiện. Bỏ content rỗng, trùng lặp; tối đa **10** thông báo, mỗi thông báo **300** ký tự, 1 dòng (xoá xuống dòng, ký tự điều khiển, zero-width, bidi override).
 - HTTP 204/404/body rỗng = không có thông báo (xoá). Lỗi (5xx, timeout 10 s, JSON hỏng, > 64 KB, lỗi mạng) → **giữ danh sách cũ tối đa 24 giờ** rồi ẩn; không throw, giờ sau thử lại. Không theo redirect.
 - `app_settings.system_notices` = `{ items: [{id, content}], fetchedAt, lastSuccessAt, error }`.
-- `SYSTEM_NOTICES_URL`: không đặt = webhook noti.vn; rỗng/`off`/`false`/`0` = tắt hẳn (không gọi, không hiển thị); giá trị khác phải là URL `https://` không kèm user:pass, sai → tắt.
+- `SYSTEM_NOTICES_URL`: không đặt = webhook Nextgency; rỗng/`off`/`false`/`0` = tắt hẳn (không gọi, không hiển thị); giá trị khác phải là URL `https://` không kèm user:pass, sai → tắt.
 
 ### Khi webhook "chết" (hệ thống vẫn chạy bình thường)
 - **Chỉ worker** gọi webhook (1 lần/giờ, timeout 10 s cho cả header lẫn body, không retry dồn dập). Web và trang quản trị **chỉ đọc bản đã lưu trong DB** (cache 60 s); MCP không đọc thông báo → webhook chậm/sập/sai định dạng không làm chậm hay lỗi bất kỳ request nào.
@@ -28,7 +28,7 @@ Không có migration: dùng bảng `app_settings` (khoá nội bộ, không nằ
 
 ## 3. Giao diện (`components/app/notice-ticker.tsx`)
 
-- Desktop/tablet: viên pill nền `brand-red/6%` + icon loa trong top bar, chiếm khoảng trống giữa breadcrumb (tối đa 45%) và ô tìm kiếm → không đè menu. Phone: dải cao `h-11` dưới thanh 3.5rem trong cùng header sticky (`--app-topbar-offset` tăng tương ứng để thanh lưu/khung hướng dẫn không bị che).
+- Desktop/tablet: viên pill nền `brand-primary/6%` + icon loa trong top bar, chiếm khoảng trống giữa breadcrumb (tối đa 45%) và ô tìm kiếm → không đè menu. Phone: dải cao `h-11` dưới thanh 3.5rem trong cùng header sticky (`--app-topbar-offset` tăng tương ứng để thanh lưu/khung hướng dẫn không bị che).
 - Chạy phải → trái tốc độ 45 px/s, 2 bản sao, mỗi bản ≥ bề rộng khung → lặp liền mạch, thông báo nối đuôi nhau, thông báo ngắn chạy một mình (không lặp dày). Dừng khi hover/focus; `prefers-reduced-motion` → đứng yên. Hai mép mờ dần (mask). Screen reader đọc danh sách 1 lần (`role=region`, `aria-label="Thông báo hệ thống"`), bản chạy `aria-hidden`; `title` chứa toàn bộ nội dung.
 - Mọi người dùng đã đăng nhập (admin + nhân viên) đều thấy. Nội dung render như text (React escape), không bao giờ HTML/link.
 

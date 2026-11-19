@@ -1,6 +1,6 @@
 # Kết nối MCP với Claude, ChatGPT, Gemini
 
-> Áp dụng cho **Ads MCP by: noti.vn** (10/2026). Giao diện các AI thay đổi thường xuyên — nếu tên menu khác, tìm mục *Connectors / Apps / MCP*.
+> Áp dụng cho **Ads MCP by: Nextgency** (10/2026). Giao diện các AI thay đổi thường xuyên — nếu tên menu khác, tìm mục *Connectors / Apps / MCP*.
 
 ## Trước khi bắt đầu
 1. Tạo MCP trong Ads MCP (**MCP → Tạo MCP** — đọc hết và xác nhận popup **Miễn trừ trách nhiệm** trước), sao chép link dạng:
@@ -31,7 +31,7 @@
 
 ## Claude Code (CLI)
 ```bash
-claude mcp add --transport http ads-noti https://mcp.congty.vn/mcp/<key> --scope user
+claude mcp add --transport http ads-nextgency https://mcp.congty.vn/mcp/<key> --scope user
 claude mcp list          # kiểm tra trạng thái: ✓ Connected
 ```
 - `--scope user`: dùng cho mọi dự án trên máy. Dùng `--scope project` sẽ ghi link vào `.mcp.json` của dự án — **đừng commit file đó** vì link là bí mật.
@@ -54,14 +54,14 @@ Sửa file `~/.gemini/settings.json` (Windows: `%USERPROFILE%\.gemini\settings.j
 ```json
 {
   "mcpServers": {
-    "adsnoti": {
+    "adsnextgency": {
       "httpUrl": "https://mcp.congty.vn/mcp/<key>",
       "timeout": 120000
     }
   }
 }
 ```
-- Tên server **không dùng dấu gạch dưới** `_` (dùng `adsnoti`, `ads-noti`).
+- Tên server **không dùng dấu gạch dưới** `_` (dùng `adsnextgency`, `ads-nextgency`).
 - `httpUrl` = Streamable HTTP (đúng loại Ads MCP hỗ trợ); **không** dùng `url` (SSE cũ).
 - Khởi động lại `gemini`, gõ `/mcp` để xem trạng thái và danh sách tool. Kết quả quá ~40.000 ký tự có thể bị cắt.
 

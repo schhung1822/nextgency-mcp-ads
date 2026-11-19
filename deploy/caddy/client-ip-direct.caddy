@@ -1,3 +1,3 @@
-# Ads MCP by: noti.vn - CADDY_CLIENT_IP=direct (mặc định, phương án A): khách kết nối thẳng tới Caddy.
+# Ads MCP by: Nextgency - CADDY_CLIENT_IP=direct (mặc định, phương án A): khách kết nối thẳng tới Caddy.
 # Không tin proxy nào: {client_ip} = địa chỉ đang kết nối tới Caddy; mọi X-Forwarded-For / CF-Connecting-IP do
 # khách tự gửi đều bị bỏ qua (Caddyfile ghi đè X-Forwarded-For gửi vào app). Cố ý để trống.

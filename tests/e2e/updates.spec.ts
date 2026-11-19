@@ -57,7 +57,7 @@ test.beforeAll(async () => {
     tag: "v99.0.0",
     publishedAt: "2026-10-01T08:00:00.000Z",
     notes: NOTES,
-    url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v99.0.0",
+    url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v99.0.0",
     checkedAt: new Date().toISOString(),
   })
   await heartbeat()

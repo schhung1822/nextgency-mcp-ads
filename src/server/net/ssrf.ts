@@ -200,7 +200,7 @@ function requestOnce(url: URL, o: SafeFetchOptions): Promise<SafeFetchResult> {
       url,
       {
         method: o.method ?? "GET",
-        headers: { "user-agent": "ads-mcp-noti/1.0 (+media-fetch)", ...o.headers },
+        headers: { "user-agent": "ads-mcp-nextgency/1.0 (+media-fetch)", ...o.headers },
         agent: isHttps ? directAgents.https : directAgents.http,
         lookup: url.hostname && isIP(url.hostname.replace(/^\[|\]$/g, "")) ? undefined : guardedLookup,
         timeout: o.timeoutMs ?? 15_000,

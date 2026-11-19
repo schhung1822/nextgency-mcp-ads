@@ -56,12 +56,12 @@ describe("image signature helpers", () => {
   const D2 = `sha256:${"b".repeat(64)}`
 
   it("binds the signer identity to the exact release tag of the official repo", () => {
-    expect(signerIdentity("1.2.3")).toBe("https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/v1.2.3")
+    expect(signerIdentity("1.2.3")).toBe("https://github.com/schhung1822/nextgency-mcp-ads/.github/workflows/docker.yml@refs/tags/v1.2.3")
     for (const bad of ["v1.2.3", "1.2", "1.2.3-rc.1", "1.2.3@refs/heads/x", ""]) expect(() => signerIdentity(bad), bad).toThrow()
   })
 
   it("extracts distinct registry digests of the given repository only", () => {
-    const img = "ghcr.io/notivn/ads-mcp-simple"
+    const img = "ghcr.io/schhung1822/nextgency-mcp-ads"
     const json = JSON.stringify([`${img}@${D1}`, `${img}-updater@${D2}`, `${img}@${D1}`, `evil.io/x@${D2}`, `${img}@sha256:short`, `${img}@${D2.toUpperCase()}`, 42])
     expect(repoDigestsFor(json, img)).toEqual([D1])
     expect(repoDigestsFor(json, `${img}-updater`)).toEqual([D2])
@@ -69,7 +69,7 @@ describe("image signature helpers", () => {
   })
 
   it("verifies only the official image unless the .env switch is exactly 0", () => {
-    const img = "ghcr.io/notivn/ads-mcp-simple"
+    const img = "ghcr.io/schhung1822/nextgency-mcp-ads"
     expect(signatureMode(img, "A=1\n")).toBe("verify")
     expect(signatureMode(img, "UPDATER_VERIFY_SIGNATURE=1\n")).toBe("verify")
     expect(signatureMode(img, "UPDATER_VERIFY_SIGNATURE=false\n")).toBe("verify")
@@ -81,9 +81,9 @@ describe("image signature helpers", () => {
 
 describe("image name", () => {
   it("accepts registry repositories, rejects tags, spaces and shell characters", () => {
-    expect(isValidImageName("ghcr.io/notivn/ads-mcp-simple")).toBe(true)
+    expect(isValidImageName("ghcr.io/schhung1822/nextgency-mcp-ads")).toBe(true)
     expect(isValidImageName("registry.local:5000/team/ads-mcp")).toBe(true)
-    for (const bad of ["ads-mcp", "ghcr.io/notivn/ads-mcp:1.2.3", "ghcr.io/x/y z", "ghcr.io/x/y;id", "-v/x:/y", "GHCR.io/Foo/Bar", "ghcr.io//x", ""]) {
+    for (const bad of ["ads-mcp", "ghcr.io/schhung1822/ads-mcp:1.2.3", "ghcr.io/x/y z", "ghcr.io/x/y;id", "-v/x:/y", "GHCR.io/Foo/Bar", "ghcr.io//x", ""]) {
       expect(isValidImageName(bad), bad).toBe(false)
     }
   })
@@ -202,7 +202,7 @@ describe("redaction", () => {
   })
 
   it("does not mangle ordinary log text", () => {
-    const text = "Status: Downloaded newer image for ghcr.io/notivn/ads-mcp-simple:1.2.0"
+    const text = "Status: Downloaded newer image for ghcr.io/schhung1822/nextgency-mcp-ads:1.2.0"
     expect(redact(text)).toBe(text)
     expect(redact("APP_DOMAIN is ads.example.com")).toContain("ads.example.com")
   })
@@ -234,7 +234,7 @@ describe("LogBuffer", () => {
 })
 
 describe("compose ps + health decision", () => {
-  const IMG = "ghcr.io/notivn/ads-mcp-simple"
+  const IMG = "ghcr.io/schhung1822/nextgency-mcp-ads"
   const web = (o: object = {}) => ({ Service: "web", State: "running", Health: "healthy", Image: `${IMG}:1.2.0`, ...o })
   const worker = (o: object = {}) => ({ Service: "worker", State: "running", Health: "", Image: `${IMG}:1.2.0`, ...o })
 

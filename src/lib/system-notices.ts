@@ -1,4 +1,4 @@
-// System notices (.claude/docs/13-system-notices.md): short announcements fetched hourly from the noti.vn webhook
+// System notices (.claude/docs/13-system-notices.md): short announcements fetched hourly from the Nextgency webhook
 // and shown ONLY in the web top bar ticker (never sent to AI clients through MCP results). Framework-free and
 // import-free: used by the worker job, the web app and client components.
 

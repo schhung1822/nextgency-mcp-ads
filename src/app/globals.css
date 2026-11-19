@@ -6,8 +6,10 @@
 
 /*
  * Design tokens - see .claude/docs/06-ui-design-system.md §2–3.
- * Brand: red #ED3C47 / orange #F26A1B (logo, accents, charts - never as a fill behind white text).
- * Primary button gradient: #D6303C → #CC4A0E (AA 4.5:1 with white text).
+ * Brand (Nextgency): deep purple #2B144D, light purple #C08DFE, black, white.
+ * --brand-primary = mid purple for tints / focus ring / dots / chart line (light) and #C08DFE (dark); --brand-accent =
+ * decorative glow + gradient end; never use either as a fill behind white text.
+ * Primary button gradient: #2B144D → #4B2488 (light) / #7A45CC → #8A4FD8 (dark), both AA 4.5:1+ with white text.
  */
 @theme inline {
   --font-heading: var(--font-sans);
@@ -52,8 +54,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 
   /* Brand */
-  --color-brand-red: var(--brand-red);
-  --color-brand-orange: var(--brand-orange);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-accent: var(--brand-accent);
   --color-brand-ink: var(--brand-ink);
   --color-primary-from: var(--primary-from);
   --color-primary-to: var(--primary-to);
@@ -90,38 +92,36 @@
   color-scheme: light;
 
   /* Brand */
-  --brand-red: oklch(0.627 0.212 22.8); /* #ED3C47 */
-  --brand-orange: oklch(0.682 0.186 44.8); /* #F26A1B */
-  --brand-ink: oklch(
-    0.52 0.19 24
-  ); /* brand-coloured text, AA on light surfaces */
-  --primary-from: oklch(0.576 0.201 22.9); /* #D6303C */
-  --primary-to: oklch(0.581 0.176 40); /* #CC4A0E */
+  --brand-primary: #7b3fd1; /* 6:1 on white */
+  --brand-accent: #c08dfe;
+  --brand-ink: #4a2290; /* brand-coloured text, AA on light surfaces and purple tints */
+  --primary-from: #2b144d;
+  --primary-to: #4b2488;
 
   /* shadcn surface tokens - warm neutrals */
-  --background: oklch(0.985 0.004 30);
-  --foreground: oklch(0.2 0.006 30);
+  --background: oklch(0.985 0.004 295);
+  --foreground: oklch(0.2 0.006 295);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.006 30);
+  --card-foreground: oklch(0.2 0.006 295);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.006 30);
+  --popover-foreground: oklch(0.2 0.006 295);
   --primary: var(--primary-from);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.962 0.006 30);
-  --secondary-foreground: oklch(0.25 0.008 30);
-  --muted: oklch(0.962 0.006 30);
-  --muted-foreground: oklch(0.505 0.014 30);
-  --accent: oklch(0.955 0.012 30);
-  --accent-foreground: oklch(0.25 0.008 30);
+  --secondary: oklch(0.962 0.006 295);
+  --secondary-foreground: oklch(0.25 0.008 295);
+  --muted: oklch(0.962 0.006 295);
+  --muted-foreground: oklch(0.505 0.014 295);
+  --accent: oklch(0.955 0.012 295);
+  --accent-foreground: oklch(0.25 0.008 295);
   --destructive: oklch(0.586 0.253 17.585); /* rose-600 */
   --destructive-foreground: oklch(0.985 0 0);
   --destructive-strong: oklch(0.514 0.222 16.935); /* rose-700 */
   --destructive-solid: oklch(
     0.586 0.253 17.585
   ); /* rose-600 - solid buttons with white text (AA) in both themes */
-  --border: oklch(0.915 0.008 30);
-  --input: oklch(0.905 0.008 30);
-  --ring: var(--brand-red);
+  --border: oklch(0.915 0.008 295);
+  --input: oklch(0.905 0.008 295);
+  --ring: var(--brand-primary);
 
   /* Status */
   --success: oklch(0.596 0.145 163.225); /* emerald-600 */
@@ -135,11 +135,11 @@
   --info-strong: oklch(0.5 0.134 242.749); /* sky-700 */
 
   /* Charts */
-  --chart-1: var(--brand-red);
-  --chart-2: var(--brand-orange);
+  --chart-1: var(--brand-primary);
+  --chart-2: #c026d3;
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.588 0.158 241.966);
-  --chart-5: oklch(0.55 0.03 30);
+  --chart-5: oklch(0.55 0.03 295);
 
   /*
    * Chart series per ad platform. Brand colours are unusable here (Meta/Google both blue,
@@ -167,41 +167,46 @@
   --glass-tint-strong: oklch(1 0 0 / 0.8);
   --glass-edge: oklch(1 0 0 / 0.75);
   --glass-specular: oklch(1 0 0 / 0.95);
-  --glass-shade: oklch(0.25 0.02 30 / 0.06);
+  --glass-shade: oklch(0.25 0.02 295 / 0.06);
   --glass-drop:
-    0 1px 1px oklch(0.2 0.02 30 / 0.04),
-    0 10px 30px -10px oklch(0.2 0.02 30 / 0.18);
+    0 1px 1px oklch(0.2 0.02 295 / 0.04),
+    0 10px 30px -10px oklch(0.2 0.02 295 / 0.18);
   --glass-blur: 18px;
   --glass-sat: 1.8;
 
   /* Sidebar (floating glass) */
   --sidebar: var(--glass-tint);
-  --sidebar-foreground: oklch(0.2 0.006 30);
+  --sidebar-foreground: oklch(0.2 0.006 295);
   --sidebar-primary: var(--primary-from);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.2 0.02 30 / 0.06);
-  --sidebar-accent-foreground: oklch(0.2 0.006 30);
-  --sidebar-border: oklch(0.2 0.02 30 / 0.08);
-  --sidebar-ring: var(--brand-red);
+  --sidebar-accent: oklch(0.2 0.02 295 / 0.06);
+  --sidebar-accent-foreground: oklch(0.2 0.006 295);
+  --sidebar-border: oklch(0.2 0.02 295 / 0.08);
+  --sidebar-ring: var(--brand-primary);
 }
 
 .dark {
   color-scheme: dark;
 
-  --brand-ink: oklch(0.76 0.14 28);
+  --brand-primary: #c08dfe;
+  --brand-accent: #7b3fd1;
+  --brand-ink: #d5b3ff;
+  --primary-from: #7a45cc;
+  --primary-to: #8a4fd8;
+  --chart-2: #e879f9;
 
-  --background: oklch(0.16 0.01 30);
-  --foreground: oklch(0.965 0.004 30);
-  --card: oklch(0.205 0.01 30);
-  --card-foreground: oklch(0.965 0.004 30);
-  --popover: oklch(0.215 0.01 30);
-  --popover-foreground: oklch(0.965 0.004 30);
-  --secondary: oklch(0.26 0.01 30);
-  --secondary-foreground: oklch(0.965 0.004 30);
-  --muted: oklch(0.26 0.01 30);
-  --muted-foreground: oklch(0.72 0.012 30);
-  --accent: oklch(0.27 0.014 30);
-  --accent-foreground: oklch(0.965 0.004 30);
+  --background: oklch(0.16 0.01 295);
+  --foreground: oklch(0.965 0.004 295);
+  --card: oklch(0.205 0.01 295);
+  --card-foreground: oklch(0.965 0.004 295);
+  --popover: oklch(0.215 0.01 295);
+  --popover-foreground: oklch(0.965 0.004 295);
+  --secondary: oklch(0.26 0.01 295);
+  --secondary-foreground: oklch(0.965 0.004 295);
+  --muted: oklch(0.26 0.01 295);
+  --muted-foreground: oklch(0.72 0.012 295);
+  --accent: oklch(0.27 0.014 295);
+  --accent-foreground: oklch(0.965 0.004 295);
   --destructive: oklch(0.645 0.246 16.439); /* rose-500 */
   --destructive-foreground: oklch(0.985 0 0);
   --destructive-strong: oklch(0.81 0.117 11.638); /* rose-300 */
@@ -220,7 +225,7 @@
 
   --chart-3: oklch(0.828 0.189 84.429);
   --chart-4: oklch(0.685 0.169 237.323);
-  --chart-5: oklch(0.7 0.03 30);
+  --chart-5: oklch(0.7 0.03 295);
 
   /* lighter variants for the dark card: 5.9 / 5.8 / 7.2 / 7.4 / 5.9 : 1 */
   --chart-platform-meta: #5b93f7;
@@ -234,8 +239,8 @@
   --platform-meta: oklch(0.65 0.2 259);
   --platform-google: oklch(0.7 0.15 259);
 
-  --glass-tint: oklch(0.22 0.01 30 / 0.55);
-  --glass-tint-strong: oklch(0.22 0.01 30 / 0.75);
+  --glass-tint: oklch(0.22 0.01 295 / 0.55);
+  --glass-tint-strong: oklch(0.22 0.01 295 / 0.75);
   --glass-edge: oklch(1 0 0 / 0.12);
   --glass-specular: oklch(1 0 0 / 0.18);
   --glass-shade: oklch(0 0 0 / 0.35);
@@ -243,9 +248,9 @@
     0 1px 1px oklch(0 0 0 / 0.3), 0 16px 40px -12px oklch(0 0 0 / 0.7);
 
   --sidebar: var(--glass-tint);
-  --sidebar-foreground: oklch(0.965 0.004 30);
+  --sidebar-foreground: oklch(0.965 0.004 295);
   --sidebar-accent: oklch(1 0 0 / 0.07);
-  --sidebar-accent-foreground: oklch(0.965 0.004 30);
+  --sidebar-accent-foreground: oklch(0.965 0.004 295);
   --sidebar-border: oklch(1 0 0 / 0.1);
 }
 
@@ -271,13 +276,13 @@
       transparent;
   }
   ::selection {
-    background: color-mix(in oklab, var(--brand-red) 28%, transparent);
+    background: color-mix(in oklab, var(--brand-primary) 28%, transparent);
   }
   /* Tabular figures wherever numbers line up (tables, KPI, counters). */
   table {
     font-variant-numeric: tabular-nums;
   }
-  /* Warm ambient backdrop so glass has something to refract. */
+  /* Soft purple ambient backdrop so glass has something to refract. */
   body::before {
     content: "";
     position: fixed;
@@ -287,12 +292,12 @@
     background:
       radial-gradient(
         1100px 520px at 0% -10%,
-        color-mix(in oklab, var(--brand-red) 16%, transparent),
+        color-mix(in oklab, var(--brand-primary) 16%, transparent),
         transparent 65%
       ),
       radial-gradient(
         900px 480px at 100% 0%,
-        color-mix(in oklab, var(--brand-orange) 14%, transparent),
+        color-mix(in oklab, var(--brand-accent) 14%, transparent),
         transparent 60%
       ),
       var(--background);
@@ -301,12 +306,12 @@
     background:
       radial-gradient(
         1100px 520px at 0% -10%,
-        color-mix(in oklab, var(--brand-red) 20%, transparent),
+        color-mix(in oklab, var(--brand-primary) 12%, transparent),
         transparent 65%
       ),
       radial-gradient(
         900px 480px at 100% 0%,
-        color-mix(in oklab, var(--brand-orange) 12%, transparent),
+        color-mix(in oklab, var(--brand-accent) 18%, transparent),
         transparent 60%
       ),
       var(--background);
@@ -407,7 +412,7 @@
 [data-slot="alert-dialog-overlay"],
 [data-slot="sheet-overlay"],
 [data-slot="drawer-overlay"] {
-  background-color: oklch(0.2 0.02 30 / 0.32);
+  background-color: oklch(0.2 0.02 295 / 0.32);
 }
 .dark
   :is(
@@ -515,7 +520,7 @@
     border-width: 1px 0 0;
     /* near-opaque: icon labels must stay crisp over scrolling content */
     background-color: color-mix(in oklab, var(--card) 94%, transparent);
-    box-shadow: 0 -10px 24px -16px oklch(0.2 0.02 30 / 0.22);
+    box-shadow: 0 -10px 24px -16px oklch(0.2 0.02 295 / 0.22);
   }
 
   /*

@@ -178,7 +178,7 @@ export const updates = {
   /** lỗi khi hỏi GitHub (không bao giờ chứa token) */
   github: {
     noRelease:
-      "Không tìm thấy bản phát hành nào. Nếu kho mã là riêng tư, hãy đặt UPDATE_GITHUB_TOKEN (Token B ở README bước 1, của tài khoản GitHub được noti.vn cấp quyền) cho web và worker.",
+      "Không tìm thấy bản phát hành nào. Nếu kho mã là riêng tư, hãy đặt UPDATE_GITHUB_TOKEN (Token B ở README bước 1, của tài khoản GitHub được Nextgency cấp quyền) cho web và worker.",
     badRepo: "UPDATE_REPO không hợp lệ. Định dạng đúng là tên-chủ/tên-kho.",
     unauthorized: "GitHub từ chối token (UPDATE_GITHUB_TOKEN sai hoặc hết hạn).",
     forbidden: "GitHub không cho phép truy cập kho này. Kiểm tra quyền của UPDATE_GITHUB_TOKEN.",

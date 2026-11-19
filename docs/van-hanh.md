@@ -1,6 +1,6 @@
 # Vận hành Ads MCP
 
-> Dành cho người quản trị máy chủ của đơn vị được noti.vn cấp quyền. Mọi lệnh chạy trong thư mục cài đặt (vd `/opt/ads-mcp`). Cài đặt mới, 4 phương án đưa ra Internet (Caddy / Cloudflare / Nginx / Cloudflare Tunnel), quyền GitHub/GHCR: xem [deploy-vps.md](deploy-vps.md).
+> Dành cho người quản trị máy chủ của đơn vị được Nextgency cấp quyền. Mọi lệnh chạy trong thư mục cài đặt (vd `/opt/ads-mcp`). Cài đặt mới, 4 phương án đưa ra Internet (Caddy / Cloudflare / Nginx / Cloudflare Tunnel), quyền GitHub/GHCR: xem [deploy-vps.md](deploy-vps.md).
 
 ## Các thành phần
 | Service | Vai trò | Ghi chú |
@@ -42,7 +42,7 @@ Trang công khai cho app Meta/TikTok/Google/OpenAI (không cần đăng nhập):
 
 ## Cập nhật phiên bản
 ### Tự động (admin bấm nút trong web)
-Service `updater` (bật bằng `COMPOSE_PROFILES=updater` + `HOST_PROJECT_DIR` trong `.env`; cài mới có sẵn). Một lần cập nhật: sao lưu `backups/pre-update-<thời gian>.dump` (giữ lại) → tải image `ghcr.io/notivn/ads-mcp-simple:<bản mới>` và xác minh chữ ký số (cosign, do GitHub Actions của noti.vn ký cho đúng tag; cần ra Internet tới Sigstore) → chạy migration bằng image mới → ghi `APP_VERSION` vào `.env` (bản gốc ở `.env.bak`) → thay `web`/`worker` → kiểm tra sức khoẻ; lỗi thì tự quay về bản cũ. Web gián đoạn khoảng 1-2 phút. Theo dõi: trang Cập nhật trong web, hoặc `docker compose logs -f updater`.
+Service `updater` (bật bằng `COMPOSE_PROFILES=updater` + `HOST_PROJECT_DIR` trong `.env`; cài mới có sẵn). Một lần cập nhật: sao lưu `backups/pre-update-<thời gian>.dump` (giữ lại) → tải image `ghcr.io/schhung1822/nextgency-mcp-ads:<bản mới>` và xác minh chữ ký số (cosign, do GitHub Actions của Nextgency ký cho đúng tag; cần ra Internet tới Sigstore) → chạy migration bằng image mới → ghi `APP_VERSION` vào `.env` (bản gốc ở `.env.bak`) → thay `web`/`worker` → kiểm tra sức khoẻ; lỗi thì tự quay về bản cũ. Web gián đoạn khoảng 1-2 phút. Theo dõi: trang Cập nhật trong web, hoặc `docker compose logs -f updater`.
 - Updater báo "chưa bật": `docker compose ps updater`, `docker compose logs updater` (thường do `HOST_PROJECT_DIR` sai hoặc chưa `up -d` sau khi thêm `COMPOSE_PROFILES=updater`).
 - Image riêng tư: trên VPS `docker login ghcr.io` bằng **token GitHub** (1 PAT classic tích `repo` + `read:packages`; đăng nhập bằng user chạy compose; nếu không phải root đặt `UPDATER_DOCKER_CONFIG=/home/<user>/.docker`; không dùng credential helper). Repo riêng tư: đặt `UPDATE_GITHUB_TOKEN` = **cùng token đó** để web thấy bản mới; token cũng là mật khẩu khi `git pull` hỏi (không lưu bằng `credential.helper store`). Cài bằng script: `sudo ads-mcp token` đổi token ở mọi nơi. Bản cài cũ dùng 2 token (Token A `read:packages`, Token B `repo`) vẫn chạy bình thường. Chi tiết: [deploy-vps.md §5-6](deploy-vps.md#5-quyền-truy-cập-github-mã-nguồn--image-riêng-tư).
 - Updater chỉ đổi image, **không** cập nhật `docker-compose.yml`/`Caddyfile`/`deploy/`: khi ghi chú phát hành báo các file này đổi, làm thêm `git pull` theo mục dưới, và chạy `docker compose up -d --no-build` **trước** lần bấm Cập nhật tiếp theo.

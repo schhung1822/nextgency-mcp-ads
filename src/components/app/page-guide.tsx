@@ -128,7 +128,7 @@ function GuideIcon({
   className?: string
 }) {
   return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-red/10 text-brand-ink">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-ink">
       {platform ? (
         <PlatformIcon platform={platform} className={className ?? "size-4"} />
       ) : (

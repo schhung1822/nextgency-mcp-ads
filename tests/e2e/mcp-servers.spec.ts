@@ -150,7 +150,7 @@ test.describe("MCP servers", () => {
     expect(url).toMatch(/\/mcp\/amcp_[A-Za-z0-9_-]{43}$/)
     await page.getByRole("tab", { name: "Claude Code" }).click()
     await expect(
-      page.getByText(`claude mcp add --transport http ads-noti ${url}`)
+      page.getByText(`claude mcp add --transport http ads-nextgency ${url}`)
     ).toBeVisible()
     await shot(page, "e2e-success")
 

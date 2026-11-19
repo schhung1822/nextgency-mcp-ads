@@ -1,6 +1,6 @@
 # Hướng dẫn: dùng Google Drive / Google Sheet làm nguồn ảnh, video quảng cáo
 
-> Áp dụng cho **Ads MCP by: noti.vn** (10/2026). Giao diện Google Cloud và Google Drive thay đổi thường xuyên — nếu tên menu khác, tìm mục tương ứng (_APIs & Services_, _IAM & Admin_, _Credentials_, _Chia sẻ_).
+> Áp dụng cho **Ads MCP by: Nextgency** (10/2026). Giao diện Google Cloud và Google Drive thay đổi thường xuyên — nếu tên menu khác, tìm mục tương ứng (_APIs & Services_, _IAM & Admin_, _Credentials_, _Chia sẻ_).
 
 Tài liệu này dành cho 2 nhóm người:
 

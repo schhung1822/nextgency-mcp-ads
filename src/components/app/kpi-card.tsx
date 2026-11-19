@@ -70,7 +70,7 @@ export function KpiCard({
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
         {icon && (
-          <span className="hidden size-8 shrink-0 items-center justify-center rounded-xl bg-brand-red/10 text-brand-ink sm:flex">
+          <span className="hidden size-8 shrink-0 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-ink sm:flex">
             <HugeiconsIcon
               icon={icon}
               strokeWidth={2}
@@ -133,7 +133,7 @@ export function KpiCard({
 
   if (href) {
     return (
-      <GlassCard className={cn("p-0 hover:border-brand-red/30", className)}>
+      <GlassCard className={cn("p-0 hover:border-brand-primary/30", className)}>
         <Link
           href={href}
           className="block h-full rounded-2xl p-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:p-5"

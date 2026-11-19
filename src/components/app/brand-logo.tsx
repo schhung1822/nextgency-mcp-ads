@@ -3,19 +3,19 @@ import { cn } from "cn"
 
 import { common } from "@/lib/i18n/vi/common"
 
-/** Intrinsic size of the shipped artwork (public/brand/logo-*.png: logo/ originals 3577x1056 resized to 480x142). */
-const LOGO_RATIO = 480 / 142
+/** Intrinsic size of the shipped artwork (public/brand/logo-*.png: logo/nextgency-*.png resized to 960x158). */
+const LOGO_RATIO = 960 / 158
 
 export interface BrandLogoProps {
-  /** rendered height in px (width follows the artwork ratio, about 3.38:1). Default 28. */
+  /** rendered height in px (width follows the artwork ratio, about 6.08:1). Default 28. */
   height?: number
   className?: string
   priority?: boolean
 }
 
 /**
- * Full noti.vn logo. Two artworks swap by theme with pure CSS (`dark:` follows next-themes' `.dark` class), so
- * nothing flashes on load: "duong ban" (dark text) on light, "am ban" (white text) on dark. The files are 480px
+ * Full Nextgency logo. Two artworks swap by theme with pure CSS (`dark:` follows next-themes' `.dark` class), so
+ * nothing flashes on load: "duong ban" (dark text) on light, "am ban" (white text) on dark. The files are 960px
  * wide, i.e. at least 3x for every size used in the app, so they stay sharp on 2x/3x screens.
  */
 export function BrandLogo({
@@ -59,7 +59,7 @@ export interface BrandMarkProps {
   priority?: boolean
 }
 
-/** Compact square "N" mark (favicon artwork; served from the 192px copy since images are unoptimized). */
+/** Compact square ">|" symbol mark (white on black) (favicon artwork; served from the 192px copy since images are unoptimized). */
 export function BrandMark({
   size = 32,
   className,
@@ -85,7 +85,7 @@ export interface BrandWordmarkProps {
   className?: string
 }
 
-/** "Ads MCP" wordmark + optional "by noti.vn" byline. */
+/** "Ads MCP" wordmark + optional "by Nextgency" byline. */
 export function BrandWordmark({
   withByline = true,
   gradient,
@@ -97,7 +97,7 @@ export function BrandWordmark({
         className={cn(
           "truncate font-semibold tracking-tight",
           gradient &&
-            "bg-linear-135 from-brand-red to-brand-orange bg-clip-text text-transparent"
+            "bg-linear-135 from-brand-primary to-brand-accent bg-clip-text text-transparent"
         )}
       >
         {common.appName}

@@ -3,7 +3,7 @@ name: Docker image
 # Phát hành bằng tag:  git tag v1.2.3 && git push origin v1.2.3   (tag phải trỏ vào commit đã có trên main)
 #   - kiểm tra package.json#version khớp tag (lệch -> fail ngay, chưa build), tag nằm trên nhánh mặc định,
 #     và bản vX.Y.Z chưa từng phát hành (không ghi đè image của bản đã phát hành - tạo bản vá mới)
-#   - build + đẩy ghcr.io/notivn/ads-mcp-simple:<ver> (web/worker/migrate/cli) và ...-updater:<ver> (daemon cập nhật),
+#   - build + đẩy ghcr.io/schhung1822/nextgency-mcp-ads:<ver> (web/worker/migrate/cli) và ...-updater:<ver> (daemon cập nhật),
 #     kèm SBOM + provenance, rồi KÝ cả 2 image bằng cosign keyless (OIDC của GitHub Actions). Updater của khách
 #     chỉ nhận image có chữ ký của đúng workflow này cho đúng tag: image tự build/tự push tay sẽ bị từ chối.
 #   - sau khi image đã có trên GHCR: tạo GitHub Release (nội dung: release-notes/<tag>.md) - CHỈ với tag đúng dạng vMAJOR.MINOR.PATCH
@@ -24,8 +24,8 @@ concurrency:
   cancel-in-progress: false # không bao giờ huỷ giữa chừng một lần đẩy image phát hành
 
 env:
-  IMAGE: ghcr.io/notivn/ads-mcp-simple
-  IMAGE_UPDATER: ghcr.io/notivn/ads-mcp-simple-updater
+  IMAGE: ghcr.io/schhung1822/nextgency-mcp-ads
+  IMAGE_UPDATER: ghcr.io/schhung1822/nextgency-mcp-ads-updater
 
 jobs:
   build:
@@ -109,9 +109,9 @@ jobs:
           flavor: |
             latest=false
           labels: |
-            org.opencontainers.image.title=Ads MCP by: noti.vn
-            org.opencontainers.image.vendor=noti.vn
-            org.opencontainers.image.licenses=LicenseRef-noti.vn-Proprietary
+            org.opencontainers.image.title=Ads MCP by: Nextgency
+            org.opencontainers.image.vendor=Nextgency
+            org.opencontainers.image.licenses=LicenseRef-Nextgency-Proprietary
 
       - id: meta-updater
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
@@ -126,9 +126,9 @@ jobs:
           flavor: |
             latest=false
           labels: |
-            org.opencontainers.image.title=Ads MCP by: noti.vn - updater
-            org.opencontainers.image.vendor=noti.vn
-            org.opencontainers.image.licenses=LicenseRef-noti.vn-Proprietary
+            org.opencontainers.image.title=Ads MCP by: Nextgency - updater
+            org.opencontainers.image.vendor=Nextgency
+            org.opencontainers.image.licenses=LicenseRef-Nextgency-Proprietary
 
       # Web/worker/migrate/cli image (target mặc định: runner)
       - id: build-web
@@ -165,7 +165,7 @@ jobs:
           sbom: true
 
       # Ký digest (index multi-arch = digest mà `docker pull <tag>` ghi vào RepoDigests). Danh tính chứng chỉ:
-      # https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/vX.Y.Z
+      # https://github.com/schhung1822/nextgency-mcp-ads/.github/workflows/docker.yml@refs/tags/vX.Y.Z
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (cosign v3.0.6)
       - name: Sign images (cosign keyless, GitHub OIDC)
         env:

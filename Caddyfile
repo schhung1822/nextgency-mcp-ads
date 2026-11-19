@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - reverse proxy + HTTPS tự động (Let's Encrypt), hoặc chỉ HTTP nội bộ sau Cloudflare Tunnel.
+# Ads MCP by: Nextgency - reverse proxy + HTTPS tự động (Let's Encrypt), hoặc chỉ HTTP nội bộ sau Cloudflare Tunnel.
 # APP_DOMAIN / ACME_EMAIL lấy từ biến môi trường (docker-compose.yml truyền vào từ .env).
 # Phương án SSL/proxy (docs/deploy-vps.md) chọn bằng 2 biến, mỗi giá trị là 1 file trong deploy/caddy/
 # (mount vào /etc/caddy/deploy):

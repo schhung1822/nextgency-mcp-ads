@@ -91,7 +91,7 @@ function Steps({
         <li key={i} className="flex gap-3">
           <span
             aria-hidden
-            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-semibold text-brand-ink tabular-nums"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-xs font-semibold text-brand-ink tabular-nums"
           >
             {i + 1}
           </span>
@@ -137,7 +137,7 @@ function Note({ children }: { children: React.ReactNode }) {
 
 function Bullets({ items }: { items: readonly string[] }) {
   return (
-    <ul className="flex list-disc flex-col gap-1.5 pl-5 text-muted-foreground marker:text-brand-red/60">
+    <ul className="flex list-disc flex-col gap-1.5 pl-5 text-muted-foreground marker:text-brand-primary/60">
       {items.map((p, i) => (
         <li key={i} className="text-pretty">
           <Rich text={p} />
@@ -179,7 +179,7 @@ function SectionTrigger({
       <span className="flex min-w-0 flex-1 items-center gap-2.5">
         <span
           aria-hidden
-          className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-red/10 text-brand-ink"
+          className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-ink"
         >
           <HugeiconsIcon icon={icon} strokeWidth={2} className="size-4" />
         </span>
@@ -191,7 +191,7 @@ function SectionTrigger({
             <Badge
               variant={badge === "optional" ? "outline" : "secondary"}
               className={cn(
-                badge === "required" && "bg-brand-red/10 text-brand-ink"
+                badge === "required" && "bg-brand-primary/10 text-brand-ink"
               )}
             >
               {badge === "required" ? g.dialog.required : g.dialog.optional}

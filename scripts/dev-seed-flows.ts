@@ -253,7 +253,7 @@ async function main() {
   const meta = await addConnection(
     adminId,
     "meta",
-    "BM chính — Công ty TNHH Thương mại và Dịch vụ Quảng cáo Noti Việt Nam",
+    "BM chính — Công ty TNHH Thương mại và Dịch vụ Quảng cáo Nextgency Việt Nam",
     {
       expiresInDays: null,
       accounts: [
@@ -263,9 +263,9 @@ async function main() {
           cur: "VND",
         },
         { name: "Nội Thất Gỗ Sồi", cur: "VND" },
-        { name: "Noti Education — Khoá học online", cur: "VND" },
-        { name: "Noti Global (USD)", cur: "USD" },
-        { name: "Noti Thailand", cur: "THB" },
+        { name: "Nextgency Education — Khoá học online", cur: "VND" },
+        { name: "Nextgency Global (USD)", cur: "USD" },
+        { name: "Nextgency Thailand", cur: "THB" },
         {
           name: "Tài khoản cũ — đã đóng",
           cur: "VND",
@@ -317,7 +317,7 @@ async function main() {
     status: "disabled",
     accounts: [{ name: "Tài khoản test", cur: "VND", enabled: false }],
   })
-  const multi = await addConnection(adminId, "meta", "BM đa tiền tệ — Noti", {
+  const multi = await addConnection(adminId, "meta", "BM đa tiền tệ — Nextgency", {
     expiresInDays: null,
     accounts: [
       { name: "Khoá học — VN", cur: "VND" },
@@ -328,7 +328,7 @@ async function main() {
   const openai = await addConnection(
     adminId,
     "openai_ads",
-    "OpenAI Ads — Noti",
+    "OpenAI Ads — Nextgency",
     {
       expiresInDays: null,
       accounts: [
@@ -354,11 +354,11 @@ async function main() {
   const google = await addConnection(
     adminId,
     "google_ads",
-    "MCC Google — Noti",
+    "MCC Google — Nextgency",
     {
       expiresInDays: null,
       accounts: [
-        { name: "MCC Noti (tài khoản quản lý)", cur: "USD", manager: true },
+        { name: "MCC Nextgency (tài khoản quản lý)", cur: "USD", manager: true },
         { name: "Search — Khoá học", cur: "VND" },
         { name: "Performance Max — Ebook", cur: "USD" },
         { name: "YouTube Ads Thailand", cur: "THB" },

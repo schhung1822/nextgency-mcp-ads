@@ -15,7 +15,7 @@ export interface KpiSparklineProps {
 /** Tiny decorative area chart for KPI cards (aria-hidden - the KPI value carries the meaning). */
 export function KpiSparkline({
   data,
-  color = "var(--brand-red)",
+  color = "var(--brand-primary)",
   className,
 }: KpiSparklineProps) {
   const id = React.useId().replace(/:/g, "")

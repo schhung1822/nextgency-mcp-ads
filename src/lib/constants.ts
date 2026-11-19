@@ -2,7 +2,7 @@ import type { Platform } from "@/server/providers/types"
 import type { Permission } from "@/server/mcp/types"
 
 export const APP_NAME = "Ads MCP"
-export const APP_FULL_NAME = "Ads MCP by: noti.vn"
+export const APP_FULL_NAME = "Ads MCP by: Nextgency"
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   meta: "Meta",

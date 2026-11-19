@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - CADDY_TLS=tunnel (phương án D - Cloudflare Tunnel). Nạp vào đầu site block.
+# Ads MCP by: Nextgency - CADDY_TLS=tunnel (phương án D - Cloudflare Tunnel). Nạp vào đầu site block.
 # Caddy KHÔNG có chứng chỉ, chỉ nói HTTP trong mạng Docker nội bộ; HTTPS do Cloudflare cấp ở edge, đoạn Cloudflare ->
 # cloudflared là kết nối mã hoá do cloudflared tự mở ra ngoài. Phải đi kèm CADDY_SITE_SCHEME=http:// (site
 # http://APP_DOMAIN), nếu không Caddy sẽ cố xin chứng chỉ Let's Encrypt (thất bại vì không mở cổng) và chuyển hướng

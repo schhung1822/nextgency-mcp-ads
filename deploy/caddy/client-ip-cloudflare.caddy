@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - Caddy đứng sau Cloudflare proxy (CADDY_CLIENT_IP=cloudflare). Nạp vào khối servers {}.
+# Ads MCP by: Nextgency - Caddy đứng sau Cloudflare proxy (CADDY_CLIENT_IP=cloudflare). Nạp vào khối servers {}.
 # SINH TỰ ĐỘNG bởi deploy/cloudflare/update-cloudflare-ips.sh từ
 # https://www.cloudflare.com/ips-v4 và https://www.cloudflare.com/ips-v6 - đừng sửa tay, hãy chạy lại script.
 # Chỉ kết nối đến từ các dải này mới được tin header CF-Connecting-IP; Caddyfile ghi đè X-Forwarded-For bằng

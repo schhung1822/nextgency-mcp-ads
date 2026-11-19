@@ -1,6 +1,6 @@
 # Hướng dẫn: lấy dữ liệu qua Apify
 
-> Áp dụng cho **Ads MCP by: noti.vn** (10/2026). Giao diện Apify Console thay đổi theo thời gian — nếu tên menu khác, tìm mục tương ứng (_Settings_, _API & Integrations_, _Billing_, _Limits_). Giá Apify ghi trong tài liệu này đọc ngày 14/10/2026, có thể đổi: xem <https://apify.com/pricing>.
+> Áp dụng cho **Ads MCP by: Nextgency** (10/2026). Giao diện Apify Console thay đổi theo thời gian — nếu tên menu khác, tìm mục tương ứng (_Settings_, _API & Integrations_, _Billing_, _Limits_). Giá Apify ghi trong tài liệu này đọc ngày 14/10/2026, có thể đổi: xem <https://apify.com/pricing>.
 
 Ads MCP có thể nhờ **Apify** lấy dữ liệu công khai trên sàn thương mại điện tử, mạng xã hội, Google và website — ví dụ giá và đánh giá sản phẩm Shopee, quảng cáo Facebook đang chạy của đối thủ, video TikTok nổi bật — để trợ lý AI (Claude, ChatGPT, Gemini) **phân tích ngay trong cuộc trò chuyện**. Bạn chỉ cần dán **API token** của Apify; hệ thống tự chọn công cụ thu thập phù hợp.
 

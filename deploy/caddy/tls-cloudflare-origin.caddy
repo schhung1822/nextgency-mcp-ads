@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - CADDY_TLS=cloudflare-origin (phương án B): dùng chứng chỉ Cloudflare Origin CA
+# Ads MCP by: Nextgency - CADDY_TLS=cloudflare-origin (phương án B): dùng chứng chỉ Cloudflare Origin CA
 # (Cloudflare -> SSL/TLS -> Origin Server -> Create Certificate). Chỉ Cloudflare tin chứng chỉ này, nên tên miền
 # BẮT BUỘC bật proxy (mây cam) và SSL/TLS = Full (strict). Caddy không xin chứng chỉ Let's Encrypt cho APP_DOMAIN nữa.
 # Đặt file (không commit, đã có trong .gitignore):

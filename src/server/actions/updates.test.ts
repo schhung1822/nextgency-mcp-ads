@@ -93,7 +93,7 @@ describe.skipIf(!hasDb)("server actions cập nhật hệ thống (DB)", () => {
       tag: "v1.3.0",
       publishedAt: null,
       notes: "",
-      url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v1.3.0",
+      url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.3.0",
       checkedAt: new Date().toISOString(),
     })
     await setKey(UPDATER_HEARTBEAT_KEY, { at: new Date().toISOString(), version: "1.2.0", composeProject: "ads-mcp" })

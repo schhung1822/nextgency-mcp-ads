@@ -64,7 +64,7 @@ export function NoticeTicker({
       {notices.map((n) => (
         <span key={n.id} className="flex items-center whitespace-nowrap">
           {n.content}
-          <span className="mx-5 size-1 shrink-0 rounded-full bg-brand-red/45" />
+          <span className="mx-5 size-1 shrink-0 rounded-full bg-brand-primary/45" />
         </span>
       ))}
     </div>
@@ -77,14 +77,14 @@ export function NoticeTicker({
       aria-label={common.notices.label}
       title={notices.map((n) => n.content).join("\n")}
       className={cn(
-        "flex h-8 min-w-0 items-center gap-2 rounded-full bg-brand-red/[0.06] pr-1 pl-2.5 ring-1 ring-brand-red/10 dark:bg-brand-red/10 dark:ring-brand-red/15",
+        "flex h-8 min-w-0 items-center gap-2 rounded-full bg-brand-primary/[0.06] pr-1 pl-2.5 ring-1 ring-brand-primary/10 dark:bg-brand-primary/10 dark:ring-brand-primary/15",
         className
       )}
     >
       <HugeiconsIcon
         icon={Megaphone01Icon}
         strokeWidth={2}
-        className="size-4 shrink-0 text-brand-red"
+        className="size-4 shrink-0 text-brand-primary"
         aria-hidden
       />
       <ul className="sr-only">

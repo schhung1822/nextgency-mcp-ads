@@ -1,6 +1,6 @@
 # Hướng dẫn lấy token TikTok Ads (TikTok API for Business)
 
-> Áp dụng cho **Ads MCP by: noti.vn**. Cập nhật theo TikTok Marketing API **v1.3** (rà lại 08/10/2026; mục GMV Max rà ngày 10/10/2026).
+> Áp dụng cho **Ads MCP by: Nextgency**. Cập nhật theo TikTok Marketing API **v1.3** (rà lại 08/10/2026; mục GMV Max rà ngày 10/10/2026).
 
 TikTok không có “token vĩnh viễn tự tạo” như Meta. Bạn cần: (1) một **developer app** trên TikTok API for Business, (2) **advertiser uỷ quyền** cho app → nhận `auth_code`, (3) **đổi `auth_code` lấy access token**. Token advertiser **không hết hạn** và **không cần làm mới** (chỉ mất khi bị thu hồi).
 

@@ -22,19 +22,19 @@ export const MAX_LOG_BYTES = 64 * 1024
 export const STALE_RUNNING_MINUTES = 30
 /** a pending request older than this is never started (an updater that comes back after days must not run an old click) */
 export const STALE_PENDING_MINUTES = 10
-export const DEFAULT_IMAGE = "ghcr.io/notivn/ads-mcp-simple"
+export const DEFAULT_IMAGE = "ghcr.io/schhung1822/nextgency-mcp-ads"
 
 // ---------------------------------------------------------------------------------------------
 // Image signature (cosign keyless, signed by the docker.yml workflow of the release tag)
 // ---------------------------------------------------------------------------------------------
-export const SIGNER_REPO = "notivn/Ads-MCP-simple"
+export const SIGNER_REPO = "schhung1822/nextgency-mcp-ads"
 export const SIGNER_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 /** .env switch to skip signature verification ("0" = off, not recommended) */
 export const VERIFY_SIGNATURE_ENV = "UPDATER_VERIFY_SIGNATURE"
 
 /**
  * verify = check the cosign signature before using an image; skip-image = APP_IMAGE is a fork / local registry
- * (noti.vn's signature cannot apply); skip-env = the operator set UPDATER_VERIFY_SIGNATURE=0 in .env.
+ * (Nextgency's signature cannot apply); skip-env = the operator set UPDATER_VERIFY_SIGNATURE=0 in .env.
  */
 export function signatureMode(image: string, envContent: string): "verify" | "skip-image" | "skip-env" {
   if (image !== DEFAULT_IMAGE) return "skip-image"
@@ -119,7 +119,7 @@ export function checkTargetVersion(target: unknown, known: Array<string | null |
   return { ok: true }
 }
 
-/** Container image repository, e.g. ghcr.io/notivn/ads-mcp-simple (no tag, no digest). */
+/** Container image repository, e.g. ghcr.io/schhung1822/nextgency-mcp-ads (no tag, no digest). */
 export function isValidImageName(s: unknown): s is string {
   return (
     typeof s === "string" &&

@@ -71,7 +71,7 @@ function ActionCard({
             className={
               danger
                 ? "flex size-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive-strong"
-                : "flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-red/10 text-brand-ink"
+                : "flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-ink"
             }
           >
             <HugeiconsIcon

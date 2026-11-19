@@ -118,11 +118,11 @@ function channelRow(over: Partial<ChannelRow> = {}): ChannelRow {
 
 describe("credit footer (§10.1)", () => {
   it("HTML + plain đúng nguyên văn, link cố định", () => {
-    expect(TELEGRAM_CREDIT_URL).toBe("https://s.noti.vn/s/ads-mcp-simple")
+    expect(TELEGRAM_CREDIT_URL).toBe("https://nextgency.vn")
     expect(creditFooter()).toEqual({
-      html: '\n\n<i><a href="https://s.noti.vn/s/ads-mcp-simple">Ads MCP Simple</a></i>',
+      html: '\n\n<i><a href="https://nextgency.vn">Ads MCP Simple</a></i>',
       plain:
-        "\n\nAds MCP Simple: https://s.noti.vn/s/ads-mcp-simple",
+        "\n\nAds MCP Simple: https://nextgency.vn",
     })
   })
 

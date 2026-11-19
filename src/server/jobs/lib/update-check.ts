@@ -19,7 +19,7 @@ export const UPDATE_LATEST_KEY = "update_latest"
 export const UPDATE_CHECK_ERROR_KEY = "update_check_error"
 export const UPDATER_HEARTBEAT_KEY = "updater_heartbeat"
 
-export const DEFAULT_UPDATE_REPO = "notivn/ads-mcp-simple"
+export const DEFAULT_UPDATE_REPO = "schhung1822/nextgency-mcp-ads"
 export const NOTES_MAX_CHARS = 4000
 export const GITHUB_TIMEOUT_MS = 10_000
 
@@ -63,7 +63,7 @@ export interface UpdateSource {
   token: string | null
 }
 
-/** `UPDATE_REPO` (default notivn/ads-mcp-simple) + optional `UPDATE_GITHUB_TOKEN`. */
+/** `UPDATE_REPO` (default schhung1822/nextgency-mcp-ads) + optional `UPDATE_GITHUB_TOKEN`. */
 export function readUpdateSource(env: Record<string, string | undefined> = process.env): UpdateSource {
   const repo = env.UPDATE_REPO?.trim() || DEFAULT_UPDATE_REPO
   const token = env.UPDATE_GITHUB_TOKEN?.trim() || null

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Ads MCP by: noti.vn — 1 image, nhiều entrypoint:
+# Ads MCP by: Nextgency — 1 image, nhiều entrypoint:
 #   web     : node server.js            (Next.js standalone, mặc định)
 #   worker  : node dist/worker.mjs      (pg-boss)
 #   migrate : node dist/migrate.mjs     (chạy 1 lần trước web/worker)
@@ -50,10 +50,10 @@ RUN pnpm build \
 # Cần: docker CLI + compose plugin + cosign (xác minh chữ ký số image trước khi cập nhật, 10-update-system.md).
 # KHÔNG cần pg_dump (sao lưu chạy trong container db qua `docker compose exec`). Gỡ npm/yarn/corepack (không dùng).
 FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS updater
-LABEL org.opencontainers.image.title="Ads MCP by: noti.vn - updater" \
-      org.opencontainers.image.source="https://github.com/notivn/Ads-MCP-simple" \
-      org.opencontainers.image.vendor="noti.vn" \
-      org.opencontainers.image.licenses="LicenseRef-noti.vn-Proprietary"
+LABEL org.opencontainers.image.title="Ads MCP by: Nextgency - updater" \
+      org.opencontainers.image.source="https://github.com/schhung1822/nextgency-mcp-ads" \
+      org.opencontainers.image.vendor="Nextgency" \
+      org.opencontainers.image.licenses="LicenseRef-Nextgency-Proprietary"
 # cosign phải là v3 (cùng đời với cosign v3.0.6 ký trong CI: định dạng bundle mới, chữ ký lưu kiểu OCI referrer).
 # Kho Alpine đổi major -> build lỗi ngay thay vì phát hành updater không xác minh được chữ ký của CI.
 RUN apk add --no-cache docker-cli docker-cli-compose "cosign<4" \
@@ -71,10 +71,10 @@ CMD ["node", "/app/dist/updater.mjs"]
 # runner: chỉ chứa output đã build, chạy bằng user không phải root. File của app thuộc root (tiến trình `node`
 # không sửa được mã); chỗ ghi được duy nhất là /app/.next/cache (compose mới còn đặt rootfs read-only + tmpfs).
 FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS runner
-LABEL org.opencontainers.image.title="Ads MCP by: noti.vn" \
-      org.opencontainers.image.source="https://github.com/notivn/Ads-MCP-simple" \
-      org.opencontainers.image.vendor="noti.vn" \
-      org.opencontainers.image.licenses="LicenseRef-noti.vn-Proprietary"
+LABEL org.opencontainers.image.title="Ads MCP by: Nextgency" \
+      org.opencontainers.image.source="https://github.com/schhung1822/nextgency-mcp-ads" \
+      org.opencontainers.image.vendor="Nextgency" \
+      org.opencontainers.image.licenses="LicenseRef-Nextgency-Proprietary"
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

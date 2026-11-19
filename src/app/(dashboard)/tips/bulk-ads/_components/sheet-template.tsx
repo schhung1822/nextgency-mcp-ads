@@ -47,7 +47,7 @@ function downloadTemplate() {
 }
 
 /** header cell colours: columns you fill vs columns the system writes (legend uses the same classes) */
-const YOU_CELL = "bg-brand-red/8 ring-brand-red/20"
+const YOU_CELL = "bg-brand-primary/8 ring-brand-primary/20"
 const SYSTEM_CELL = "bg-card ring-foreground/10"
 
 const WHO_LABEL = {
@@ -175,7 +175,7 @@ export function SheetTemplate({ id }: { id?: string }) {
                     {"required" in c && c.required && (
                       <Badge
                         variant="secondary"
-                        className="rounded-full bg-brand-red/10 text-brand-ink"
+                        className="rounded-full bg-brand-primary/10 text-brand-ink"
                       >
                         {sh.required}
                       </Badge>

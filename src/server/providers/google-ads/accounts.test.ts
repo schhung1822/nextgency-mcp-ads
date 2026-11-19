@@ -18,7 +18,7 @@ function mockHierarchy() {
   m.on((c) => c.url.endsWith("customers:listAccessibleCustomers"), { body: { resourceNames: ["customers/1000000000"] } })
   m.on(
     (c) => isSearch(c) && q(c).includes("FROM customer LIMIT 1"),
-    { body: { results: [{ customer: { id: "1000000000", descriptiveName: "MCC Noti", currencyCode: "VND", timeZone: "Asia/Ho_Chi_Minh", manager: true, status: "ENABLED" } }] } }
+    { body: { results: [{ customer: { id: "1000000000", descriptiveName: "MCC Nextgency", currencyCode: "VND", timeZone: "Asia/Ho_Chi_Minh", manager: true, status: "ENABLED" } }] } }
   )
   m.on(
     (c) => isSearch(c) && q(c).includes("FROM customer_client") && cidOf(c) === "1000000000",

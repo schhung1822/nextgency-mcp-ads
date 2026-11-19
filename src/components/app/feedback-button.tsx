@@ -7,10 +7,11 @@ import { common } from "@/lib/i18n/vi/common"
 
 /**
  * Floating "Báo bug, yêu cầu tính năng" link pinned to the bottom-right corner of every dashboard page; opens the
- * noti.vn form in a new tab. Desktop: icon + label pill; phones (< md): round icon above the bottom bar.
+ * Nextgency form in a new tab. Desktop: icon + label pill; phones (< md): round icon above the bottom bar.
  * `--feedback-lift` (globals.css) raises it while a bottom action bar (wizard nav, bulk actions) is on screen.
  */
 export function FeedbackButton({ className }: { className?: string }) {
+  if (!FEEDBACK_FORM_URL) return null
   return (
     <a
       href={FEEDBACK_FORM_URL}

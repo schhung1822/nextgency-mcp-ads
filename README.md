@@ -1,21 +1,21 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="public/brand/logo-am-ban.png">
-    <img src="public/brand/logo-duong-ban.png" alt="Ads MCP by: noti.vn" height="72">
+    <img src="public/brand/logo-duong-ban.png" alt="Ads MCP by: Nextgency" height="72">
   </picture>
 </p>
 
-<h1 align="center">Ads MCP by: noti.vn - Hướng dẫn cài đặt lên VPS</h1>
+<h1 align="center">Ads MCP by: Nextgency - Hướng dẫn cài đặt lên VPS</h1>
 
 > [!IMPORTANT]
-> Phần mềm có bản quyền, không phải mã nguồn mở. Chỉ đơn vị được **noti.vn cấp quyền bằng văn bản** mới được cài đặt và sử dụng. Xem [LICENSE](LICENSE).
+> Phần mềm có bản quyền, không phải mã nguồn mở. Chỉ đơn vị được **Nextgency cấp quyền bằng văn bản** mới được cài đặt và sử dụng. Xem [LICENSE](LICENSE).
 
 Hướng dẫn này viết cho người **không chuyên kỹ thuật**: làm lần lượt từng bước, mỗi lệnh chỉ cần **sao chép và dán**. Toàn bộ mất khoảng 30-45 phút.
 
 Sau khi cài, đội của bạn dán token để kết nối **Meta, TikTok Ads (gồm GMV Max của TikTok Shop), Google Ads (gồm quảng cáo YouTube) và OpenAI Ads**, rồi tạo link MCP cho Claude, ChatGPT, Gemini. Có thể thêm **bot Telegram** để nhận cảnh báo kết nối, thông báo thay đổi do AI thực hiện và tin nhắn từ AI ngay trong nhóm chat, khai báo **thư mục Google Drive / Google Sheet** để AI lấy ảnh, video lên quảng cáo (xem [docs/huong-dan-google-drive.md](docs/huong-dan-google-drive.md)), và dán **token Apify** để AI lấy dữ liệu sàn TMĐT, mạng xã hội, Google (giá, đánh giá sản phẩm, quảng cáo của đối thủ…) rồi phân tích (xem [docs/huong-dan-apify.md](docs/huong-dan-apify.md)). Hướng dẫn dùng: [kết nối AI](docs/ket-noi-ai.md) · [Telegram](docs/huong-dan-telegram.md) · [Google Drive / Google Sheet](docs/huong-dan-google-drive.md) · [Apify](docs/huong-dan-apify.md).
 
 > [!TIP]
-> **Cài nhanh bằng 1 lệnh (khuyến nghị cho VPS Ubuntu 22.04/24.04, Debian 12/13 mới):** chép file `install-ads-mcp.sh` noti.vn gửi (hoặc `scripts/install-ads-mcp.sh` trong repo) lên VPS rồi chạy `sudo bash install-ads-mcp.sh`. Chỉ cần chuẩn bị tên miền, tài khoản GitHub đã được cấp quyền và **1 token** (PAT classic tích cả `repo` + `read:packages`); script hỏi lần lượt, tự cài Docker, tải phần mềm, tạo cấu hình, khởi chạy và in **mã cài đặt** để tạo admin. Chi tiết: [docs/deploy-vps.md mục 0](docs/deploy-vps.md#0-cài-nhanh-bằng-script-khuyến-nghị). Các bước dưới đây là cách cài tay.
+> **Cài nhanh bằng 1 lệnh (khuyến nghị cho VPS Ubuntu 22.04/24.04, Debian 12/13 mới):** chép file `install-ads-mcp.sh` Nextgency gửi (hoặc `scripts/install-ads-mcp.sh` trong repo) lên VPS rồi chạy `sudo bash install-ads-mcp.sh`. Chỉ cần chuẩn bị tên miền, tài khoản GitHub đã được cấp quyền và **1 token** (PAT classic tích cả `repo` + `read:packages`); script hỏi lần lượt, tự cài Docker, tải phần mềm, tạo cấu hình, khởi chạy và in **mã cài đặt** để tạo admin. Chi tiết: [docs/deploy-vps.md mục 0](docs/deploy-vps.md#0-cài-nhanh-bằng-script-khuyến-nghị). Các bước dưới đây là cách cài tay.
 
 > [!TIP]
 > Bạn kết nối tài khoản GitHub chứa repo này với ChatGPT, Claude hoặc Gemini → cho AI đọc repo và hướng dẫn bạn deploy chi tiết nhé. Bạn cung cấp chi tiết cho AI biết là sẽ deploy trên đâu (VPS hay mini PC chạy Ubuntu Server), dùng bằng cách trỏ IP về VPS hay là Cloudflare Tunnel, trỏ IP về VPS thì có dùng Cloudflare và bật DNS only hay không. Bạn cung cấp đầy đủ ngữ cảnh để AI hướng dẫn chi tiết, gặp phần nào khó thì chụp ảnh màn hình xong gửi vào AI để nó hướng dẫn tiếp nhé.
@@ -48,7 +48,7 @@ Bạn cần có:
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **1 VPS**                                        | Ubuntu 24.04 (khuyến nghị) hoặc Debian 12. Tối thiểu **1 vCPU, 2 GB RAM, 20 GB ổ cứng**. Nhà cung cấp gửi cho bạn: **địa chỉ IP**, **tên đăng nhập**, **mật khẩu**. |
 | **1 tên miền**                                   | Ví dụ `congty.vn`. Phần mềm sẽ chạy ở một tên miền con, ví dụ `mcp.congty.vn`.                                                                                     |
-| **1 tài khoản GitHub đã được noti.vn cấp quyền** | Gửi tên tài khoản GitHub cho noti.vn để được thêm quyền đọc. Nên dùng **tài khoản riêng cho việc này** (không dùng tài khoản cá nhân chứa dự án khác).             |
+| **1 tài khoản GitHub đã được Nextgency cấp quyền** | Gửi tên tài khoản GitHub cho Nextgency để được thêm quyền đọc. Nên dùng **tài khoản riêng cho việc này** (không dùng tài khoản cá nhân chứa dự án khác).             |
 | **Máy tính**                                     | Windows 10/11 hoặc macOS, có trình duyệt.                                                                                                                          |
 
 Trong hướng dẫn, thay các giá trị mẫu bằng thông tin của bạn:
@@ -67,7 +67,7 @@ Trong hướng dẫn, thay các giá trị mẫu bằng thông tin của bạn:
 > [!NOTE]
 > Cài bằng script (xem đầu trang) chỉ cần **1 token** tích cả `repo` và `read:packages`. Cài tay theo các bước dưới đây có thể dùng 2 token như mô tả, hoặc cùng 1 token đó cho cả 2 chỗ.
 
-noti.vn thêm **tài khoản GitHub của bạn** vào kho phần mềm với quyền **chỉ đọc (Read)**. Bạn tạo **2 token** (2 "mật khẩu riêng") từ tài khoản đó, mỗi token chỉ làm **đúng 1 việc**:
+Nextgency thêm **tài khoản GitHub của bạn** vào kho phần mềm với quyền **chỉ đọc (Read)**. Bạn tạo **2 token** (2 "mật khẩu riêng") từ tài khoản đó, mỗi token chỉ làm **đúng 1 việc**:
 
 | Token       | Dùng để                                                                   | Tích đúng 1 ô   |
 | ----------- | ------------------------------------------------------------------------- | --------------- |
@@ -75,11 +75,11 @@ noti.vn thêm **tài khoản GitHub của bạn** vào kho phần mềm với qu
 | **Token B** | Tải mã nguồn (`git clone`, `git pull`) và để phần mềm tự kiểm tra bản mới | `repo`          |
 
 > [!WARNING]
-> GitHub bắt buộc tích `repo` cho Token B (kho được chia sẻ cho tài khoản ngoài tổ chức chỉ dùng được loại token này). Quyền `repo` cho phép **đọc và ghi mọi kho (repo) của chính tài khoản GitHub đó**. Nếu tài khoản của bạn có kho quan trọng, nên **tạo một tài khoản GitHub riêng cho máy chủ** (ví dụ `congty-ads-server`) rồi gửi tên tài khoản này cho noti.vn để được thêm quyền (không bắt buộc). Với kho của noti.vn, tài khoản chỉ có quyền Read nên token không sửa được phần mềm.
+> GitHub bắt buộc tích `repo` cho Token B (kho được chia sẻ cho tài khoản ngoài tổ chức chỉ dùng được loại token này). Quyền `repo` cho phép **đọc và ghi mọi kho (repo) của chính tài khoản GitHub đó**. Nếu tài khoản của bạn có kho quan trọng, nên **tạo một tài khoản GitHub riêng cho máy chủ** (ví dụ `congty-ads-server`) rồi gửi tên tài khoản này cho Nextgency để được thêm quyền (không bắt buộc). Với kho của Nextgency, tài khoản chỉ có quyền Read nên token không sửa được phần mềm.
 
 ### 1.1 Tạo Token A (tải image)
 
-1. Đăng nhập GitHub bằng tài khoản đã được noti.vn cấp quyền.
+1. Đăng nhập GitHub bằng tài khoản đã được Nextgency cấp quyền.
 2. Mở <https://github.com/settings/tokens/new> (Personal access tokens → **Tokens (classic)**).
 3. **Note**: gõ `ads-mcp-vps-image`.
 4. **Expiration**: chọn **1 năm** (hoặc _Custom_ ngày cụ thể). Ghi lịch nhắc gia hạn trước khi hết hạn 2 tuần.
@@ -291,7 +291,7 @@ Dòng cuối phải in ra `passwordauthentication no` và `permitrootlogin no`. 
 
 ```bash
 sudo mkdir -p /opt/ads-mcp && sudo chown deploy: /opt/ads-mcp
-git clone https://github.com/notivn/Ads-MCP-simple.git /opt/ads-mcp
+git clone https://github.com/schhung1822/nextgency-mcp-ads.git /opt/ads-mcp
 ```
 
 - Có thể được hỏi mật khẩu của `deploy` (do lệnh `sudo`): nhập mật khẩu đã đặt ở bước 3.1.
@@ -515,7 +515,7 @@ Bôi đen toàn bộ nội dung, sao chép, lưu vào **trình quản lý mật 
 
 ## Cập nhật phiên bản mới
 
-**Cách 1 - Trong web (khuyến nghị):** khi có bản mới, Admin thấy thông báo ở menu tài khoản. Vào **Cài đặt → Cập nhật** → bấm **Cập nhật lên vX.Y.Z** → nhập lại mật khẩu. Hệ thống tự sao lưu dữ liệu, tải bản mới, **kiểm tra chữ ký số của noti.vn** (bản không có chữ ký bị từ chối), khởi động lại (web gián đoạn khoảng 1-2 phút) và **tự quay về bản cũ nếu lỗi**.
+**Cách 1 - Trong web (khuyến nghị):** khi có bản mới, Admin thấy thông báo ở menu tài khoản. Vào **Cài đặt → Cập nhật** → bấm **Cập nhật lên vX.Y.Z** → nhập lại mật khẩu. Hệ thống tự sao lưu dữ liệu, tải bản mới, **kiểm tra chữ ký số của Nextgency** (bản không có chữ ký bị từ chối), khởi động lại (web gián đoạn khoảng 1-2 phút) và **tự quay về bản cũ nếu lỗi**.
 
 > Ghi chú phát hành yêu cầu lấy cấu hình mới (`git pull`)? Chạy trước khi bấm Cập nhật (git hỏi `Username` và `Password` = Token B):
 >
@@ -589,22 +589,22 @@ Luôn `cd /opt/ads-mcp` trước khi chạy:
 
 | Hiện tượng                                                                                      | Cách xử lý                                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git clone` / `git pull` báo `Authentication failed` / `Repository not found`                   | Sai `Username`, Token B sai/hết hạn (phải tích **repo**), hoặc tài khoản GitHub chưa được noti.vn cấp quyền. Kiểm tra lại bước 1.2 rồi chạy lại lệnh, dán đúng Token B khi được hỏi `Password`.                            |
+| `git clone` / `git pull` báo `Authentication failed` / `Repository not found`                   | Sai `Username`, Token B sai/hết hạn (phải tích **repo**), hoặc tài khoản GitHub chưa được Nextgency cấp quyền. Kiểm tra lại bước 1.2 rồi chạy lại lệnh, dán đúng Token B khi được hỏi `Password`.                            |
 | `docker compose pull` báo `denied` / `unauthorized`                                             | Đăng nhập lại kho image bằng Token A còn hạn (chỉ tích **read:packages**): làm lại bước 4.2.                                                                                                                               |
 | Mọi lệnh `docker compose` báo `Thiếu APP_VERSION trong .env`                                    | `nano .env`, đặt dòng `APP_VERSION=` bằng phiên bản đang chạy (ví dụ `APP_VERSION=1.0.2`, không có chữ `v`; xem trang Releases trên GitHub), lưu rồi chạy lại lệnh.                                                        |
 | `permission denied ... docker.sock`                                                             | `sudo usermod -aG docker deploy`, rồi `exit` và đăng nhập lại (`ssh deploy@IP_VPS` hoặc `su - deploy`) - xem bước 3.5.                                                                                                     |
 | Bước 3 báo `Permission denied` / `Only root may add a user`                                     | Đang ở user thường: gõ `sudo -i` rồi chạy lại (xem bước 2).                                                                                                                                                                |
 | `ssh: Could not resolve hostname deploy`                                                        | Gõ thiếu IP: dùng `ssh deploy@IP_VPS`, hoặc `su - deploy` nếu đang ngồi trên chính máy chủ.                                                                                                                                |
 | Trang web hiện ra nhưng **mất giao diện** (chữ trắng đen, không màu), F12 báo `ERR_ABORTED 499` | Sub domain bắt đầu bằng `ads.` bị trình chặn quảng cáo/diệt virus chặn. Đổi sang `mcp.` (sửa Cloudflare/DNS + `sed -i 's/ads\./mcp./g' .env` rồi `docker compose up -d --no-build`). Thử thêm Ctrl+F5 hoặc cửa sổ ẩn danh. |
-| `migrate` ở trạng thái `exited (1)`                                                             | Xem lỗi: `docker compose logs migrate`. Gửi nội dung lỗi cho noti.vn.                                                                                                                                                      |
+| `migrate` ở trạng thái `exited (1)`                                                             | Xem lỗi: `docker compose logs migrate`. Gửi nội dung lỗi cho Nextgency.                                                                                                                                                      |
 | Cách A: trình duyệt báo lỗi chứng chỉ / không vào được                                          | Kiểm tra bản ghi A đúng `IP_VPS` (`getent hosts mcp.congty.vn`), Cloudflare để đám mây **xám**, đã mở cổng 80/443 ở bước 3.4. Xem `docker compose logs caddy`.                                                             |
 | Cách B: Cloudflare báo lỗi **1033**                                                             | Tunnel chưa kết nối: kiểm tra `TUNNEL_TOKEN` trong `.env`, xem `docker compose logs --tail=50 cloudflared`.                                                                                                                |
 | Cách B: lỗi **502**                                                                             | Public hostname phải là `HTTP` + `caddy:80`.                                                                                                                                                                               |
 | Cách B: lỗi **chuyển hướng quá nhiều lần**                                                      | File `.env` không tạo bằng `--ssl tunnel`. Làm lại bước 6 với `--ssl tunnel --force`.                                                                                                                                      |
 | Trang Cập nhật báo "Chưa bật"                                                                   | `docker compose ps -a updater` phải `running`. Kiểm tra `.env` có dòng `COMPOSE_PROFILES=updater` và `UPDATER_DOCKER_CONFIG`, rồi `docker compose up -d --no-build`.                                                       |
 | Trang Cập nhật báo "Không tìm thấy bản phát hành nào"                                           | Token B sai/hết hạn hoặc tài khoản GitHub mất quyền Read: tạo Token B mới (bước 1.2), sửa dòng `UPDATE_GITHUB_TOKEN=` trong `.env`, rồi `docker compose up -d --no-build`.                                                 |
-| Cập nhật lỗi ở bước "tải image": `không xác minh được chữ ký số`                                | Máy chủ phải ra Internet được tới `ghcr.io` và Sigstore (`*.sigstore.dev`): kiểm tra tường lửa chiều ra rồi bấm Cập nhật lại. Bản đang chạy không bị ảnh hưởng. Không tự tắt bước kiểm tra chữ ký: hỏi noti.vn trước.      |
+| Cập nhật lỗi ở bước "tải image": `không xác minh được chữ ký số`                                | Máy chủ phải ra Internet được tới `ghcr.io` và Sigstore (`*.sigstore.dev`): kiểm tra tường lửa chiều ra rồi bấm Cập nhật lại. Bản đang chạy không bị ảnh hưởng. Không tự tắt bước kiểm tra chữ ký: hỏi Nextgency trước.      |
 | Admin bị khoá tài khoản                                                                         | `docker compose run --rm web node dist/cli.mjs unban email@congty.vn`                                                                                                                                                      |
 | AI báo lỗi **524** (Cách B)                                                                     | Yêu cầu quá 125 giây: nhờ AI chia nhỏ (ít tài khoản hơn, khoảng ngày ngắn hơn).                                                                                                                                            |
 
-Cần hỗ trợ: gửi cho noti.vn kết quả của `docker compose ps -a` và `docker compose logs --tail=100 <tên dịch vụ lỗi>`. **Không gửi nội dung file `.env`.**
+Cần hỗ trợ: gửi cho Nextgency kết quả của `docker compose ps -a` và `docker compose logs --tail=100 <tên dịch vụ lỗi>`. **Không gửi nội dung file `.env`.**

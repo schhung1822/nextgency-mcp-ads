@@ -93,7 +93,7 @@ export default defineConfig({
       NEXT_TELEMETRY_DISABLED: "1",
       // /settings/updates checks GitHub by itself on open: point it at a repo that does not exist so the check
       // fails harmlessly (the seeded update_latest row is kept) instead of reading the real releases
-      UPDATE_REPO: "notivn/ads-mcp-e2e-no-such-repo",
+      UPDATE_REPO: "schhung1822/ads-mcp-e2e-no-such-repo",
       UPDATE_GITHUB_TOKEN: "",
     },
   },

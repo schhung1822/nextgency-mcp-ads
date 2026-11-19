@@ -5,7 +5,7 @@
 import { notifications as m } from "@/lib/i18n/vi/notifications"
 
 /** Fixed on purpose: not configurable by env. */
-export const TELEGRAM_CREDIT_URL = "https://s.noti.vn/s/ads-mcp-simple"
+export const TELEGRAM_CREDIT_URL = "https://nextgency.vn"
 
 export interface CreditFooter {
   /** parse_mode HTML: italic link */

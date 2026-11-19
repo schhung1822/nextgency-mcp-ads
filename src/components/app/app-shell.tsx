@@ -78,7 +78,7 @@ export interface AppShellProps extends SignOutProps {
   commandGroups?: CommandPaletteGroup[]
   /** initial desktop sidebar state (read the `sidebar_state` cookie in the layout) */
   defaultSidebarOpen?: boolean
-  /** system notices (noti.vn webhook) scrolled in the top bar; a second strip under the bar on phones */
+  /** system notices (Nextgency webhook) scrolled in the top bar; a second strip under the bar on phones */
   notices?: readonly SystemNotice[]
   /** public app URL (BETTER_AUTH_URL) for the "Liên kết cho ứng dụng" copy buttons; falls back to window.location */
   appBaseUrl?: string
@@ -322,8 +322,8 @@ function NavGroup({
                   tooltip={item.title}
                   className={cn(
                     "font-medium text-sidebar-foreground/85 pointer-coarse:h-10",
-                    "data-[active=true]:bg-brand-red/10 data-[active=true]:font-semibold data-[active=true]:text-brand-ink",
-                    "dark:data-[active=true]:bg-brand-red/15"
+                    "data-[active=true]:bg-brand-primary/10 data-[active=true]:font-semibold data-[active=true]:text-brand-ink",
+                    "dark:data-[active=true]:bg-brand-primary/15"
                   )}
                 >
                   <Link

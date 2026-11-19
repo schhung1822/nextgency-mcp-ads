@@ -699,7 +699,7 @@ function ChoiceCard({
   const className =
     "group block rounded-2xl text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
   const card = (
-      <Card className="h-full transition-colors group-hover:border-brand-red/40 group-aria-pressed:border-brand-red/60">
+      <Card className="h-full transition-colors group-hover:border-brand-primary/40 group-aria-pressed:border-brand-primary/60">
         <CardHeader>
           <CardTitle className="flex items-center gap-3 text-base">
             <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">

@@ -148,7 +148,7 @@ export function DriveSourcesSection({
       <Card
         className={cn(
           "gap-0 py-0 transition-shadow",
-          selected.size > 0 && "ring-1 ring-brand-red/30"
+          selected.size > 0 && "ring-1 ring-brand-primary/30"
         )}
       >
         <DriveCardHeader
@@ -227,7 +227,7 @@ export function DriveSourcesSection({
                               ? "cursor-not-allowed opacity-60"
                               : "cursor-pointer",
                             on &&
-                              "border-brand-red/30 bg-brand-red/5 dark:border-brand-red/30 dark:bg-brand-red/10"
+                              "border-brand-primary/30 bg-brand-primary/5 dark:border-brand-primary/30 dark:bg-brand-primary/10"
                           )}
                         >
                           <Field

@@ -81,7 +81,7 @@ describe("ad check prompt builder", () => {
     const custom = { ...DEFAULT_AD_CHECK, connectorName: "Báo cáo đơn" }
     expect(buildAdCheckPrompt(custom)).toContain('connector "Báo cáo đơn"')
     expect(buildAdCheckSkillMd(custom)).toContain('connector "Báo cáo đơn"')
-    expect(AD_CHECK_SKILL_DESCRIPTION).not.toContain("noti.vn")
+    expect(AD_CHECK_SKILL_DESCRIPTION).not.toContain("Nextgency")
   })
 
   it("wraps the steps as a prompt, a skill and a skill call", () => {

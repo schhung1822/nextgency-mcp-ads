@@ -1,6 +1,6 @@
 // Chuỗi giao diện tiếng Việt - nhóm "auth" (đăng nhập, 2FA, thiết lập lần đầu, bước bắt buộc).
 export const auth = {
-  footer: "Ads MCP by: noti.vn",
+  footer: "Ads MCP by: Nextgency",
 
   login: {
     metaTitle: "Đăng nhập",
@@ -87,7 +87,7 @@ export const auth = {
     finish: "Hoàn tất",
     enabledToast: "Đã bật xác thực 2 bước",
     backToAccount: "Quay lại Tài khoản",
-    fileHeader: "Ads MCP by noti.vn - Mã dự phòng xác thực 2 bước",
+    fileHeader: "Ads MCP by Nextgency - Mã dự phòng xác thực 2 bước",
     fileAccount: (email: string) => `Tài khoản: ${email}`,
     fileCreated: (when: string) => `Tạo lúc: ${when}`,
     fileNote: "Mỗi mã chỉ dùng được 1 lần. Giữ file này ở nơi an toàn.",

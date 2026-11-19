@@ -30,7 +30,7 @@ export const UPDATES_HREF = "/settings/updates"
 export function UpdateDot({ className }: { className?: string }) {
   return (
     <span
-      className={cn("pointer-events-none absolute size-2.5 rounded-full bg-brand-red ring-2", className)}
+      className={cn("pointer-events-none absolute size-2.5 rounded-full bg-brand-primary ring-2", className)}
       data-slot="update-dot"
     >
       <span className="sr-only">{t.menu.dotLabel}</span>
@@ -84,7 +84,7 @@ export function SidebarVersion({ isAdmin, className }: { isAdmin: boolean; class
       <span className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-sidebar-foreground/70">{t.menu.sidebarLabel}</span>
         {hasUpdate && (
-          <span className="shrink-0 rounded-full bg-brand-red/12 px-2 py-0.5 text-[11px] leading-4 font-semibold text-brand-ink">
+          <span className="shrink-0 rounded-full bg-brand-primary/12 px-2 py-0.5 text-[11px] leading-4 font-semibold text-brand-ink">
             {t.menu.badgeNew}
           </span>
         )}
@@ -136,7 +136,7 @@ export function SidebarVersion({ isAdmin, className }: { isAdmin: boolean; class
       className={cn(
         base,
         "group/version outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        hasUpdate && "border-brand-red/30 bg-brand-red/5"
+        hasUpdate && "border-brand-primary/30 bg-brand-primary/5"
       )}
     >
       {body}

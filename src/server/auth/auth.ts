@@ -15,7 +15,7 @@ const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000"
 
 function createAuth() {
   return betterAuth({
-    appName: "Ads MCP by noti.vn",
+    appName: "Ads MCP by Nextgency",
     baseURL,
     trustedOrigins: [baseURL],
     secret: process.env.BETTER_AUTH_SECRET,
@@ -70,7 +70,7 @@ function createAuth() {
     hooks: authHooks,
     plugins: [
       twoFactor({
-        issuer: "Ads MCP (noti.vn)",
+        issuer: "Ads MCP (Nextgency)",
         totpOptions: { digits: 6, period: 30 },
         backupCodeOptions: { amount: 10, length: 10, storeBackupCodes: "encrypted" },
         trustDeviceMaxAge: 60 * 60 * 24 * 14,

@@ -236,7 +236,7 @@ describe("bulk ads prompt builder", () => {
     )
     expect(connectorLabel("  ")).toBe("Ads MCP")
     expect(connectorLabel(undefined)).toBe("Ads MCP")
-    expect(BULK_SKILL_DESCRIPTION).not.toContain("noti.vn")
+    expect(BULK_SKILL_DESCRIPTION).not.toContain("Nextgency")
   })
 
   it("wraps the steps as a prompt, a skill and a skill call", () => {

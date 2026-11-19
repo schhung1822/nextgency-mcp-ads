@@ -1,7 +1,7 @@
 // Chuỗi giao diện tiếng Việt dùng chung.
 export const common = {
   appName: "Ads MCP",
-  appFullName: "Ads MCP by: noti.vn",
+  appFullName: "Ads MCP by: Nextgency",
   save: "Lưu thay đổi",
   cancel: "Huỷ",
   confirm: "Xác nhận",
@@ -40,8 +40,8 @@ export const common = {
   },
 
   brand: {
-    byline: "by noti.vn",
-    logoAlt: "noti.vn",
+    byline: "by Nextgency",
+    logoAlt: "Nextgency",
     markAlt: "Ads MCP",
   },
 
@@ -71,7 +71,7 @@ export const common = {
     crumbDevUi: "Thư viện giao diện",
   },
 
-  /** nút nổi góc dưới bên phải: mở form báo lỗi / yêu cầu tính năng của noti.vn (tab mới) */
+  /** nút nổi góc dưới bên phải: mở form báo lỗi / yêu cầu tính năng của Nextgency (tab mới) */
   feedback: {
     label: "Báo bug, yêu cầu tính năng",
     aria: "Báo bug, yêu cầu tính năng (mở tab mới)",

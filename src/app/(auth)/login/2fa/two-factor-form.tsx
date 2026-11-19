@@ -153,7 +153,7 @@ export function TwoFactorForm({ next, allowTrustDevice }: { next: string | null;
           <Button
             type="button"
             variant="link"
-            // text-brand-ink (not text-primary): #D6303C on the dark card is only ~3.7:1, brand-ink passes AA in both themes
+            // text-brand-ink (not text-primary): primary-from on the dark card is low contrast, brand-ink passes AA in both themes
             className="h-10 text-brand-ink"
             onClick={() => {
               setMode((m) => (m === "totp" ? "backup" : "totp"))

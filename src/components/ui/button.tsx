@@ -21,10 +21,10 @@ const buttonVariants = cva(
         // Project addition (06-ui-design-system.md §3): the ONE primary action per page.
         brand:
           "bg-linear-135 from-primary-from to-primary-to text-white " +
-          "shadow-[inset_0_1px_0_rgb(255_255_255/0.35),inset_0_-1px_0_rgb(0_0_0/0.15),0_1px_2px_rgb(0_0_0/0.15),0_8px_20px_-6px_color-mix(in_oklab,var(--brand-red)_55%,transparent)] " +
+          "shadow-[inset_0_1px_0_rgb(255_255_255/0.35),inset_0_-1px_0_rgb(0_0_0/0.15),0_1px_2px_rgb(0_0_0/0.15),0_8px_20px_-6px_color-mix(in_oklab,var(--brand-primary)_55%,transparent)] " +
           "hover:brightness-[1.06] active:brightness-95 disabled:opacity-60 disabled:saturate-50 " +
-          "focus-visible:border-transparent focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--brand-red)_45%,transparent)] " +
-          "dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_0_0_1px_rgb(255_255_255/0.06),0_10px_28px_-6px_color-mix(in_oklab,var(--brand-red)_65%,transparent)]",
+          "focus-visible:border-transparent focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--brand-primary)_45%,transparent)] " +
+          "dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_0_0_1px_rgb(255_255_255/0.06),0_10px_28px_-6px_color-mix(in_oklab,var(--brand-primary)_65%,transparent)]",
       },
       size: {
         default:

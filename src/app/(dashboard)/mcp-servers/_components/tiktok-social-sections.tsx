@@ -53,7 +53,7 @@ export function TiktokSocialPlatformCard({
       }
     })
   return (
-    <Card id={TIKTOK_SOCIAL_CARD_ID} className={cn("gap-0 py-0 transition-shadow", on && "ring-1 ring-brand-red/30")}>
+    <Card id={TIKTOK_SOCIAL_CARD_ID} className={cn("gap-0 py-0 transition-shadow", on && "ring-1 ring-brand-primary/30")}>
       <CardHeader className="flex flex-row items-center gap-3 border-b px-4 py-3 [.border-b]:pb-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted">
           <PlatformIcon platform="tiktok" className="size-5" />

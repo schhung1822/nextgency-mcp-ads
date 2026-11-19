@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ads MCP by: noti.vn - server helper command, installed to /usr/local/bin/ads-mcp by scripts/install-ads-mcp.sh
+# Ads MCP by: Nextgency - server helper command, installed to /usr/local/bin/ads-mcp by scripts/install-ads-mcp.sh
 # (copied from the project directory, so `ads-mcp update-config` also refreshes it). Run `sudo ads-mcp help`.
 # The install directory comes from /etc/ads-mcp.conf (ADS_MCP_DIR=...), default /opt/ads-mcp.
 # Secrets (.env values, the GitHub token) are never printed, passed in argv or logged; `setup-key` is the only
@@ -7,7 +7,7 @@
 set -Eeuo pipefail
 
 ADS_MCP_HELPER_VERSION="1.0.0"
-REPO="notivn/Ads-MCP-simple"
+REPO="schhung1822/nextgency-mcp-ads"
 CONF="/etc/ads-mcp.conf"
 SELF_BIN="/usr/local/bin/ads-mcp"
 
@@ -171,7 +171,7 @@ check_token() {
   [[ -n "$exp" ]] && TOKEN_EXPIRY_EPOCH=$(date -d "$exp" +%s 2>/dev/null || true)
   gh_api GET "/repos/${REPO}"
   if [[ "$GH_STATUS" != "200" ]]; then
-    bad "Tài khoản ${TOKEN_LOGIN} không đọc được ${REPO} (GitHub trả $GH_STATUS): liên hệ noti.vn để được cấp quyền."
+    bad "Tài khoản ${TOKEN_LOGIN} không đọc được ${REPO} (GitHub trả $GH_STATUS): liên hệ Nextgency để được cấp quyền."
     return 1
   fi
   return 0
@@ -237,7 +237,7 @@ wait_web_healthy() {
 # ------------------------------------------------------------------------------------------------------------------
 cmd_help() {
   cat <<EOF
-Ads MCP by: noti.vn - lệnh quản trị máy chủ (ads-mcp ${ADS_MCP_HELPER_VERSION})
+Ads MCP by: Nextgency - lệnh quản trị máy chủ (ads-mcp ${ADS_MCP_HELPER_VERSION})
 
 Cách dùng: sudo ads-mcp <lệnh>
   status            Trạng thái các dịch vụ, phiên bản, HTTPS

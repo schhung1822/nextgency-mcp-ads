@@ -60,8 +60,8 @@ function NumberDot({ n, size = "md" }: { n: number; size?: "sm" | "md" }) {
       aria-hidden
       className={
         size === "sm"
-          ? "mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-semibold text-brand-ink tabular-nums"
-          : "flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-semibold text-brand-ink tabular-nums"
+          ? "mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-xs font-semibold text-brand-ink tabular-nums"
+          : "flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-xs font-semibold text-brand-ink tabular-nums"
       }
     >
       {n}

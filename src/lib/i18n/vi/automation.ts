@@ -275,7 +275,7 @@ export const automation = {
         code: [
           {
             label: "Thêm MCP (thay <link MCP>)",
-            code: "gemini mcp add --transport http --trust -s user adsnoti <link MCP>",
+            code: "gemini mcp add --transport http --trust -s user adsnextgency <link MCP>",
           },
           {
             label: "Windows - tệp ads-cpa.ps1",

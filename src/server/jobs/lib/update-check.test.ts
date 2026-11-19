@@ -14,7 +14,7 @@ import {
 
 const TOKEN = "github_pat_SECRET_TOKEN_0123456789abcdef"
 const NOW = new Date("2026-10-03T10:00:00Z")
-const source: UpdateSource = { repo: "notivn/ads-mcp-simple", token: null }
+const source: UpdateSource = { repo: "schhung1822/nextgency-mcp-ads", token: null }
 
 function json(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" }, ...init })
@@ -25,7 +25,7 @@ function release(over: Record<string, unknown> = {}) {
     tag_name: "v1.3.0",
     name: "v1.3.0",
     body: "## Có gì mới\n- Cập nhật tự động",
-    html_url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v1.3.0",
+    html_url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.3.0",
     published_at: "2026-10-01T08:30:00Z",
     draft: false,
     prerelease: false,
@@ -46,9 +46,9 @@ function router(routes: { latest?: Response | (() => Response); tags?: Response 
 const run = (fetchImpl: typeof fetch, s: UpdateSource = source) => fetchLatestRelease({ source: s, fetchImpl, now: NOW })
 
 describe("readUpdateSource", () => {
-  it("mặc định notivn/ads-mcp-simple, không token", () => {
+  it("mặc định schhung1822/nextgency-mcp-ads, không token", () => {
     expect(readUpdateSource({})).toEqual({ repo: DEFAULT_UPDATE_REPO, token: null })
-    expect(DEFAULT_UPDATE_REPO).toBe("notivn/ads-mcp-simple")
+    expect(DEFAULT_UPDATE_REPO).toBe("schhung1822/nextgency-mcp-ads")
   })
   it("đọc UPDATE_REPO và UPDATE_GITHUB_TOKEN, bỏ khoảng trắng", () => {
     expect(readUpdateSource({ UPDATE_REPO: " acme/app ", UPDATE_GITHUB_TOKEN: ` ${TOKEN} ` })).toEqual({ repo: "acme/app", token: TOKEN })
@@ -65,16 +65,16 @@ describe("fetchLatestRelease - /releases/latest", () => {
       tag: "v1.3.0",
       publishedAt: "2026-10-01T08:30:00.000Z",
       notes: "## Có gì mới\n- Cập nhật tự động",
-      url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v1.3.0",
+      url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.3.0",
       checkedAt: NOW.toISOString(),
     })
     expect(f).toHaveBeenCalledTimes(1)
-    expect(String(f.mock.calls[0]![0])).toBe("https://api.github.com/repos/notivn/ads-mcp-simple/releases/latest")
+    expect(String(f.mock.calls[0]![0])).toBe("https://api.github.com/repos/schhung1822/nextgency-mcp-ads/releases/latest")
   })
 
   it("gửi header GitHub chuẩn; token chỉ nằm trong Authorization", async () => {
     const f = router({ latest: json(release()) })
-    await run(f as unknown as typeof fetch, { repo: "notivn/ads-mcp-simple", token: TOKEN })
+    await run(f as unknown as typeof fetch, { repo: "schhung1822/nextgency-mcp-ads", token: TOKEN })
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
     const headers = init.headers as Record<string, string>
     expect(headers.Authorization).toBe(`Bearer ${TOKEN}`)
@@ -93,7 +93,7 @@ describe("fetchLatestRelease - /releases/latest", () => {
 
   it("url lạ (không phải github.com) bị thay bằng url chuẩn của tag", async () => {
     const f = router({ latest: json(release({ html_url: "https://evil.example/phish" })) })
-    expect((await run(f as unknown as typeof fetch)).url).toBe("https://github.com/notivn/ads-mcp-simple/releases/tag/v1.3.0")
+    expect((await run(f as unknown as typeof fetch)).url).toBe("https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.3.0")
   })
 
   it("published_at hỏng -> null; body null -> ghi chú rỗng", async () => {
@@ -139,7 +139,7 @@ describe("fetchLatestRelease - /tags (không có release)", () => {
       tag: "v1.10.2",
       notes: "",
       publishedAt: null,
-      url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v1.10.2",
+      url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.10.2",
     })
     expect(String(f.mock.calls[1]![0])).toContain("/tags?per_page=100")
   })
@@ -212,7 +212,7 @@ describe("fetchLatestRelease - lỗi GitHub", () => {
   })
 
   it("token không bao giờ xuất hiện trong thông điệp lỗi hay dữ liệu trả về", async () => {
-    const withToken = { repo: "notivn/ads-mcp-simple", token: TOKEN }
+    const withToken = { repo: "schhung1822/nextgency-mcp-ads", token: TOKEN }
     const failures = [
       new Response(JSON.stringify({ message: `Bad credentials ${TOKEN}` }), { status: 401 }),
       new Response(JSON.stringify({ message: `rate limit ${TOKEN}` }), { status: 403 }),
@@ -236,7 +236,7 @@ describe("fetchLatestRelease - lỗi GitHub", () => {
 
 describe("fetchLatestRelease - chuyển hướng (redirect)", () => {
   const redirect = (location: string, status = 301) => new Response(null, { status, headers: { location } })
-  const withToken = { repo: "notivn/ads-mcp-simple", token: TOKEN }
+  const withToken = { repo: "schhung1822/nextgency-mcp-ads", token: TOKEN }
 
   it("301 sang api.github.com (repo đổi tên) được theo, vẫn gửi token, không để fetch tự theo", async () => {
     const moved = "https://api.github.com/repositories/1/releases/latest"

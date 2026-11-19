@@ -1,5 +1,5 @@
 #!/bin/sh
-# Ads MCP by: noti.vn — tạo file .env với secret ngẫu nhiên (bản POSIX sh cho VPS).
+# Ads MCP by: Nextgency — tạo file .env với secret ngẫu nhiên (bản POSIX sh cho VPS).
 # Cách chính: node scripts/gen-env.mjs. Script này chỉ là lớp bọc để chạy được khi máy chưa có Node:
 #   1) có Node ≥ 20   → chạy node scripts/gen-env.mjs
 #   2) có Docker      → chạy gen-env.mjs trong container node:24-slim (file .env vẫn thuộc user hiện tại)

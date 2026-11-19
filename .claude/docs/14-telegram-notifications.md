@@ -118,8 +118,8 @@ Nghiên cứu: Bot API **10.3** (vẫn mới nhất 2026-10-09) - core.telegram.
 ### 10.1 Dòng ghi nguồn (mọi tin)
 
 - **Mọi** tin gửi đi (hệ thống, AI thay đổi quảng cáo, tin AI, tin thử; chữ và chú thích ảnh/video/file) kết thúc bằng:
-  `\n\n<i><a href="https://s.noti.vn/s/ads-mcp-simple">Ads MCP Simple</a></i>` (chủ dự án chốt 2026-10-09: chỉ chữ "Ads MCP Simple", không thêm câu dẫn)
-  (giống n8n "This message was sent automatically with n8n"; n8n chỉ thêm cho sendMessage - ta thêm cả chú thích media theo yêu cầu). Bản plain-text (fallback "can't parse entities"): `\n\nAds MCP Simple: https://s.noti.vn/s/ads-mcp-simple`.
+  `\n\n<i><a href="https://nextgency.vn">Ads MCP Simple</a></i>` (chủ dự án chốt 2026-10-09: chỉ chữ "Ads MCP Simple", không thêm câu dẫn)
+  (giống n8n "This message was sent automatically with n8n"; n8n chỉ thêm cho sendMessage - ta thêm cả chú thích media theo yêu cầu). Bản plain-text (fallback "can't parse entities"): `\n\nAds MCP Simple: https://nextgency.vn`.
 - Hằng số: link `TELEGRAM_CREDIT_URL` (không cấu hình bằng env), chuỗi trong `src/lib/i18n/vi/notifications.ts` (`messages.credit`).
 - Gắn **đúng một lần, tại tầng gửi** (`attemptSend` → `sendTelegramText` / `sendTelegramMedia` nhận `footer: { html, plain }`), **không** trong builder / `enqueueNotification` → `preview`, cột `message` đã lưu và delivery đang chờ lúc nâng cấp đều không bị gắn 2 lần. Ngân sách độ dài trừ trước phần footer: tin chữ ≤ 4096, chú thích ≤ 1024 (đếm theo `.length` UTF-16 của văn bản sau khi bỏ thẻ - an toàn hơn cách Telegram đếm). `fitMessage(html, reserve)` cắt phần nội dung, footer luôn còn nguyên thẻ `<a>`.
 - `sendMessage` vẫn `link_preview_options.is_disabled = true` (không sinh khung xem trước cho link ghi nguồn); media không có link preview.

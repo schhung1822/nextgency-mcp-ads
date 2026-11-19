@@ -3,7 +3,7 @@
 // (exec / store / files / sleep / now) so the whole flow is tested with fakes (updater-run.test.ts).
 // Safety rules (10-update-system.md §1): the running web/worker are untouched until migrate succeeded;
 // every external command is spawn(args[]) with values validated here, nothing from the DB is concatenated
-// into a shell string; the log tail is redacted before it is stored. Images of noti.vn must carry the cosign
+// into a shell string; the log tail is redacted before it is stored. Images of Nextgency must carry the cosign
 // signature of the release workflow for the exact tag (verifyImageSignature) before they are used.
 import { posix as path } from "node:path"
 
@@ -35,7 +35,7 @@ import type { Store, UpdateRequest } from "./updater-store"
 export interface UpdaterConfig {
   /** Absolute project path ON THE HOST; the container mounts it at the SAME path (compose resolves bind mounts on the host). */
   projectDir: string
-  /** image repository without tag, e.g. ghcr.io/notivn/ads-mcp-simple */
+  /** image repository without tag, e.g. ghcr.io/schhung1822/nextgency-mcp-ads */
   image: string
   composeProject: string
   dbService: string
@@ -158,13 +158,13 @@ export async function verifyImageSignature(runCmd: CmdRunner, repo: string, vers
 
 function signatureFailure(ref: string, version: string): string {
   return (
-    `không xác minh được chữ ký số của image ${ref} (image không do GitHub Actions của noti.vn ký cho tag v${version}, ` +
+    `không xác minh được chữ ký số của image ${ref} (image không do GitHub Actions của Nextgency ký cho tag v${version}, ` +
     `hoặc máy chủ không kết nối được tới Sigstore). Bỏ qua (không khuyến nghị): thêm ${VERIFY_SIGNATURE_ENV}=0 vào .env rồi bấm Cập nhật lại`
   )
 }
 
 const SKIP_NOTE = {
-  "skip-image": "Bỏ qua xác minh chữ ký số: APP_IMAGE không phải image của noti.vn (bản fork / registry riêng)",
+  "skip-image": "Bỏ qua xác minh chữ ký số: APP_IMAGE không phải image của Nextgency (bản fork / registry riêng)",
   "skip-env": `Bỏ qua xác minh chữ ký số: ${VERIFY_SIGNATURE_ENV}=0 trong .env (không khuyến nghị)`,
 } as const
 
@@ -385,7 +385,7 @@ export async function runUpdate(req: UpdateRequest, d: RunDeps): Promise<FinalSt
       note(`Xác minh chữ ký số thất bại: ${why}`)
       throw new StepError("pull", signatureFailure(imageRef, req.targetVersion))
     }
-    note("Đã xác minh chữ ký số của image (GitHub Actions của noti.vn, đúng tag)")
+    note("Đã xác minh chữ ký số của image (GitHub Actions của Nextgency, đúng tag)")
   }
 
   async function stepMigrate() {

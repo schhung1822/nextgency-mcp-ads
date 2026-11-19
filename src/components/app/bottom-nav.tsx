@@ -88,7 +88,7 @@ const TAB_CLASS =
   "group relative flex h-15 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[11px] leading-none font-medium text-muted-foreground outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50 aria-[current=page]:font-semibold aria-[current=page]:text-brand-ink data-[active=true]:font-semibold data-[active=true]:text-brand-ink"
 
 const PILL_CLASS =
-  "flex h-8 w-14 items-center justify-center rounded-full transition-colors group-aria-[current=page]:bg-brand-red/12 group-data-[active=true]:bg-brand-red/12 dark:group-aria-[current=page]:bg-brand-red/20 dark:group-data-[active=true]:bg-brand-red/20"
+  "flex h-8 w-14 items-center justify-center rounded-full transition-colors group-aria-[current=page]:bg-brand-primary/12 group-data-[active=true]:bg-brand-primary/12 dark:group-aria-[current=page]:bg-brand-primary/20 dark:group-data-[active=true]:bg-brand-primary/20"
 
 function TabIcon({
   icon,
@@ -192,7 +192,7 @@ function MenuLink({ item, active }: { item: NavItem; active: boolean }) {
       className={cn(
         "flex h-12 items-center gap-3 rounded-xl px-3 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         active
-          ? "bg-brand-red/10 font-semibold text-brand-ink dark:bg-brand-red/15"
+          ? "bg-brand-primary/10 font-semibold text-brand-ink dark:bg-brand-primary/15"
           : "text-foreground hover:bg-accent"
       )}
     >

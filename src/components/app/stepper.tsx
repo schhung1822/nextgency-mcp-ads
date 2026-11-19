@@ -40,9 +40,9 @@ export function Stepper({
                 className={cn(
                   "flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ring-1 transition-colors",
                   state === "complete" &&
-                    "bg-brand-red/10 text-brand-ink ring-brand-red/25",
+                    "bg-brand-primary/10 text-brand-ink ring-brand-primary/25",
                   state === "current" &&
-                    "bg-linear-135 from-primary-from to-primary-to text-white shadow-[0_6px_16px_-6px_color-mix(in_oklab,var(--brand-red)_60%,transparent)] ring-transparent",
+                    "bg-linear-135 from-primary-from to-primary-to text-white shadow-[0_6px_16px_-6px_color-mix(in_oklab,var(--brand-primary)_60%,transparent)] ring-transparent",
                   state === "upcoming" &&
                     "bg-card text-muted-foreground ring-border"
                 )}
@@ -99,7 +99,7 @@ export function Stepper({
                 >
                   <span
                     className={cn(
-                      "block h-full rounded-full bg-linear-90 from-brand-red to-brand-orange transition-[width]",
+                      "block h-full rounded-full bg-linear-90 from-brand-primary to-brand-accent transition-[width]",
                       i <= current ? "w-full" : "w-0"
                     )}
                   />

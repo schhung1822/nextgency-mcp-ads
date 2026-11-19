@@ -1,26 +1,27 @@
 # Design system & UI
 
-Mục tiêu: **nhìn là hiểu, bấm là làm được** — bố cục kiểu **Shopify admin (Polaris)**, chất liệu **Liquid Glass** (Apple 2025) cho phần "khung", màu chủ đạo **gradient đỏ → cam** từ logo noti.vn, font **Inter**, có **Sáng/Tối**, toàn bộ tiếng Việt. Mọi component dựng trên **shadcn/ui** (style `radix-maia`) — không tự viết lại component đã có trong shadcn.
+Mục tiêu: **nhìn là hiểu, bấm là làm được** — bố cục kiểu **Shopify admin (Polaris)**, chất liệu **Liquid Glass** (Apple 2025) cho phần "khung", màu chủ đạo **gradient đỏ → cam** từ logo Nextgency, font **Inter**, có **Sáng/Tối**, toàn bộ tiếng Việt. Mọi component dựng trên **shadcn/ui** (style `radix-maia`) — không tự viết lại component đã có trong shadcn.
 
 ## 1. Thương hiệu
-- Tên: **Ads MCP by: noti.vn** (tiêu đề trang: `Ads MCP · noti.vn`; `<title>` từng trang: `<Tên trang> · Ads MCP`).
+- Tên: **Ads MCP by: Nextgency** (tiêu đề trang: `Ads MCP · Nextgency`; `<title>` từng trang: `<Tên trang> · Ads MCP`).
 - Logo (thư mục `logo/`, copy tối ưu sang `public/brand/`):
-  - `logo-duong-ban.png` (chữ đen) → nền sáng; `logo-am-ban.png` (chữ trắng) → nền tối. Bản gốc ~3577x1056 (tỉ lệ ~3,39:1) đã resize còn **480x142** vào `public/brand/logo-duong-ban.png` và `logo-am-ban.png` (>= 3x cho mọi kích thước hiển thị, ~14KB/file; tạo lại bằng `sharp` từ `logo/`, không thêm dependency). `<BrandLogo height>` render 2 `<Image>` + class `dark:hidden` / `hidden dark:block` (CSS thuần theo class `dark` của next-themes nên không nháy lúc tải); width tính theo tỉ lệ ảnh, không méo.
-  - `favicon.png` (ô vuông đỏ chữ N) → favicon tab trình duyệt, **icon rail của sidebar thu gọn** (`BrandMark`), avatar mặc định của MCP. Favicon/`metadata.icons` giữ nguyên.
-  - **Header dùng logo đầy đủ ở mọi cỡ**: sidebar mở (cao 30px, ẩn bằng `group-data-[collapsible=icon]:hidden`; khi sidebar thu về icon rail 768-1279px thì đổi sang `BrandMark` vuông 32px, không nhét logo dài vào rail), top bar điện thoại < md (cao 26px, vì không có sidebar), màn đăng nhập/setup/2FA/đổi mật khẩu (`AuthCard`, cao 36px) và `StatusScreen` (30px). Link logo có `aria-label="Ads MCP"`; alt của ảnh là "noti.vn". Chữ "Ads MCP" + "by noti.vn" không còn đi kèm logo ở sidebar (`BrandWordmark` vẫn có trong thư viện).
-- Màu lấy mẫu từ logo: đỏ **#ED3C47**, chữ **#1A1B1B**.
+  - `logo-duong-ban.png` (chữ đen) → nền sáng; `logo-am-ban.png` (chữ trắng) → nền tối. Bản gốc `logo/nextgency-*.png` (~7200x1180, tỉ lệ ~6,08:1) đã resize còn **960x158** vào `public/brand/logo-duong-ban.png` và `logo-am-ban.png` (>= 2x cho mọi kích thước hiển thị, ~20KB/file; tạo lại bằng `sharp` từ `logo/`, không thêm dependency). `<BrandLogo height>` render 2 `<Image>` + class `dark:hidden` / `hidden dark:block` (CSS thuần theo class `dark` của next-themes nên không nháy lúc tải); width tính theo tỉ lệ ảnh, không méo.
+  - `favicon.png` (ô vuông tím đậm `#2B144D`, biểu tượng ">|" trắng) → favicon tab trình duyệt, **icon rail của sidebar thu gọn** (`BrandMark`), avatar mặc định của MCP. Favicon/`metadata.icons` giữ nguyên.
+  - **Header dùng logo đầy đủ ở mọi cỡ**: sidebar mở (cao 30px, ẩn bằng `group-data-[collapsible=icon]:hidden`; khi sidebar thu về icon rail 768-1279px thì đổi sang `BrandMark` vuông 32px, không nhét logo dài vào rail), top bar điện thoại < md (cao 26px, vì không có sidebar), màn đăng nhập/setup/2FA/đổi mật khẩu (`AuthCard`, cao 36px) và `StatusScreen` (30px). Link logo có `aria-label="Ads MCP"`; alt của ảnh là "Nextgency". Chữ "Ads MCP" + "by Nextgency" không còn đi kèm logo ở sidebar (`BrandWordmark` vẫn có trong thư viện).
+- Bảng màu Nextgency: tím đậm **#2B144D**, tím nhạt **#C08DFE**, đen **#000**, trắng **#FFF**. Logo chỉ có đen/trắng.
 
 ## 2. Token màu (Tailwind v4, `src/app/globals.css`)
 | Token | Sáng | Tối | Dùng cho |
 |---|---|---|---|
-| `--brand-red` | `#ED3C47` oklch(0.627 0.212 22.8) | như sáng | logo, accent, focus ring, chart-1 |
-| `--brand-orange` | `#F26A1B` oklch(0.682 0.186 44.8) | như sáng | accent, chart-2, wordmark gradient |
-| `--primary-from` → `--primary-to` | `#D6303C` → `#CC4A0E` | như sáng | **nút chính** (đạt AA 4.5:1 với chữ trắng) |
+| `--brand-primary` | `#7B3FD1` (6:1 trên trắng) | `#C08DFE` | nền nhạt `/10`, focus ring, chấm báo, đường biểu đồ, chart-1 |
+| `--brand-accent` | `#C08DFE` | `#7B3FD1` | vầng sáng nền, đầu gradient wordmark (trang trí) |
+| `--brand-ink` | `#4A2290` | `#D5B3FF` | chữ màu thương hiệu trên nền nhạt (AA) |
+| `--primary-from` → `--primary-to` | `#2B144D` → `#4B2488` | `#7A45CC` → `#8A4FD8` | **nút chính** (chữ trắng, AA 4.5:1+ cả hai chế độ) |
 | `--primary` | `var(--primary-from)` | | shadcn primary |
 | `--destructive` | rose-600 | rose-500 | xoá/nguy hiểm — khác sắc độ với brand để không nhầm |
 | success / warning / info | emerald-600 / amber-500 / sky-600 | sáng hơn 1 bậc | badge trạng thái |
-| `--background` | trắng ấm `oklch(0.985 0.004 30)` | `oklch(0.16 0.01 30)` | nền |
-⚠️ `#ED3C47` với chữ trắng chỉ đạt 3.93:1 → **không** dùng làm nền nút có chữ; gradient nút chính dùng cặp `#D6303C → #CC4A0E`. Gradient `#ED3C47 → #F26A1B` chỉ cho logo/wordmark/viền/biểu đồ.
+| `--background` | trắng ngả tím `oklch(0.985 0.004 295)` | `oklch(0.16 0.01 295)` | nền |
+⚠️ `#C08DFE` và `--brand-primary` với chữ trắng không đạt AA → **không** dùng làm nền nút có chữ; nút chính dùng cặp `--primary-from → --primary-to`. Màu tím nhạt chỉ cho viền/biểu đồ/nền nhạt/trang trí.
 
 Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `#000`/trắng ở dark; Google Ads logo 3 màu `#FBBC04`/`#4285F4`/`#34A853`, TikTok `#000`/trắng ở dark (+ `#FE2C55` điểm nhấn), YouTube (dấu nhỏ ở góc logo trên thẻ "Google Ads (gồm YouTube)") `#FF0000`, Telegram `#26A5E4`, Google Drive 3 màu (path simple-icons tách 3 phần: trái `#34A853`, phải `#FBBC04`, đáy `#4285F4` - `<BrandIcon brand="drive">`, dùng ở tab Google Drive, thẻ "Kho creative", khối Email hệ thống, wizard, khối Google Drive của MCP). Icon thương hiệu là SVG inline (simple-icons, CC0) trong `components/app/platform-icon.tsx`.
 
@@ -33,10 +34,10 @@ Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `
 
 ```css
 :root {
-  --brand-red: oklch(0.627 0.212 22.8);  --brand-orange: oklch(0.682 0.186 44.8);
+  --brand-primary: oklch(0.627 0.212 22.8);  --brand-accent: oklch(0.682 0.186 44.8);
   --primary-from: oklch(0.576 0.201 22.9); --primary-to: oklch(0.581 0.176 40.0);
   --primary: var(--primary-from); --primary-foreground: oklch(0.985 0 0);
-  --ring: var(--brand-red); --chart-1: var(--brand-red); --chart-2: var(--brand-orange);
+  --ring: var(--brand-primary); --chart-1: var(--brand-primary); --chart-2: var(--brand-accent);
   --radius: 0.75rem;
   --glass-tint: oklch(1 0 0 / 0.62); --glass-tint-strong: oklch(1 0 0 / 0.8);
   --glass-edge: oklch(1 0 0 / 0.75); --glass-specular: oklch(1 0 0 / 0.95); --glass-shade: oklch(0.25 0.02 30 / 0.06);
@@ -49,15 +50,15 @@ Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `
   --glass-drop: 0 1px 1px oklch(0 0 0 / 0.3), 0 16px 40px -12px oklch(0 0 0 / 0.7); --sidebar: var(--glass-tint);
 }
 @theme inline {
-  --color-brand-red: var(--brand-red); --color-brand-orange: var(--brand-orange);
+  --color-brand-primary: var(--brand-primary); --color-brand-accent: var(--brand-accent);
   --color-primary-from: var(--primary-from); --color-primary-to: var(--primary-to);
 }
 @layer base {
   body::before { /* nền ấm để glass có gì đó phía sau */
     content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
     background:
-      radial-gradient(1100px 520px at 0% -10%, color-mix(in oklab, var(--brand-red) 16%, transparent), transparent 65%),
-      radial-gradient(900px 480px at 100% 0%, color-mix(in oklab, var(--brand-orange) 14%, transparent), transparent 60%),
+      radial-gradient(1100px 520px at 0% -10%, color-mix(in oklab, var(--brand-primary) 16%, transparent), transparent 65%),
+      radial-gradient(900px 480px at 100% 0%, color-mix(in oklab, var(--brand-accent) 14%, transparent), transparent 60%),
       var(--background);
   }
 }
@@ -86,12 +87,12 @@ Màu nền tảng (chỉ dùng trong icon/badge nhỏ): Meta `#0866FF`, OpenAI `
 Nút chính — thêm variant `brand` vào `components/ui/button.tsx` (cva), dùng cho **1 hành động chính mỗi trang**:
 ```ts
 brand: "text-white bg-linear-135 from-primary-from to-primary-to " +
-  "shadow-[inset_0_1px_0_rgb(255_255_255/0.35),inset_0_-1px_0_rgb(0_0_0/0.15),0_1px_2px_rgb(0_0_0/0.15),0_8px_20px_-6px_color-mix(in_oklab,var(--brand-red)_55%,transparent)] " +
+  "shadow-[inset_0_1px_0_rgb(255_255_255/0.35),inset_0_-1px_0_rgb(0_0_0/0.15),0_1px_2px_rgb(0_0_0/0.15),0_8px_20px_-6px_color-mix(in_oklab,var(--brand-primary)_55%,transparent)] " +
   "hover:brightness-[1.06] active:translate-y-px active:brightness-95 disabled:opacity-60 disabled:saturate-50 " +
-  "focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--brand-red)_45%,transparent)] " +
-  "dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_0_0_1px_rgb(255_255_255/0.06),0_10px_28px_-6px_color-mix(in_oklab,var(--brand-red)_65%,transparent)]",
+  "focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--brand-primary)_45%,transparent)] " +
+  "dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_0_0_1px_rgb(255_255_255/0.06),0_10px_28px_-6px_color-mix(in_oklab,var(--brand-primary)_65%,transparent)]",
 ```
-Wordmark gradient: `bg-linear-135 from-brand-red to-brand-orange bg-clip-text text-transparent`.
+Wordmark gradient: `bg-linear-135 from-brand-primary to-brand-accent bg-clip-text text-transparent`.
 
 ## 4. Typography & spacing
 - Inter (`next/font/google`, `subsets: ['latin','vietnamese']`, biến `--font-sans`), `<html lang="vi">`. Số liệu trong bảng dùng `tabular-nums`. ID/key dùng `font-mono` cỡ nhỏ.
@@ -255,9 +256,9 @@ Nền gradient ấm + 1 glass card giữa màn: logo, "Đăng nhập Ads MCP", e
 - **Kiểm thử**: `ui-shots.mjs` có thêm scene `search`, `search-type`, `guide-collapse`, `guide-sheet`, `menu`, `bottom` và tự báo phần tử bị thanh dưới che trên điện thoại; chạy với `MSYS_NO_PATHCONV=1` trong Git Bash để route `/` không bị đổi thành đường dẫn Windows.
 
 ## 12. Trang chính sách công khai (2026-10-05)
-- `/privacy`, `/terms`, `/data-deletion` nằm trong route group `src/app/(legal)/` (layout riêng, **không** dashboard chrome, không cần phiên): top bar glass mỏng (logo + `ThemeToggle`), dải tab 3 trang (`LegalNav`, `aria-current`), nội dung trong **một `Card` đặc** rộng tối đa `max-w-3xl` (chữ 15px/leading-7, h1 → h2 mục → phần English `lang="en"` h2 + h3), footer liên kết + "Ads MCP by: noti.vn". Điện thoại: card tràn mép như trang quản trị (`#main-content`). Mọi chữ ở `src/lib/i18n/vi/legal.ts`; tên đơn vị/email chỉ render dạng text React, email thành `mailto:` khi hợp lệ.
+- `/privacy`, `/terms`, `/data-deletion` nằm trong route group `src/app/(legal)/` (layout riêng, **không** dashboard chrome, không cần phiên): top bar glass mỏng (logo + `ThemeToggle`), dải tab 3 trang (`LegalNav`, `aria-current`), nội dung trong **một `Card` đặc** rộng tối đa `max-w-3xl` (chữ 15px/leading-7, h1 → h2 mục → phần English `lang="en"` h2 + h3), footer liên kết + "Ads MCP by: Nextgency". Điện thoại: card tràn mép như trang quản trị (`#main-content`). Mọi chữ ở `src/lib/i18n/vi/legal.ts`; tên đơn vị/email chỉ render dạng text React, email thành `mailto:` khi hợp lệ.
 - Khối **"Liên kết cho ứng dụng"** (`components/app/legal-links.tsx`): `SidebarFooter`, dưới menu người dùng, 3 dòng `SidebarMenuButton size="sm"` (mở tab mới) + `SidebarMenuAction` sao chép (tooltip, toast "Đã sao chép liên kết", URL tuyệt đối từ `BETTER_AUTH_URL`, dự phòng `window.location.origin`); ẩn khi sidebar thu về icon rail. Điện thoại: cùng 3 dòng trong sheet Menu (dòng 48px + nút sao chép 48px). ⌘K có nhóm "Trang chính sách".
 
 ## 13. Nút báo lỗi / yêu cầu tính năng và khối Phiên bản ở sidebar (2026-10-08)
-- **Nút nổi "Báo bug, yêu cầu tính năng"** (`components/app/feedback-button.tsx`, gắn một lần trong `AppShell` - mọi trang dashboard, mọi vai trò): `<a target="_blank" rel="noopener noreferrer">` tới form noti.vn (`FEEDBACK_FORM_URL` trong `src/lib/feedback.ts`), `glass-strong` bo tròn, icon `Bug01Icon` màu `brand-ink`. Máy tính (≥ md): viên thuốc icon + chữ, cách mép phải 24px, đáy 20px (+ safe area). Điện thoại: chỉ icon, tròn 48px, cách mép phải 16px, nằm trên thanh điều hướng dưới (`--app-bottom-offset`). Không phải nút `brand` (mỗi trang chỉ 1 nút brand). Tự nâng lên `--feedback-lift` (4.25rem, `globals.css`) khi trang có thanh hành động dính đáy - đánh dấu thanh đó bằng `data-bottom-action-bar` (thanh nút wizard Thêm kết nối, thanh thao tác hàng loạt của `DataTable`); ẩn khi bàn phím ảo mở và khi in. Panel Hướng dẫn (lg+) dừng cách đáy 4.75rem để nút không che nội dung.
-- **Khối "Phiên bản"** (`SidebarVersion`, `SidebarFooter` ngay trên nút tài khoản, ẩn trên icon rail): khung viền mảnh trong sidebar (không glass lồng glass), 2 dòng "Hiện tại / Mới nhất" `tabular-nums`, huy hiệu "Có bản mới" (nền `brand-red/12`, chữ `brand-ink`, khung viền đỏ nhạt) hoặc "Đã cập nhật" (success). Admin: cả khối là link tới `/settings/updates` (`aria-label` đọc cả hai phiên bản); nhân viên: chỉ "Hiện tại", không link. Điện thoại giữ nguyên sheet Menu (dòng "Phiên bản vX" + "Có bản mới vY").
+- **Nút nổi "Báo bug, yêu cầu tính năng"** (`components/app/feedback-button.tsx`, gắn một lần trong `AppShell` - mọi trang dashboard, mọi vai trò): `<a target="_blank" rel="noopener noreferrer">` tới form Nextgency (`FEEDBACK_FORM_URL` trong `src/lib/feedback.ts`), `glass-strong` bo tròn, icon `Bug01Icon` màu `brand-ink`. Máy tính (≥ md): viên thuốc icon + chữ, cách mép phải 24px, đáy 20px (+ safe area). Điện thoại: chỉ icon, tròn 48px, cách mép phải 16px, nằm trên thanh điều hướng dưới (`--app-bottom-offset`). Không phải nút `brand` (mỗi trang chỉ 1 nút brand). Tự nâng lên `--feedback-lift` (4.25rem, `globals.css`) khi trang có thanh hành động dính đáy - đánh dấu thanh đó bằng `data-bottom-action-bar` (thanh nút wizard Thêm kết nối, thanh thao tác hàng loạt của `DataTable`); ẩn khi bàn phím ảo mở và khi in. Panel Hướng dẫn (lg+) dừng cách đáy 4.75rem để nút không che nội dung.
+- **Khối "Phiên bản"** (`SidebarVersion`, `SidebarFooter` ngay trên nút tài khoản, ẩn trên icon rail): khung viền mảnh trong sidebar (không glass lồng glass), 2 dòng "Hiện tại / Mới nhất" `tabular-nums`, huy hiệu "Có bản mới" (nền `brand-primary/12`, chữ `brand-ink`, khung viền đỏ nhạt) hoặc "Đã cập nhật" (success). Admin: cả khối là link tới `/settings/updates` (`aria-label` đọc cả hai phiên bản); nhân viên: chỉ "Hiện tại", không link. Điện thoại giữ nguyên sheet Menu (dòng "Phiên bản vX" + "Có bản mới vY").

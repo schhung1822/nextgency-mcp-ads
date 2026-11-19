@@ -125,7 +125,7 @@ export function ApifyPlatformCard({
     <Card
       className={cn(
         "gap-0 py-0 transition-shadow",
-        enabled && "ring-1 ring-brand-red/30"
+        enabled && "ring-1 ring-brand-primary/30"
       )}
     >
       <CardHeader className="flex flex-row items-center gap-3 border-b px-4 py-3 [.border-b]:pb-3">

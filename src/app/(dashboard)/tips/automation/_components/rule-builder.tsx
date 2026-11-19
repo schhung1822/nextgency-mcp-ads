@@ -105,7 +105,7 @@ export function RuleBuilder() {
                 className={cn(
                   "flex cursor-pointer items-start gap-3 rounded-2xl border bg-input/20 p-3.5 transition-colors",
                   "hover:bg-muted/60 has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50",
-                  "has-data-[state=checked]:border-primary/60 has-data-[state=checked]:bg-brand-red/5"
+                  "has-data-[state=checked]:border-primary/60 has-data-[state=checked]:bg-brand-primary/5"
                 )}
               >
                 <RadioGroupItem

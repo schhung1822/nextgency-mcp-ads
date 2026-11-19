@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - BUILD TỪ MÃ NGUỒN (máy dev, kiểm thử trước phát hành). KHÔNG dùng trên VPS production.
+# Ads MCP by: Nextgency - BUILD TỪ MÃ NGUỒN (máy dev, kiểm thử trước phát hành). KHÔNG dùng trên VPS production.
 # docker-compose.yml chỉ kéo image dựng sẵn từ GHCR; file này thêm `build:` cho các service dùng image của dự án:
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml build
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
@@ -6,7 +6,7 @@
 # `node scripts/gen-env.mjs --dev` ghi APP_VERSION=dev). Muốn số phiên bản hiển thị trong web đúng (thay vì "dev"),
 # truyền build-arg: APP_BUILD_VERSION=1.2.3 qua `--build-arg` hoặc biến bên dưới.
 # Updater (cập nhật tự động) KHÔNG dùng file này: nó chỉ kéo image phát hành có APP_BUILD_VERSION khớp tag và
-# chữ ký số của GitHub Actions noti.vn (image tự build không có chữ ký: chỉ dùng để kiểm thử, không phát hành).
+# chữ ký số của GitHub Actions Nextgency (image tự build không có chữ ký: chỉ dùng để kiểm thử, không phát hành).
 x-build-app: &build-app
   context: .
   args:

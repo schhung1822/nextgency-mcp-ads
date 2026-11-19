@@ -702,7 +702,7 @@ export const mcp = {
     collapseSnippet: "Thu gọn",
     stepsLabel: "Các bước",
     notesLabel: "Lưu ý",
-    serverName: "ads-noti",
+    serverName: "ads-nextgency",
     clients: {
       claude: {
         tab: "Claude",
@@ -742,7 +742,7 @@ export const mcp = {
         steps: [
           "Mở file ~/.gemini/settings.json (tạo mới nếu chưa có).",
           "Thêm khối mcpServers bên dưới (giữ nguyên các cài đặt khác).",
-          'Khởi động lại Gemini CLI và gõ /mcp để kiểm tra server "adsnoti".',
+          'Khởi động lại Gemini CLI và gõ /mcp để kiểm tra server "adsnextgency".',
         ],
         notes: [
           'Tên server không dùng dấu gạch dưới "_".',
@@ -768,7 +768,7 @@ export const mcp = {
         title: "Claude Code (dòng lệnh)",
         steps: [
           "Mở terminal và chạy lệnh bên dưới (--scope user để dùng ở mọi thư mục).",
-          'Chạy claude, gõ /mcp để kiểm tra kết nối "ads-noti".',
+          'Chạy claude, gõ /mcp để kiểm tra kết nối "ads-nextgency".',
         ],
         notes: [
           "Claude Code cắt kết quả dài hơn ~25.000 token (chỉnh bằng biến MAX_MCP_OUTPUT_TOKENS).",

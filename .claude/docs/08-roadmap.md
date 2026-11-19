@@ -98,7 +98,7 @@
 Phần **ứng dụng** (web + worker + DB):
 - [x] Bảng `system_update_requests` (migrations `0002` + `0003`, CHECK status/step/target_version chặt, unique index một phần 1 yêu cầu mở, index `created_at`) + khoá nội bộ `app_settings` (`update_latest`, `update_check_error`, `updater_heartbeat`) tách khỏi form Cài đặt
 - [x] `src/lib/version.ts` (semver chặt `vX.Y.Z`, bỏ qua pre-release; không import gì để client dùng được) + `src/server/app-version.ts` (`getAppVersion()`: `APP_BUILD_VERSION` → `package.json`) + test
-- [x] Kiểm tra GitHub (`UPDATE_REPO` mặc định `notivn/ads-mcp-simple`, `UPDATE_GITHUB_TOKEN` tuỳ chọn): `/releases/latest` → fallback `/tags` theo semver, timeout, lỗi thân thiện (kho riêng tư, 401, rate limit), token không lọt vào log/lỗi - `src/server/jobs/lib/update-check.ts`
+- [x] Kiểm tra GitHub (`UPDATE_REPO` mặc định `schhung1822/nextgency-mcp-ads`, `UPDATE_GITHUB_TOKEN` tuỳ chọn): `/releases/latest` → fallback `/tags` theo semver, timeout, lỗi thân thiện (kho riêng tư, 401, rate limit), token không lọt vào log/lỗi - `src/server/jobs/lib/update-check.ts`
 - [x] Job `update.check` mỗi 6 giờ (`20 */6 * * *`), không ghi `activity_logs`
 - [x] Service `src/server/services/updates.ts` (`getUpdateStatus`, `getVersionBadge`, `checkForUpdatesNow`, `startUpdate`) + server action `checkUpdatesAction` / `startUpdateAction` (admin + re-auth) + `GET /api/updates/status` (admin, no-store, chịu lỗi)
 - [x] Giao diện: `/settings/updates` (admin; tiến trình theo bước có poll chịu được lúc web khởi động lại; lịch sử; trạng thái updater + hướng dẫn chạy tay), dòng "Phiên bản vX" trong menu người dùng (desktop + sheet Menu di động) cho mọi người, chấm cảnh báo + mục "Có bản mới" cho admin, cảnh báo ở Tổng quan, thẻ liên kết ở Cài đặt, `PageGuide`
@@ -123,12 +123,12 @@ Phần **ứng dụng** (web + worker + DB):
 **Đạt khi**: từ Claude hỏi được "liệt kê Trang", "bài tuần này của Trang X", "chỉ số bài Y", "lượt xem Trang 30 ngày" trên Trang thật; staff không đọc được Trang ngoài phạm vi.
 
 ## Thông báo hệ thống trên top bar web (2026-10-04), thiết kế `13-system-notices.md`
-- [x] Job `notices.fetch` (1 giờ/lần + khi worker khởi động) GET webhook noti.vn → `app_settings.system_notices` (làm sạch, tối đa 10 × 300 ký tự, giữ 24 h khi webhook lỗi, `SYSTEM_NOTICES_URL` tắt được)
+- [x] Job `notices.fetch` (1 giờ/lần + khi worker khởi động) GET webhook Nextgency → `app_settings.system_notices` (làm sạch, tối đa 10 × 300 ký tự, giữ 24 h khi webhook lỗi, `SYSTEM_NOTICES_URL` tắt được)
 - [x] Chạy chữ ở top bar (desktop/tablet giữa breadcrumb và ô tìm kiếm; phone dải dưới top bar), reduced-motion đứng yên, sáng/tối - đã chụp 1440/820/390
 - [x] MCP **không** kèm thông báo hệ thống hay dòng nhắc cập nhật (quyết định chủ dự án 2026-10-05, chống prompt injection; bản 1.0.1 từng kèm, đã gỡ cùng câu dặn trong server instructions)
 
 ## Báo lỗi / yêu cầu tính năng, khối Phiên bản, tự kiểm tra cập nhật (2026-10-08)
-- [x] Nút nổi "Báo bug, yêu cầu tính năng" (góc dưới phải, máy tính icon + chữ / điện thoại chỉ icon) mở form n8n của noti.vn ở tab mới; tự nâng khi có thanh hành động dính đáy - 06 §13
+- [x] Nút nổi "Báo bug, yêu cầu tính năng" (góc dưới phải, máy tính icon + chữ / điện thoại chỉ icon) mở form n8n của Nextgency ở tab mới; tự nâng khi có thanh hành động dính đáy - 06 §13
 - [x] Khối "Phiên bản" ở sidebar: hiện tại + mới nhất (admin), link tới `/settings/updates`; `VersionBadge.latestKnown` - 10-update-system
 - [x] `/settings/updates` tự kiểm tra GitHub khi mở (không toast, nhật ký `trigger: auto`); e2e trỏ `UPDATE_REPO` tới repo không tồn tại để không ghi đè dữ liệu test
 - [x] Chụp sáng/tối 1440 + 390; test dịch vụ cập nhật cập nhật theo `latestKnown` / `trigger`
@@ -161,7 +161,7 @@ Nguồn: nhánh lưu trữ `archive/full-platforms` (chỉ đọc) + nghiên c�
 **Đạt khi**: kết nối thật đọc được báo cáo TikTok và Google Ads (kể cả chiến dịch YouTube, chiến dịch Video bị từ chối khi sửa), TikTok auth_code đổi được token, tin Telegram tới nhóm thật cho cả 3 nguồn (AI yêu cầu, AI thay đổi quảng cáo, sự kiện hệ thống) và không lộ bot token ở client/log.
 
 ## Telegram gửi ảnh / video / tệp qua MCP + dòng ghi nguồn; gộp thẻ YouTube Ads vào Google Ads (2026-10-09), thiết kế `14-telegram-notifications.md` §10
-- [x] **Dòng ghi nguồn** mọi tin Telegram: "Ads MCP Simple" in nghiêng (link `https://s.noti.vn/s/ads-mcp-simple`), gắn 1 lần ở tầng gửi (`notifications/credit.ts`, `attemptSend`), cả fallback plain-text và chú thích media
+- [x] **Dòng ghi nguồn** mọi tin Telegram: "Ads MCP Simple" in nghiêng (link `https://nextgency.vn`), gắn 1 lần ở tầng gửi (`notifications/credit.ts`, `attemptSend`), cả fallback plain-text và chú thích media
 - [x] **Gửi media**: `callTelegramMultipart` + `sendTelegramMedia` (sendPhoto/Video/Document, ảnh bị từ chối → gửi lại dạng tệp, 413 → `file_too_large`), `notifications/media.ts` (tải qua `safeFetch` https + ghim IP, nhận diện magic bytes, chặn loại nguy hiểm/Office có macro/nhúng, tên tệp an toàn, tệp chữ CSV có BOM + chống công thức), semaphore 2/tiến trình + 1/MCP, 20 lượt tải/10 phút/MCP
 - [x] **Tool MCP** `telegram_send_message`: `file_url` / `file` (ChatGPT `openai/fileParams`) / `file_content`+`file_name`, `send_as`, chú thích ≤ 800, hạn chót 50 s (ChatGPT cắt 60 s), chống trùng tệp ChatGPT, log không chứa `download_url`/query
 - [x] **Gộp thẻ YouTube Ads** vào "Google Ads (gồm YouTube)" ở `/connections/new` (huy hiệu YouTube, ghi chú YouTube luôn hiện ở form Google; link cũ `?platform=youtube` vẫn mở form Google)
@@ -193,7 +193,7 @@ Quyết định G1–G7 (cách A tham chiếu; thư mục công ty + riêng; ả
 Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:packages`) cho clone + GHCR + `UPDATE_GITHUB_TOKEN`; script hỏi GitHub username + token (nhập ẩn); cài **bản phát hành mới nhất** (`--version` để ghim); cuối cùng in link `/setup` + setup key; swap khi RAM ít; tường lửa + cập nhật tự động mặc định bật; HTTPS: tự động (Caddy) hoặc Cloudflare Tunnel.
 - [x] `scripts/install-ads-mcp.sh` (installer 1.0.0) + `scripts/ads-mcp` (status, logs, doctor, setup-key, token, update, update-config, backup)
 - [x] Thử trong container sạch (Docker-in-Docker): cài mới Ubuntu 24.04 + Debian 12, Cloudflare Tunnel (token giả), chạy lại (giữ nguyên secret), đổi phiên bản, mọi lệnh `ads-mcp`, các tình huống lỗi; shellcheck sạch
-- [x] Repo công khai **notivn/ads-mcp-simple-install** (script + `ads-mcp` + README + SHA256SUMS + LICENSE), ruleset bảo vệ `main` (chặn xoá, force-push, chỉ admin được push)
+- [x] Repo installer riêng của noti.vn (**không còn dùng**: script nằm trong repo chính `schhung1822/nextgency-mcp-ads`) (script + `ads-mcp` + README + SHA256SUMS + LICENSE), ruleset bảo vệ `main` (chặn xoá, force-push, chỉ admin được push)
 - [x] Tài liệu: `docs/deploy-vps.md` §0 cài nhanh + §5 một token + §15.2 bước 7b đồng bộ repo công khai; `.env.example`, `docker-compose.yml`, README, `van-hanh.md`, 07-deployment
 - [ ] **Thử trên VPS thật**: chứng chỉ Let's Encrypt thật, Cloudflare Tunnel thật, tạo swap, UFW, token có hạn dùng, chấp nhận lời mời repo, arm64
 **Đạt khi**: một người không rành kỹ thuật cài được trên VPS mới chỉ bằng 2 dòng lệnh + trả lời câu hỏi, có HTTPS thật, tạo được admin bằng setup key, Cài đặt → Cập nhật thấy bản mới nhất.
@@ -220,7 +220,7 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] Nội dung 2 bản (kết nối / MCP) trong `src/lib/i18n/vi/disclaimers.ts`, phiên bản + quy tắc chặn trong `src/lib/disclaimers.ts` (mã băm nội dung ghim bằng test)
 - [x] Popup `DisclaimerGate` trước `/connections/new`, `/connections/telegram/new`, `/connections/drive/new`, `/mcp-servers/new` (kéo hết + 10 giây + tick; Huỷ / Esc / ✕ rời trang; tạo MCP khi chưa có kết nối thì không hỏi)
 - [x] Server: `acceptDisclaimerAction` ghi `legal.disclaimer_accept`; 5 action tạo từ chối khi người dùng chưa từng xác nhận phiên bản hiện tại; log tạo mang `disclaimerVersion`; Điều khoản dịch vụ §9 (VI + EN)
-- [x] Chủ dự án quyết: **hiện 1 lần cho mỗi người dùng và mỗi phiên bản** (trang server tra xác nhận, không giới hạn thời gian; bỏ cửa sổ 12 giờ); tên trong 2 bản nội dung: "Ads MCP Simple by noti.vn" (giữ vai trò Đơn vị vận hành / noti.vn)
+- [x] Chủ dự án quyết: **hiện 1 lần cho mỗi người dùng và mỗi phiên bản** (trang server tra xác nhận, không giới hạn thời gian; bỏ cửa sổ 12 giờ); tên trong 2 bản nội dung: "Ads MCP Simple by Nextgency" (giữ vai trò Đơn vị vận hành / Nextgency)
 - [ ] Chủ dự án quyết: có thêm popup cho "service account riêng" Google Drive (tab Google Drive) / credential Drive hệ thống (Cài đặt) không
 
 ## Chế độ bảo vệ MCP Cơ bản / Tùy chỉnh nâng cao + Meta lỗi 31 (2026-10-13), phát hành v1.0.10
@@ -234,8 +234,8 @@ Quyết định chủ dự án: **1 token GitHub** (PAT classic `repo` + `read:p
 - [x] Kiểm chứng: lint + typecheck + unit + build + e2e; `security-reviewer`, `ui-reviewer`; build image + smoke production; rc → v1.0.10
 
 ## Quyết định đã chốt (2026-10-02)
-1. Giấy phép: **proprietary source-available** — chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.
-2. GitHub: tổ chức **notivn**, repo **Ads-MCP-simple** → image `ghcr.io/notivn/ads-mcp-simple`.
+1. Giấy phép: **proprietary source-available** — chỉ đơn vị được Nextgency cấp quyền bằng văn bản mới được dùng (`LICENSE`, song ngữ). Không dùng từ "mã nguồn mở" trong UI/README.
+2. GitHub: tài khoản **schhung1822**, repo **nextgency-mcp-ads** → image `ghcr.io/schhung1822/nextgency-mcp-ads`.
 3. D1–D5 giữ mặc định như `01-product-spec.md` §9.
 4. shadcn preset **radix-maia** (bo tròn, thoáng); preset dùng bộ icon **Hugeicons** (`@hugeicons/react` + `@hugeicons/core-free-icons`) — giữ nguyên, KHÔNG trộn lucide; font đổi Figtree → **Inter**.
 5. Chủ dự án có TKQC thật để test (giai đoạn 5–6: chỉ thao tác trên object thử nghiệm được chỉ định).

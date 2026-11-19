@@ -21,7 +21,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 }
 
 describe("readNoticesUrl (SYSTEM_NOTICES_URL)", () => {
-  it("unset → the noti.vn webhook", () => {
+  it("unset → the Nextgency webhook", () => {
     expect(readNoticesUrl({})).toBe(DEFAULT_NOTICES_URL)
   })
   it("empty / off / false / 0 → disabled", () => {

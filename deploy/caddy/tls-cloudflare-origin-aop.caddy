@@ -1,4 +1,4 @@
-# Ads MCP by: noti.vn - CADDY_TLS=cloudflare-origin-aop (phương án B + Authenticated Origin Pulls):
+# Ads MCP by: Nextgency - CADDY_TLS=cloudflare-origin-aop (phương án B + Authenticated Origin Pulls):
 # như cloudflare-origin, thêm yêu cầu Cloudflare xuất trình chứng chỉ client (mTLS) -> ai gọi thẳng IP VPS
 # (không qua Cloudflare) đều bị từ chối ở bước bắt tay TLS. Bật AOP trong Cloudflare TRƯỚC khi dùng file này
 # (SSL/TLS -> Origin Server -> Authenticated Origin Pulls), nếu không mọi truy cập qua Cloudflare sẽ lỗi.

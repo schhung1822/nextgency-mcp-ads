@@ -77,7 +77,7 @@ function setLatest(version: string, extra: Record<string, unknown> = {}) {
     tag: `v${version}`,
     publishedAt: "2026-10-01T00:00:00.000Z",
     notes: "ghi chú",
-    url: `https://github.com/notivn/ads-mcp-simple/releases/tag/v${version}`,
+    url: `https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v${version}`,
     checkedAt: NOW.toISOString(),
     ...extra,
   })
@@ -489,7 +489,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
         Response.json({
           tag_name: "v1.3.0",
           body: "Ghi chú",
-          html_url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v1.3.0",
+          html_url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.3.0",
           published_at: "2026-10-01T00:00:00Z",
         })
       )
@@ -554,7 +554,7 @@ describe.skipIf(!hasDb)("hệ thống cập nhật (DB)", () => {
     })
 
     it("lưu bản mới nhất vào app_settings và KHÔNG ghi activity_logs", async () => {
-      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ tag_name: "v1.5.0", body: "n", html_url: "https://github.com/notivn/ads-mcp-simple/releases/tag/v1.5.0" })))
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ tag_name: "v1.5.0", body: "n", html_url: "https://github.com/schhung1822/nextgency-mcp-ads/releases/tag/v1.5.0" })))
       const before = await db.select().from(activityLogs)
       const r = (await updateCheckJob.handler({}, ctx)) as { ok: boolean; version?: string }
       expect(r).toEqual({ ok: true, version: "1.5.0" })

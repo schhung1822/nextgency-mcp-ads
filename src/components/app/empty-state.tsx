@@ -47,7 +47,7 @@ export function EmptyState({
       <EmptyHeader>
         <EmptyMedia
           variant="icon"
-          className="size-12 rounded-2xl bg-brand-red/10 text-brand-ink"
+          className="size-12 rounded-2xl bg-brand-primary/10 text-brand-ink"
         >
           <HugeiconsIcon
             icon={icon}

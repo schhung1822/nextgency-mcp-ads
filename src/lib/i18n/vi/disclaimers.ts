@@ -4,7 +4,7 @@
 //
 // SỬA NỘI DUNG `docs.*` = PHẢI tăng DISCLAIMER_VERSIONS trong src/lib/disclaimers.ts (mọi người xác nhận lại) và cập
 // nhật mã băm trong src/lib/disclaimers.test.ts. Vai trò và cách gọi tên khớp Điều khoản dịch vụ / Chính sách quyền
-// riêng tư (src/lib/i18n/vi/legal.ts): "Hệ thống", "Đơn vị vận hành" (bên kiểm soát dữ liệu), noti.vn = nhà phát triển.
+// riêng tư (src/lib/i18n/vi/legal.ts): "Hệ thống", "Đơn vị vận hành" (bên kiểm soát dữ liệu), Nextgency = nhà phát triển.
 // Đánh dấu `**đậm**` được hiển thị bằng <Rich>.
 import type { DisclaimerKind } from "@/lib/disclaimers"
 
@@ -34,7 +34,7 @@ const connection: DisclaimerDoc = {
   summary:
     "Đọc hết nội dung bên dưới, đánh dấu đồng ý rồi mới bắt đầu thêm kết nối.",
   intro: [
-    "Bạn sắp kết nối tài khoản quảng cáo, Trang Facebook, cửa hàng TikTok Shop, bot Telegram, thư mục / sheet Google Drive hoặc token Apify vào hệ thống Ads MCP Simple by noti.vn (“Hệ thống”). Hệ thống do **Đơn vị vận hành** - tổ chức đã cài đặt và quản trị Hệ thống này, là bên kiểm soát dữ liệu - cung cấp cho nhân sự được cấp quyền. Phần mềm Ads MCP Simple by noti.vn do **noti.vn** phát triển; noti.vn không vận hành Hệ thống này và không truy cập dữ liệu của Hệ thống.",
+    "Bạn sắp kết nối tài khoản quảng cáo, Trang Facebook, cửa hàng TikTok Shop, bot Telegram, thư mục / sheet Google Drive hoặc token Apify vào hệ thống Ads MCP Simple by Nextgency (“Hệ thống”). Hệ thống do **Đơn vị vận hành** - tổ chức đã cài đặt và quản trị Hệ thống này, là bên kiểm soát dữ liệu - cung cấp cho nhân sự được cấp quyền. Phần mềm Ads MCP Simple by Nextgency do **Nextgency** phát triển; Nextgency không vận hành Hệ thống này và không truy cập dữ liệu của Hệ thống.",
     "Nội dung dưới đây là một phần của Điều khoản dịch vụ và Chính sách quyền riêng tư của Hệ thống. Bạn chỉ có thể bắt đầu kết nối sau khi đã đọc hết và xác nhận đồng ý.",
   ],
   sections: [
@@ -62,7 +62,7 @@ const connection: DisclaimerDoc = {
       title: "3. Chi phí và kết quả quảng cáo",
       items: [
         "**Mọi chi phí phát sinh trên nền tảng quảng cáo do chủ tài khoản quảng cáo chịu**, kể cả chi phí phát sinh từ thao tác của bạn, của đồng nghiệp hoặc của trợ lý AI dùng kết nối này qua MCP.",
-        "Hệ thống, Đơn vị vận hành và noti.vn **không cam kết hiệu quả, doanh thu, đơn hàng hay ROI** của bất kỳ quảng cáo nào.",
+        "Hệ thống, Đơn vị vận hành và Nextgency **không cam kết hiệu quả, doanh thu, đơn hàng hay ROI** của bất kỳ quảng cáo nào.",
         "Với **TikTok GMV Max**: chiến dịch được TikTok tự tối ưu theo doanh thu cửa hàng. Tạm dừng, xoá, sửa ROI mục tiêu hoặc sửa sản phẩm trong ngày làm **mất Bảo vệ ROI (tín dụng quảng cáo) của ngày đó**; bật một chiến dịch có thể tự tạm dừng quảng cáo Shop khác dùng cùng cửa hàng, sản phẩm. Chiến dịch GMV Max tạo mới hoặc sao chép **chạy và tiêu tiền ngay** (TikTok không cho tạo ở trạng thái tạm dừng).",
       ],
     },
@@ -71,7 +71,7 @@ const connection: DisclaimerDoc = {
       title: "4. Nền tảng bên thứ ba",
       items: [
         "Meta, TikTok, Google, OpenAI, Telegram và Apify là dịch vụ độc lập. API của họ có thể thay đổi, bị giới hạn, gián đoạn hoặc trả dữ liệu trễ, thiếu, sai; chỉ số trong Hệ thống có thể chênh lệch với trình quản lý quảng cáo.",
-        "Tài khoản quảng cáo, Trang, cửa hàng, bot hoặc tài khoản Google của bạn có thể bị nền tảng hạn chế, khoá, vô hiệu hoá hoặc từ chối quảng cáo theo chính sách của họ. Những việc này **không thuộc trách nhiệm của noti.vn hay Đơn vị vận hành**.",
+        "Tài khoản quảng cáo, Trang, cửa hàng, bot hoặc tài khoản Google của bạn có thể bị nền tảng hạn chế, khoá, vô hiệu hoá hoặc từ chối quảng cáo theo chính sách của họ. Những việc này **không thuộc trách nhiệm của Nextgency hay Đơn vị vận hành**.",
       ],
     },
     {
@@ -85,7 +85,7 @@ const connection: DisclaimerDoc = {
       id: "du-lieu",
       title: "6. Dữ liệu và nhật ký",
       items: [
-        "Token đã mã hoá, danh sách tài khoản quảng cáo, Trang, kênh Telegram, thư mục / sheet đã khai báo và nhật ký thao tác được lưu trên **máy chủ của Đơn vị vận hành**, không lưu ở noti.vn.",
+        "Token đã mã hoá, danh sách tài khoản quảng cáo, Trang, kênh Telegram, thư mục / sheet đã khai báo và nhật ký thao tác được lưu trên **máy chủ của Đơn vị vận hành**, không lưu ở Nextgency.",
         "Mọi thao tác của bạn trong Hệ thống và mọi lệnh MCP dùng kết nối này đều được ghi nhật ký (thời gian, người thực hiện, địa chỉ IP, thiết bị, nội dung thay đổi đã che thông tin bí mật) và lưu theo thời hạn quản trị viên cài đặt. Bạn đồng ý với việc ghi nhật ký này.",
         "Chi tiết cách xử lý dữ liệu xem trong Chính sách quyền riêng tư.",
       ],
@@ -94,14 +94,14 @@ const connection: DisclaimerDoc = {
       id: "gioi-han",
       title: "7. Giới hạn trách nhiệm",
       paragraphs: [
-        "Hệ thống được cung cấp “nguyên trạng” và “theo khả năng sẵn có”. **Trong phạm vi pháp luật cho phép, noti.vn và Đơn vị vận hành không chịu trách nhiệm** đối với bất kỳ thiệt hại trực tiếp hay gián tiếp nào, mất doanh thu hoặc lợi nhuận, mất dữ liệu, chi phí quảng cáo phát sinh, tài khoản bị hạn chế hoặc khoá, phát sinh từ việc kết nối hoặc sử dụng kết nối, kể cả khi đã được cảnh báo trước về khả năng xảy ra thiệt hại.",
+        "Hệ thống được cung cấp “nguyên trạng” và “theo khả năng sẵn có”. **Trong phạm vi pháp luật cho phép, Nextgency và Đơn vị vận hành không chịu trách nhiệm** đối với bất kỳ thiệt hại trực tiếp hay gián tiếp nào, mất doanh thu hoặc lợi nhuận, mất dữ liệu, chi phí quảng cáo phát sinh, tài khoản bị hạn chế hoặc khoá, phát sinh từ việc kết nối hoặc sử dụng kết nối, kể cả khi đã được cảnh báo trước về khả năng xảy ra thiệt hại.",
       ],
     },
     {
       id: "boi-hoan",
       title: "8. Bồi hoàn",
       paragraphs: [
-        "Bạn chịu trách nhiệm và **bồi hoàn cho noti.vn và Đơn vị vận hành** mọi thiệt hại, chi phí (kể cả chi phí pháp lý hợp lý) và khiếu nại của bên thứ ba phát sinh từ việc bạn kết nối tài sản không thuộc quyền của mình, cung cấp thông tin sai, hoặc vi phạm điều khoản, chính sách của nền tảng hay quy định pháp luật.",
+        "Bạn chịu trách nhiệm và **bồi hoàn cho Nextgency và Đơn vị vận hành** mọi thiệt hại, chi phí (kể cả chi phí pháp lý hợp lý) và khiếu nại của bên thứ ba phát sinh từ việc bạn kết nối tài sản không thuộc quyền của mình, cung cấp thông tin sai, hoặc vi phạm điều khoản, chính sách của nền tảng hay quy định pháp luật.",
       ],
     },
     {
@@ -126,7 +126,7 @@ const mcp: DisclaimerDoc = {
   summary:
     "Đọc hết nội dung bên dưới, đánh dấu đồng ý rồi mới bắt đầu tạo MCP.",
   intro: [
-    "Bạn sắp tạo một đường dẫn MCP cho phép **trợ lý AI** (Claude, ChatGPT, Gemini…) dùng các kết nối của bạn trong hệ thống Ads MCP Simple by noti.vn (“Hệ thống”): xem chỉ số, bật / tắt, sửa, sao chép, tạo mới, xoá quảng cáo, gửi tin Telegram, đọc và ghi Google Drive / Google Sheet - trong phạm vi quyền bạn chọn. Hệ thống do **Đơn vị vận hành** (tổ chức đã cài đặt và quản trị Hệ thống này, là bên kiểm soát dữ liệu) cung cấp; phần mềm Ads MCP Simple by noti.vn do **noti.vn** phát triển.",
+    "Bạn sắp tạo một đường dẫn MCP cho phép **trợ lý AI** (Claude, ChatGPT, Gemini…) dùng các kết nối của bạn trong hệ thống Ads MCP Simple by Nextgency (“Hệ thống”): xem chỉ số, bật / tắt, sửa, sao chép, tạo mới, xoá quảng cáo, gửi tin Telegram, đọc và ghi Google Drive / Google Sheet - trong phạm vi quyền bạn chọn. Hệ thống do **Đơn vị vận hành** (tổ chức đã cài đặt và quản trị Hệ thống này, là bên kiểm soát dữ liệu) cung cấp; phần mềm Ads MCP Simple by Nextgency do **Nextgency** phát triển.",
     "Nội dung dưới đây là một phần của Điều khoản dịch vụ và Chính sách quyền riêng tư của Hệ thống. Bạn chỉ có thể bắt đầu tạo MCP sau khi đã đọc hết và xác nhận đồng ý.",
   ],
   sections: [
@@ -169,7 +169,7 @@ const mcp: DisclaimerDoc = {
       id: "ung-dung-ai",
       title: "5. Ứng dụng AI là bên thứ ba",
       items: [
-        "Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google) và các ứng dụng AI khác là dịch vụ độc lập. Dữ liệu quảng cáo, nội dung Trang, Google Sheet… mà AI nhận được qua MCP được **nhà cung cấp AI xử lý theo điều khoản và chính sách của họ**, nằm ngoài sự kiểm soát của noti.vn và Đơn vị vận hành.",
+        "Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google) và các ứng dụng AI khác là dịch vụ độc lập. Dữ liệu quảng cáo, nội dung Trang, Google Sheet… mà AI nhận được qua MCP được **nhà cung cấp AI xử lý theo điều khoản và chính sách của họ**, nằm ngoài sự kiểm soát của Nextgency và Đơn vị vận hành.",
         "Bạn tự kiểm tra rằng việc đưa dữ liệu của đơn vị vào ứng dụng AI được phép theo quy định nội bộ và hợp đồng của đơn vị.",
       ],
     },
@@ -185,8 +185,8 @@ const mcp: DisclaimerDoc = {
       title: "7. Quyền hợp pháp, chi phí và nền tảng",
       items: [
         "Bạn chỉ đưa vào MCP những kết nối mà bạn có quyền hợp pháp sử dụng, và tự tuân thủ điều khoản, chính sách quảng cáo của Meta, TikTok, Google, OpenAI, Telegram và pháp luật.",
-        "**Mọi chi phí quảng cáo phát sinh do chủ tài khoản quảng cáo chịu.** Hệ thống, Đơn vị vận hành và noti.vn không cam kết hiệu quả, doanh thu hay ROI.",
-        "API của các nền tảng có thể thay đổi, gián đoạn hoặc trả dữ liệu trễ, sai; tài khoản có thể bị nền tảng hạn chế hoặc khoá - không thuộc trách nhiệm của noti.vn hay Đơn vị vận hành.",
+        "**Mọi chi phí quảng cáo phát sinh do chủ tài khoản quảng cáo chịu.** Hệ thống, Đơn vị vận hành và Nextgency không cam kết hiệu quả, doanh thu hay ROI.",
+        "API của các nền tảng có thể thay đổi, gián đoạn hoặc trả dữ liệu trễ, sai; tài khoản có thể bị nền tảng hạn chế hoặc khoá - không thuộc trách nhiệm của Nextgency hay Đơn vị vận hành.",
         "Mọi lệnh MCP được ghi nhật ký (thời gian, ứng dụng AI, địa chỉ IP, công cụ, tham số, giá trị trước và sau khi ghi; thông tin bí mật đã được che) trên máy chủ của Đơn vị vận hành và lưu theo thời hạn quản trị viên cài đặt.",
       ],
     },
@@ -194,8 +194,8 @@ const mcp: DisclaimerDoc = {
       id: "gioi-han",
       title: "8. Giới hạn trách nhiệm và bồi hoàn",
       paragraphs: [
-        "**Trong phạm vi pháp luật cho phép, noti.vn và Đơn vị vận hành không chịu trách nhiệm** đối với bất kỳ thiệt hại trực tiếp hay gián tiếp nào, mất doanh thu hoặc lợi nhuận, mất dữ liệu, chi phí quảng cáo phát sinh, tài khoản bị hạn chế hoặc khoá, phát sinh từ việc tạo, chia sẻ hoặc sử dụng MCP, kể cả từ thao tác do trợ lý AI thực hiện.",
-        "Bạn chịu trách nhiệm và **bồi hoàn cho noti.vn và Đơn vị vận hành** mọi thiệt hại, chi phí (kể cả chi phí pháp lý hợp lý) và khiếu nại của bên thứ ba phát sinh từ việc bạn hoặc người có đường dẫn MCP của bạn sử dụng MCP trái quyền, trái chính sách nền tảng hoặc trái pháp luật.",
+        "**Trong phạm vi pháp luật cho phép, Nextgency và Đơn vị vận hành không chịu trách nhiệm** đối với bất kỳ thiệt hại trực tiếp hay gián tiếp nào, mất doanh thu hoặc lợi nhuận, mất dữ liệu, chi phí quảng cáo phát sinh, tài khoản bị hạn chế hoặc khoá, phát sinh từ việc tạo, chia sẻ hoặc sử dụng MCP, kể cả từ thao tác do trợ lý AI thực hiện.",
+        "Bạn chịu trách nhiệm và **bồi hoàn cho Nextgency và Đơn vị vận hành** mọi thiệt hại, chi phí (kể cả chi phí pháp lý hợp lý) và khiếu nại của bên thứ ba phát sinh từ việc bạn hoặc người có đường dẫn MCP của bạn sử dụng MCP trái quyền, trái chính sách nền tảng hoặc trái pháp luật.",
       ],
     },
     {

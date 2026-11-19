@@ -270,6 +270,8 @@ describe("nội dung miễn trừ trách nhiệm", () => {
     "connection@2026-10-10": "5e2a881d5823066e",
     "connection@2026-10-14": "6205490ab098ecb4",
     "mcp@2026-10-10": "77eb64190b243d8a",
+    "connection@2026-11-19": "43627e4f006aa80f",
+    "mcp@2026-11-19": "9b817bcbfe9604b0",
   }
 
   it("mỗi phiên bản khớp đúng nội dung đã duyệt (đổi chữ phải tăng phiên bản)", () => {
@@ -290,7 +292,7 @@ describe("nội dung miễn trừ trách nhiệm", () => {
       const s = text(k)
       for (const must of [
         "Đơn vị vận hành",
-        "noti.vn",
+        "Nextgency",
         "trong phạm vi pháp luật cho phép",
         "bồi hoàn",
         "địa chỉ IP",
@@ -298,14 +300,14 @@ describe("nội dung miễn trừ trách nhiệm", () => {
         "GMV Max",
       ])
         expect(s.toLowerCase(), `${k}: ${must}`).toContain(must.toLowerCase())
-      // product name; the legal roles stay "Đơn vị vận hành" (operator, data controller) / noti.vn (developer)
+      // product name; the legal roles stay "Đơn vị vận hành" (operator, data controller) / Nextgency (developer)
       expect(s, `${k}: tên hệ thống`).toContain(
-        "hệ thống Ads MCP Simple by noti.vn (“Hệ thống”)"
+        "hệ thống Ads MCP Simple by Nextgency (“Hệ thống”)"
       )
       expect(s.toLowerCase(), `${k}: tên phần mềm`).toContain(
-        "phần mềm ads mcp simple by noti.vn do **noti.vn** phát triển"
+        "phần mềm ads mcp simple by nextgency do **nextgency** phát triển"
       )
-      expect(s).not.toMatch(/Ads MCP(?! Simple by noti\.vn)/)
+      expect(s).not.toMatch(/Ads MCP(?! Simple by Nextgency)/)
       // shown once per version
       expect(s, `${k}: một lần mỗi phiên bản`).toContain(
         "chỉ cần xác nhận một lần cho mỗi phiên bản"

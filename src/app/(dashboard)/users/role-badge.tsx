@@ -12,7 +12,7 @@ export function RoleBadge({ role, className }: { role: Role; className?: string 
       className={cn(
         "rounded-full font-medium ring-1 ring-inset",
         role === "admin"
-          ? "bg-brand-red/10 text-brand-ink ring-brand-red/25"
+          ? "bg-brand-primary/10 text-brand-ink ring-brand-primary/25"
           : "bg-muted text-muted-foreground ring-foreground/10",
         className
       )}

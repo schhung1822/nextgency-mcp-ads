@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ads MCP by: noti.vn - one-command VPS installer (Ubuntu 22.04/24.04, Debian 12/13; amd64/arm64).
+# Ads MCP by: Nextgency - one-command VPS installer (Ubuntu 22.04/24.04, Debian 12/13; amd64/arm64).
 #
 #   sudo bash install-ads-mcp.sh                 # interactive (answers are read from the terminal)
 #   curl -fsSL <private link> | sudo bash        # also works: answers come from /dev/tty
@@ -22,9 +22,9 @@
 set -Eeuo pipefail
 
 INSTALLER_VERSION="1.0.0"
-REPO="notivn/Ads-MCP-simple"
-# public repository that publishes this installer (and the ads-mcp helper) - https://github.com/notivn/ads-mcp-simple-install
-INSTALL_REPO_RAW="https://raw.githubusercontent.com/notivn/ads-mcp-simple-install/main"
+REPO="schhung1822/nextgency-mcp-ads"
+# public repository that publishes this installer (and the ads-mcp helper) - https://github.com/schhung1822/nextgency-mcp-ads
+INSTALL_REPO_RAW="https://raw.githubusercontent.com/schhung1822/nextgency-mcp-ads/main/scripts"
 REPO_URL="https://github.com/${REPO}.git"
 MIN_VERSION="1.0.2" # first release whose gen-secrets.sh accepts --app-version
 LOG="/var/log/ads-mcp-install.log"
@@ -102,7 +102,7 @@ on_error() {
   show_log_tail 20
   printf '  Nhật ký chi tiết: %s\n' "$LOG" >&2
   printf '  Khắc phục rồi chạy lại đúng lệnh cài: script an toàn khi chạy lại (không tạo lại khoá bí mật).\n' >&2
-  printf '  Cần hỗ trợ: gửi file nhật ký trên cho noti.vn (file không chứa token hay mật khẩu).\n' >&2
+  printf '  Cần hỗ trợ: gửi file nhật ký trên cho Nextgency (file không chứa token hay mật khẩu).\n' >&2
   exit "$code"
 }
 
@@ -340,13 +340,13 @@ validate_token() {
   TOKEN_LOGIN=$(jq -r '.login // empty' "$TMPD/b")
   if [[ -n "$GH_USER" && "${TOKEN_LOGIN,,}" != "${GH_USER,,}" ]]; then
     err "Token này thuộc tài khoản GitHub \"$TOKEN_LOGIN\", không phải \"$GH_USER\"."
-    info "Tạo token từ đúng tài khoản \"$GH_USER\" (tài khoản đã được noti.vn cấp quyền), hoặc nhập lại tên tài khoản."
+    info "Tạo token từ đúng tài khoản \"$GH_USER\" (tài khoản đã được Nextgency cấp quyền), hoặc nhập lại tên tài khoản."
     return 1
   fi
   [[ -n "$GH_USER" ]] || GH_USER=$TOKEN_LOGIN
   if [[ "$GH_TOKEN" == github_pat_* ]] || ! grep -qi '^x-oauth-scopes:' "$TMPD/h"; then
     err "Đây là token loại fine-grained. Cần token loại classic (Personal access tokens → Tokens (classic))."
-    info "Lý do: GitHub không cho token fine-grained đọc repo của noti.vn và kho image GHCR chỉ nhận token classic."
+    info "Lý do: GitHub không cho token fine-grained đọc repo của Nextgency và kho image GHCR chỉ nhận token classic."
     return 1
   fi
   scopes=$(gh_header x-oauth-scopes)
@@ -366,7 +366,7 @@ validate_token() {
     inv_id=""
     [[ "$GH_STATUS" == "200" ]] && inv_id=$(jq -r --arg r "${REPO,,}" '[.[] | select((.repository.full_name // "" | ascii_downcase) == $r) | .id][0] // empty' "$TMPD/b" 2>/dev/null || true)
     if [[ -n "$inv_id" ]]; then
-      warn "Tài khoản \"$GH_USER\" có lời mời truy cập ${REPO} của noti.vn nhưng chưa chấp nhận."
+      warn "Tài khoản \"$GH_USER\" có lời mời truy cập ${REPO} của Nextgency nhưng chưa chấp nhận."
       if ask_yn "Chấp nhận lời mời ngay?" Y; then
         gh_api PATCH "/user/repository_invitations/${inv_id}"
         if [[ "$GH_STATUS" == "204" ]]; then
@@ -384,8 +384,8 @@ validate_token() {
     fi
   fi
   if [[ "$GH_STATUS" != "200" ]]; then
-    err "Tài khoản \"$GH_USER\" chưa được noti.vn cấp quyền truy cập phần mềm (GitHub trả $GH_STATUS)."
-    info "Gửi tên tài khoản GitHub \"$GH_USER\" cho noti.vn để được cấp quyền Read, rồi chạy lại."
+    err "Tài khoản \"$GH_USER\" chưa được Nextgency cấp quyền truy cập phần mềm (GitHub trả $GH_STATUS)."
+    info "Gửi tên tài khoản GitHub \"$GH_USER\" cho Nextgency để được cấp quyền Read, rồi chạy lại."
     return 1
   fi
   return 0
@@ -398,7 +398,7 @@ resolve_release() {
   gh_api GET "$path"
   if [[ "$GH_STATUS" == "404" ]]; then
     if [[ -n "$want" ]]; then die "Không có bản phát hành v${want}. Xem danh sách: https://github.com/${REPO}/releases"; fi
-    die "Chưa có bản phát hành nào trên https://github.com/${REPO}/releases. Liên hệ noti.vn."
+    die "Chưa có bản phát hành nào trên https://github.com/${REPO}/releases. Liên hệ Nextgency."
   fi
   [[ "$GH_STATUS" == "200" ]] || die "GitHub trả mã $GH_STATUS khi lấy thông tin bản phát hành. Thử lại sau ít phút."
   tag=$(jq -r '.tag_name // empty' "$TMPD/b")
@@ -414,14 +414,14 @@ resolve_release() {
 # ------------------------------------------------------------------------------------------------------------------
 usage() {
   cat <<EOF
-Ads MCP by: noti.vn - trình cài đặt trên VPS (bản ${INSTALLER_VERSION})
+Ads MCP by: Nextgency - trình cài đặt trên VPS (bản ${INSTALLER_VERSION})
 
 Cách dùng:  sudo bash install-ads-mcp.sh [tuỳ chọn]
 
 Không truyền tuỳ chọn nào: script hỏi lần lượt từng thông tin.
   --domain <tên miền>        Tên miền con chạy phần mềm, vd mcp.congty.vn
   --email <email>            Email nhận thông báo chứng chỉ Let's Encrypt (cách 1)
-  --github-user <tài khoản>  Tài khoản GitHub đã được noti.vn cấp quyền
+  --github-user <tài khoản>  Tài khoản GitHub đã được Nextgency cấp quyền
   --ssl auto|tunnel          auto = HTTPS tự động (mặc định), tunnel = Cloudflare Tunnel
   --no-firewall              Không bật tường lửa UFW
   --no-updater               Không bật cập nhật tự động
@@ -676,7 +676,7 @@ questions() {
   u=$OPT_USER
   if [[ "$MODE" == "repair" && -z "$u" && -r "$CONF" ]]; then u=$(env_get GITHUB_USER "$CONF"); fi
   while true; do
-    [[ -n "$u" ]] || ask u "Tên tài khoản GitHub đã được noti.vn cấp quyền" "" "--github-user"
+    [[ -n "$u" ]] || ask u "Tên tài khoản GitHub đã được Nextgency cấp quyền" "" "--github-user"
     if valid_github_user "$u"; then break; fi
     err "Tên tài khoản GitHub \"$u\" không hợp lệ."
     [[ $HAVE_TTY -eq 1 && $OPT_YES -eq 0 ]] || die "Tên tài khoản GitHub không hợp lệ: $u"
@@ -978,7 +978,7 @@ fetch_source() {
   if [[ -d "$DIR/.git" ]]; then
     local origin
     origin=$(git -C "$DIR" config --get remote.origin.url || true)
-    [[ "${origin,,}" == *"notivn/ads-mcp-simple"* ]] || die "$DIR đã là một repo git khác ($origin). Dùng --dir để chọn thư mục khác."
+    [[ "${origin,,}" == *"schhung1822/nextgency-mcp-ads"* ]] || die "$DIR đã là một repo git khác ($origin). Dùng --dir để chọn thư mục khác."
     info "Thư mục $DIR đã có mã nguồn (lần cài trước dừng giữa chừng): lấy đúng tag v$APP_VER."
     run "git fetch tag" git_auth -C "$DIR" fetch -q --depth 1 origin "refs/tags/v$APP_VER:refs/tags/v$APP_VER" || die "Không tải được tag v$APP_VER (xem $LOG)."
     run "git checkout tag" git -C "$DIR" -c advice.detachedHead=false checkout -q --force "v$APP_VER" || die "Không chuyển được sang v$APP_VER (xem $LOG)."
@@ -1186,7 +1186,7 @@ post_checks() {
   fi
   (
     umask 022
-    printf '# Ads MCP by: noti.vn - written by install-ads-mcp.sh (no secrets here)\nADS_MCP_DIR=%s\nGITHUB_USER=%s\nINSTALLER_VERSION=%s\n' \
+    printf '# Ads MCP by: Nextgency - written by install-ads-mcp.sh (no secrets here)\nADS_MCP_DIR=%s\nGITHUB_USER=%s\nINSTALLER_VERSION=%s\n' \
       "$DIR" "$GH_USER" "$INSTALLER_VERSION" >"$CONF"
   )
 }
@@ -1246,7 +1246,7 @@ repair() {
     [[ -n "$GH_TOKEN" ]] || die "Không có token GitHub trong .env (UPDATE_GITHUB_TOKEN). Chạy lại và dán token, hoặc đặt ADS_MCP_GITHUB_TOKEN."
   fi
   if [[ -z "$GH_USER" ]]; then
-    ask GH_USER "Tên tài khoản GitHub đã được noti.vn cấp quyền" "" "--github-user"
+    ask GH_USER "Tên tài khoản GitHub đã được Nextgency cấp quyền" "" "--github-user"
   fi
   valid_github_user "$GH_USER" || die "Tên tài khoản GitHub không hợp lệ: $GH_USER"
   ask_token_loop
@@ -1335,9 +1335,9 @@ final_screen() {
   log "install finished: mode=$MODE version=$APP_VER https='$HTTPS_STATE' users=$USER_COUNT elapsed=${elapsed}s"
   printf '\n%s%s%s\n' "$C_GRN" "$line" "$C_RST"
   if [[ "$MODE" == "repair" ]]; then
-    printf '%s ✅ ĐÃ SỬA CHỮA XONG — Ads MCP by noti.vn v%s%s\n' "$C_GRN$C_BLD" "$APP_VER" "$C_RST"
+    printf '%s ✅ ĐÃ SỬA CHỮA XONG — Ads MCP by Nextgency v%s%s\n' "$C_GRN$C_BLD" "$APP_VER" "$C_RST"
   else
-    printf '%s ✅ CÀI ĐẶT THÀNH CÔNG — Ads MCP by noti.vn v%s%s\n' "$C_GRN$C_BLD" "$APP_VER" "$C_RST"
+    printf '%s ✅ CÀI ĐẶT THÀNH CÔNG — Ads MCP by Nextgency v%s%s\n' "$C_GRN$C_BLD" "$APP_VER" "$C_RST"
   fi
   printf '%s%s%s\n\n' "$C_GRN" "$line" "$C_RST"
 
@@ -1401,7 +1401,7 @@ main() {
   # children must never read the script itself when it is piped (curl ... | sudo bash)
   exec </dev/null
   init_log
-  printf '%sAds MCP by: noti.vn — trình cài đặt %s%s\n' "$C_BLD" "$INSTALLER_VERSION" "$C_RST"
+  printf '%sAds MCP by: Nextgency — trình cài đặt %s%s\n' "$C_BLD" "$INSTALLER_VERSION" "$C_RST"
   printf 'Nhật ký: %s (không chứa token hay mật khẩu)\n' "$LOG"
   export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
 

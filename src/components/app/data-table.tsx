@@ -480,7 +480,7 @@ export function DataTable<TData extends RowData>({
                   className={cn(
                     onRowClick &&
                       "cursor-pointer outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset",
-                    "data-[active=true]:bg-brand-red/5"
+                    "data-[active=true]:bg-brand-primary/5"
                   )}
                 >
                   {row.getVisibleCells().map((cell) => {

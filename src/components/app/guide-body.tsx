@@ -59,7 +59,7 @@ export function GuideBody({
             <li key={`${i}-${step.title}`} className="flex gap-3">
               <span
                 aria-hidden
-                className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-semibold text-brand-ink tabular-nums"
+                className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-xs font-semibold text-brand-ink tabular-nums"
               >
                 {i + 1}
               </span>

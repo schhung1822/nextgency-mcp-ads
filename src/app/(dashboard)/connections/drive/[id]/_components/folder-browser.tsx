@@ -234,7 +234,7 @@ export function FolderBrowser({
                             setPath([...path, { id: f.id, name: f.name }])
                           }
                           aria-label={m.openFolder(f.name)}
-                          className="flex h-full min-h-11 w-full min-w-0 items-center gap-2.5 rounded-xl border bg-card px-3 py-2 text-left text-sm font-medium transition-colors outline-none hover:border-brand-red/40 hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                          className="flex h-full min-h-11 w-full min-w-0 items-center gap-2.5 rounded-xl border bg-card px-3 py-2 text-left text-sm font-medium transition-colors outline-none hover:border-brand-primary/40 hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
                         >
                           <HugeiconsIcon
                             icon={Folder01Icon}

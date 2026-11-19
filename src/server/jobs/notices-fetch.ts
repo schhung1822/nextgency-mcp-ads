@@ -1,4 +1,4 @@
-// Job "notices.fetch" (hourly + once when the worker starts): GET the noti.vn notice webhook and store the result
+// Job "notices.fetch" (hourly + once when the worker starts): GET the Nextgency notice webhook and store the result
 // in app_settings.system_notices (top bar ticker + MCP results read it). A failing webhook is recorded, not
 // thrown: the next hourly run tries again and the last good notices stay visible for up to 24 h.
 // Runs in the worker bundle: no `next/*`, no `server-only`.

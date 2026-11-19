@@ -1,4 +1,4 @@
-// System notices: fetch from the noti.vn webhook (worker job `notices.fetch`, hourly) and the app_settings key
+// System notices: fetch from the Nextgency webhook (worker job `notices.fetch`, hourly) and the app_settings key
 // they live in (.claude/docs/13-system-notices.md). Shared by the worker and the web layout (notices are shown on
 // the web top bar only, never in MCP results), so it must stay framework-free: no `next/*`, no `server-only`.
 //
@@ -13,7 +13,7 @@ import { appSettings } from "@/server/db/schema"
 
 export const SYSTEM_NOTICES_KEY = "system_notices"
 export const DEFAULT_NOTICES_URL =
-  "https://auto.webhook.vn/webhook/noti-Ads-MCP-simple"
+  "https://nextg.nextgency.vn/webhook-test/nextgency/noti-ads-mcp"
 export const NOTICES_TIMEOUT_MS = 10_000
 /** the answer is a handful of short rows; anything bigger is not what we asked for */
 export const NOTICES_MAX_BYTES = 64 * 1024
@@ -23,7 +23,7 @@ export const NOTICES_STALE_MS = 24 * 60 * 60_000
 export const NOTICES_CACHE_MS = 60_000
 
 /**
- * `SYSTEM_NOTICES_URL`: unset = the noti.vn webhook; empty / "off" / "false" / "0" = feature disabled; anything
+ * `SYSTEM_NOTICES_URL`: unset = the Nextgency webhook; empty / "off" / "false" / "0" = feature disabled; anything
  * else must be an absolute https URL without credentials (otherwise disabled - never fetch an arbitrary scheme).
  */
 export function readNoticesUrl(

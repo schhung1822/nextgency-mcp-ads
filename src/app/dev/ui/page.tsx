@@ -22,7 +22,7 @@ export default function DevUiPage() {
 
   return (
     <AppShell
-      user={{ name: "Giáp Đức Thắng", email: "admin@noti.vn", role: "admin" }}
+      user={{ name: "Giáp Đức Thắng", email: "admin@nextgency.vn", role: "admin" }}
       signOutAction={demoSignOut}
       commandGroups={[
         {
@@ -55,7 +55,7 @@ export default function DevUiPage() {
           />
           <span
             aria-hidden
-            className="absolute top-1.5 right-1.5 size-2 rounded-full bg-brand-red ring-2 ring-background"
+            className="absolute top-1.5 right-1.5 size-2 rounded-full bg-brand-primary ring-2 ring-background"
           />
         </Button>
       }

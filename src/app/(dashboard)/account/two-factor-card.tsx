@@ -39,7 +39,7 @@ export function TwoFactorCard({ email, enabled, isAdmin, requiredForAll, regener
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-xl bg-brand-red/10 text-brand-ink">
+          <span className="flex size-8 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-ink">
             <HugeiconsIcon icon={SecurityCheckIcon} strokeWidth={2} className="size-[18px]" aria-hidden />
           </span>
           {t.title}

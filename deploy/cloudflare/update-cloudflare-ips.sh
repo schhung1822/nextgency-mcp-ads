@@ -1,5 +1,5 @@
 #!/bin/sh
-# Ads MCP by: noti.vn - cập nhật danh sách dải IP của Cloudflare (phương án B / C+Cloudflare, docs/deploy-vps.md).
+# Ads MCP by: Nextgency - cập nhật danh sách dải IP của Cloudflare (phương án B / C+Cloudflare, docs/deploy-vps.md).
 # Tải https://www.cloudflare.com/ips-v4 và /ips-v6, kiểm tra định dạng rồi ghi lại 2 file:
 #   deploy/caddy/client-ip-cloudflare.caddy   (Caddy: trusted_proxies + client_ip_headers CF-Connecting-IP)
 #   deploy/nginx/cloudflare-realip.conf       (Nginx: set_real_ip_from + real_ip_header CF-Connecting-IP)
@@ -53,7 +53,7 @@ fi
 all=$(cat "$tmp_dir/v4" "$tmp_dir/v6" | tr '\n' ' ' | sed 's/ $//')
 
 {
-  echo "# Ads MCP by: noti.vn - Caddy đứng sau Cloudflare proxy (CADDY_CLIENT_IP=cloudflare). Nạp vào khối servers {}."
+  echo "# Ads MCP by: Nextgency - Caddy đứng sau Cloudflare proxy (CADDY_CLIENT_IP=cloudflare). Nạp vào khối servers {}."
   echo "# SINH TỰ ĐỘNG bởi deploy/cloudflare/update-cloudflare-ips.sh từ"
   echo "# https://www.cloudflare.com/ips-v4 và https://www.cloudflare.com/ips-v6 - đừng sửa tay, hãy chạy lại script."
   echo "# Chỉ kết nối đến từ các dải này mới được tin header CF-Connecting-IP; Caddyfile ghi đè X-Forwarded-For bằng"
@@ -63,7 +63,7 @@ all=$(cat "$tmp_dir/v4" "$tmp_dir/v6" | tr '\n' ' ' | sed 's/ $//')
 } > "$tmp_dir/caddy"
 
 {
-  echo "# Ads MCP by: noti.vn - Nginx đứng sau Cloudflare proxy: lấy IP thật của khách từ CF-Connecting-IP."
+  echo "# Ads MCP by: Nextgency - Nginx đứng sau Cloudflare proxy: lấy IP thật của khách từ CF-Connecting-IP."
   echo "# SINH TỰ ĐỘNG bởi deploy/cloudflare/update-cloudflare-ips.sh từ"
   echo "# https://www.cloudflare.com/ips-v4 và https://www.cloudflare.com/ips-v6 - đừng sửa tay, hãy chạy lại script."
   echo "# include file này trong cả 2 khối server của deploy/nginx/ads-mcp.conf (xem docs/deploy-vps.md, phương án C)."

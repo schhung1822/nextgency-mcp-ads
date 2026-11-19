@@ -42,7 +42,7 @@ export function HelpPanel({
     >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-brand-red/10 text-brand-ink">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-ink">
             {platform ? (
               <PlatformIcon platform={platform} className="size-4" />
             ) : (

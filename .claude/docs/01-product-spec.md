@@ -1,9 +1,9 @@
-# Đặc tả sản phẩm — Ads MCP by: noti.vn
+# Đặc tả sản phẩm — Ads MCP by: Nextgency
 
 > Nguồn sự thật cho **chức năng**. Khi yêu cầu mới mâu thuẫn với file này → hỏi chủ dự án rồi cập nhật file trước khi code.
 
 ## 1. Mục tiêu
-Web app source-available (chỉ đơn vị được noti.vn cấp quyền mới được dùng — `LICENSE`), tự host trên VPS (Docker + PostgreSQL), cho phép một đội marketing:
+Web app source-available (chỉ đơn vị được Nextgency cấp quyền mới được dùng — `LICENSE`), tự host trên VPS (Docker + PostgreSQL), cho phép một đội marketing:
 1. **Kết nối** tài khoản quảng cáo **Meta (Facebook/Instagram), TikTok Ads, Google Ads (gồm quảng cáo YouTube), OpenAI Ads (ChatGPT Ads)** (phát hành Google Ads + TikTok Ads: 2026-10-08, `12-platform-rollout.md`) bằng cách **dán token/credential từ app developer của chính họ** (không có nút "Đăng nhập bằng Facebook/Google"). Mỗi nền tảng thêm được **nhiều** kết nối; mỗi kết nối có thể chứa nhiều tài khoản quảng cáo; dùng đồng thời nhiều nền tảng.
 2. **Tạo MCP server** (link `https://<domain>/mcp/<key>`) để dùng với **Claude, ChatGPT, Gemini**. Mỗi MCP giới hạn: nền tảng nào, tài khoản nào, quyền gì.
 3. Từ AI, user ra lệnh: **kéo toàn bộ chỉ số theo ngày yêu cầu**, **sửa**, **bật/tắt**, **sao chép**, **tạo mới** chiến dịch/nhóm/quảng cáo, (tuỳ quyền) **xoá/lưu trữ**.
@@ -12,7 +12,7 @@ Web app source-available (chỉ đơn vị được noti.vn cấp quyền mới 
 6. **Google Drive / Google Sheet làm nguồn creative** (2026-10-09, `15-google-drive-media.md`, §3b): AI lấy ảnh/video trong thư mục Drive đã khai báo hoặc link Drive công khai, tải lên thư viện media của TKQC (server tự lấy file — không lưu file trên VPS), đọc Google Sheet kế hoạch creative và ghi trạng thái ngược vào sheet.
 7. **Apify — lấy dữ liệu cho AI phân tích** (2026-10-14, `16-apify.md`, §3c): dán **API token Apify** (token **công ty** do admin thêm + token **cá nhân**); MCP bật Apify thì AI lấy được dữ liệu công khai trên sàn TMĐT (Shopee, Lazada, TikTok Shop), mạng xã hội (TikTok, Facebook, Instagram, YouTube), Google (Maps, Search, Ads Transparency) và website qua **danh mục việc chọn lọc** (hệ thống tự chọn Actor), rồi tự phân tích. Token được **xoay vòng ngẫu nhiên**, hết credit tự chuyển token khác; trần chi phí mỗi lần chạy luôn bật.
 
-Tên hiển thị: **Ads MCP by: noti.vn** (logo trong `logo/`). Giao diện **tiếng Việt**.
+Tên hiển thị: **Ads MCP by: Nextgency** (logo trong `logo/`). Giao diện **tiếng Việt**.
 
 ## 2. Vai trò & đăng nhập
 - **Không có đăng ký công khai.** Chỉ đăng nhập bằng **email + mật khẩu**.
@@ -175,7 +175,7 @@ Sidebar trái (kiểu Shopify admin): **Tổng quan · Kết nối · MCP · Nh�
 - `/logs?tab=mcp|staff`
 - `/tips` **Mẹo sử dụng** (mọi vai trò, nội dung tĩnh; 2026-10-10 thay `/automation-tips` - link cũ chuyển hướng tới `/tips/automation`): menu con 3 mẹo `/tips/automation` Chạy tự động, `/tips/bulk-ads` Tạo quảng cáo số lượng lớn (Google Drive + Google Sheet), `/tips/ad-check` Tự động kiểm tra quảng cáo (tác vụ hẹn giờ trên web + MCP bán hàng + skill phân tích, báo cáo qua Telegram). Mẹo Chạy tự động: cách cho Claude / ChatGPT / Gemini tự chạy theo lịch qua MCP (tác vụ hẹn giờ của chính ứng dụng AI; app **không** tự gửi lệnh cho AI). Bộ soạn quy tắc "tắt quảng cáo khi CPA vượt ngưỡng" (`src/lib/automation-prompt.ts`) xuất câu lệnh đầy đủ + `SKILL.md`; 2 chế độ Chỉ báo cáo / Tự tắt (MCP riêng: Xem + Bật/Tắt, tắt xác nhận 2 bước, trần thấp, giới hạn ghi nhỏ). Nội dung từng ứng dụng AI kiểm tra lại ngày 2026-10-10 (Gemini app: chưa thêm được MCP tự tạo ở Việt Nam; ChatGPT: MCP tự thêm trong tác vụ hẹn giờ chưa được OpenAI xác nhận; Claude web: khuyên dùng) — tính năng thay đổi nhanh, rà lại định kỳ. Điện thoại: mục nằm trong sheet Menu của thanh dưới.
 - `/users` (Admin), `/settings` (Admin; có thẻ **Google Drive hệ thống**)
-- **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / TikTok for Developers / màn hình đồng ý OAuth của Google Cloud / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; noti.vn chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
+- **Trang công khai (không cần đăng nhập, 2026-10-05)**: `/privacy` (Chính sách quyền riêng tư), `/terms` (Điều khoản dịch vụ), `/data-deletion` (Hướng dẫn xoá dữ liệu) - URL dán vào Meta App Dashboard / TikTok for Developers / màn hình đồng ý OAuth của Google Cloud / OpenAI. Tiếng Việt trước, bản tiếng Anh cùng trang. **Đơn vị vận hành** (tổ chức tự cài đặt) là bên kiểm soát dữ liệu; Nextgency chỉ là nhà phát triển phần mềm. Admin điền tuỳ chọn ở Cài đặt → **Thông tin pháp lý**: `legal_org_name` (≤ 120 ký tự, trống = tên miền), `legal_contact_email` (email hợp lệ hoặc trống = "quản trị viên hệ thống tại <tên miền>"); không phải thay đổi nới lỏng bảo mật (không hỏi mật khẩu), có ghi `settings.update`. Số tháng lưu nhật ký trên trang lấy từ cài đặt thật. Nội dung: `src/lib/i18n/vi/legal.ts`; mọi người đã đăng nhập sao chép URL tuyệt đối ở khối "Liên kết cho ứng dụng" (sidebar, menu điện thoại, ⌘K).
 Yêu cầu UX: dễ hiểu cho người không rành kỹ thuật — mỗi trang có tiêu đề + 1 câu mô tả, trạng thái trống có hướng dẫn + nút hành động chính, form có helper text, xác nhận trước thao tác nguy hiểm, toast phản hồi bằng tiếng Việt.
 
 ## 8. Ngoài phạm vi v1 (ghi nhận để làm sau)

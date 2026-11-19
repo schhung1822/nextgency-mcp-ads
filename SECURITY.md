@@ -1,13 +1,13 @@
-# Chính sách bảo mật — Ads MCP by: noti.vn
+# Chính sách bảo mật — Ads MCP by: Nextgency
 
 Ads MCP giữ token có toàn quyền chi tiền trên tài khoản quảng cáo. Chúng tôi coi mọi báo cáo lỗ hổng là ưu tiên cao.
 
 ## Báo cáo lỗ hổng
 **Không mở issue, pull request hay thảo luận công khai** cho vấn đề bảo mật.
 
-Gửi báo cáo **riêng tư** cho noti.vn qua một trong các kênh:
-1. GitHub: tab **Security → Report a vulnerability** của kho `notivn/Ads-MCP-simple` (Private vulnerability reporting).
-2. Kênh liên hệ chính thức tại <https://noti.vn> — ghi rõ tiêu đề “[Security] Ads MCP”.
+Gửi báo cáo **riêng tư** cho Nextgency qua một trong các kênh:
+1. GitHub: tab **Security → Report a vulnerability** của kho `schhung1822/nextgency-mcp-ads` (Private vulnerability reporting).
+2. Kênh liên hệ chính thức tại <https://nextgency.vn> — ghi rõ tiêu đề “[Security] Ads MCP”.
 
 Nội dung nên có: phiên bản/commit, mô tả, các bước tái hiện, ảnh hưởng (vd lộ token, vượt quyền giữa nhân viên, bỏ qua xác nhận 2 bước, đọc được key MCP từ log), và đề xuất khắc phục nếu có. **Không** gửi token, key MCP hay dữ liệu thật của khách hàng — dùng dữ liệu giả hoặc che bớt.
 
@@ -29,4 +29,4 @@ Chỉ phiên bản phát hành mới nhất (nhánh `main` / tag `v*` mới nh�
 
 ---
 
-**English:** Please report security vulnerabilities **privately** via GitHub *Security → Report a vulnerability* on `notivn/Ads-MCP-simple` or through the official contact at <https://noti.vn> (subject “[Security] Ads MCP”). Do not open public issues and do not include real tokens or customer data. We acknowledge within 3 business days.
+**English:** Please report security vulnerabilities **privately** via GitHub *Security → Report a vulnerability* on `schhung1822/nextgency-mcp-ads` or through the official contact at <https://nextgency.vn> (subject “[Security] Ads MCP”). Do not open public issues and do not include real tokens or customer data. We acknowledge within 3 business days.

@@ -2,7 +2,7 @@
 // Anh cho người duyệt app của Meta/TikTok/Google/OpenAI ở cuối trang) + khối "Liên kết cho ứng dụng" ở sidebar.
 // Nội dung phải khớp hệ thống thật (01-product-spec, 05-security, 11-meta-pages, 14-telegram-notifications,
 // 15-google-drive-media, 16-apify, services/connections.ts).
-// Đơn vị vận hành (bên kiểm soát dữ liệu) = tổ chức tự cài đặt hệ thống; noti.vn chỉ là nhà phát triển phần mềm.
+// Đơn vị vận hành (bên kiểm soát dữ liệu) = tổ chức tự cài đặt hệ thống; Nextgency chỉ là nhà phát triển phần mềm.
 import type { LegalInfo } from "@/lib/legal"
 
 export type LegalLang = "vi" | "en"
@@ -39,8 +39,8 @@ function privacyVi(c: LegalInfo): LegalDoc {
   return {
     title: "Chính sách quyền riêng tư",
     intro: [
-      `Chính sách này giải thích cách hệ thống Ads MCP tại ${c.domain} (“Hệ thống”) thu thập, sử dụng, lưu trữ và bảo vệ dữ liệu. Hệ thống do ${c.orgName} (“Đơn vị vận hành”, “chúng tôi”) tự cài đặt và vận hành trên máy chủ của mình, sử dụng phần mềm Ads MCP do noti.vn phát triển.`,
-      "Đơn vị vận hành là bên kiểm soát dữ liệu trong Hệ thống. noti.vn chỉ là nhà phát triển phần mềm: noti.vn không vận hành Hệ thống này, không lưu trữ và không truy cập dữ liệu của Hệ thống.",
+      `Chính sách này giải thích cách hệ thống Ads MCP tại ${c.domain} (“Hệ thống”) thu thập, sử dụng, lưu trữ và bảo vệ dữ liệu. Hệ thống do ${c.orgName} (“Đơn vị vận hành”, “chúng tôi”) tự cài đặt và vận hành trên máy chủ của mình, sử dụng phần mềm Ads MCP do Nextgency phát triển.`,
+      "Đơn vị vận hành là bên kiểm soát dữ liệu trong Hệ thống. Nextgency chỉ là nhà phát triển phần mềm: Nextgency không vận hành Hệ thống này, không lưu trữ và không truy cập dữ liệu của Hệ thống.",
     ],
     sections: [
       {
@@ -124,7 +124,7 @@ function privacyVi(c: LegalInfo): LegalDoc {
             "Google Drive và Google Sheets (Google): Hệ thống gọi Google Drive API và Google Sheets API bằng service account hoặc API key do Đơn vị vận hành (hoặc chính bạn) tạo, chỉ với thư mục / sheet đã được chia sẻ cho service account hoặc file đã chia sẻ công khai “Bất kỳ ai có đường liên kết”. Ảnh, video được chuyển tiếp tới nền tảng quảng cáo bạn chọn (Meta, TikTok, Google, OpenAI); với video, nền tảng tải qua một đường dẫn tạm có mã bí mật trên tên miền của Hệ thống. Trợ lý AI chỉ nhận mã file, tên, kích thước và thông số - không nhận khoá, API key hay đường dẫn tạm. Dữ liệu trên Google tuân theo chính sách quyền riêng tư của Google.",
             "Apify (Apify Technologies s.r.o., Cộng hoà Séc, Liên minh Châu Âu): nếu bạn thêm token Apify và MCP được bật Apify, Hệ thống gọi Apify API bằng token đó để chạy Actor. Apify nhận đầu vào của Actor do trợ lý AI soạn theo yêu cầu (ví dụ từ khoá, đường dẫn sản phẩm, Trang, kênh hoặc website cần thu thập) và lưu đầu vào, kết quả của lần chạy trong tài khoản Apify của chủ token; tác giả của Actor (thường là bên thứ ba trên Apify Store) có thể xem đầu vào và kết quả lần chạy. Hệ thống không đưa token quảng cáo, mật khẩu, cookie hay thông tin đăng nhập vào đầu vào Actor. Kết quả là dữ liệu do bên thứ ba thu thập từ trang đích và có thể chứa dữ liệu cá nhân công khai (ví dụ tên người đánh giá, bình luận). Dữ liệu trên Apify tuân theo điều khoản và chính sách quyền riêng tư của Apify (Apify có thể chuyển dữ liệu ra ngoài Liên minh Châu Âu theo điều khoản hợp đồng mẫu).",
             "Trợ lý AI mà bạn kết nối (Claude, ChatGPT, Gemini…): khi bạn thêm đường dẫn MCP vào ứng dụng AI, trợ lý chỉ nhận dữ liệu bạn yêu cầu thông qua các công cụ MCP, trong phạm vi tài khoản, Trang và quyền đã cấp cho đường dẫn đó; trợ lý không bao giờ nhận token hay API key. Nội dung cuộc trò chuyện do nhà cung cấp AI xử lý theo điều khoản của họ.",
-            "Máy chủ có thể tự kiểm tra bản cập nhật phần mềm (GitHub) và tải thông báo hệ thống từ noti.vn. Các yêu cầu này không gửi kèm dữ liệu người dùng hay dữ liệu quảng cáo.",
+            "Máy chủ có thể tự kiểm tra bản cập nhật phần mềm (GitHub) và tải thông báo hệ thống từ Nextgency. Các yêu cầu này không gửi kèm dữ liệu người dùng hay dữ liệu quảng cáo.",
             "Cơ quan nhà nước có thẩm quyền, khi pháp luật yêu cầu."
           ),
           p(
@@ -218,8 +218,8 @@ function privacyEn(c: LegalInfo): LegalDoc {
   return {
     title: "Privacy Policy",
     intro: [
-      `This policy explains how the Ads MCP system at ${c.domain} (the “System”) collects, uses, stores and protects data. The System is self-hosted and operated by ${c.orgName} (the “Operator”, “we”) on its own server, using the Ads MCP software developed by noti.vn.`,
-      "The Operator is the data controller for the System. noti.vn is only the software developer: noti.vn does not operate this System and does not store or access its data.",
+      `This policy explains how the Ads MCP system at ${c.domain} (the “System”) collects, uses, stores and protects data. The System is self-hosted and operated by ${c.orgName} (the “Operator”, “we”) on its own server, using the Ads MCP software developed by Nextgency.`,
+      "The Operator is the data controller for the System. Nextgency is only the software developer: Nextgency does not operate this System and does not store or access its data.",
     ],
     sections: [
       {
@@ -303,7 +303,7 @@ function privacyEn(c: LegalInfo): LegalDoc {
             "Google Drive and Google Sheets (Google): the System calls the Google Drive API and the Google Sheets API with a service account or API key created by the Operator (or by you), only for folders / sheets shared with that service account or files shared publicly with “Anyone with the link”. Images and videos are passed on to the ad platform you choose (Meta, TikTok, Google, OpenAI); for videos, the platform fetches them through a temporary link with a secret token on the System’s domain. The AI assistant only receives file IDs, names, sizes and dimensions - never keys, API keys or temporary links. Data on Google’s side is governed by Google’s privacy policy.",
             "Apify (Apify Technologies s.r.o., Czech Republic, European Union): if you add an Apify token and an MCP server has Apify enabled, the System calls the Apify API with that token to run Actors. Apify receives the Actor input written by the AI assistant on request (for example keywords, product links, Pages, channels or websites to collect) and keeps the input and results of the run in the token owner’s Apify account; the Actor’s author (usually a third party on Apify Store) can see the run input and results. The System never puts ad platform tokens, passwords, cookies or login details into Actor input. Results are data collected by third parties from the target sites and may contain publicly available personal data (for example reviewer names, comments). Data on Apify is governed by Apify’s terms and privacy policy (Apify may transfer data outside the European Union under standard contractual clauses).",
             "The AI assistant you connect (Claude, ChatGPT, Gemini…): when you add your MCP link to an AI app, the assistant only receives the data you request through the MCP tools, within the accounts, Pages and permissions granted to that link; it never receives tokens or API keys. Conversation content is processed by the AI provider under its own terms.",
-            "The server may check for software updates (GitHub) and download system notices from noti.vn. These requests do not include user or advertising data.",
+            "The server may check for software updates (GitHub) and download system notices from Nextgency. These requests do not include user or advertising data.",
             "Competent authorities, when required by law."
           ),
           p("Apart from the above, we do not share data with third parties."),
@@ -407,7 +407,7 @@ function termsVi(c: LegalInfo): LegalDoc {
         title: "1. Đơn vị cung cấp dịch vụ",
         blocks: [
           p(
-            `Hệ thống do ${c.orgName} (“Đơn vị vận hành”) cài đặt, quản lý và cung cấp cho nhân sự được cấp quyền. Phần mềm Ads MCP do noti.vn phát triển và giữ bản quyền; noti.vn không phải là bên cung cấp dịch vụ này.`
+            `Hệ thống do ${c.orgName} (“Đơn vị vận hành”) cài đặt, quản lý và cung cấp cho nhân sự được cấp quyền. Phần mềm Ads MCP do Nextgency phát triển và giữ bản quyền; Nextgency không phải là bên cung cấp dịch vụ này.`
           ),
         ],
       },
@@ -416,7 +416,7 @@ function termsVi(c: LegalInfo): LegalDoc {
         title: "2. Giấy phép phần mềm",
         blocks: [
           p(
-            "Phần mềm được cung cấp theo giấy phép riêng của noti.vn (mã nguồn có thể xem nhưng không phải mã nguồn mở): chỉ đơn vị được noti.vn cấp quyền bằng văn bản mới được cài đặt và vận hành, cho mục đích nội bộ. Khi không có văn bản cấp quyền, không được sao chép, phân phối, bán, cung cấp phần mềm dưới dạng dịch vụ cho bên thứ ba hoặc gỡ bỏ thông báo bản quyền, tên và logo noti.vn."
+            "Phần mềm được cung cấp theo giấy phép riêng của Nextgency (mã nguồn có thể xem nhưng không phải mã nguồn mở): chỉ đơn vị được Nextgency cấp quyền bằng văn bản mới được cài đặt và vận hành, cho mục đích nội bộ. Khi không có văn bản cấp quyền, không được sao chép, phân phối, bán, cung cấp phần mềm dưới dạng dịch vụ cho bên thứ ba hoặc gỡ bỏ thông báo bản quyền, tên và logo Nextgency."
           ),
         ],
       },
@@ -468,7 +468,7 @@ function termsVi(c: LegalInfo): LegalDoc {
             "Meta, TikTok, Google (gồm Google Drive, Google Sheets), OpenAI, Telegram, Apify và các trợ lý AI là dịch vụ độc lập với điều khoản riêng. Đơn vị vận hành không kiểm soát việc các nền tảng này thay đổi, giới hạn hoặc gián đoạn API của họ."
           ),
           p(
-            "Actor trên Apify Store phần lớn do bên thứ ba phát triển và được cung cấp “nguyên trạng”; Apify, Đơn vị vận hành và noti.vn không bảo đảm chất lượng, độ đầy đủ, độ chính xác hay tính hợp pháp của dữ liệu Actor thu thập. Dữ liệu thu thập là dữ liệu của bên thứ ba, có thể sai hoặc lỗi thời; trợ lý AI có thể phân tích sai."
+            "Actor trên Apify Store phần lớn do bên thứ ba phát triển và được cung cấp “nguyên trạng”; Apify, Đơn vị vận hành và Nextgency không bảo đảm chất lượng, độ đầy đủ, độ chính xác hay tính hợp pháp của dữ liệu Actor thu thập. Dữ liệu thu thập là dữ liệu của bên thứ ba, có thể sai hoặc lỗi thời; trợ lý AI có thể phân tích sai."
           ),
         ],
       },
@@ -486,7 +486,7 @@ function termsVi(c: LegalInfo): LegalDoc {
         title: "8. Giới hạn trách nhiệm",
         blocks: [
           p(
-            "Trong phạm vi pháp luật cho phép, Đơn vị vận hành và noti.vn không chịu trách nhiệm cho thiệt hại gián tiếp, mất doanh thu hoặc lợi nhuận, chi phí quảng cáo phát sinh từ thao tác do người dùng hoặc trợ lý AI thực hiện, hay thiệt hại do gián đoạn của nền tảng bên thứ ba."
+            "Trong phạm vi pháp luật cho phép, Đơn vị vận hành và Nextgency không chịu trách nhiệm cho thiệt hại gián tiếp, mất doanh thu hoặc lợi nhuận, chi phí quảng cáo phát sinh từ thao tác do người dùng hoặc trợ lý AI thực hiện, hay thiệt hại do gián đoạn của nền tảng bên thứ ba."
           ),
         ],
       },
@@ -562,7 +562,7 @@ function termsEn(c: LegalInfo): LegalDoc {
         title: "1. Service provider",
         blocks: [
           p(
-            `The System is installed, managed and provided by ${c.orgName} (the “Operator”) to authorised staff. The Ads MCP software is developed and owned by noti.vn; noti.vn is not the provider of this service.`
+            `The System is installed, managed and provided by ${c.orgName} (the “Operator”) to authorised staff. The Ads MCP software is developed and owned by Nextgency; Nextgency is not the provider of this service.`
           ),
         ],
       },
@@ -571,7 +571,7 @@ function termsEn(c: LegalInfo): LegalDoc {
         title: "2. Software license",
         blocks: [
           p(
-            "The software is licensed under noti.vn’s proprietary source-available license: only organisations authorised by noti.vn in writing may install and operate it, for internal purposes. Without such authorisation it may not be copied, distributed, sold, offered as a service to third parties, or stripped of its copyright notices, the noti.vn name or logos."
+            "The software is licensed under Nextgency’s proprietary source-available license: only organisations authorised by Nextgency in writing may install and operate it, for internal purposes. Without such authorisation it may not be copied, distributed, sold, offered as a service to third parties, or stripped of its copyright notices, the Nextgency name or logos."
           ),
         ],
       },
@@ -623,7 +623,7 @@ function termsEn(c: LegalInfo): LegalDoc {
             "Meta, TikTok, Google (including Google Drive and Google Sheets), OpenAI, Telegram, Apify and AI assistants are independent services with their own terms. The Operator does not control changes, limits or outages of their APIs."
           ),
           p(
-            "Actors on Apify Store are mostly developed by third parties and provided “as is”; Apify, the Operator and noti.vn do not guarantee the quality, completeness, accuracy or lawfulness of the data Actors collect. Collected data is third-party data and may be wrong or out of date; the AI assistant may analyse it incorrectly."
+            "Actors on Apify Store are mostly developed by third parties and provided “as is”; Apify, the Operator and Nextgency do not guarantee the quality, completeness, accuracy or lawfulness of the data Actors collect. Collected data is third-party data and may be wrong or out of date; the AI assistant may analyse it incorrectly."
           ),
         ],
       },
@@ -641,7 +641,7 @@ function termsEn(c: LegalInfo): LegalDoc {
         title: "8. Limitation of liability",
         blocks: [
           p(
-            "To the extent permitted by law, the Operator and noti.vn are not liable for indirect damages, lost revenue or profit, ad spend resulting from actions taken by users or AI assistants, or damages caused by third-party platform outages."
+            "To the extent permitted by law, the Operator and Nextgency are not liable for indirect damages, lost revenue or profit, ad spend resulting from actions taken by users or AI assistants, or damages caused by third-party platform outages."
           ),
         ],
       },
@@ -968,7 +968,7 @@ export const legal = {
       fallback: (domain: string) => `the system administrator at ${domain}`,
     },
   },
-  footer: "Ads MCP by: noti.vn",
+  footer: "Ads MCP by: Nextgency",
   docs: {
     privacy: { vi: privacyVi, en: privacyEn },
     terms: { vi: termsVi, en: termsEn },

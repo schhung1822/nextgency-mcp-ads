@@ -296,7 +296,7 @@ describe.skipIf(!hasDb)("MCP endpoint /mcp/<key> (integration)", { timeout: 120_
       )
       expect(init.status).toBe(200)
       const [initMsg] = await readRpc(init)
-      expect(initMsg.result.serverInfo.name).toBe("ads-mcp-noti")
+      expect(initMsg.result.serverInfo.name).toBe("ads-mcp-nextgency")
       expect(initMsg.result.instructions).toContain("ads_list_accounts")
       const legacyList = await toolNames(m.key, false)
       expect(legacyList).toContain("ads_list_accounts")

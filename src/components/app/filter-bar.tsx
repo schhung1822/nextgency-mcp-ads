@@ -214,7 +214,7 @@ function FilterPill({
               "rounded-full pointer-coarse:h-10",
               !active && "border-dashed bg-transparent",
               active &&
-                "border-brand-red/30 bg-brand-red/8 pr-8 text-foreground"
+                "border-brand-primary/30 bg-brand-primary/8 pr-8 text-foreground"
             )}
           >
             {!active && (

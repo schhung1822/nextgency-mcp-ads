@@ -65,7 +65,7 @@ describe("automation prompt builder", () => {
     const custom = { ...DEFAULT_CPA_RULE, connectorName: ' QC "Shop A"\n' }
     expect(buildSchedulePrompt(custom)).toContain('connector "QC Shop A"')
     expect(buildSkillMd(custom)).toContain('connector "QC Shop A"')
-    expect(skillDescription("report")).not.toContain("noti.vn")
+    expect(skillDescription("report")).not.toContain("Nextgency")
   })
 
   it("keeps the skill frontmatter inside Claude's limits", () => {

@@ -1,6 +1,6 @@
 # Hướng dẫn lấy token Meta (Facebook / Instagram Ads)
 
-> Áp dụng cho **Ads MCP by: noti.vn**. Cập nhật theo Meta Marketing API **v26.0** (10/2026). Giao diện Meta thay đổi thường xuyên - tên menu có thể hơi khác. Trong app, khung **Hướng dẫn** bên phải form kết nối có cùng nội dung.
+> Áp dụng cho **Ads MCP by: Nextgency**. Cập nhật theo Meta Marketing API **v26.0** (10/2026). Giao diện Meta thay đổi thường xuyên - tên menu có thể hơi khác. Trong app, khung **Hướng dẫn** bên phải form kết nối có cùng nội dung.
 
 Cách khuyến nghị: **token cá nhân của via** (User token tạo từ app developer của bạn). **1 token quản lý được mọi tài khoản quảng cáo (TKQC) và Trang mà via được phân quyền, trên mọi Business Manager (BM)** - không cần đi qua BM. App tự đổi token ngắn hạn sang token dài hạn (~60 ngày) khi bạn điền App ID + App Secret.
 

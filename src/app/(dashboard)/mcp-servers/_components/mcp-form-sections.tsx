@@ -244,7 +244,7 @@ function ConnectionScope({
     <div
       className={cn(
         "rounded-xl border p-3",
-        checked && "border-brand-red/30 bg-brand-red/[0.03]"
+        checked && "border-brand-primary/30 bg-brand-primary/[0.03]"
       )}
     >
       <div className="flex items-start gap-3">
@@ -564,7 +564,7 @@ export function PlatformsSection({
               key={p}
               className={cn(
                 "gap-0 py-0 transition-shadow",
-                d.enabled && "ring-1 ring-brand-red/30"
+                d.enabled && "ring-1 ring-brand-primary/30"
               )}
             >
               <CardHeader className="flex flex-row items-center gap-3 border-b px-4 py-3 [.border-b]:pb-3">

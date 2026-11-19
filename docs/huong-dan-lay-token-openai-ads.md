@@ -1,6 +1,6 @@
 # Hướng dẫn lấy API key OpenAI Ads (ChatGPT Ads)
 
-> Áp dụng cho **Ads MCP by: noti.vn**. Cập nhật theo OpenAI Ads Advertiser API **v1** (10/2026). OpenAI Ads mở self-serve cho Việt Nam từ 23/09/2026.
+> Áp dụng cho **Ads MCP by: Nextgency**. Cập nhật theo OpenAI Ads Advertiser API **v1** (10/2026). OpenAI Ads mở self-serve cho Việt Nam từ 23/09/2026.
 
 ## Điều cần biết trước
 - Đây là **Ads API key** lấy ở <https://ads.openai.com> — **khác** API key của platform.openai.com (key `sk-…` dùng cho GPT **không** dùng được).

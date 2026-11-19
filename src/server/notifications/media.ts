@@ -481,7 +481,7 @@ async function downloadWithFetch(
           method: "GET",
           redirect: "manual",
           signal: combined,
-          headers: { "user-agent": "ads-mcp-noti/1.0 (+media-fetch)" },
+          headers: { "user-agent": "ads-mcp-nextgency/1.0 (+media-fetch)" },
         }),
         t.idleMs,
         deadline

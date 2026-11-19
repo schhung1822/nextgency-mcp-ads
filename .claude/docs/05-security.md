@@ -6,7 +6,7 @@
 Cấu hình chuẩn (`src/server/auth/auth.ts`):
 ```ts
 export const auth = betterAuth({
-  appName: "Ads MCP by noti.vn",
+  appName: "Ads MCP by Nextgency",
   baseURL: env.BETTER_AUTH_URL, trustedOrigins: [env.BETTER_AUTH_URL],
   database: drizzleAdapter(db, { provider: "pg", schema }),
   emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 8, maxPasswordLength: 128, revokeSessionsOnPasswordReset: true },
@@ -20,7 +20,7 @@ export const auth = betterAuth({
   advanced: { useSecureCookies: true, ipAddress: { ipAddressHeaders: ["x-forwarded-for"] } },
   hooks: { before: /* chặn admin tắt 2FA; chặn user bị khoá */, after: /* ghi activity_logs đăng nhập/2FA/đăng xuất */ },
   plugins: [
-    twoFactor({ issuer: "Ads MCP (noti.vn)", totpOptions: { digits: 6, period: 30 },
+    twoFactor({ issuer: "Ads MCP (Nextgency)", totpOptions: { digits: 6, period: 30 },
       backupCodeOptions: { amount: 10, length: 10, storeBackupCodes: "encrypted" }, trustDeviceMaxAge: 60 * 60 * 24 * 14 }),
     admin({ ac, roles: { admin: adminRole, staff: staffRole }, defaultRole: "staff", adminRoles: ["admin"],
             impersonationSessionDuration: 60 * 30 }),
@@ -124,7 +124,7 @@ export const auth = betterAuth({
 - **Ai được làm**: chỉ **admin**. Kiểm tra bản mới ("Kiểm tra ngay"), xem trạng thái (`GET /api/updates/status`), bấm "Cập nhật" đều kiểm tra role ở **3 tầng**: layout `settings` (HTTP 404 thật cho nhân viên), page/route/action (`requireAdmin()` / `requireUserForAction({ role: "admin" })`) và service (`assertAdmin`, từ chối ngay cả khi tầng trên sót). Nhân viên chỉ thấy **số phiên bản** trong menu người dùng; route `/settings/updates` và `/api/updates/status` trả 404, action trả lỗi quyền.
 - **Re-auth**: "Cập nhật" đi qua `withReauth` (mật khẩu + TOTP nếu bật 2FA, chung ngân sách 5 lần sai / 15 phút); yêu cầu + `activity_logs` (`system.update_requested`) ghi **cùng transaction**. "Kiểm tra ngay" không cần re-auth (chỉ đọc GitHub) nhưng có hạn mức 6 lần / phút / người và ghi `system.update_check`.
 - **Không tin client**: `targetVersion` phải là semver chặt `X.Y.Z` **và bằng** `update_latest.version` do server tự lấy từ GitHub; phải mới hơn bản đang chạy; bản `dev` không cập nhật tự động; chỉ 1 yêu cầu mở tại một thời điểm (partial unique index, an toàn khi hai admin bấm cùng lúc); chỉ cho gửi khi heartbeat `updater` < 90 s.
-- **Web KHÔNG BAO GIỜ có `docker.sock`** (cũng không quyền Docker nào khác). Web chỉ ghi 1 dòng `system_update_requests`; service `updater` riêng (không publish port) poll DB và chạy docker. `updater` tự kiểm tra `target_version` đúng `^\d+\.\d+\.\d+$`, lớn hơn bản đang chạy và dùng image cố định `ghcr.io/notivn/ads-mcp-simple:<ver>`; không nhận chuỗi tự do từ DB.
+- **Web KHÔNG BAO GIỜ có `docker.sock`** (cũng không quyền Docker nào khác). Web chỉ ghi 1 dòng `system_update_requests`; service `updater` riêng (không publish port) poll DB và chạy docker. `updater` tự kiểm tra `target_version` đúng `^\d+\.\d+\.\d+$`, lớn hơn bản đang chạy và dùng image cố định `ghcr.io/schhung1822/nextgency-mcp-ads:<ver>`; không nhận chuỗi tự do từ DB.
 - **GitHub token** (`UPDATE_GITHUB_TOKEN`, tuỳ chọn, fine-grained chỉ đọc cho kho riêng tư): chỉ nằm trong header `Authorization`, không vào DB/log/thông báo lỗi (thông báo lỗi là chuỗi cố định của app, không chép nội dung phản hồi GitHub). `UPDATE_REPO` được kiểm tra định dạng `chủ/kho` trước khi ghép URL. Xác thực `docker login ghcr.io` để kéo image nằm ở máy chủ, không vào DB.
 - **Dữ liệu từ GitHub là không tin cậy**: ghi chú phát hành cắt 4000 ký tự, bỏ ký tự điều khiển, hiển thị **dạng text đã escape** (không HTML/Markdown); liên kết chỉ nhận `https://github.com/…`.
 - Cột `system_update_requests.log` có thể chứa đầu ra kỹ thuật (đã redact bởi `updater`): web không đọc và không trả cột này ra giao diện.

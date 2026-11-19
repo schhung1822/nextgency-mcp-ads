@@ -6,8 +6,8 @@ import type { Exec, ExecOptions, ExecResult } from "./updater-exec"
 import { SELF_UPDATE_HELPER, recreateUpdater, runUpdate, type RunDeps, type RunFiles, type UpdaterConfig } from "./updater-run"
 import type { FinishInfo, UpdateRequest } from "./updater-store"
 
-const IMAGE = "ghcr.io/notivn/ads-mcp-simple"
-const SIGNER = "https://github.com/notivn/Ads-MCP-simple/.github/workflows/docker.yml@refs/tags/"
+const IMAGE = "ghcr.io/schhung1822/nextgency-mcp-ads"
+const SIGNER = "https://github.com/schhung1822/nextgency-mcp-ads/.github/workflows/docker.yml@refs/tags/"
 const ISSUER = "https://token.actions.githubusercontent.com"
 const DIR = "/opt/ads-mcp"
 const ENV0 = [

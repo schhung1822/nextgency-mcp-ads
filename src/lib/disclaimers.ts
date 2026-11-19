@@ -14,8 +14,8 @@ export type DisclaimerKind = (typeof DISCLAIMER_KINDS)[number]
 
 /** Current version of each text (ISO date it took effect). */
 export const DISCLAIMER_VERSIONS: Record<DisclaimerKind, string> = {
-  connection: "2026-10-14",
-  mcp: "2026-10-10",
+  connection: "2026-11-19",
+  mcp: "2026-11-19",
 }
 
 /** The checkbox stays disabled at least this long after the popup opened (and until the text was scrolled to the end). */

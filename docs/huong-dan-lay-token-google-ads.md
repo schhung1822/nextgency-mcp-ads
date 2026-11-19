@@ -1,6 +1,6 @@
 # Hướng dẫn lấy thông tin xác thực Google Ads (gồm YouTube Ads)
 
-> Áp dụng cho **Ads MCP by: noti.vn**. Cập nhật theo Google Ads API **v25** (rà lại 08/10/2026).
+> Áp dụng cho **Ads MCP by: Nextgency**. Cập nhật theo Google Ads API **v25** (rà lại 08/10/2026).
 
 ## Điều cần biết trước
 

@@ -13,7 +13,7 @@ export const MAX_REQUEST_BODY_BYTES = 1024 * 1024
 export function buildMcpServer(ctx: Parameters<typeof extraFromAuthInfo>[0]): McpServer {
   const { grant, req } = extraFromAuthInfo(ctx)
   const server = new McpServer(
-    { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION, title: "Ads MCP by noti.vn" },
+    { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION, title: "Ads MCP by Nextgency" },
     { instructions: serverInstructionsFor(grant) }
   )
   registerAllowedTools(server, { grant, req })

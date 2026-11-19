@@ -187,7 +187,7 @@ Lưu ý parser hiện coi boolean là true chỉ khi `=== true` → MCP cũ chư
 | `Trạng thái`                                                                                            | ✔ nếu ghi ngược | `Chờ lên` → `Đang xử lý` → `Đã lên` / `Lỗi`; khi **đọc** nhận cả bí danh (§18.8): `Chưa tạo ads` / `Chưa tạo` / `Chưa lên` / trống = chờ lên, `Đã tạo ads` / `Đã tạo` = đã lên |
 | `Mã media` / `Mã quảng cáo` / `Link bài viết` / `Link chiến dịch` / `Ghi chú hệ thống` / `Cập nhật lúc` |                 | **chỉ hệ thống ghi** (`Link bài viết`, `Link chiến dịch`: tuỳ chọn, thêm 2026-10-10)                                                                                           |
 
-- Bộ phận media tải **mẫu sheet** từ trang khai báo (nút "Tạo bản sao mẫu" mở link Google Sheets `/copy` của một mẫu công khai noti.vn — hoặc hướng dẫn tạo tay; chọn khi làm UI). **Đã chọn**: hướng dẫn tạo tay (dòng gợi ý cột trong wizard + `docs/huong-dan-google-drive.md`), chưa có mẫu `/copy`.
+- Bộ phận media tải **mẫu sheet** từ trang khai báo (nút "Tạo bản sao mẫu" mở link Google Sheets `/copy` của một mẫu công khai Nextgency — hoặc hướng dẫn tạo tay; chọn khi làm UI). **Đã chọn**: hướng dẫn tạo tay (dòng gợi ý cột trong wizard + `docs/huong-dan-google-drive.md`), chưa có mẫu `/copy`.
 
 ### 9.2 `drive_sheet_read` (đọc)
 
