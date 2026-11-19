@@ -1,6 +1,9 @@
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import { cn } from "cn"
 
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+
 import { BrandLogo } from "./brand-logo"
 
 export interface StatusScreenProps {
@@ -56,7 +59,7 @@ export function StatusScreen({
         {inline ? (
           icon && (
             <span
-              className="flex size-12 items-center justify-center rounded-2xl bg-brand-red/10 text-brand-ink"
+              className="flex size-12 items-center justify-center rounded-2xl bg-brand-primary/10 text-brand-ink"
               aria-hidden
             >
               <HugeiconsIcon icon={icon} strokeWidth={1.75} className="size-6" />
@@ -68,7 +71,7 @@ export function StatusScreen({
         <div className="flex flex-col items-center gap-2">
           {code && (
             <p
-              className="bg-linear-135 from-brand-red to-brand-orange bg-clip-text text-5xl font-semibold tracking-tight text-transparent tabular-nums"
+              className="bg-linear-135 from-brand-primary to-brand-accent bg-clip-text text-5xl font-semibold tracking-tight text-transparent tabular-nums"
               aria-hidden
             >
               {code}
@@ -84,11 +87,15 @@ export function StatusScreen({
             {description}
           </p>
           {detail && (
-            <p className="font-mono text-xs break-all text-muted-foreground">
+            <Badge
+              variant="outline"
+              className="mt-1 h-auto max-w-full px-2.5 py-1 font-mono text-xs break-all whitespace-normal text-muted-foreground"
+            >
               {detail}
-            </p>
+            </Badge>
           )}
         </div>
+        <Separator className="max-w-48" />
         <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:justify-center">
           {actions}
         </div>

@@ -39,6 +39,7 @@
     "cn": "^0.4.0",
     "date-fns": "^4.4.0",
     "drizzle-orm": "0.45.3",
+    "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.5.0",
     "lru-cache": "^11.5.3",
     "next": "16.4.2",
