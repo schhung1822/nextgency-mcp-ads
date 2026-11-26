@@ -240,7 +240,7 @@ services:
   #     (Caddy chỉ nói HTTP trong mạng Docker, không mở 80/443 ra Internet).
   # Giá trị CADDY_CLIENT_IP / CADDY_TLS là tên file trong deploy/caddy/ (client-ip-<x>.caddy, tls-<x>.caddy).
   caddy:
-    image: caddy:2.11-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+    image: caddy:2.11-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     restart: unless-stopped
     # Image chạy root: bỏ mọi capability trừ quyền mở cổng 80/443; chỉ ghi vào volume /data, /config.
     read_only: true
