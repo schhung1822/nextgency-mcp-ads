@@ -287,7 +287,7 @@ services:
   # KHÔNG bật --loglevel debug / TUNNEL_LOGLEVEL=debug: mức debug ghi cả URL và header request (lộ key /mcp/<key>).
   # Updater không đụng tới service này (chỉ `up -d --no-deps web worker`).
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
+    image: cloudflare/cloudflared:2026.11.1@sha256:e613aadbc2d9511785d2e67a86b0c8ac18dd63a3f9af0d06faf04cbfdcb35f2d
     restart: unless-stopped
     deploy:
       replicas: ${CLOUDFLARED_REPLICAS:-0}
